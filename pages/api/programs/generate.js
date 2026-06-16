@@ -1,8 +1,8 @@
 // pages/api/programs/generate.js
-// POST { playerId, days=14, focus, notes } → AI-generated gym training program
+// POST { playerId, date, dayGoal, focus, notes, days=7 } → AI-generated gym session for one specific day
 // Uses the same player data as the zarechie dashboard (WHOOP, surveys, neuro tests).
 
-import { getPlayerSnapshot } from '../../../lib/playerData';
+import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { isAuthorized } from '../../../lib/auth';
 
 const FOCUS_LABELS = {
@@ -19,49 +19,68 @@ function avg(arr) {
   return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
 }
 
+// Pulls the exact record for targetDate out of a date-tagged, ascending-sorted array.
+function onDay(arr, date) {
+  return arr.find(r => r.date === date) || null;
+}
+
+function fmt(field, value, suffix = '') {
+  return `• ${field}: ${value != null ? value + suffix : 'нет данных'}`;
+}
+
 function summarizeSnapshot(snap) {
-  const { player, whoop, surveys, morning, neuro, periodDays } = snap;
+  const { player, whoop, surveys, morning, neuro, periodDays, targetDate } = snap;
 
-  const recovery = avg(whoop.map(d => d.recovery));
-  const hrv = avg(whoop.map(d => d.hrv));
-  const rhr = avg(whoop.map(d => d.rhr));
-  const sleepHours = avg(whoop.map(d => d.sleep_hours));
-  const strain = avg(whoop.map(d => d.strain));
+  const todayWhoop = onDay(whoop, targetDate);
+  const todayMorning = onDay(morning, targetDate);
+  // Evening survey reflects how the player felt after the *previous* session,
+  // so the most recent one on or before targetDate is what matters going into it.
+  const lastSurvey = [...surveys].filter(d => d.date <= targetDate).pop() || null;
+  const recentInjury = [...surveys].filter(d => d.date <= targetDate).reverse().find(d => d.hasInjury) || null;
 
-  const srpe = avg(surveys.map(d => d.srpe));
-  const fatigue = avg(surveys.map(d => d.fatigue));
-  const soreness = avg(surveys.map(d => d.soreness));
-  const recentInjury = surveys.find(d => d.hasInjury);
-
-  const mws = avg(morning.map(d => d.mws));
-  const sleepQuality = avg(morning.map(d => d.sleep));
-  const stress = avg(morning.map(d => d.stress));
-  const doms = avg(morning.map(d => d.doms));
+  const trendRecovery = avg(whoop.map(d => d.recovery));
+  const trendHrv = avg(whoop.map(d => d.hrv));
+  const trendStrain = avg(whoop.map(d => d.strain));
+  const trendSrpe = avg(surveys.map(d => d.srpe));
+  const trendFatigue = avg(surveys.map(d => d.fatigue));
+  const trendMws = avg(morning.map(d => d.mws));
 
   const lines = [
     `Игрок: ${player.name}, позиция: ${player.position || 'не указана'}`,
-    `Период анализа: последние ${periodDays} дней`,
+    `Дата тренировки: ${targetDate}`,
     '',
-    'WHOOP (средние значения за период):',
-    `• Recovery: ${recovery != null ? recovery + '%' : 'нет данных'}`,
-    `• ВСР (HRV): ${hrv != null ? hrv + ' мс' : 'нет данных'}`,
-    `• Пульс покоя: ${rhr != null ? rhr + ' уд/мин' : 'нет данных'}`,
-    `• Сон: ${sleepHours != null ? sleepHours + ' ч' : 'нет данных'}`,
-    `• Strain: ${strain != null ? strain : 'нет данных'}`,
-    '',
-    'Вечерний опросник (средние значения):',
-    `• sRPE: ${srpe != null ? srpe + '/10' : 'нет данных'}`,
-    `• Усталость: ${fatigue != null ? fatigue + '/5' : 'нет данных'}`,
-    `• Крепатура: ${soreness != null ? soreness + '/5' : 'нет данных'}`,
+    `Состояние на ${targetDate} (точечные данные за этот день):`,
+    todayWhoop
+      ? [
+          fmt('Recovery', todayWhoop.recovery, '%'),
+          fmt('ВСР (HRV)', todayWhoop.hrv, ' мс'),
+          fmt('Пульс покоя', todayWhoop.rhr, ' уд/мин'),
+          fmt('Сон', todayWhoop.sleep_hours, ' ч'),
+          fmt('Strain (накопленный, если уже была активность)', todayWhoop.strain),
+        ].join('\n')
+      : '• WHOOP за этот день не записан — нет точных данных, ниже только тренд.',
+    todayMorning
+      ? [
+          fmt('MWS (Morning Wellness Score)', todayMorning.mws, '%'),
+          fmt('Качество сна', todayMorning.sleep, '/5'),
+          fmt('Стресс вне зала', todayMorning.stress, '/5'),
+          fmt('Крепатура утром', todayMorning.doms, '/5'),
+        ].join('\n')
+      : '• Утренний чек-ин за этот день не заполнен.',
+    lastSurvey
+      ? `• Последний вечерний опросник (${lastSurvey.date}): sRPE ${lastSurvey.srpe ?? '—'}/10, усталость ${lastSurvey.fatigue ?? '—'}/5, крепатура ${lastSurvey.soreness ?? '—'}/5`
+      : '• Вечерних опросников в доступном окне нет.',
     recentInjury
       ? `• ⚠ Зафиксирована травма ${recentInjury.date}: область ${(recentInjury.injuryAreas || []).join(', ') || '—'}, боль ${recentInjury.pain_level}/10. ${recentInjury.injuryText || ''}`
-      : '• Травм за период не зафиксировано',
+      : '• Активных травм не зафиксировано.',
     '',
-    'Утренний чек-ин (средние значения):',
-    `• MWS (Morning Wellness Score): ${mws != null ? mws + '%' : 'нет данных'}`,
-    `• Качество сна: ${sleepQuality != null ? sleepQuality + '/5' : 'нет данных'}`,
-    `• Стресс вне зала: ${stress != null ? stress + '/5' : 'нет данных'}`,
-    `• Крепатура утром: ${doms != null ? doms + '/5' : 'нет данных'}`,
+    `Тренд за предыдущие ${periodDays} дней (для контекста накопленного утомления, не путать с точными данными на сегодня):`,
+    `• Recovery (средн.): ${trendRecovery != null ? trendRecovery + '%' : 'нет данных'}`,
+    `• ВСР (средн.): ${trendHrv != null ? trendHrv + ' мс' : 'нет данных'}`,
+    `• Strain (средн.): ${trendStrain != null ? trendStrain : 'нет данных'}`,
+    `• sRPE (средн.): ${trendSrpe != null ? trendSrpe + '/10' : 'нет данных'}`,
+    `• Усталость (средн.): ${trendFatigue != null ? trendFatigue + '/5' : 'нет данных'}`,
+    `• MWS (средн.): ${trendMws != null ? trendMws + '%' : 'нет данных'}`,
   ];
 
   if (neuro) {
@@ -84,10 +103,16 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: 'ANTHROPIC_API_KEY не настроен в переменных среды Vercel' });
   }
 
-  const { playerId, days = 14, focus = 'inseason', notes = '' } = req.body || {};
+  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', notes = '' } = req.body || {};
   if (!playerId) return res.status(400).json({ error: 'playerId required' });
 
-  const snapshot = await getPlayerSnapshot(String(playerId), Number(days) || 14);
+  const today = todayISO();
+  const targetDate = date || today;
+  if (targetDate > today) {
+    return res.status(400).json({ error: 'Дата не может быть в будущем — на эту дату ещё нет данных игрока' });
+  }
+
+  const snapshot = await getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate);
   if (!snapshot) return res.status(404).json({ error: 'Player not found' });
 
   const dataSummary = summarizeSnapshot(snapshot);
@@ -95,10 +120,11 @@ export default async function handler(req, res) {
 
   const userPrompt = `${dataSummary}
 
-Цель программы: ${focusLabel}
-${notes ? `Дополнительные указания тренера: ${notes}` : ''}
+Фаза подготовки: ${focusLabel}
+Цель именно этой тренировки: ${dayGoal || 'не указана отдельно — ориентируйся на фазу подготовки выше'}
+${notes ? `Комментарии тренера: ${notes}` : ''}
 
-Составь программу тренировок в тренажёрном зале на ближайшую неделю (микроцикл).`;
+Составь ОДНУ тренировку в тренажёрном зале на ${targetDate} — не микроцикл, не неделю, а конкретно эту сессию.`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -110,17 +136,18 @@ ${notes ? `Дополнительные указания тренера: ${notes
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1800,
+        max_tokens: 2000,
         system: `Ты — элитный тренер по силовой и кондиционной подготовке (S&C) мирового уровня, специализирующийся на волейболе.
-Составляешь программы тренировок в зале на основе объективных данных (WHOOP) и субъективных опросников игрока.
+Составляешь ОДНУ тренировку в зале на конкретный день — на основе объективных данных (WHOOP) и субъективных опросников игрока именно за этот день, плюс тренда последних дней для контекста.
 
 Принципы:
 - Волейбол — взрывной вид спорта: приоритет на силу ног, прыжок, плиометрику, стабильность плеча и кора, профилактику травм колена/плеча/спины.
-- Учитывай текущее восстановление и накопленное утомление: если Recovery/MWS низкие, sRPE/усталость высокие — снижай объём и интенсивность, не добавляй максимальные усилия.
-- Если зафиксирована травма — программа должна её учитывать (избегать пострадавшей зоны, добавлять реабилитационные элементы).
-- Учитывай игровой период (in-season — поддержание, не наращивание) vs межсезонье (можно строить объём/силу).
-- Указывай конкретику: упражнения, подходы × повторения, % от 1ПМ или RPE-шкала, отдых между подходами, дни недели.
-- Структура ответа: 1) Краткая оценка состояния игрока (2-3 предложения) → 2) Микроцикл по дням (название дня, упражнения с параметрами) → 3) Ключевые предостережения/на что обратить внимание тренеру в зале.
+- Приоритет — точечные данные на сегодня (Recovery, MWS, последний sRPE/усталость). Тренд используй только как фон, если точечных данных за день нет — явно скажи об этом в оценке, не выдавай тренд за факт.
+- Если Recovery/MWS на сегодня низкие или есть признаки накопленного утомления — снижай объём и интенсивность сессии, не добавляй максимальные усилия.
+- Если зафиксирована активная травма — сессия должна её учитывать (избегать пострадавшей зоны, добавлять реабилитационные элементы).
+- Учитывай фазу подготовки (in-season — поддержание, не наращивание) vs межсезонье (можно строить объём/силу), но в первую очередь — заявленную цель именно этой тренировки и комментарии тренера.
+- Указывай конкретику: разминка → основная часть (упражнения, подходы × повторения, % от 1ПМ или RPE-шкала, отдых между подходами) → заминка.
+- Структура ответа: 1) Краткая оценка состояния игрока на сегодня (2-3 предложения, упомяни если каких-то данных за день не было) → 2) Тренировка (разминка, основная часть, заминка) → 3) Ключевые предостережения/на что обратить внимание тренеру в зале.
 - Пиши на русском языке, профессиональным языком тренера, без избыточных вступлений.`,
         messages: [{ role: 'user', content: userPrompt }],
       }),
@@ -133,7 +160,7 @@ ${notes ? `Дополнительные указания тренера: ${notes
 
     const data = await response.json();
     const program = data.content?.[0]?.text || '';
-    return res.status(200).json({ program, player: snapshot.player, dataSummary });
+    return res.status(200).json({ program, player: snapshot.player, dataSummary, date: targetDate });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

@@ -8,11 +8,18 @@ const FOCUS_OPTIONS = [
   { value: 'rehab', label: 'Реабилитация / разгрузка' },
 ];
 
+function todayISO() {
+  return new Date().toISOString().split('T')[0];
+}
+
 export default function Home() {
   const [apiKey, setApiKey] = useState('');
   const [players, setPlayers] = useState([]);
+  const [playersError, setPlayersError] = useState('');
   const [playerId, setPlayerId] = useState('');
-  const [days, setDays] = useState(14);
+  const [date, setDate] = useState(todayISO());
+  const [dayGoal, setDayGoal] = useState('');
+  const [days, setDays] = useState(7);
   const [focus, setFocus] = useState('inseason');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,12 +34,17 @@ export default function Home() {
   useEffect(() => {
     if (!apiKey) return;
     localStorage.setItem('coachApiKey', apiKey);
+    setPlayersError('');
     fetch('/api/players/list', { headers: { 'x-api-key': apiKey } })
-      .then(r => r.json())
-      .then(data => {
-        if (data.players) setPlayers(data.players);
+      .then(async r => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || `Ошибка загрузки списка игроков (${r.status})`);
+        setPlayers(data.players || []);
       })
-      .catch(() => {});
+      .catch(err => {
+        setPlayers([]);
+        setPlayersError(err.message);
+      });
   }, [apiKey]);
 
   async function handleGenerate(e) {
@@ -45,7 +57,7 @@ export default function Home() {
       const res = await fetch('/api/programs/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ playerId, days, focus, notes }),
+        body: JSON.stringify({ playerId, date, dayGoal, days, focus, notes }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
@@ -61,7 +73,8 @@ export default function Home() {
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '24px 16px', fontFamily: 'system-ui, sans-serif' }}>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>Заречье — AI-тренер (зал)</h1>
       <p style={{ color: '#666', marginTop: 0, marginBottom: 20 }}>
-        Генерация программ силовой/кондиционной подготовки на основе данных WHOOP, опросников и нейротестов.
+        Генерация тренировки на конкретный день — индивидуально под игрока, его состояние именно на эту дату,
+        и под цель, которую ты сейчас задашь.
       </p>
 
       <label style={{ display: 'block', marginBottom: 16 }}>
@@ -74,6 +87,8 @@ export default function Home() {
           style={{ display: 'block', width: '100%', padding: 8, marginTop: 4 }}
         />
       </label>
+
+      {playersError && <p style={{ color: 'crimson', marginTop: -8, marginBottom: 16 }}>{playersError}</p>}
 
       <form onSubmit={handleGenerate}>
         <label style={{ display: 'block', marginBottom: 12 }}>
@@ -92,7 +107,30 @@ export default function Home() {
         </label>
 
         <label style={{ display: 'block', marginBottom: 12 }}>
-          Цель программы
+          Дата тренировки
+          <input
+            type="date"
+            value={date}
+            max={todayISO()}
+            onChange={e => setDate(e.target.value)}
+            required
+            style={{ display: 'block', width: '100%', padding: 8, marginTop: 4 }}
+          />
+        </label>
+
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          Цель именно этой тренировки
+          <input
+            type="text"
+            value={dayGoal}
+            onChange={e => setDayGoal(e.target.value)}
+            placeholder="Например: верх тела + кор, восстановительная сессия, акцент на прыжок"
+            style={{ display: 'block', width: '100%', padding: 8, marginTop: 4 }}
+          />
+        </label>
+
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          Фаза подготовки
           <select
             value={focus}
             onChange={e => setFocus(e.target.value)}
@@ -105,11 +143,11 @@ export default function Home() {
         </label>
 
         <label style={{ display: 'block', marginBottom: 12 }}>
-          Период анализа данных (дней)
+          Окно тренда для контекста (дней до даты тренировки)
           <input
             type="number"
             min={3}
-            max={60}
+            max={30}
             value={days}
             onChange={e => setDays(Number(e.target.value))}
             style={{ display: 'block', width: '100%', padding: 8, marginTop: 4 }}
@@ -117,7 +155,7 @@ export default function Home() {
         </label>
 
         <label style={{ display: 'block', marginBottom: 16 }}>
-          Доп. указания тренера (необязательно)
+          Комментарии тренера (необязательно)
           <textarea
             value={notes}
             onChange={e => setNotes(e.target.value)}
@@ -131,7 +169,7 @@ export default function Home() {
           disabled={loading || !apiKey || !playerId}
           style={{ padding: '10px 20px', fontSize: 15, cursor: 'pointer' }}
         >
-          {loading ? 'Генерация...' : 'Сгенерировать программу'}
+          {loading ? 'Генерация...' : 'Сгенерировать тренировку'}
         </button>
       </form>
 
@@ -139,7 +177,7 @@ export default function Home() {
 
       {result && (
         <div style={{ marginTop: 24 }}>
-          <h2 style={{ fontSize: 18 }}>Программа для {result.player?.name}</h2>
+          <h2 style={{ fontSize: 18 }}>Тренировка для {result.player?.name} — {result.date}</h2>
           <pre style={{
             whiteSpace: 'pre-wrap',
             background: '#f5f5f5',

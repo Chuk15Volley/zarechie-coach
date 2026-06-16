@@ -1,7 +1,7 @@
 // pages/api/players/list.js
 // Returns every known player (WHOOP-tracked + roster-only) for the program-generator UI.
 
-import { redis } from '../../../lib/redis';
+import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 
 export default async function handler(req, res) {
@@ -17,13 +17,13 @@ export default async function handler(req, res) {
   const ids = Array.from(new Set([...(whoopIds || []), ...(rosterIds || [])]));
   if (!ids.length) return res.status(200).json({ players: [] });
 
-  const players = (await Promise.all(
-    ids.map(async id => {
-      const [whoopRaw, rosterRaw] = await Promise.all([
-        redis('get', `whoop:player:${id}`),
-        redis('get', `roster:player:${id}`),
-      ]);
-      const raw = whoopRaw || rosterRaw;
+  // One pipelined round-trip for both keys of every id, instead of 2*N requests.
+  const raws = await redisPipeline(
+    ids.flatMap(id => [['get', `whoop:player:${id}`], ['get', `roster:player:${id}`]])
+  );
+  const players = ids
+    .map((id, i) => {
+      const raw = raws[i * 2] || raws[i * 2 + 1];
       if (!raw) return null;
       const p = JSON.parse(raw);
       return {
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
         position: p.position || '',
       };
     })
-  )).filter(Boolean);
+    .filter(Boolean);
 
   // Roster stores each player under multiple id aliases (e.g. numeric WHOOP id
   // and a "whoop_"-prefixed copy) — dedupe by name, preferring the numeric id
