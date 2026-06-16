@@ -32,6 +32,16 @@ input[type='date']::-webkit-calendar-picker-indicator {
   cursor: pointer;
 }
 
+/* The session card is meant to be printed and used in the gym — force a plain white
+   page for it regardless of the app's dark theme (the print: utility classes handle
+   per-element colors; this just resets the page background so there's no dark margin). */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+}
+
 /* react-markdown output inside the generated session card */
 .prose-session h1,
 .prose-session h2,

@@ -1,6 +1,7 @@
 // pages/api/programs/generate.js
-// POST { playerId, date, dayGoal, focus, notes, days=7 } → AI-generated gym session for one specific day
-// Uses the same player data as the zarechie dashboard (WHOOP, surveys, neuro tests).
+// POST { playerId, date, dayGoal, focus, notes, days=7 } → AI-generated gym session for one specific day,
+// returned as structured JSON (blocks of circuit-style exercises) instead of free text — the web app
+// renders it as printable exercise cards, matching the trainer's own paper session sheets.
 
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { isAuthorized } from '../../../lib/auth';
@@ -13,13 +14,72 @@ const FOCUS_LABELS = {
   rehab: 'возврат после травмы / разгрузка',
 };
 
+// Claude returns the session through this tool call instead of free text — guarantees
+// valid, predictable structure (blocks → circuit exercises → sets) we can render as cards.
+const SESSION_TOOL = {
+  name: 'build_session',
+  description:
+    'Структурированная тренировка в зале на один конкретный день, разбитая на блоки (круги/суперсеты).',
+  input_schema: {
+    type: 'object',
+    required: ['assessment', 'blocks', 'warnings'],
+    properties: {
+      assessment: {
+        type: 'string',
+        description: 'Краткая оценка состояния игрока на сегодня, 2-3 предложения. Упомяни, если каких-то данных за этот день не было.',
+      },
+      blocks: {
+        type: 'array',
+        description:
+          'Блоки тренировки по порядку выполнения. Каждый блок — это круг/суперсет из 1-4 упражнений, выполняемых поочерёдно по подходам (A1→A2→A3→пауза→повтор круга). Обычно 3-5 блоков на сессию.',
+        items: {
+          type: 'object',
+          required: ['label', 'exercises'],
+          properties: {
+            label: { type: 'string', description: 'Буква блока по порядку: A, B, C, D...' },
+            exercises: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['code', 'name', 'targetSets', 'cue'],
+                properties: {
+                  code: { type: 'string', description: 'Код упражнения внутри блока: A1, A2, A3...' },
+                  name: { type: 'string', description: 'Название упражнения на русском, коротко (как на табличке в зале)' },
+                  targetSets: {
+                    type: 'array',
+                    description:
+                      'Целевые повторения по рабочим подходам, например ["5","5","5"] или ["8+8","8+8"] для односторонних. 3-4 элемента.',
+                    items: { type: 'string' },
+                  },
+                  weightNote: {
+                    type: 'string',
+                    description:
+                      'Рекомендация по нагрузке. Если точный рабочий вес игрока неизвестен (а обычно неизвестен) — дай относительную интенсивность (RPE 6-8, %1ПМ или качественное "лёгкое/среднее/тяжёлое отягощение"), НЕ выдумывай конкретные кг. Используй конкретные кг только если тренер сам указал вес в комментариях.',
+                  },
+                  cue: {
+                    type: 'string',
+                    description: 'Одна короткая техническая подсказка по выполнению — императивная, по делу, как реальная пометка тренера (например "Максимально мощно вверх, минимальный контакт с полом").',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      warnings: {
+        type: 'string',
+        description: 'Ключевые предостережения/на что обратить внимание тренеру в зале сегодня.',
+      },
+    },
+  },
+};
+
 function avg(arr) {
   const vals = arr.filter(v => v != null && !Number.isNaN(v));
   if (!vals.length) return null;
   return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
 }
 
-// Pulls the exact record for targetDate out of a date-tagged, ascending-sorted array.
 function onDay(arr, date) {
   return arr.find(r => r.date === date) || null;
 }
@@ -33,8 +93,6 @@ function summarizeSnapshot(snap) {
 
   const todayWhoop = onDay(whoop, targetDate);
   const todayMorning = onDay(morning, targetDate);
-  // Evening survey reflects how the player felt after the *previous* session,
-  // so the most recent one on or before targetDate is what matters going into it.
   const lastSurvey = [...surveys].filter(d => d.date <= targetDate).pop() || null;
   const recentInjury = [...surveys].filter(d => d.date <= targetDate).reverse().find(d => d.hasInjury) || null;
 
@@ -90,6 +148,26 @@ function summarizeSnapshot(snap) {
   return lines.join('\n');
 }
 
+const SYSTEM_PROMPT = `Ты — элитный тренер по силовой и кондиционной подготовке (S&C) мирового уровня, специализирующийся на волейболе.
+Составляешь ОДНУ тренировку в зале на конкретный день — на основе объективных данных (WHOOP) и субъективных опросников игрока именно за этот день, плюс тренда последних дней для контекста.
+
+Формат, который ты обязан соблюдать (он скопирован со стиля реальных карточек тренера команды):
+- Тренировка разбита на блоки A, B, C... — каждый блок это круг/суперсет из 1-4 упражнений (A1, A2, A3...), выполняемых по очереди, затем круг повторяется на следующий подход.
+- Обычно первый блок(и) — взрывная/плиометрическая работа или олимпийские/баллистические движения (прыжки, броски набивного мяча, рывки, толчки) низким числом повторений (3-6) с максимальным качеством движения.
+- Дальше блоки силовой работы нижней/верхней части тела парами антагонистов (например присед + жим, тяга + выпад) и блоки кора/стабильности/профилактики (планка, мёртвый жук, пауловские движения, стабилизация плеча).
+- На каждое упражнение — короткая императивная техническая подсказка в стиле реальной пометки тренера (например "Максимально мощно вверх, минимальный контакт с полом", "Опускаться вниз 5 секунд", "Максимально резко вверх").
+- Вес — НЕ выдумывай конкретные кг, если тренер их не дал в комментариях. Используй RPE / %1ПМ / "лёгкое-среднее-тяжёлое отягощение".
+
+Принципы:
+- Волейбол — взрывной вид спорта: приоритет на силу ног, прыжок, плиометрику, стабильность плеча и кора, профилактику травм колена/плеча/спины.
+- Приоритет — точечные данные на сегодня (Recovery, MWS, последний sRPE/усталость). Тренд используй только как фон, если точечных данных за день нет — явно скажи об этом в оценке, не выдавай тренд за факт.
+- Если Recovery/MWS на сегодня низкие или есть признаки накопленного утомления — снижай объём и интенсивность сессии, не добавляй максимальные усилия.
+- Если зафиксирована активная травма — сессия должна её учитывать (избегать пострадавшей зоны, добавлять реабилитационные элементы).
+- Учитывай фазу подготовки (in-season — поддержание, не наращивание) vs межсезонье (можно строить объём/силу), но в первую очередь — заявленную цель именно этой тренировки и комментарии тренера.
+- Пиши на русском языке, профессиональным языком тренера, без избыточных вступлений.
+
+Заполни структуру через инструмент build_session.`;
+
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -136,20 +214,11 @@ ${notes ? `Комментарии тренера: ${notes}` : ''}
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
-        system: `Ты — элитный тренер по силовой и кондиционной подготовке (S&C) мирового уровня, специализирующийся на волейболе.
-Составляешь ОДНУ тренировку в зале на конкретный день — на основе объективных данных (WHOOP) и субъективных опросников игрока именно за этот день, плюс тренда последних дней для контекста.
-
-Принципы:
-- Волейбол — взрывной вид спорта: приоритет на силу ног, прыжок, плиометрику, стабильность плеча и кора, профилактику травм колена/плеча/спины.
-- Приоритет — точечные данные на сегодня (Recovery, MWS, последний sRPE/усталость). Тренд используй только как фон, если точечных данных за день нет — явно скажи об этом в оценке, не выдавай тренд за факт.
-- Если Recovery/MWS на сегодня низкие или есть признаки накопленного утомления — снижай объём и интенсивность сессии, не добавляй максимальные усилия.
-- Если зафиксирована активная травма — сессия должна её учитывать (избегать пострадавшей зоны, добавлять реабилитационные элементы).
-- Учитывай фазу подготовки (in-season — поддержание, не наращивание) vs межсезонье (можно строить объём/силу), но в первую очередь — заявленную цель именно этой тренировки и комментарии тренера.
-- Указывай конкретику: разминка → основная часть (упражнения, подходы × повторения, % от 1ПМ или RPE-шкала, отдых между подходами) → заминка.
-- Структура ответа: 1) Краткая оценка состояния игрока на сегодня (2-3 предложения, упомяни если каких-то данных за день не было) → 2) Тренировка (разминка, основная часть, заминка) → 3) Ключевые предостережения/на что обратить внимание тренеру в зале.
-- Пиши на русском языке, профессиональным языком тренера, без избыточных вступлений.`,
+        max_tokens: 3000,
+        system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userPrompt }],
+        tools: [SESSION_TOOL],
+        tool_choice: { type: 'tool', name: 'build_session' },
       }),
     });
 
@@ -159,8 +228,17 @@ ${notes ? `Комментарии тренера: ${notes}` : ''}
     }
 
     const data = await response.json();
-    const program = data.content?.[0]?.text || '';
-    return res.status(200).json({ program, player: snapshot.player, dataSummary, date: targetDate });
+    const toolUse = data.content?.find(c => c.type === 'tool_use' && c.name === 'build_session');
+    if (!toolUse) {
+      return res.status(502).json({ error: 'Модель не вернула структурированную тренировку' });
+    }
+
+    return res.status(200).json({
+      session: toolUse.input,
+      player: snapshot.player,
+      dataSummary,
+      date: targetDate,
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
