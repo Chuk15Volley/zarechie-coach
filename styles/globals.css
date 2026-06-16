@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: radial-gradient(120% 140% at 50% -10%, #11161f 0%, #0a0e14 55%, #060809 100%);
+  min-height: 100vh;
+}
+
+/* Custom scrollbar to match the dark, premium feel */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f2733;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a3441;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.5);
+  cursor: pointer;
+}
+
+/* react-markdown output inside the generated session card */
+.prose-session h1,
+.prose-session h2,
+.prose-session h3 {
+  color: #e5f9fc;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 1.4em;
+  margin-bottom: 0.5em;
+}
+.prose-session h1 {
+  font-size: 1.15rem;
+}
+.prose-session h2 {
+  font-size: 1.05rem;
+}
+.prose-session h3 {
+  font-size: 0.95rem;
+  color: #22d3ee;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.prose-session p {
+  margin-bottom: 0.85em;
+  line-height: 1.7;
+  color: #cbd5e1;
+}
+.prose-session strong {
+  color: #f1f5f9;
+  font-weight: 600;
+}
+.prose-session ul,
+.prose-session ol {
+  margin: 0.5em 0 1em 0;
+  padding-left: 1.3em;
+  color: #cbd5e1;
+}
+.prose-session li {
+  margin-bottom: 0.4em;
+  line-height: 1.6;
+}
+.prose-session li::marker {
+  color: #22d3ee;
+}
+.prose-session table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0 1.25em 0;
+  font-size: 0.875rem;
+}
+.prose-session th,
+.prose-session td {
+  border: 1px solid #1f2733;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.prose-session th {
+  background: #141a24;
+  color: #94a3b8;
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+}
+.prose-session blockquote {
+  border-left: 2px solid #22d3ee;
+  padding-left: 1em;
+  color: #94a3b8;
+  font-style: italic;
+  margin: 1em 0;
+}
+.prose-session hr {
+  border-color: #1f2733;
+  margin: 1.5em 0;
+}
