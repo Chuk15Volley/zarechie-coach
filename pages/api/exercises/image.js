@@ -1,5 +1,5 @@
 // pages/api/exercises/image.js
-// POST { name } → anatomical SVG exercise illustration via Claude Sonnet,
+// POST { name } → anatomical SVG exercise illustration via Claude Haiku,
 // cached in Redis by slug. Returns data:image/svg+xml;base64,... URL.
 
 import { redis } from '../../../lib/redis';
@@ -13,37 +13,46 @@ function slugify(name) {
     .replace(/^-+|-+$/g, '');
 }
 
-const SYSTEM_PROMPT = `You are a professional sports science illustrator specialising in anatomical exercise diagrams for fitness textbooks and coaching manuals. You draw clean, accurate SVG line-art illustrations showing athletes in correct exercise positions.`;
+// Minimal fallback — shows a question-mark placeholder instead of error text
+function fallbackSVG(name) {
+  const label = name.length > 28 ? name.slice(0, 27) + '…' : name;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 360" width="300" height="360">
+  <rect width="300" height="360" fill="white"/>
+  <circle cx="150" cy="155" r="55" stroke="#d1d5db" stroke-width="2" fill="none"/>
+  <text x="150" y="165" text-anchor="middle" font-family="system-ui" font-size="52" fill="#d1d5db" font-weight="bold">?</text>
+  <text x="150" y="300" text-anchor="middle" font-family="system-ui" font-size="11" fill="#9ca3af">${label}</text>
+</svg>`;
+}
 
-function buildUserPrompt(name) {
-  return `Draw an SVG illustration of the exercise: "${name}"
+function buildPrompt(name) {
+  return `Draw a simple anatomical SVG of the exercise: "${name}"
 
-MANDATORY RULES — follow exactly:
-1. SVG attributes: viewBox="0 0 300 360" width="300" height="360"
-2. First child: <rect width="300" height="360" fill="white"/>
-3. All shapes: stroke="#1a1a1a" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-4. Draw a realistic human figure (NOT a stick figure) using:
-   - Head: circle or ellipse (~20px radius) with short neck
-   - Shoulders: a wide arc or curve connecting neck to upper arms
-   - Torso: quadrilateral shape (wider at shoulders, narrower at hips) with a subtle spine line down the centre
-   - Upper arms: curved lines from shoulders to elbows
-   - Forearms: lines from elbows to wrists with small hand shapes (3 finger lines)
-   - Thighs: thick curved shapes from hips to knees
-   - Calves/shins: shapes from knees to ankles
-   - Feet: small angled shapes at ankles
-5. Show the CORRECT body position for "${name}":
-   - Precise joint angles appropriate for this exercise
-   - Spine aligned correctly (neutral / hinged / arched as the movement requires)
-   - Include any equipment: barbell with weight plates, dumbbells, bench, box, cable, resistance band, etc.
-6. Use a side view (90°) or 3/4 view — whichever shows the movement most clearly
-7. Equipment drawing tips:
-   - Barbell: a long horizontal rect (stroke only) with circular weight plates on each end
-   - Dumbbells: two short rects connected by a thin bar
-   - Bench: a rectangular platform on two vertical legs
-8. Add subtle muscle belly curves (1-2 px lighter stroke) on major working muscles to show engagement
-9. NO text, NO labels, NO annotations, NO colour fills — pure black lines on white only
+STRICT OUTPUT FORMAT:
+- Output ONLY the SVG. No markdown, no explanation.
+- Start with: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 360" width="300" height="360">
+- Second line: <rect width="300" height="360" fill="white"/>
+- End with: </svg>
+- All elements: stroke="#1a1a1a" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
 
-Output ONLY the raw SVG code. Begin with <svg and end with </svg>. No markdown, no explanation.`;
+FIGURE (use simple shapes, do NOT use complex paths):
+- Head: <ellipse> circle ~18px radius
+- Neck: <line>
+- Torso: <rect> or <polygon> (shoulders wider than hips)
+- Upper arms, forearms: <line> segments
+- Hands: small <ellipse>
+- Thighs, shins: <line> segments
+- Feet: short angled <line>
+
+EXERCISE POSITION: Show the body in correct position for "${name}" — correct joint angles, spine alignment, and any equipment (barbell, dumbbell, bench, cable machine, box).
+
+Keep it SIMPLE. Use <line>, <ellipse>, <rect>, <polygon> only. Max ~40 elements.`;
+}
+
+function extractSVG(text) {
+  if (!text) return null;
+  // greedy match to get full SVG including all nested content
+  const m = text.match(/<svg[\s\S]*<\/svg>/i);
+  return m ? m[0] : null;
 }
 
 export default async function handler(req, res) {
@@ -54,7 +63,7 @@ export default async function handler(req, res) {
   if (!name?.trim()) return res.status(400).json({ error: 'name required' });
 
   const slug = slugify(name);
-  const cacheKey = `exercise:svg:${slug}`;
+  const cacheKey = `exercise:svg2:${slug}`;
 
   try {
     const cached = await redis('get', cacheKey);
@@ -63,6 +72,8 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY не настроен' });
+
+  let svg = null;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -73,34 +84,26 @@ export default async function handler(req, res) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 3000,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: buildUserPrompt(name) }],
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: buildPrompt(name) }],
       }),
     });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      return res.status(502).json({ error: err.error?.message || `API error ${response.status}` });
+    if (response.ok) {
+      const data = await response.json();
+      const raw = data.content?.[0]?.text?.trim() || '';
+      svg = extractSVG(raw);
     }
+  } catch (_) {}
 
-    const data = await response.json();
-    const raw = data.content?.[0]?.text?.trim() || '';
-
-    // Extract SVG — strip any markdown fences if Claude added them
-    const svgMatch = raw.match(/<svg[\s\S]*?<\/svg>/i);
-    if (!svgMatch) {
-      return res.status(502).json({ error: 'Модель не вернула SVG' });
-    }
-
-    const svg = svgMatch[0];
-    const dataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-
-    redis('set', cacheKey, dataUrl).catch(() => {});
-
-    return res.status(200).json({ image: dataUrl, cached: false });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
+  // Always return something — fallback if Claude failed or didn't produce SVG
+  if (!svg) {
+    svg = fallbackSVG(name);
   }
+
+  const dataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+  redis('set', cacheKey, dataUrl).catch(() => {});
+
+  return res.status(200).json({ image: dataUrl, cached: false });
 }
