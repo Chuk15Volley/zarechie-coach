@@ -370,6 +370,7 @@ export default function Home() {
   const [days, setDays] = useState(7);
   const [focus, setFocus] = useState('inseason');
   const [notes, setNotes] = useState('');
+  const [sessionType, setSessionType] = useState('gym'); // 'gym' | 'warmup'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showSummary, setShowSummary] = useState(false);
@@ -454,7 +455,10 @@ export default function Home() {
     setMeta(null);
     setJustSaved(false);
     try {
-      const res = await fetch('/api/programs/generate', {
+      const endpoint = sessionType === 'warmup'
+        ? '/api/programs/generate-warmup'
+        : '/api/programs/generate';
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
         body: JSON.stringify({ playerId, date, dayGoal, days, focus, notes }),
@@ -468,7 +472,7 @@ export default function Home() {
       if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
       setSession(data.session);
       const fl = FOCUS_OPTIONS.find(o => o.value === focus)?.label?.replace(/^[^\wа-яА-ЯёЁ]+/, '').trim() || focus;
-      setMeta({ player: data.player, dataSummary: data.dataSummary, date: data.date, dayGoal: data.dayGoal || '', focusLabel: fl });
+      setMeta({ player: data.player, dataSummary: data.dataSummary, date: data.date, dayGoal: data.dayGoal || '', focusLabel: fl, sessionType });
       setShowSummary(false);
     } catch (err) {
       setError(err.message);
@@ -748,6 +752,28 @@ export default function Home() {
             onSubmit={handleGenerate}
             className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 shadow-[0_4px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-6 print:hidden"
           >
+            {/* Session type toggle */}
+            <div className="mb-5 flex gap-2">
+              {[
+                { value: 'gym', label: 'Тренажёрный зал', icon: <Dumbbell size={13} /> },
+                { value: 'warmup', label: 'Разминка', icon: <Zap size={13} /> },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => { setSessionType(opt.value); setSession(null); setMeta(null); setError(''); }}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-semibold transition-all ${
+                    sessionType === opt.value
+                      ? 'border-accent/40 bg-accent/10 text-accent shadow-[0_0_12px_rgba(34,211,238,0.1)]'
+                      : 'border-white/[0.07] text-slate-500 hover:border-white/[0.12] hover:text-slate-300'
+                  }`}
+                >
+                  {opt.icon}
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
             <div className="grid gap-5 sm:grid-cols-2">
               <div>
                 <SectionLabel icon={<Dumbbell size={11} />} text="Игрок" />
@@ -850,12 +876,12 @@ export default function Home() {
               {loading ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  Генерация тренировки...
+                  {sessionType === 'warmup' ? 'Генерация разминки...' : 'Генерация тренировки...'}
                 </>
               ) : (
                 <>
                   <Zap size={16} strokeWidth={2.5} />
-                  Сгенерировать тренировку
+                  {sessionType === 'warmup' ? 'Сгенерировать разминку' : 'Сгенерировать тренировку'}
                 </>
               )}
             </button>
@@ -1017,7 +1043,7 @@ export default function Home() {
                     <div style={{ fontSize: '6pt', color: '#94a3b8', marginTop: '1px', letterSpacing: '0.05em' }}>AI PERFORMANCE COACH · ЗАРЕЧЬЕ ОДИНЦОВО</div>
                   </div>
                   <div style={{ textAlign: 'center', flex: 1, padding: '0 10px' }}>
-                    <div style={{ fontSize: '7pt', fontWeight: '700', color: '#334155' }}>{meta.focusLabel}</div>
+                    <div style={{ fontSize: '7pt', fontWeight: '700', color: '#334155' }}>{meta.sessionType === 'warmup' ? 'РАЗМИНКА' : meta.focusLabel}</div>
                     {meta.dayGoal && <div style={{ fontSize: '6pt', color: '#64748b', marginTop: '1px' }}>Цель: {meta.dayGoal}</div>}
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
