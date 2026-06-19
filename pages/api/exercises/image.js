@@ -1,6 +1,6 @@
 // pages/api/exercises/image.js
-// POST { name } → exercise illustration via Gemini Flash image generation,
-// cached in Redis by exercise name slug.
+// POST { name } → exercise illustration URL via Pollinations.ai (no auth needed),
+// URL cached in Redis by exercise name slug.
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
@@ -13,12 +13,20 @@ function slugify(name) {
     .replace(/^-+|-+$/g, '');
 }
 
+// Deterministic seed so same exercise always generates same illustration
+function slugSeed(slug) {
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) {
+    h = (Math.imul(31, h) + slug.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h) % 1_000_000;
+}
+
 function buildPrompt(name) {
   return (
-    `Black and white anatomical fitness illustration of the exercise "${name}". ` +
-    `Style: professional sports science textbook line art. Clean white background, black ink lines only. ` +
-    `Full body athlete shown in the correct starting or mid-movement position of the exercise. ` +
-    `Clear muscle engagement visible. Side or 3/4 angle view. No text, no labels, no shading, no color.`
+    `anatomical fitness illustration, athlete performing "${name}", ` +
+    `black ink line art on white background, side view, full body, ` +
+    `sports science textbook style, no text, no shading, clean lines`
   );
 }
 
@@ -30,45 +38,22 @@ export default async function handler(req, res) {
   if (!name?.trim()) return res.status(400).json({ error: 'name required' });
 
   const slug = slugify(name);
-  const cacheKey = `exercise:flash:${slug}`;
+  const cacheKey = `exercise:pollinations:${slug}`;
 
+  // Return cached URL immediately if available
   try {
     const cached = await redis('get', cacheKey);
     if (cached) return res.status(200).json({ image: cached, cached: true });
   } catch (_) {}
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'GEMINI_API_KEY не настроен' });
+  const seed = slugSeed(slug);
+  const prompt = buildPrompt(name);
+  const imageUrl =
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+    `?width=512&height=512&nologo=true&model=flux&seed=${seed}`;
 
-  try {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: buildPrompt(name) }] }],
-          generationConfig: { responseModalities: ['IMAGE'] },
-        }),
-      }
-    );
+  // Cache the URL (not the binary — browser loads image directly from Pollinations)
+  redis('set', cacheKey, imageUrl).catch(() => {});
 
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      return res.status(502).json({ error: err.error?.message || `Gemini API error ${r.status}` });
-    }
-
-    const data = await r.json();
-    const part = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-    if (!part?.inlineData?.data) {
-      return res.status(502).json({ error: 'Gemini не вернул изображение' });
-    }
-
-    const dataUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-    redis('set', cacheKey, dataUrl).catch(() => {});
-
-    return res.status(200).json({ image: dataUrl, cached: false });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
-  }
+  return res.status(200).json({ image: imageUrl, cached: false });
 }
