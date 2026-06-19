@@ -184,15 +184,15 @@ function ScheduleCalendar({ events, onToggle, trainingDate }) {
 
 function SectionLabel({ icon, text }) {
   return (
-    <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-      <span className="text-accent/60">{icon}</span>
+    <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+      <span className="text-accent/70">{icon}</span>
       {text}
     </div>
   );
 }
 
 const inputBase =
-  'block w-full rounded-xl border border-white/[0.07] bg-white/[0.04] px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 outline-none transition-all duration-200 hover:border-white/[0.11] focus:border-accent/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-accent/15';
+  'block w-full rounded-xl border border-white/[0.10] bg-white/[0.055] px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition-all duration-200 hover:border-white/[0.15] focus:border-accent/50 focus:bg-white/[0.08] focus:ring-2 focus:ring-accent/15';
 
 const focusRing = 'outline-none focus-visible:ring-2 focus-visible:ring-accent/40';
 
@@ -653,13 +653,13 @@ export default function Home() {
 
       {/* Ambient background orbs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden print:hidden">
-        <div className="absolute -top-40 -left-40 h-[560px] w-[560px] rounded-full bg-accent/[0.055] blur-[120px]" />
-        <div className="absolute bottom-10 -right-20 h-[420px] w-[420px] rounded-full bg-blue-600/[0.045] blur-[130px]" />
-        <div className="absolute top-1/2 left-1/2 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/[0.02] blur-[100px]" />
+        <div className="absolute -top-40 -left-40 h-[600px] w-[600px] rounded-full bg-accent/[0.11] blur-[110px]" />
+        <div className="absolute bottom-0 -right-20 h-[500px] w-[500px] rounded-full bg-blue-500/[0.10] blur-[120px]" />
+        <div className="absolute top-1/3 right-1/4 h-[320px] w-[320px] rounded-full bg-violet-500/[0.06] blur-[100px]" />
       </div>
 
       {/* Top accent line */}
-      <div className="h-[1.5px] w-full bg-gradient-to-r from-transparent via-accent/70 to-transparent print:hidden" />
+      <div className="h-[2px] w-full bg-gradient-to-r from-transparent via-accent/80 to-transparent print:hidden" />
 
       <div className="relative min-h-screen px-4 py-10 text-slate-100 sm:px-6">
         <div className="mx-auto w-full max-w-5xl">
@@ -674,7 +674,7 @@ export default function Home() {
               </div>
               <div>
                 <div className="text-[17px] font-black tracking-tight text-white">Periodyx</div>
-                <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-slate-600">
+                <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                   AI Performance Coach
                 </div>
               </div>
@@ -726,7 +726,7 @@ export default function Home() {
           )}
 
           {/* ── Subtitle ── */}
-          <p className="mb-6 max-w-lg text-[13px] leading-relaxed text-slate-600 print:hidden">
+          <p className="mb-6 max-w-lg text-[13px] leading-relaxed text-slate-500 print:hidden">
             Тренировка на конкретный день — индивидуально под игрока, его состояние и цели тренера.
           </p>
 
@@ -773,7 +773,7 @@ export default function Home() {
           {/* ── Form ── */}
           <form
             onSubmit={handleGenerate}
-            className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 shadow-[0_4px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-6 print:hidden"
+            className="rounded-2xl border border-white/[0.10] bg-white/[0.04] p-5 shadow-[0_8px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-xl sm:p-6 print:hidden"
           >
             {/* Session type toggle */}
             <div className="mb-5 flex gap-2">
@@ -848,7 +848,7 @@ export default function Home() {
             </div>
 
             {/* ── Divider ── */}
-            <div className="mt-5 h-px bg-white/[0.05]" />
+            <div className="mt-5 h-px bg-white/[0.08]" />
 
             {/* ── Period & Phase ── */}
             <div className="mt-5">
@@ -867,7 +867,7 @@ export default function Home() {
                     className={`flex-1 rounded-xl border py-2.5 text-[11px] font-bold tracking-wide transition-all ${
                       period === p.value
                         ? `${PERIOD_COLORS[p.value].tab} ${PERIOD_COLORS[p.value].glow}`
-                        : 'border-white/[0.06] text-slate-600 hover:border-white/[0.12] hover:text-slate-400'
+                        : 'border-white/[0.09] text-slate-500 hover:border-white/[0.15] hover:text-slate-300'
                     }`}
                   >
                     {p.label}
@@ -885,7 +885,7 @@ export default function Home() {
                     className={`rounded-xl border px-3.5 py-3 text-left transition-all ${
                       focus === ph.value
                         ? `${PERIOD_COLORS[period].card} ${PERIOD_COLORS[period].glow}`
-                        : 'border-white/[0.06] hover:border-white/[0.10] hover:bg-white/[0.02]'
+                        : 'border-white/[0.09] text-slate-400 hover:border-white/[0.15] hover:bg-white/[0.03]'
                     }`}
                   >
                     <div className="flex items-center gap-2">
@@ -946,7 +946,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mt-5 h-px bg-white/[0.05]" />
+            <div className="mt-5 h-px bg-white/[0.08]" />
 
             <div className="mt-5">
               <SectionLabel icon={<MessageSquare size={11} />} text="Комментарии тренера (необязательно)" />

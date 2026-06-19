@@ -7,8 +7,15 @@ html {
 }
 
 body {
-  background: radial-gradient(120% 140% at 50% -10%, #11161f 0%, #0a0e14 55%, #060809 100%);
+  background: #07101a;
+  background-image:
+    radial-gradient(ellipse 70% 55% at 10% -10%, rgba(34,211,238,0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 45% at 90% 105%, rgba(37,99,235,0.10) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 75% 20%, rgba(124,58,237,0.05) 0%, transparent 50%),
+    radial-gradient(ellipse 100% 80% at 50% 50%, #0c1525 0%, #07101a 100%);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Custom scrollbar to match the dark, premium feel */
