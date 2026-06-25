@@ -1,10 +1,9 @@
-// pages/api/exercises/image.js
-// POST { name } → DALL-E 3 exercise illustration, cached in Redis by slug.
-// Returns data:image/png;base64,... URL.
+// pages/api/exercises/image-public.js
+// POST { name, token, img_prompt? } → exercise illustration for player pages.
+// Auth: share token (validates player, not trainer key). Cache-first, then generates.
 
 import { createHash } from 'crypto';
 import { redis } from '../../../lib/redis';
-import { isAuthorized } from '../../../lib/auth';
 
 function slugify(name) {
   return name
@@ -35,37 +34,26 @@ function buildPrompt(name, imgPrompt) {
 }
 
 export default async function handler(req, res) {
-  if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  const { name, force, img_prompt } = req.body || {};
+  if (req.method !== 'POST') return res.status(405).end();
+  const { name, token, img_prompt } = req.body || {};
   if (!name?.trim()) return res.status(400).json({ error: 'name required' });
 
-  const slug = slugify(name);
-  const cacheKey = `exercise:dalle3:${slug}:${promptHash(img_prompt)}`;
+  // Validate share token — cheap Redis lookup, no trainer key needed
+  if (!token) return res.status(401).json({ error: 'token required' });
+  const playerId = await redis('get', `coach:share_token:${token}`).catch(() => null);
+  if (!playerId) return res.status(401).json({ error: 'invalid token' });
 
-  if (!force) {
-    try {
-      const cached = await redis('get', cacheKey);
-      if (cached) return res.status(200).json({ image: cached, cached: true });
-    } catch (_) {}
-  }
+  const cacheKey = `exercise:dalle3:${slugify(name)}:${promptHash(img_prompt)}`;
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'OPENAI_API_KEY не настроен в Vercel' });
-
-  // Dedup lock: prevent parallel requests for the same exercise from generating twice
-  const lockKey = `${cacheKey}:lock`;
+  // Cache hit
   try {
-    const locked = await redis('set', lockKey, '1', 'NX', 'EX', '180');
-    if (!locked) {
-      // Another request is already generating this image — wait and return from cache
-      await new Promise(r => setTimeout(r, 8000));
-      const cached = await redis('get', cacheKey).catch(() => null);
-      if (cached) return res.status(200).json({ image: cached, cached: true });
-      // If still not cached after wait, fall through and generate anyway
-    }
+    const cached = await redis('get', cacheKey);
+    if (cached) return res.status(200).json({ image: cached, cached: true });
   } catch (_) {}
+
+  // Generate
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'OpenAI not configured' });
 
   try {
     const r = await fetch('https://api.openai.com/v1/images/generations', {
@@ -90,15 +78,13 @@ export default async function handler(req, res) {
 
     const data = await r.json();
     const b64 = data.data?.[0]?.b64_json;
-    if (!b64) return res.status(502).json({ error: 'OpenAI не вернул изображение' });
+    if (!b64) return res.status(502).json({ error: 'no image returned' });
 
     const dataUrl = `data:image/png;base64,${b64}`;
-    await redis('set', cacheKey, dataUrl, 'EX', 7776000).catch(e => console.error('Redis SET failed:', e.message));
-    redis('del', lockKey).catch(() => {});
+    redis('set', cacheKey, dataUrl, 'EX', 7776000).catch(e => console.error('Redis SET failed:', e.message));
 
     return res.status(200).json({ image: dataUrl, cached: false });
   } catch (e) {
-    redis('del', lockKey).catch(() => {});
     return res.status(500).json({ error: e.message });
   }
 }

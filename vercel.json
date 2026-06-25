@@ -4,9 +4,15 @@
       "maxDuration": 60
     },
     "pages/api/programs/generate-warmup.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     },
     "pages/api/exercises/image.js": {
+      "maxDuration": 60
+    },
+    "pages/api/exercises/image-public.js": {
+      "maxDuration": 60
+    },
+    "pages/api/programs/regenerate-exercise.js": {
       "maxDuration": 60
     }
   }

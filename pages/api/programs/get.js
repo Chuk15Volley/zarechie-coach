@@ -21,7 +21,8 @@ export default async function handler(req, res) {
   try {
     const raw = await redis('get', `coach:session:${playerId}:${date}`);
     if (!raw) return res.status(200).json({ record: null });
-    return res.status(200).json({ record: JSON.parse(raw) });
+    const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return res.status(200).json({ record });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

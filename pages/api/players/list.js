@@ -47,13 +47,17 @@ export default async function handler(req, res) {
 
   const deduped = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
-  const sessionDates = await redisPipeline(
-    deduped.map(p => ['zrange', `coach:sessions:${p.id}`, -1, -1])
+  const meta = await redisPipeline(
+    deduped.flatMap(p => [
+      ['zrange', `coach:sessions:${p.id}`, -1, -1],
+      ['get', `player:photo:${p.id}`],
+    ])
   ).catch(() => []);
 
   const playersWithMeta = deduped.map((p, i) => ({
     ...p,
-    lastSessionDate: Array.isArray(sessionDates[i]) && sessionDates[i].length ? sessionDates[i][0] : null,
+    lastSessionDate: Array.isArray(meta[i * 2]) && meta[i * 2].length ? meta[i * 2][0] : null,
+    photo: meta[i * 2 + 1] || null,
   }));
 
   res.status(200).json({ players: playersWithMeta });

@@ -19,15 +19,22 @@ import {
   BarChart2,
   Calendar,
   Link2,
+  Copy,
+  RefreshCw,
+  Users,
+  X,
+  CheckSquare,
+  Square,
+  ChevronRight,
 } from 'lucide-react';
 
 const ONE_RM_FIELDS = [
-  { key: 'squat',    label: 'Присед',        unit: 'кг' },
-  { key: 'rdl',      label: 'RDL',           unit: 'кг' },
-  { key: 'deadlift', label: 'Становая',      unit: 'кг' },
-  { key: 'bench',    label: 'Жим лёжа',      unit: 'кг' },
-  { key: 'ohp',      label: 'Жим стоя',      unit: 'кг' },
-  { key: 'pullup',   label: 'Подтяг. (+кг)', unit: 'кг' },
+  { key: 'squat',    label: 'Присед (трэп/гоблет)', unit: 'кг' },
+  { key: 'rdl',      label: 'РТ на одной ноге',     unit: 'кг' },
+  { key: 'deadlift', label: 'Тяга трэп-штанга',     unit: 'кг' },
+  { key: 'bench',    label: 'Жим гантелей',          unit: 'кг' },
+  { key: 'ohp',      label: 'Жим Landmine',          unit: 'кг' },
+  { key: 'pullup',   label: 'Подтяг. (+кг)',         unit: 'кг' },
 ];
 
 function addDaysToDate(dateStr, n) {
@@ -44,11 +51,25 @@ function getWeekFocuses(focus) {
       { focus: 'zvs_recovery',     label: 'Восстановление' },
     ];
   }
-  if (focus.includes('eccentric') || focus.includes('isometric') || focus === 'concentric') {
+  if (focus.startsWith('camp_ecc_')) {
     return [
-      { focus, label: 'Тренировка 1' },
-      { focus, label: 'Тренировка 2' },
-      { focus: 'zvs_recovery', label: 'Восстановление' },
+      { focus: 'camp_ecc_anterior',  label: 'Пн — Передняя цепь' },
+      { focus: 'camp_ecc_posterior', label: 'Вт — Задняя цепь' },
+      { focus: 'camp_ecc_fullbody',  label: 'Пт — Всё тело' },
+    ];
+  }
+  if (focus.startsWith('camp_iso_')) {
+    return [
+      { focus: 'camp_iso_anterior',  label: 'Пн/Пт — Передняя цепь' },
+      { focus: 'camp_iso_posterior', label: 'Вт/Сб — Задняя цепь' },
+      { focus: 'zvs_recovery',       label: 'Восстановление' },
+    ];
+  }
+  if (focus === 'camp_explosive') {
+    return [
+      { focus: 'camp_explosive', label: 'Понедельник' },
+      { focus: 'camp_explosive', label: 'Вторник' },
+      { focus: 'camp_explosive', label: 'Пятница' },
     ];
   }
   if (focus.startsWith('pep_')) {
@@ -109,9 +130,12 @@ const PHASES_BY_PERIOD = {
     { value: 'zvs_deload',         label: 'Разгрузочная неделя', sub: 'Каждые 6 недель' },
   ],
   camp: [
-    { value: 'eccentric_camp', label: 'Эксцентрическая фаза', sub: 'Недели 1–4' },
-    { value: 'isometric_camp', label: 'Изометрическая фаза',  sub: 'Недели 5–8' },
-    { value: 'concentric',     label: 'Концентрическая',       sub: 'Скорость / Недели 9–12' },
+    { value: 'camp_ecc_anterior',  label: 'Эксцентрика · Передняя цепь',  sub: 'Понедельник / Нед.1-3' },
+    { value: 'camp_ecc_posterior', label: 'Эксцентрика · Задняя цепь',    sub: 'Вторник / Нед.1-3' },
+    { value: 'camp_ecc_fullbody',  label: 'Эксцентрика · Всё тело',       sub: 'Пятница / Нед.1-3' },
+    { value: 'camp_iso_anterior',  label: 'Изометрика · Передняя цепь',   sub: 'Пн+Пт / Нед.4-5' },
+    { value: 'camp_iso_posterior', label: 'Изометрика · Задняя цепь',     sub: 'Вт+Сб / Нед.4-5' },
+    { value: 'camp_explosive',     label: 'Взрыв / Потенциация',           sub: 'Неделя 6 · Тейпер' },
   ],
   offseason: [
     { value: 'zvs_struct',         label: 'Структурная подготовка', sub: 'ЗВС Фаза 1' },
@@ -335,6 +359,7 @@ function ExerciseCard({
   apiKey,
   code,
   name,
+  imgPrompt,
   targetSets,
   weightNote,
   tempo,
@@ -347,37 +372,76 @@ function ExerciseCard({
   onChangeTempo,
   onChangeAutoReg,
   onChangeCue,
+  onRegenerate,
 }) {
   const [image, setImage] = useState(null);
   const [imageError, setImageError] = useState('');
   const [imageLoading, setImageLoading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     if (!name?.trim() || !apiKey) return;
     let cancelled = false;
-    setImageLoading(true);
-    setImageError('');
-    fetch('/api/exercises/image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ name }),
-    })
-      .then(async r => {
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(data.error || 'Ошибка');
-        if (!cancelled) setImage(data.image);
+    let retryTimer = null;
+
+    function attemptLoad(retryCount = 0, force = false) {
+      if (cancelled) return;
+      retryTimer = null;
+      setImageLoading(true);
+      setImageError('');
+      fetch('/api/exercises/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ name, ...(imgPrompt ? { img_prompt: imgPrompt } : {}), ...(force ? { force: true } : {}) }),
       })
-      .catch(err => {
-        if (!cancelled) setImageError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setImageLoading(false);
-      });
+        .then(async r => {
+          const data = await r.json().catch(() => ({}));
+          if (r.status === 429 && retryCount < 4) {
+            // Rate limited — retry with jitter so cards don't all retry simultaneously
+            const delay = 15000 + Math.random() * 30000;
+            if (!cancelled) retryTimer = setTimeout(() => attemptLoad(retryCount + 1), delay);
+            return;
+          }
+          if (!r.ok) throw new Error(data.error || 'Ошибка загрузки');
+          if (!cancelled) { setImage(data.image); setImageLoading(false); }
+        })
+        .catch(err => {
+          if (!cancelled) { setImageError(err.message); setImageLoading(false); }
+        });
+    }
+
+    attemptLoad();
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name, apiKey]);
+
+  function regenerateImage() {
+    if (imageLoading || !apiKey) return;
+    setImage(null);
+    setImageError('');
+    setImageLoading(true);
+    fetch('/api/exercises/image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({ name, ...(imgPrompt ? { img_prompt: imgPrompt } : {}), force: true }),
+    })
+      .then(async r => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || 'Ошибка загрузки');
+        setImage(data.image);
+      })
+      .catch(err => setImageError(err.message))
+      .finally(() => setImageLoading(false));
+  }
+
+  async function handleRegenerate() {
+    if (regenerating || !onRegenerate) return;
+    setRegenerating(true);
+    try { await onRegenerate(); } finally { setRegenerating(false); }
+  }
 
   return (
     <div className="group overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025] backdrop-blur-sm transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04] hover:shadow-[0_4px_24px_rgba(0,0,0,0.4)] print:break-inside-avoid print:border-slate-300 print:bg-white">
@@ -396,10 +460,21 @@ function ExerciseCard({
           onChange={e => onChangeName(e.target.value)}
           className="min-w-0 flex-1 bg-transparent text-right text-[13px] font-semibold text-slate-100 outline-none placeholder:text-slate-500 print:text-slate-900"
         />
+        {onRegenerate && (
+          <button
+            type="button"
+            onClick={handleRegenerate}
+            disabled={regenerating}
+            title="Перегенерировать упражнение"
+            className="shrink-0 rounded-md p-1 text-slate-600 opacity-0 transition-all hover:bg-white/[0.08] hover:text-slate-300 group-hover:opacity-100 disabled:cursor-not-allowed print:hidden"
+          >
+            {regenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          </button>
+        )}
       </div>
 
       {/* Image */}
-      <div className="flex aspect-[4/3] items-center justify-center bg-white">
+      <div className="relative flex aspect-[4/3] items-center justify-center bg-white print:hidden">
         {imageLoading && (
           <div className="flex flex-col items-center gap-2">
             <Loader2 size={18} className="animate-spin text-slate-400" />
@@ -412,6 +487,15 @@ function ExerciseCard({
         )}
         {!imageLoading && !image && (
           <span className="px-4 text-center text-[11px] text-slate-400">{imageError || '—'}</span>
+        )}
+        {!imageLoading && apiKey && (
+          <button
+            onClick={regenerateImage}
+            title="Перегенерировать картинку"
+            className="absolute bottom-1.5 right-1.5 rounded-md bg-black/40 p-1 text-white/60 opacity-0 transition-opacity hover:bg-black/60 hover:text-white group-hover:opacity-100"
+          >
+            <RefreshCw size={11} />
+          </button>
         )}
       </div>
 
@@ -471,6 +555,47 @@ function ExerciseCard({
   );
 }
 
+function ClearImageCacheButton({ apiKey }) {
+  const [status, setStatus] = useState('idle'); // idle | loading | done | error
+  const [deleted, setDeleted] = useState(0);
+
+  async function handleClear() {
+    if (status === 'loading') return;
+    setStatus('loading');
+    try {
+      const res = await fetch('/api/admin/clear-image-cache', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка');
+      setDeleted(data.deleted);
+      setStatus('done');
+      setTimeout(() => setStatus('idle'), 4000);
+    } catch (e) {
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClear}
+      disabled={status === 'loading'}
+      className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/[0.06] px-3 py-1.5 text-[10px] font-semibold text-rose-400 transition hover:bg-rose-500/[0.12] disabled:opacity-50"
+    >
+      {status === 'loading' && <Loader2 size={10} className="animate-spin" />}
+      {status === 'done' && <Check size={10} />}
+      {status === 'idle' || status === 'error' ? <RefreshCw size={10} /> : null}
+      {status === 'loading' ? 'Очищаю кэш...' :
+       status === 'done'    ? `Удалено ${deleted} картинок` :
+       status === 'error'   ? 'Ошибка очистки' :
+       'Сбросить кэш картинок'}
+    </button>
+  );
+}
+
 export default function Home() {
   const [apiKey, setApiKey] = useState('');
   const [keyPanelOpen, setKeyPanelOpen] = useState(true);
@@ -480,12 +605,26 @@ export default function Home() {
   const [date, setDate] = useState(todayISO());
   const [dayGoal, setDayGoal] = useState('');
   const [days, setDays] = useState(7);
-  const [period, setPeriod] = useState('inseason');
-  const [focus, setFocus] = useState('zvs_strength_day');
+  const [period, setPeriod] = useState('camp');
+  const [focus, setFocus] = useState('camp_ecc_anterior');
   const [notes, setNotes] = useState('');
   const [sessionType, setSessionType] = useState('gym'); // 'gym' | 'warmup'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [genProgress, setGenProgress] = useState(0);
+  const [genStage, setGenStage] = useState('');
+  const genTimers = useRef([]);
+
+  // Left panel tabs
+  const [leftTab, setLeftTab] = useState('players'); // 'players' | 'day'
+  const [teamStatus, setTeamStatus] = useState({});
+  const [teamStatusLoading, setTeamStatusLoading] = useState(false);
+
+  // Batch generation
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchSelectedIds, setBatchSelectedIds] = useState(new Set());
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchResults, setBatchResults] = useState([]); // [{playerId, name, position, status, error}]
   const [showSummary, setShowSummary] = useState(false);
 
   const [scheduleEvents, setScheduleEvents] = useState([]);
@@ -503,8 +642,23 @@ export default function Home() {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [mobileView, setMobileView] = useState('players'); // 'players' | 'workspace'
 
-  // Share link
-  const [linkCopied, setLinkCopied] = useState(false);
+  // Share link — stores the playerId whose link was just copied
+  const [linkCopied, setLinkCopied] = useState(null);
+
+  // Player feedbacks: { [playerId]: { rpe, feel, date } }
+  const [playerFeedbacks, setPlayerFeedbacks] = useState({});
+
+  // Position filter for player list
+  const [positionFilter, setPositionFilter] = useState('all');
+
+  // Copy program to another player
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyDone, setCopyDone] = useState(null);
+
+  // Player photo editing
+  const [editPhotoFor, setEditPhotoFor] = useState(null);
+  const [photoInput, setPhotoInput] = useState('');
 
   // 1RM database
   const [oneRM, setOneRM] = useState({});
@@ -546,7 +700,15 @@ export default function Home() {
       .then(async r => {
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(data.error || `Ошибка (${r.status})`);
-        setPlayers(data.players || []);
+        const list = data.players || [];
+        setPlayers(list);
+        // Load today's feedback for all players
+        const today = todayISO();
+        fetch('/api/players/feedbacks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({ playerIds: list.map(p => p.id), date: today }),
+        }).then(r2 => r2.json()).then(d => setPlayerFeedbacks(d.feedbacks || {})).catch(() => {});
       })
       .catch(err => {
         setPlayers([]);
@@ -594,6 +756,16 @@ export default function Home() {
       .catch(() => setVolumeStats(null));
   }, [apiKey, playerId]);
 
+  const filteredPlayers = positionFilter === 'all' ? players : players.filter(p => {
+    const pos = (p.position || '').toLowerCase();
+    if (positionFilter === 'diagonal') return pos.includes('диагон');
+    if (positionFilter === 'outside') return pos.includes('доигр');
+    if (positionFilter === 'middle') return pos.includes('центр') || pos.includes('middle');
+    if (positionFilter === 'setter') return pos.includes('связ') || pos.includes('setter');
+    if (positionFilter === 'libero') return pos.includes('либеро');
+    return true;
+  });
+
   const keyConnected = apiKey && !playersError;
   const playerOptions = players.map(p => ({
     value: p.id,
@@ -617,6 +789,38 @@ export default function Home() {
     setOneRMSaveTimer(t);
   }
 
+  async function copyTo(targetPlayerId) {
+    setCopying(true);
+    try {
+      await fetch('/api/programs/copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ fromPlayerId: playerId, toPlayerId: targetPlayerId, date }),
+      });
+      const target = players.find(p => p.id === targetPlayerId);
+      setCopyDone(target?.name || 'Игрок');
+      setTimeout(() => setCopyDone(null), 3000);
+    } catch (_) {}
+    setCopying(false);
+    setCopyModalOpen(false);
+  }
+
+  async function savePhoto(url) {
+    const photoUrl = typeof url === 'string' ? url : photoInput.trim();
+    try {
+      await fetch('/api/players/photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ playerId: editPhotoFor, photoUrl }),
+      });
+      setPlayers(prev => prev.map(p => p.id === editPhotoFor ? { ...p, photo: photoUrl || null } : p));
+      if (selectedPlayer?.id === editPhotoFor) {
+        setSelectedPlayer(prev => ({ ...prev, photo: photoUrl || null }));
+      }
+    } catch (_) {}
+    setEditPhotoFor(null);
+  }
+
   function selectPlayer(p) {
     setSelectedPlayer(p);
     setPlayerId(p.id);
@@ -626,8 +830,145 @@ export default function Home() {
     setError('');
     setJustSaved(false);
     setTodayWarmup(null);
-    setLinkCopied(false);
+    setLinkCopied(null);
     setMobileView('workspace');
+  }
+
+  function startGenProgress() {
+    genTimers.current.forEach(clearTimeout);
+    genTimers.current = [];
+    setGenProgress(0);
+    const stages = [
+      { delay: 0,     pct: 3,  msg: 'Загружаю данные игрока...' },
+      { delay: 1500,  pct: 12, msg: 'Анализирую состояние и историю...' },
+      { delay: 4000,  pct: 28, msg: 'Составляю структуру тренировки...' },
+      { delay: 10000, pct: 45, msg: 'Подбираю упражнения и нагрузку...' },
+      { delay: 22000, pct: 62, msg: 'Генерирую PAP-блоки...' },
+      { delay: 38000, pct: 76, msg: 'Рассчитываю прогрессию...' },
+      { delay: 55000, pct: 88, msg: 'Финализирую программу...' },
+      { delay: 75000, pct: 93, msg: 'Ожидаю ответ Claude...' },
+    ];
+    stages.forEach(({ delay, pct, msg }) => {
+      const t = setTimeout(() => { setGenProgress(pct); setGenStage(msg); }, delay);
+      genTimers.current.push(t);
+    });
+  }
+
+  function stopGenProgress(success) {
+    genTimers.current.forEach(clearTimeout);
+    genTimers.current = [];
+    if (success) {
+      setGenProgress(100);
+      setGenStage('Готово!');
+      setTimeout(() => { setGenProgress(0); setGenStage(''); }, 800);
+    } else {
+      setGenProgress(0);
+      setGenStage('');
+    }
+  }
+
+  async function loadTeamStatus() {
+    if (!apiKey || !players.length) return;
+    setTeamStatusLoading(true);
+    try {
+      const res = await fetch('/api/programs/team-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ playerIds: players.map(p => p.id), date }),
+      });
+      if (res.ok) { const d = await res.json(); setTeamStatus(d.status || {}); }
+    } catch (_) {}
+    setTeamStatusLoading(false);
+  }
+
+  // Auto-load team status when switching to 'day' tab
+  useEffect(() => {
+    if (leftTab === 'day' && players.length > 0 && apiKey) loadTeamStatus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leftTab, date]);
+
+  function toggleBatchPlayer(id) {
+    setBatchSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllBatch() {
+    if (batchSelectedIds.size === players.length) {
+      setBatchSelectedIds(new Set());
+    } else {
+      setBatchSelectedIds(new Set(players.map(p => p.id)));
+    }
+  }
+
+  async function retryFailedBatch() {
+    const failedIds = new Set(batchResults.filter(r => r.status === 'error').map(r => r.playerId));
+    const failed = players.filter(p => failedIds.has(p.id));
+    if (!failed.length) return;
+    setBatchResults(prev => prev.map(r => failedIds.has(r.playerId) ? { ...r, status: 'queued', error: undefined } : r));
+    setBatchRunning(true);
+    for (const player of failed) {
+      setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'running' } : r));
+      try {
+        const genRes = await fetch('/api/programs/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, notes }),
+        });
+        const genData = await genRes.json();
+        if (!genRes.ok) throw new Error(genData.error || 'Ошибка генерации');
+        await fetch('/api/programs/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({ playerId: player.id, date, session: genData.session, player: genData.player, dataSummary: genData.dataSummary || '', dayGoal: genData.dayGoal || dayGoal }),
+        });
+        setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done' } : r));
+      } catch (err) {
+        setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
+      }
+    }
+    setBatchRunning(false);
+  }
+
+  async function runBatchGeneration() {
+    const selected = players.filter(p => batchSelectedIds.has(p.id));
+    if (!selected.length) return;
+    setBatchResults(selected.map(p => ({ playerId: p.id, name: p.name, position: p.position, status: 'queued' })));
+    setBatchRunning(true);
+
+    const usedExercises = [];
+
+    for (const player of selected) {
+      setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'running' } : r));
+      try {
+        const genRes = await fetch('/api/programs/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, notes, teamUsedExercises: usedExercises }),
+        });
+        const genData = await genRes.json();
+        if (!genRes.ok) throw new Error(genData.error || 'Ошибка генерации');
+
+        // Collect exercises to avoid repetition for next players
+        (genData.session?.blocks || []).forEach(b =>
+          (b.exercises || []).forEach(e => { if (e.name) usedExercises.push(e.name); })
+        );
+
+        // Auto-save immediately
+        await fetch('/api/programs/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({ playerId: player.id, date, session: genData.session, player: genData.player, dataSummary: genData.dataSummary || '', dayGoal: genData.dayGoal || dayGoal }),
+        });
+
+        setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done' } : r));
+      } catch (err) {
+        setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
+      }
+    }
+    setBatchRunning(false);
   }
 
   async function handleGenerate(e) {
@@ -639,6 +980,7 @@ export default function Home() {
     setMeta(null);
     setWeekPlan(null);
     setJustSaved(false);
+    startGenProgress();
     try {
       const endpoint = sessionType === 'warmup'
         ? '/api/programs/generate-warmup'
@@ -652,7 +994,7 @@ export default function Home() {
       let data;
       try { data = await res.json(); } catch (_) {
         throw new Error(res.status === 504
-          ? 'Claude думает слишком долго — попробуйте ещё раз через 30 секунд'
+          ? 'Превышено время ожидания — попробуйте ещё раз (обычно 2-я попытка быстрее из-за кэша)'
           : 'Ошибка соединения — попробуйте ещё раз');
       }
       if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
@@ -661,8 +1003,10 @@ export default function Home() {
       setMeta({ player: data.player, dataSummary: data.dataSummary, date: data.date, dayGoal: data.dayGoal || '', focusLabel: fl, sessionType });
       if (sessionType === 'warmup') setTodayWarmup(data.session);
       setShowSummary(false);
+      stopGenProgress(true);
     } catch (err) {
       setError(err.message);
+      stopGenProgress(false);
     } finally {
       setLoading(false);
     }
@@ -783,6 +1127,26 @@ export default function Home() {
     }));
   }
 
+  async function regenerateExercise(blockIdx, exIdx) {
+    const res = await fetch('/api/programs/regenerate-exercise', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({ playerId, date, blockIndex: blockIdx, exerciseIndex: exIdx }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
+    if (data.exercise) {
+      setSession(prev => ({
+        ...prev,
+        blocks: prev.blocks.map((b, bi) =>
+          bi !== blockIdx
+            ? b
+            : { ...b, exercises: b.exercises.map((ex, ei) => (ei !== exIdx ? ex : data.exercise)) }
+        ),
+      }));
+    }
+  }
+
   function updateSet(blockIdx, exIdx, setIdx, value) {
     setSession(prev => ({
       ...prev,
@@ -844,18 +1208,27 @@ export default function Home() {
     setImagesLoadedCount(0);
     const exercises = (session.blocks || []).flatMap(b => b.exercises || []);
     if (!exercises.length) return;
-    exercises.forEach(ex => {
-      if (!ex.name?.trim()) { setImagesLoadedCount(c => c + 1); return; }
-      fetch('/api/exercises/image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ name: ex.name }),
-      })
-        .then(r => r.json())
-        .then(data => { if (data.image) setExerciseImages(prev => ({ ...prev, [ex.name]: data.image })); })
-        .catch(() => {})
-        .finally(() => setImagesLoadedCount(c => c + 1));
+    // Send in batches of 5 (OpenAI rate limit: 5/min). First batch immediate, then 62s apart.
+    const BATCH_SIZE = 5;
+    const BATCH_DELAY_MS = 62000;
+    const timers = [];
+    exercises.forEach((ex, i) => {
+      const batchDelay = Math.floor(i / BATCH_SIZE) * BATCH_DELAY_MS;
+      const t = setTimeout(() => {
+        if (!ex.name?.trim()) { setImagesLoadedCount(c => c + 1); return; }
+        fetch('/api/exercises/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({ name: ex.name, ...(ex.img_prompt ? { img_prompt: ex.img_prompt } : {}) }),
+        })
+          .then(r => r.json())
+          .then(data => { if (data.image) setExerciseImages(prev => ({ ...prev, [ex.name]: data.image })); })
+          .catch(() => {})
+          .finally(() => setImagesLoadedCount(c => c + 1));
+      }, batchDelay);
+      timers.push(t);
     });
+    return () => timers.forEach(t => clearTimeout(t));
   }, [session, apiKey]);
 
   const totalPrintExercises = useMemo(
@@ -867,7 +1240,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Periodyx — AI Performance Coach</title>
+        <title>Nikolay Korenchuk — High Performance Coach</title>
         <meta
           name="description"
           content="Генерация тренировок в зале на конкретный день под состояние и цели игрока."
@@ -891,14 +1264,11 @@ export default function Home() {
           {/* Logo + API Key */}
           <div className="border-b border-white/[0.05] p-5">
             <div className="mb-4 flex items-center gap-3">
-              <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-accent/30 to-accent/5 ring-1 ring-accent/20" />
-                <div className="absolute inset-0 rounded-xl bg-accent/10 blur-md" />
-                <Orbit size={16} strokeWidth={1.8} className="relative text-accent" />
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/nk-logo.jpg" alt="NK" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
               <div>
-                <div className="text-[15px] font-black tracking-tight text-white">Periodyx</div>
-                <div className="text-[8.5px] font-semibold uppercase tracking-[0.22em] text-slate-600">AI Performance Coach</div>
+                <div className="text-[13px] font-black tracking-tight text-white leading-tight">Nikolay Korenchuk</div>
+                <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-accent">High Performance Coach</div>
               </div>
             </div>
 
@@ -928,7 +1298,7 @@ export default function Home() {
             </button>
 
             {keyPanelOpen && (
-              <div className="mt-3 animate-fade-in">
+              <div className="mt-3 animate-fade-in space-y-2">
                 <input
                   type="password"
                   value={apiKey}
@@ -941,9 +1311,32 @@ export default function Home() {
                     <AlertTriangle size={11} /> {playersError}
                   </p>
                 )}
+                {keyConnected && (
+                  <ClearImageCacheButton apiKey={apiKey} />
+                )}
               </div>
             )}
           </div>
+
+          {/* Tab switcher: Players | Day */}
+          {keyConnected && players.length > 0 && (
+            <div className="border-b border-white/[0.05] px-3 pb-2 pt-2">
+              <div className="flex rounded-lg bg-white/[0.04] p-0.5">
+                {[{ id: 'players', label: 'Игроки' }, { id: 'day', label: 'День' }].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setLeftTab(tab.id)}
+                    className={`flex-1 rounded-md py-1.5 text-[11px] font-semibold transition-all ${
+                      leftTab === tab.id ? 'bg-white/[0.10] text-white' : 'text-slate-600 hover:text-slate-400'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Player list */}
           <div className="flex-1 overflow-y-auto p-2">
@@ -953,7 +1346,238 @@ export default function Home() {
             {keyConnected && players.length === 0 && (
               <p className="px-3 py-5 text-[11px] text-slate-600">Загрузка состава...</p>
             )}
-            {players.map(p => (
+            {/* ── Вкладка: День ── */}
+            {leftTab === 'day' && keyConnected && (
+              <div className="space-y-1">
+
+                {/* Date + refresh */}
+                <div className="mb-2 flex items-center gap-2 px-1">
+                  <CalendarDays size={11} className="shrink-0 text-slate-600" />
+                  <input
+                    type="date"
+                    value={date}
+                    max={addDaysToStr(todayISO(), 1)}
+                    onChange={e => setDate(e.target.value)}
+                    className="flex-1 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-300 outline-none focus:border-accent/40 [color-scheme:dark]"
+                  />
+                  <button type="button" onClick={loadTeamStatus} disabled={teamStatusLoading} className="shrink-0 text-slate-600 hover:text-accent transition" title="Обновить">
+                    <RefreshCw size={11} className={teamStatusLoading ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+
+                {/* Generation parameters */}
+                <div className="mb-2 space-y-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-2">
+                  {/* Period pills */}
+                  <div className="flex gap-1">
+                    {PERIODS.map(p => (
+                      <button
+                        key={p.value}
+                        type="button"
+                        onClick={() => { setPeriod(p.value); setFocus(PHASES_BY_PERIOD[p.value][0].value); }}
+                        className={`flex-1 rounded-lg py-1 text-[9px] font-bold transition-all ${
+                          period === p.value
+                            ? PERIOD_COLORS[p.value].tab
+                            : 'text-slate-600 hover:text-slate-400'
+                        }`}
+                      >
+                        {p.value === 'offseason' ? 'Межс.' : p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Phase select */}
+                  <select
+                    value={focus}
+                    onChange={e => setFocus(e.target.value)}
+                    className="w-full rounded-lg border border-white/[0.08] bg-[#0a1520] px-2 py-1.5 text-[11px] text-slate-300 outline-none focus:border-accent/40 [color-scheme:dark]"
+                  >
+                    {PHASES_BY_PERIOD[period].map(ph => (
+                      <option key={ph.value} value={ph.value}>{ph.label}</option>
+                    ))}
+                  </select>
+
+                  {/* Day goal */}
+                  <input
+                    type="text"
+                    value={dayGoal}
+                    onChange={e => setDayGoal(e.target.value)}
+                    placeholder="Цель дня (необязательно)"
+                    className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-[11px] text-slate-300 placeholder-slate-700 outline-none focus:border-accent/40"
+                  />
+
+                  {/* Notes */}
+                  <textarea
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Комментарии тренера..."
+                    className="w-full resize-none rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-[11px] leading-snug text-slate-300 placeholder-slate-700 outline-none focus:border-accent/40"
+                  />
+                </div>
+
+                {/* Select all / clear */}
+                {players.length > 0 && !batchRunning && (
+                  <div className="flex items-center justify-between px-1 pb-1">
+                    <span className="text-[10px] text-slate-600">
+                      {batchSelectedIds.size > 0 ? `Выбрано: ${batchSelectedIds.size}` : 'Выбери игроков'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (batchSelectedIds.size === players.length) setBatchSelectedIds(new Set());
+                        else setBatchSelectedIds(new Set(players.map(p => p.id)));
+                      }}
+                      className="text-[10px] font-semibold text-accent/70 hover:text-accent transition"
+                    >
+                      {batchSelectedIds.size === players.length ? 'Снять все' : 'Выбрать всех'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Player rows with checkboxes */}
+                {players.map(p => {
+                  const st = teamStatus[p.id];
+                  const fb = st?.feedback;
+                  const sel = batchSelectedIds.has(p.id);
+                  const batchRow = batchResults.find(r => r.playerId === p.id);
+                  return (
+                    <div
+                      key={p.id}
+                      className={`flex items-center gap-2 rounded-xl px-2 py-2 transition-all ${
+                        sel ? 'bg-accent/[0.07] ring-1 ring-inset ring-accent/20' :
+                        playerId === p.id ? 'bg-white/[0.04]' : ''
+                      }`}
+                    >
+                      {/* Checkbox */}
+                      <button
+                        type="button"
+                        onClick={() => !batchRunning && toggleBatchPlayer(p.id)}
+                        disabled={batchRunning}
+                        className="shrink-0 transition"
+                      >
+                        {sel
+                          ? <CheckSquare size={14} className="text-accent" />
+                          : <Square size={14} className="text-slate-700 hover:text-slate-500" />}
+                      </button>
+
+                      {/* Player info — click to open */}
+                      <button
+                        type="button"
+                        onClick={() => selectPlayer(p)}
+                        className="flex flex-1 min-w-0 items-center gap-2 text-left"
+                      >
+                        <span className={`shrink-0 h-1.5 w-1.5 rounded-full ${positionDot(p.position)}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate text-[12px] font-semibold leading-tight text-slate-200">{p.name.split(' ')[0]}</div>
+                          <div className="text-[10px] text-slate-600">{p.position || '—'}</div>
+                        </div>
+                      </button>
+
+                      {/* Status badges */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {batchRow && (
+                          <span className={`text-[10px] font-bold ${
+                            batchRow.status === 'done'    ? 'text-emerald-400' :
+                            batchRow.status === 'error'   ? 'text-rose-400' :
+                            batchRow.status === 'running' ? 'text-accent' :
+                            'text-slate-600'
+                          }`}>
+                            {batchRow.status === 'done'    ? '✓' :
+                             batchRow.status === 'error'   ? '✗' :
+                             batchRow.status === 'running' ? '…' : '·'}
+                          </span>
+                        )}
+                        {!batchRow && fb && (
+                          <span className={`rounded px-1 py-0.5 text-[9px] font-black ${
+                            fb.rpe >= 9 ? 'bg-red-500/20 text-red-400' :
+                            fb.rpe >= 7 ? 'bg-amber-500/20 text-amber-400' :
+                            'bg-emerald-500/20 text-emerald-400'
+                          }`}>
+                            {fb.rpe}
+                          </span>
+                        )}
+                        {!batchRow && st && !batchRunning && (
+                          <span className={`text-[11px] ${st.hasSession ? 'text-emerald-500' : 'text-slate-700'}`}>
+                            {st.hasSession ? '✓' : '—'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Generate button */}
+                {batchSelectedIds.size > 0 && !batchRunning && (
+                  <div className="pt-2 px-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setBatchResults([]);
+                        await runBatchGeneration();
+                        loadTeamStatus();
+                      }}
+                      disabled={!apiKey}
+                      className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-accent/90 py-2.5 text-[12px] font-bold text-[#060a0e] transition hover:bg-accent disabled:opacity-30"
+                    >
+                      <Zap size={12} strokeWidth={2.5} />
+                      Сгенерировать для {batchSelectedIds.size} {batchSelectedIds.size === 1 ? 'игрока' : batchSelectedIds.size < 5 ? 'игроков' : 'игроков'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Running indicator */}
+                {batchRunning && (
+                  <div className="pt-2 px-1 flex items-center gap-2 text-[11px] text-slate-500">
+                    <Loader2 size={11} className="animate-spin text-accent" />
+                    Генерирую {batchResults.filter(r => r.status === 'done').length} / {batchResults.length}...
+                  </div>
+                )}
+
+                {/* Done summary */}
+                {!batchRunning && batchResults.length > 0 && (
+                  <div className="pt-1 px-1 flex items-center justify-between">
+                    <span className="text-[10px] text-emerald-400">
+                      ✓ {batchResults.filter(r => r.status === 'done').length} сохранено
+                      {batchResults.some(r => r.status === 'error') && ` · ${batchResults.filter(r => r.status === 'error').length} ошибок`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setBatchResults([]); setBatchSelectedIds(new Set()); }}
+                      className="text-[10px] text-slate-600 hover:text-slate-400 transition"
+                    >
+                      Сбросить
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Вкладка: Игроки ── */}
+            {leftTab === 'players' && keyConnected && players.length > 0 && (
+              <div className="flex flex-wrap gap-1 px-1 pb-2">
+                {[
+                  { key: 'all', label: 'Все' },
+                  { key: 'diagonal', label: 'Диаг', cls: 'bg-violet-400' },
+                  { key: 'outside', label: 'Доигр', cls: 'bg-cyan-400' },
+                  { key: 'middle', label: 'Центр', cls: 'bg-amber-400' },
+                  { key: 'setter', label: 'Связ', cls: 'bg-emerald-400' },
+                  { key: 'libero', label: 'Либеро', cls: 'bg-rose-400' },
+                ].map(({ key, label, cls }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setPositionFilter(key)}
+                    className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold transition-all ${
+                      positionFilter === key ? 'bg-white/[0.10] text-white' : 'text-slate-600 hover:text-slate-400'
+                    }`}
+                  >
+                    {cls && <span className={`h-1.5 w-1.5 rounded-full ${cls}`} />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {leftTab === 'players' && filteredPlayers.map(p => (
               <button
                 key={p.id}
                 type="button"
@@ -964,16 +1588,33 @@ export default function Home() {
                     : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
                 }`}
               >
-                <div className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[11px] font-black transition-colors ${
-                  playerId === p.id
-                    ? 'bg-accent text-[#060a0e]'
-                    : 'bg-white/[0.07] text-slate-400 group-hover:bg-white/[0.10]'
-                }`}>
-                  {initials(p.name)}
+                <div className="relative shrink-0 h-8 w-8">
+                  {p.photo ? (
+                    <img src={p.photo} alt="" className="h-8 w-8 rounded-xl object-cover" />
+                  ) : (
+                    <div className={`h-8 w-8 flex items-center justify-center rounded-xl text-[11px] font-black transition-colors ${
+                      playerId === p.id
+                        ? 'bg-accent text-[#060a0e]'
+                        : 'bg-white/[0.07] text-slate-400 group-hover:bg-white/[0.10]'
+                    }`}>
+                      {initials(p.name)}
+                    </div>
+                  )}
                   <span className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-[#060c15] ${positionDot(p.position)}`} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12.5px] font-semibold leading-tight truncate">{p.name}</div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="text-[12.5px] font-semibold leading-tight truncate">{p.name}</div>
+                    {playerFeedbacks[p.id] && (
+                      <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-black leading-none ${
+                        playerFeedbacks[p.id].rpe >= 9 ? 'bg-red-500/20 text-red-400' :
+                        playerFeedbacks[p.id].rpe >= 7 ? 'bg-amber-500/20 text-amber-400' :
+                        'bg-emerald-500/20 text-emerald-400'
+                      }`}>
+                        RPE {playerFeedbacks[p.id].rpe}
+                      </span>
+                    )}
+                  </div>
                   <div className="mt-0.5 text-[10px] text-slate-600 truncate leading-tight">
                     {p.position || '—'}
                     {p.lastSessionDate && (
@@ -983,30 +1624,30 @@ export default function Home() {
                     )}
                   </div>
                 </div>
-                {playerId === p.id && (
-                  <button
-                    type="button"
-                    onClick={async e => {
-                      e.stopPropagation();
-                      try {
-                        const r = await fetch('/api/players/share-token', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-                          body: JSON.stringify({ playerId: p.id }),
-                        });
-                        const d = await r.json();
-                        if (!d.token) return;
-                        await navigator.clipboard.writeText(`${window.location.origin}/player/${d.token}`);
-                        setLinkCopied(true);
-                        setTimeout(() => setLinkCopied(false), 2500);
-                      } catch (_) {}
-                    }}
-                    className="shrink-0 rounded-lg p-1 text-slate-600 transition hover:text-accent"
-                    title="Скопировать ссылку игрока"
-                  >
-                    {linkCopied ? <Check size={11} className="text-emerald-400" /> : <Link2 size={11} />}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={async e => {
+                    e.stopPropagation();
+                    try {
+                      const r = await fetch('/api/players/share-token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+                        body: JSON.stringify({ playerId: p.id }),
+                      });
+                      const d = await r.json();
+                      if (!d.token) return;
+                      await navigator.clipboard.writeText(`${window.location.origin}/player/${d.token}`);
+                      setLinkCopied(p.id);
+                      setTimeout(() => setLinkCopied(null), 2500);
+                    } catch (_) {}
+                  }}
+                  className="shrink-0 rounded-lg p-1 transition opacity-0 group-hover:opacity-100 hover:text-accent"
+                  title="Скопировать ссылку игрока"
+                >
+                  {linkCopied === p.id
+                    ? <Check size={11} className="text-emerald-400 opacity-100" />
+                    : <Link2 size={11} className="text-slate-500" />}
+                </button>
               </button>
             ))}
           </div>
@@ -1020,13 +1661,11 @@ export default function Home() {
             {/* Mobile header */}
             <div className="border-b border-white/[0.06] bg-[#060c15] px-5 py-4">
               <div className="flex items-center gap-3 mb-4">
-                <div className="relative flex h-8 w-8 shrink-0 items-center justify-center">
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-accent/30 to-accent/5 ring-1 ring-accent/20" />
-                  <Orbit size={14} strokeWidth={1.8} className="relative text-accent" />
-                </div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/nk-logo.jpg" alt="NK" className="h-9 w-9 shrink-0 rounded-xl object-cover" />
                 <div>
-                  <div className="text-[14px] font-black tracking-tight text-white">Periodyx</div>
-                  <div className="text-[8px] font-semibold uppercase tracking-[0.22em] text-slate-600">AI Performance Coach</div>
+                  <div className="text-[13px] font-black tracking-tight text-white leading-tight">Nikolay Korenchuk</div>
+                  <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-accent">High Performance Coach</div>
                 </div>
               </div>
               <button
@@ -1058,26 +1697,80 @@ export default function Home() {
             </div>
             {/* Mobile player grid */}
             <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex flex-wrap gap-1 mb-3 -mt-1">
+                {[
+                  { key: 'all', label: 'Все' },
+                  { key: 'diagonal', label: 'Диаг', cls: 'bg-violet-400' },
+                  { key: 'outside', label: 'Доигр', cls: 'bg-cyan-400' },
+                  { key: 'middle', label: 'Центр', cls: 'bg-amber-400' },
+                  { key: 'setter', label: 'Связ', cls: 'bg-emerald-400' },
+                  { key: 'libero', label: 'Либеро', cls: 'bg-rose-400' },
+                ].map(({ key, label, cls }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setPositionFilter(key)}
+                    className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                      positionFilter === key ? 'bg-white/[0.10] text-white' : 'text-slate-600 hover:text-slate-400'
+                    }`}
+                  >
+                    {cls && <span className={`h-1.5 w-1.5 rounded-full ${cls}`} />}
+                    {label}
+                  </button>
+                ))}
+              </div>
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-600">Состав команды</p>
               <div className="grid grid-cols-2 gap-3">
-                {players.map(p => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => selectPlayer(p)}
-                    className="flex flex-col items-center gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4 text-center transition active:scale-95"
-                  >
-                    <div className={`relative flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-black ${
-                      playerId === p.id ? 'bg-accent text-[#060a0e]' : 'bg-white/[0.07] text-slate-300'
-                    }`}>
-                      {initials(p.name)}
-                      <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[#07101a] ${positionDot(p.position)}`} />
-                    </div>
-                    <div>
-                      <div className="text-[12px] font-bold text-slate-200 leading-tight">{p.name}</div>
-                      <div className="text-[10px] text-slate-600 mt-0.5">{p.position || '—'}</div>
-                    </div>
-                  </button>
+                {filteredPlayers.map(p => (
+                  <div key={p.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => selectPlayer(p)}
+                      className="w-full flex flex-col items-center gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4 text-center transition active:scale-95"
+                    >
+                      <div className="relative h-12 w-12">
+                        {p.photo ? (
+                          <img src={p.photo} alt="" className="h-12 w-12 rounded-2xl object-cover" />
+                        ) : (
+                          <div className={`h-12 w-12 flex items-center justify-center rounded-2xl text-sm font-black ${
+                            playerId === p.id ? 'bg-accent text-[#060a0e]' : 'bg-white/[0.07] text-slate-300'
+                          }`}>
+                            {initials(p.name)}
+                          </div>
+                        )}
+                        <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[#07101a] ${positionDot(p.position)}`} />
+                      </div>
+                      <div>
+                        <div className="text-[12px] font-bold text-slate-200 leading-tight">{p.name}</div>
+                        <div className="text-[10px] text-slate-600 mt-0.5">{p.position || '—'}</div>
+                      </div>
+                    </button>
+                    {/* Share link — bottom-right corner */}
+                    <button
+                      type="button"
+                      onClick={async e => {
+                        e.stopPropagation();
+                        try {
+                          const r = await fetch('/api/players/share-token', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+                            body: JSON.stringify({ playerId: p.id }),
+                          });
+                          const d = await r.json();
+                          if (!d.token) return;
+                          await navigator.clipboard.writeText(`${window.location.origin}/player/${d.token}`);
+                          setLinkCopied(p.id);
+                          setTimeout(() => setLinkCopied(null), 2500);
+                        } catch (_) {}
+                      }}
+                      className="absolute bottom-2.5 right-2.5 rounded-lg p-1 text-slate-600 transition hover:text-accent"
+                      title="Скопировать ссылку"
+                    >
+                      {linkCopied === p.id
+                        ? <Check size={12} className="text-emerald-400" />
+                        : <Link2 size={12} />}
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1102,8 +1795,21 @@ export default function Home() {
               >
                 ← Состав
               </button>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent text-[13px] font-black text-[#060a0e]">
-                {initials(selectedPlayer.name)}
+              <div
+                className="relative group/avatar shrink-0 cursor-pointer h-11 w-11"
+                onClick={() => { setEditPhotoFor(selectedPlayer.id); setPhotoInput(selectedPlayer.photo || ''); }}
+                title="Изменить фото"
+              >
+                {selectedPlayer.photo ? (
+                  <img src={selectedPlayer.photo} alt="" className="h-11 w-11 rounded-2xl object-cover" />
+                ) : (
+                  <div className="h-11 w-11 flex items-center justify-center rounded-2xl bg-accent text-[13px] font-black text-[#060a0e]">
+                    {initials(selectedPlayer.name)}
+                  </div>
+                )}
+                <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity text-[14px]">
+                  📷
+                </div>
               </div>
               <div className="flex-1 min-w-0">
                 <h1 className="text-[22px] font-black tracking-tight text-white leading-tight truncate">{selectedPlayer.name}</h1>
@@ -1441,8 +2147,159 @@ export default function Home() {
                 <span className="hidden sm:inline">План недели</span>
               </button>
             )}
+            {sessionType === 'gym' && apiKey && players.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setBatchOpen(o => !o); setBatchResults([]); }}
+                disabled={loading || weekPlanLoading || batchRunning}
+                className={`flex items-center justify-center gap-2 rounded-xl border ${batchOpen ? 'border-accent/40 bg-accent/10 text-accent' : 'border-white/[0.10] bg-white/[0.04] text-slate-300'} px-4 py-3.5 text-sm font-semibold transition-all hover:border-white/[0.18] hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
+                title="Сгенерировать тренировки для всей команды сразу"
+              >
+                <Users size={15} />
+                <span className="hidden sm:inline">Команда</span>
+              </button>
+            )}
             </div>
           </form>
+
+          {/* ── Batch generation panel ── */}
+          {batchOpen && sessionType === 'gym' && (
+            <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 backdrop-blur-xl print:hidden">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Users size={14} className="text-accent" />
+                  <span className="text-sm font-bold text-white">Генерация для команды</span>
+                  {batchSelectedIds.size > 0 && (
+                    <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[11px] font-bold text-accent">{batchSelectedIds.size}</span>
+                  )}
+                </div>
+                <button onClick={() => { setBatchOpen(false); setBatchResults([]); setBatchRunning(false); }} className="text-slate-600 hover:text-slate-400 transition">
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Player checkboxes — hidden when running or results shown */}
+              {!batchRunning && batchResults.length === 0 && (
+                <>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-500">Выбери игроков для сегодняшней тренировки</span>
+                    <button
+                      type="button"
+                      onClick={toggleAllBatch}
+                      className="text-[11px] font-semibold text-accent hover:text-accent/70 transition"
+                    >
+                      {batchSelectedIds.size === players.length ? 'Снять все' : 'Выбрать всех'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    {players.map(p => {
+                      const sel = batchSelectedIds.has(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => toggleBatchPlayer(p.id)}
+                          className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-all ${
+                            sel
+                              ? 'border-accent/40 bg-accent/10'
+                              : 'border-white/[0.06] bg-white/[0.02] hover:border-white/[0.12]'
+                          }`}
+                        >
+                          {sel ? <CheckSquare size={13} className="shrink-0 text-accent" /> : <Square size={13} className="shrink-0 text-slate-600" />}
+                          <div className="min-w-0">
+                            <div className={`truncate text-[12px] font-semibold leading-tight ${sel ? 'text-white' : 'text-slate-400'}`}>{p.name.split(' ')[0]}</div>
+                            <div className="text-[10px] text-slate-600 truncate">{p.position || '—'}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={runBatchGeneration}
+                      disabled={batchSelectedIds.size === 0 || !apiKey}
+                      className={`flex w-full items-center justify-center gap-2 rounded-xl bg-accent/90 px-5 py-3 text-sm font-bold text-[#060a0e] transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
+                    >
+                      <Zap size={14} strokeWidth={2.5} />
+                      Запустить для {batchSelectedIds.size} {batchSelectedIds.size === 1 ? 'игрока' : batchSelectedIds.size < 5 ? 'игроков' : 'игроков'}
+                    </button>
+                    <p className="mt-2 text-center text-[10px] text-slate-600">Дата: {date} · Фаза: {focus} · Сессии сохранятся автоматически</p>
+                  </div>
+                </>
+              )}
+
+              {/* Progress grid */}
+              {(batchRunning || batchResults.length > 0) && (
+                <>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {batchResults.map(r => (
+                      <div key={r.playerId} onClick={() => r.status === 'done' && setPlayerId(r.playerId)} className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-all ${r.status === 'done' ? 'cursor-pointer hover:border-emerald-500/50' : ''} ${
+                        r.status === 'done'    ? 'border-emerald-500/30 bg-emerald-500/[0.07]' :
+                        r.status === 'error'   ? 'border-rose-500/30 bg-rose-500/[0.07]' :
+                        r.status === 'running' ? 'border-accent/30 bg-accent/[0.06]' :
+                        'border-white/[0.05] bg-white/[0.015]'
+                      }`}>
+                        <div className="shrink-0">
+                          {r.status === 'done'    && <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400"><Check size={10} strokeWidth={3} /></div>}
+                          {r.status === 'error'   && <div className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500/20 text-rose-400"><X size={10} strokeWidth={3} /></div>}
+                          {r.status === 'running' && <Loader2 size={14} className="animate-spin text-accent" />}
+                          {r.status === 'queued'  && <div className="h-5 w-5 rounded-full border border-white/[0.08]" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-[12px] font-semibold leading-tight text-slate-200">{r.name.split(' ')[0]}</div>
+                          <div className={`text-[10px] truncate ${
+                            r.status === 'done'    ? 'text-emerald-400' :
+                            r.status === 'error'   ? 'text-rose-400' :
+                            r.status === 'running' ? 'text-accent' :
+                            'text-slate-600'
+                          }`}>
+                            {r.status === 'done'    ? 'Сохранено' :
+                             r.status === 'error'   ? (r.error || 'Ошибка') :
+                             r.status === 'running' ? 'Генерирую...' : 'В очереди'}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {!batchRunning && (
+                    <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
+                      <span className="text-[11px] text-slate-500">
+                        {batchResults.filter(r => r.status === 'done').length} из {batchResults.length} готово
+                        {batchResults.some(r => r.status === 'error') && ` · ${batchResults.filter(r => r.status === 'error').length} ошибок`}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        {batchResults.some(r => r.status === 'error') && (
+                          <button
+                            type="button"
+                            onClick={retryFailedBatch}
+                            className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-400 hover:text-rose-300 transition"
+                          >
+                            <RefreshCw size={11} />
+                            Повторить ошибки ({batchResults.filter(r => r.status === 'error').length})
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { setBatchResults([]); setBatchSelectedIds(new Set()); }}
+                          className="flex items-center gap-1.5 text-[11px] font-semibold text-accent hover:text-accent/70 transition"
+                        >
+                          <RefreshCw size={11} />
+                          Новый запуск
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {batchRunning && (
+                    <div className="mt-3 flex items-center gap-2 text-[11px] text-slate-500">
+                      <Loader2 size={11} className="animate-spin" />
+                      Генерирую последовательно — упражнения не пересекаются между игроками
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* ── Error ── */}
           {error && (
@@ -1455,28 +2312,52 @@ export default function Home() {
             </div>
           )}
 
-          {/* ── Loading skeleton ── */}
+          {/* ── Generation progress ── */}
           {loading && !session && (
-            <div className="mt-6 space-y-5 rounded-2xl border border-white/[0.05] bg-white/[0.015] p-6 backdrop-blur-xl print:hidden">
-              <div className="flex items-center gap-3">
-                <div className="h-7 w-7 animate-pulse rounded-lg bg-accent/10" />
-                <div className="h-3.5 w-28 animate-pulse rounded-lg bg-white/[0.06]" />
-                <div className="h-px flex-1 bg-white/[0.04]" />
+            <div className="mt-6 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 backdrop-blur-xl print:hidden">
+              {/* Stage + progress bar */}
+              <div className="mb-6">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Loader2 size={14} className="animate-spin text-accent shrink-0" />
+                    <span className="text-[13px] font-semibold text-slate-300 transition-all duration-500">
+                      {genStage || 'Запускаю генерацию...'}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-600 tabular-nums">
+                    {genProgress}%
+                  </span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                  <div
+                    className="h-1.5 rounded-full bg-accent transition-all duration-700 ease-out"
+                    style={{ width: `${genProgress}%` }}
+                  />
+                </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="h-56 animate-pulse rounded-2xl bg-white/[0.04]" style={{ animationDelay: `${i * 80}ms` }} />
-                ))}
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="h-7 w-7 animate-pulse rounded-lg bg-accent/10" style={{ animationDelay: '240ms' }} />
-                <div className="h-3.5 w-24 animate-pulse rounded-lg bg-white/[0.06]" style={{ animationDelay: '240ms' }} />
-                <div className="h-px flex-1 bg-white/[0.04]" />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {[1, 2].map(i => (
-                  <div key={i} className="h-56 animate-pulse rounded-2xl bg-white/[0.04]" style={{ animationDelay: `${(i + 3) * 80}ms` }} />
-                ))}
+
+              {/* Skeleton blocks */}
+              <div className="space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="h-7 w-7 animate-pulse rounded-lg bg-accent/10" />
+                  <div className="h-3.5 w-28 animate-pulse rounded-lg bg-white/[0.06]" />
+                  <div className="h-px flex-1 bg-white/[0.04]" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[1,2,3].map(i => (
+                    <div key={i} className="h-48 animate-pulse rounded-2xl bg-white/[0.04]" style={{ animationDelay: `${i * 80}ms` }} />
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="h-7 w-7 animate-pulse rounded-lg bg-accent/10" style={{ animationDelay: '240ms' }} />
+                  <div className="h-3.5 w-24 animate-pulse rounded-lg bg-white/[0.06]" style={{ animationDelay: '240ms' }} />
+                  <div className="h-px flex-1 bg-white/[0.04]" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[1,2].map(i => (
+                    <div key={i} className="h-48 animate-pulse rounded-2xl bg-white/[0.04]" style={{ animationDelay: `${(i+3)*80}ms` }} />
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -1515,6 +2396,17 @@ export default function Home() {
                     {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
                     {justSaved ? 'Сохранено ✓' : 'Сохранить'}
                   </button>
+                  {(justSaved || pendingSaved) && (
+                    <button
+                      type="button"
+                      onClick={() => setCopyModalOpen(true)}
+                      className={`flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-400 transition hover:border-white/[0.15] hover:text-slate-200 ${focusRing}`}
+                      title="Скопировать тренировку другому игроку"
+                    >
+                      <Copy size={13} />
+                      Копировать
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1579,6 +2471,7 @@ export default function Home() {
                           apiKey={apiKey}
                           code={ex.code}
                           name={ex.name}
+                          imgPrompt={ex.img_prompt || ''}
                           targetSets={ex.targetSets || []}
                           weightNote={ex.weightNote || ''}
                           tempo={ex.tempo || ''}
@@ -1591,6 +2484,7 @@ export default function Home() {
                           onChangeTempo={v => updateExercise(bi, ei, { tempo: v })}
                           onChangeAutoReg={v => updateExercise(bi, ei, { autoReg: v })}
                           onChangeCue={v => updateExercise(bi, ei, { cue: v })}
+                          onRegenerate={() => regenerateExercise(bi, ei)}
                         />
                       ))}
                     </div>
@@ -1840,6 +2734,110 @@ export default function Home() {
           </div>{/* /max-w-3xl */}
         </div>{/* /workspace */}
       </div>{/* /flex */}
+
+      {/* ── Copy program modal ── */}
+      {copyModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setCopyModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-xs rounded-2xl border border-white/[0.1] bg-[#0d1e30] p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="mb-1 text-sm font-bold text-white">Скопировать тренировку</h3>
+            <p className="mb-4 text-[11px] text-slate-500">Кому скопировать программу на {date}?</p>
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {players.filter(p => p.id !== playerId).map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => copyTo(p.id)}
+                  disabled={copying}
+                  className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white/[0.06] disabled:opacity-50"
+                >
+                  {p.photo ? (
+                    <img src={p.photo} alt="" className="h-7 w-7 shrink-0 rounded-lg object-cover" />
+                  ) : (
+                    <div className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg bg-white/[0.07] text-[10px] font-black text-slate-400">
+                      {initials(p.name)}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12px] font-semibold text-slate-200 truncate">{p.name}</div>
+                    <div className="text-[10px] text-slate-600">{p.position || '—'}</div>
+                  </div>
+                  <span className={`h-2 w-2 rounded-full ${positionDot(p.position)}`} />
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setCopyModalOpen(false)}
+              className="mt-3 w-full rounded-xl border border-white/[0.07] py-2 text-xs text-slate-500 hover:text-slate-300 transition"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Copy done toast ── */}
+      {copyDone && (
+        <div className="fixed bottom-5 right-5 z-50 rounded-xl border border-emerald-500/30 bg-[#0d2010] px-4 py-3 text-sm font-semibold text-emerald-300 shadow-xl animate-fade-in">
+          ✓ Скопировано → {copyDone}
+        </div>
+      )}
+
+      {/* ── Photo edit modal ── */}
+      {editPhotoFor && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setEditPhotoFor(null)}
+        >
+          <div
+            className="w-full max-w-xs rounded-2xl border border-white/[0.1] bg-[#0d1e30] p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="mb-1 text-sm font-bold text-white">Фото профиля</h3>
+            <p className="mb-4 text-[11px] text-slate-500">Вставь прямую ссылку на фото (jpg, png, webp)</p>
+            <input
+              type="url"
+              placeholder="https://..."
+              value={photoInput}
+              onChange={e => setPhotoInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && savePhoto()}
+              className="w-full rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2.5 text-sm text-white placeholder:text-slate-600 outline-none focus:border-[#4ade80]/40"
+              autoFocus
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => savePhoto()}
+                className="flex-1 rounded-xl bg-[#4ade80]/20 py-2 text-sm font-semibold text-[#4ade80] hover:bg-[#4ade80]/30 transition"
+              >
+                Сохранить
+              </button>
+              {players.find(p => p.id === editPhotoFor)?.photo && (
+                <button
+                  type="button"
+                  onClick={() => savePhoto('')}
+                  className="rounded-xl border border-white/[0.07] px-3 py-2 text-xs text-slate-500 hover:text-rose-400 transition"
+                >
+                  Удалить
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditPhotoFor(null)}
+                className="rounded-xl border border-white/[0.07] px-3 py-2 text-xs text-slate-500 hover:text-slate-300 transition"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

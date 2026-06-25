@@ -11,9 +11,9 @@ module.exports = {
           border: '#1f2733',
         },
         accent: {
-          DEFAULT: '#22d3ee',
-          dim: '#0e7490',
-          soft: 'rgba(34, 211, 238, 0.12)',
+          DEFAULT: '#4ade80',
+          dim: '#16a34a',
+          soft: 'rgba(74, 222, 128, 0.12)',
         },
       },
       fontFamily: {
@@ -21,7 +21,7 @@ module.exports = {
       },
       boxShadow: {
         card: '0 1px 0 0 rgba(255,255,255,0.04) inset, 0 20px 40px -20px rgba(0,0,0,0.6)',
-        glow: '0 0 0 1px rgba(34,211,238,0.4), 0 0 24px -4px rgba(34,211,238,0.5)',
+        glow: '0 0 0 1px rgba(74,222,128,0.4), 0 0 24px -4px rgba(74,222,128,0.5)',
       },
       keyframes: {
         fadeIn: {

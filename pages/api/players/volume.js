@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     let sessionCount = 0;
 
     for (const r of results) {
-      const raw = r?.result;
+      const raw = r;
       if (!raw) continue;
       try {
         const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
