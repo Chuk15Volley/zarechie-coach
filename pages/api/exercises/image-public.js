@@ -3,6 +3,7 @@
 // Auth: share token (validates player, not trainer key). Cache-first, then generates.
 
 import { createHash } from 'crypto';
+import { put } from '@vercel/blob';
 import { redis } from '../../../lib/redis';
 
 function slugify(name) {
@@ -43,7 +44,8 @@ export default async function handler(req, res) {
   const playerId = await redis('get', `coach:share_token:${token}`).catch(() => null);
   if (!playerId) return res.status(401).json({ error: 'invalid token' });
 
-  const cacheKey = `exercise:dalle3:${slugify(name)}:${promptHash(img_prompt)}`;
+  const slug = slugify(name);
+  const cacheKey = `exercise:dalle3:${slug}:${promptHash(img_prompt)}`;
 
   // Cache hit
   try {
@@ -80,10 +82,23 @@ export default async function handler(req, res) {
     const b64 = data.data?.[0]?.b64_json;
     if (!b64) return res.status(502).json({ error: 'no image returned' });
 
-    const dataUrl = `data:image/png;base64,${b64}`;
-    redis('set', cacheKey, dataUrl, 'EX', 7776000).catch(e => console.error('Redis SET failed:', e.message));
-
-    return res.status(200).json({ image: dataUrl, cached: false });
+    // Try to store the PNG permanently in Vercel Blob and cache only its URL.
+    try {
+      const buffer = Buffer.from(b64, 'base64');
+      const { url } = await put(`exercises/${slug}-${promptHash(img_prompt)}.png`, buffer, {
+        access: 'public',
+        contentType: 'image/png',
+        addRandomSuffix: false, // deterministic path = one file per exercise
+      });
+      await redis('set', cacheKey, url).catch(e => console.error('Redis SET failed:', e.message));
+      return res.status(200).json({ image: url, cached: false });
+    } catch (blobErr) {
+      // Blob unavailable — fall back to base64 in Redis with TTL.
+      console.error('Blob upload failed, falling back to Redis base64:', blobErr.message);
+      const dataUrl = `data:image/png;base64,${b64}`;
+      await redis('set', cacheKey, dataUrl, 'EX', 7776000).catch(e => console.error('Redis SET failed:', e.message));
+      return res.status(200).json({ image: dataUrl, cached: false });
+    }
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

@@ -1,8 +1,10 @@
 // pages/api/exercises/image.js
-// POST { name } → DALL-E 3 exercise illustration, cached in Redis by slug.
-// Returns data:image/png;base64,... URL.
+// POST { name } → gpt-image-1 exercise illustration.
+// PNG stored permanently in Vercel Blob; Redis caches the public URL (no TTL).
+// Falls back to base64-in-Redis if Blob is unavailable.
 
 import { createHash } from 'crypto';
+import { put } from '@vercel/blob';
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 
@@ -92,11 +94,25 @@ export default async function handler(req, res) {
     const b64 = data.data?.[0]?.b64_json;
     if (!b64) return res.status(502).json({ error: 'OpenAI не вернул изображение' });
 
-    const dataUrl = `data:image/png;base64,${b64}`;
-    await redis('set', cacheKey, dataUrl, 'EX', 7776000).catch(e => console.error('Redis SET failed:', e.message));
-    redis('del', lockKey).catch(() => {});
-
-    return res.status(200).json({ image: dataUrl, cached: false });
+    // Try to store the PNG permanently in Vercel Blob and cache only its URL.
+    try {
+      const buffer = Buffer.from(b64, 'base64');
+      const { url } = await put(`exercises/${slug}-${promptHash(img_prompt)}.png`, buffer, {
+        access: 'public',
+        contentType: 'image/png',
+        addRandomSuffix: false, // deterministic path = one file per exercise
+      });
+      await redis('set', cacheKey, url).catch(e => console.error('Redis SET failed:', e.message));
+      redis('del', lockKey).catch(() => {});
+      return res.status(200).json({ image: url, cached: false });
+    } catch (blobErr) {
+      // Blob unavailable (e.g. BLOB_READ_WRITE_TOKEN not set yet) — fall back to base64 in Redis with TTL.
+      console.error('Blob upload failed, falling back to Redis base64:', blobErr.message);
+      const dataUrl = `data:image/png;base64,${b64}`;
+      await redis('set', cacheKey, dataUrl, 'EX', 7776000).catch(e => console.error('Redis SET failed:', e.message));
+      redis('del', lockKey).catch(() => {});
+      return res.status(200).json({ image: dataUrl, cached: false });
+    }
   } catch (e) {
     redis('del', lockKey).catch(() => {});
     return res.status(500).json({ error: e.message });
