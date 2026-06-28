@@ -27,6 +27,43 @@ import {
   Square,
   ChevronRight,
 } from 'lucide-react';
+import { findExerciseUrl } from '../lib/exerciseBank';
+import { calcWeight } from '../lib/loadCalc';
+import { RESTRICTIONS } from '../lib/exerciseRestrictions';
+
+// Map a camp focus phase to a representative training week (for auto-weight %).
+function weekFromFocus(focus) {
+  const f = String(focus || '');
+  if (f.startsWith('camp_ecc_')) return 2;
+  if (f.startsWith('camp_iso_')) return 4;
+  if (f === 'camp_explosive') return 6;
+  return null;
+}
+
+// Tiny inline trend chart for 1RM history.
+function Sparkline({ values, width = 48, height = 20 }) {
+  if (!values || values.length < 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * width;
+    const y = height - ((v - min) / range) * (height - 2) - 1;
+    return `${x},${y}`;
+  }).join(' ');
+  const last = values[values.length - 1];
+  const prev = values[values.length - 2];
+  const trend = last > prev ? '↑' : last < prev ? '↓' : '→';
+  const color = last > prev ? '#4ade80' : last < prev ? '#f87171' : '#94a3b8';
+  return (
+    <span className="inline-flex items-center gap-1">
+      <svg width={width} height={height} className="shrink-0">
+        <polyline fill="none" stroke={color} strokeWidth="1.5" points={pts} opacity="0.7" />
+      </svg>
+      <span className="text-[10px]" style={{ color }}>{trend}</span>
+    </span>
+  );
+}
 
 const ONE_RM_FIELDS = [
   { key: 'squat',    label: 'Присед (трэп/гоблет)', unit: 'кг' },
@@ -116,11 +153,45 @@ const PERIODS = [
 ];
 
 const PERIOD_COLORS = {
-  inseason:  { tab: 'border-cyan-400/40 bg-cyan-400/[0.09] text-cyan-300',   card: 'border-cyan-400/30 bg-cyan-400/[0.06]',   text: 'text-cyan-300',   dot: 'bg-cyan-400',   glow: 'shadow-[0_0_12px_rgba(34,211,238,0.15)]' },
-  camp:      { tab: 'border-amber-400/40 bg-amber-400/[0.09] text-amber-300', card: 'border-amber-400/30 bg-amber-400/[0.06]', text: 'text-amber-300', dot: 'bg-amber-400',   glow: 'shadow-[0_0_12px_rgba(251,191,36,0.15)]' },
-  offseason: { tab: 'border-emerald-400/40 bg-emerald-400/[0.09] text-emerald-300', card: 'border-emerald-400/30 bg-emerald-400/[0.06]', text: 'text-emerald-300', dot: 'bg-emerald-400', glow: 'shadow-[0_0_12px_rgba(52,211,153,0.15)]' },
-  rehab:     { tab: 'border-violet-400/40 bg-violet-400/[0.09] text-violet-300',  card: 'border-violet-400/30 bg-violet-400/[0.06]',  text: 'text-violet-300',  dot: 'bg-violet-400',  glow: 'shadow-[0_0_12px_rgba(167,139,250,0.15)]' },
+  inseason:  {
+    tab:  'border-cyan-400/60 bg-cyan-400/[0.15] text-cyan-200 shadow-[0_0_16px_rgba(34,211,238,0.20),inset_0_1px_0_rgba(34,211,238,0.15)]',
+    card: 'border-cyan-400/40 bg-cyan-400/[0.10] shadow-[0_0_12px_rgba(34,211,238,0.10)]',
+    text: 'text-cyan-200',
+    dot:  'bg-cyan-400',
+    glow: '',
+  },
+  camp: {
+    tab:  'border-amber-400/60 bg-amber-400/[0.18] text-amber-200 shadow-[0_0_16px_rgba(251,191,36,0.20),inset_0_1px_0_rgba(251,191,36,0.15)]',
+    card: 'border-amber-400/40 bg-amber-400/[0.10] shadow-[0_0_12px_rgba(251,191,36,0.10)]',
+    text: 'text-amber-200',
+    dot:  'bg-amber-400',
+    glow: '',
+  },
+  offseason: {
+    tab:  'border-emerald-400/60 bg-emerald-400/[0.18] text-emerald-200 shadow-[0_0_16px_rgba(52,211,153,0.20),inset_0_1px_0_rgba(52,211,153,0.15)]',
+    card: 'border-emerald-400/40 bg-emerald-400/[0.10] shadow-[0_0_12px_rgba(52,211,153,0.10)]',
+    text: 'text-emerald-200',
+    dot:  'bg-emerald-400',
+    glow: '',
+  },
+  rehab: {
+    tab:  'border-violet-400/60 bg-violet-400/[0.18] text-violet-200 shadow-[0_0_16px_rgba(167,139,250,0.20),inset_0_1px_0_rgba(167,139,250,0.15)]',
+    card: 'border-violet-400/40 bg-violet-400/[0.10] shadow-[0_0_12px_rgba(167,139,250,0.10)]',
+    text: 'text-violet-200',
+    dot:  'bg-violet-400',
+    glow: '',
+  },
 };
+
+// Block A=strength(amber), B=power(orange), C=upper(sky), D=vball(teal), E=prehab(violet)
+const BLOCK_CONFIG = {
+  A: { circle: 'bg-amber-400',  line: 'from-amber-400/30',  sub: 'text-amber-300/70',  headerFrom: 'from-amber-400/[0.09]',  codeBg: 'bg-amber-400/20 text-amber-300' },
+  B: { circle: 'bg-orange-400', line: 'from-orange-400/30', sub: 'text-orange-300/70', headerFrom: 'from-orange-400/[0.09]', codeBg: 'bg-orange-400/20 text-orange-300' },
+  C: { circle: 'bg-sky-400',    line: 'from-sky-400/30',    sub: 'text-sky-300/70',    headerFrom: 'from-sky-400/[0.09]',    codeBg: 'bg-sky-400/20 text-sky-300' },
+  D: { circle: 'bg-teal-400',   line: 'from-teal-400/30',   sub: 'text-teal-300/70',   headerFrom: 'from-teal-400/[0.09]',   codeBg: 'bg-teal-400/20 text-teal-300' },
+  E: { circle: 'bg-violet-400', line: 'from-violet-400/30', sub: 'text-violet-300/70', headerFrom: 'from-violet-400/[0.09]', codeBg: 'bg-violet-400/20 text-violet-300' },
+};
+function blockCfg(label) { return BLOCK_CONFIG[label] || BLOCK_CONFIG.A; }
 
 const PHASES_BY_PERIOD = {
   inseason: [
@@ -277,15 +348,15 @@ function ScheduleCalendar({ events, onToggle, trainingDate }) {
 
 function SectionLabel({ icon, text }) {
   return (
-    <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-      <span className="text-accent/70">{icon}</span>
+    <div className="mb-2.5 flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-slate-600">
+      <span className="text-accent/60">{icon}</span>
       {text}
     </div>
   );
 }
 
 const inputBase =
-  'block w-full rounded-xl border border-white/[0.10] bg-white/[0.055] px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition-all duration-200 hover:border-white/[0.15] focus:border-accent/50 focus:bg-white/[0.08] focus:ring-2 focus:ring-accent/15';
+  'block w-full rounded-xl border border-white/[0.09] bg-white/[0.04] px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition-all duration-200 hover:border-white/[0.14] hover:bg-white/[0.06] focus:border-accent/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-accent/[0.12]';
 
 const focusRing = 'outline-none focus-visible:ring-2 focus-visible:ring-accent/40';
 
@@ -355,16 +426,357 @@ function Listbox({ value, onChange, options, placeholder = '— выбрать �
   );
 }
 
+const YT_ICON = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1C4.5 20.5 12 20.5 12 20.5s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1C24 15.9 24 12 24 12s0-3.9-.5-5.8zM9.8 15.5V8.5l6.3 3.5-6.3 3.5z"/>
+  </svg>
+);
+
+function ExerciseVideoLink({ name, apiKey }) {
+  const bankUrl = findExerciseUrl(name);
+  const [searchUrl, setSearchUrl] = useState(undefined);
+
+  useEffect(() => {
+    if (bankUrl || !name?.trim() || !apiKey) return;
+    let cancelled = false;
+    fetch(`/api/exercises/youtube-search?name=${encodeURIComponent(name)}`, {
+      headers: { 'x-api-key': apiKey },
+    })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setSearchUrl(d.url || null); })
+      .catch(() => { if (!cancelled) setSearchUrl(null); });
+    return () => { cancelled = true; };
+  }, [name, apiKey, bankUrl]);
+
+  const url = bankUrl || searchUrl;
+  if (!url) return null;
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-1.5 rounded-lg bg-red-600/[0.15] px-3 py-1.5 text-[11px] font-semibold text-red-400 transition hover:bg-red-600/[0.25] hover:text-red-300"
+    >
+      {YT_ICON}
+      Видео
+    </a>
+  );
+}
+
+const PENCIL_ICON = (
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+  </svg>
+);
+
+function ExerciseImageUpload({ name, apiKey }) {
+  // ── Image state ──────────────────────────────────────────────────────────
+  const [hasImage, setHasImage] = useState(undefined); // undefined=checking, null=none, timestamp=exists
+  const [imageBlobUrl, setImageBlobUrl] = useState(null); // object URL for <img src>
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const fileInputRef = useRef(null);
+
+  // Check existence on mount
+  useEffect(() => {
+    if (!name?.trim() || !apiKey) return;
+    let cancelled = false;
+    fetch(`/api/exercises/manual-image?name=${encodeURIComponent(name)}`, { headers: { 'x-api-key': apiKey } })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setHasImage(d.hasImage ? Date.now() : null); })
+      .catch(() => { if (!cancelled) setHasImage(null); });
+    return () => { cancelled = true; };
+  }, [name, apiKey]);
+
+  // Fetch the actual image bytes with auth header → blob URL for <img>
+  useEffect(() => {
+    if (!hasImage || !apiKey) { setImageBlobUrl(null); return; }
+    let objectUrl = null;
+    let cancelled = false;
+    fetch(`/api/exercises/manual-image?name=${encodeURIComponent(name)}&serve=1`, { headers: { 'x-api-key': apiKey } })
+      .then(r => r.ok ? r.blob() : null)
+      .then(blob => {
+        if (cancelled || !blob) return;
+        objectUrl = URL.createObjectURL(blob);
+        setImageBlobUrl(objectUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [hasImage, name, apiKey]);
+
+  function compressImage(file, maxPx = 600, quality = 0.78) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
+
+  function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    compressImage(file).then(async (imageData) => {
+      if (!imageData) {
+        setUploadError('Не удалось обработать изображение');
+        setUploading(false);
+        return;
+      }
+      try {
+        const res = await fetch('/api/exercises/manual-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({ name, imageData }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          // Revoke old blob URL before setting new timestamp (triggers re-fetch effect)
+          setImageBlobUrl(null);
+          setHasImage(Date.now());
+        } else {
+          setUploadError(data.error || `Ошибка ${res.status}`);
+        }
+      } catch (err) {
+        setUploadError(err.message);
+      }
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    });
+  }
+
+  async function handleDeleteImage() {
+    await fetch(`/api/exercises/manual-image?name=${encodeURIComponent(name)}`, {
+      method: 'DELETE', headers: { 'x-api-key': apiKey },
+    }).catch(() => {});
+    setHasImage(null);
+  }
+
+  // ── Video URL state ───────────────────────────────────────────────────────
+  const bankUrl = findExerciseUrl(name);
+  const [manualVideoUrl, setManualVideoUrl] = useState(undefined); // undefined = checking
+  const [autoVideoUrl, setAutoVideoUrl] = useState(undefined);
+  const [editingVideo, setEditingVideo] = useState(false);
+  const [videoInput, setVideoInput] = useState('');
+  const [savingVideo, setSavingVideo] = useState(false);
+
+  // Fetch manual override
+  useEffect(() => {
+    if (!name?.trim() || !apiKey) return;
+    let cancelled = false;
+    fetch(`/api/exercises/manual-video?name=${encodeURIComponent(name)}`, { headers: { 'x-api-key': apiKey } })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setManualVideoUrl(d.url || null); })
+      .catch(() => { if (!cancelled) setManualVideoUrl(null); });
+    return () => { cancelled = true; };
+  }, [name, apiKey]);
+
+  // Auto-search only when no manual override and no bank URL
+  useEffect(() => {
+    if (manualVideoUrl || bankUrl || !name?.trim() || !apiKey) return;
+    let cancelled = false;
+    fetch(`/api/exercises/youtube-search?name=${encodeURIComponent(name)}`, { headers: { 'x-api-key': apiKey } })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setAutoVideoUrl(d.url || null); })
+      .catch(() => { if (!cancelled) setAutoVideoUrl(null); });
+    return () => { cancelled = true; };
+  }, [name, apiKey, bankUrl, manualVideoUrl]);
+
+  // Priority: manual → bank → auto-search
+  const videoUrl = manualVideoUrl || bankUrl || autoVideoUrl;
+  const isManual = !!manualVideoUrl;
+
+  async function handleSaveVideo() {
+    const trimmed = videoInput.trim();
+    if (!trimmed) return;
+    setSavingVideo(true);
+    try {
+      await fetch('/api/exercises/manual-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ name, url: trimmed }),
+      });
+      setManualVideoUrl(trimmed);
+      setEditingVideo(false);
+    } catch (_) {}
+    setSavingVideo(false);
+  }
+
+  async function handleDeleteVideo() {
+    await fetch(`/api/exercises/manual-video?name=${encodeURIComponent(name)}`, {
+      method: 'DELETE', headers: { 'x-api-key': apiKey },
+    }).catch(() => {});
+    setManualVideoUrl(null);
+    setEditingVideo(false);
+  }
+
+  function openEditVideo() {
+    setVideoInput(videoUrl || '');
+    setEditingVideo(true);
+  }
+
+  return (
+    <div className="print:hidden">
+      {/* Square image area */}
+      {uploadError && (
+        <div className="mx-3.5 mb-1 rounded-lg bg-rose-500/10 px-3 py-1.5 text-[11px] text-rose-400">{uploadError}</div>
+      )}
+      <div className="relative mx-3.5 mt-1 mb-2 aspect-square overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0d1520] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] print:block print:border-slate-200">
+        {imageBlobUrl ? (
+          <div className="group/img relative h-full w-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imageBlobUrl} alt={name} className="h-full w-full object-contain opacity-90 mix-blend-luminosity" style={{ filter: 'brightness(0.85) contrast(1.1)' }} />
+            <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover/img:opacity-100">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-lg bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/20"
+              >
+                Заменить
+              </button>
+              <button
+                onClick={handleDeleteImage}
+                className="rounded-lg bg-rose-500/20 px-3 py-1.5 text-[11px] font-semibold text-rose-400 hover:bg-rose-500/30"
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex h-full w-full flex-col items-center justify-center gap-2 text-slate-600 transition hover:bg-white/[0.04] hover:text-slate-400 disabled:opacity-50"
+          >
+            {uploading ? (
+              <Loader2 size={22} className="animate-spin" />
+            ) : (
+              <>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span className="text-[11px] font-medium">Добавить фото</span>
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+
+      {/* Inline URL editor */}
+      {editingVideo && (
+        <div className="flex items-center gap-1.5 border-t border-white/[0.06] px-3.5 py-2">
+          <input
+            autoFocus
+            type="url"
+            value={videoInput}
+            onChange={e => setVideoInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleSaveVideo(); if (e.key === 'Escape') setEditingVideo(false); }}
+            placeholder="https://youtube.com/watch?v=..."
+            className="min-w-0 flex-1 rounded-md bg-white/[0.06] px-2.5 py-1.5 text-[11px] text-slate-200 outline-none placeholder:text-slate-600 focus:bg-white/[0.1] focus:ring-1 focus:ring-accent/40"
+          />
+          <button
+            onClick={handleSaveVideo}
+            disabled={savingVideo || !videoInput.trim()}
+            className="rounded-md bg-accent/20 px-2.5 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/30 disabled:opacity-40"
+          >
+            {savingVideo ? <Loader2 size={11} className="animate-spin" /> : 'Сохранить'}
+          </button>
+          {isManual && (
+            <button onClick={handleDeleteVideo} className="rounded-md bg-rose-500/10 px-2 py-1.5 text-[11px] text-rose-400 hover:bg-rose-500/20">
+              Сбросить
+            </button>
+          )}
+          <button onClick={() => setEditingVideo(false)} className="rounded-md px-2 py-1.5 text-[11px] text-slate-500 hover:text-slate-300">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Bottom bar: video link */}
+      <div className="flex items-center gap-2 px-3.5 pb-2">
+        {videoUrl ? (
+          <div className="flex items-center gap-0.5">
+            <a
+              href={videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex items-center gap-1.5 rounded-l-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${isManual ? 'bg-accent/[0.18] text-accent hover:bg-accent/[0.28]' : 'bg-accent/[0.10] text-accent/80 hover:bg-accent/[0.18] hover:text-accent'}`}
+            >
+              {YT_ICON}
+              Видео{isManual ? ' ★' : ''}
+            </a>
+            <button
+              onClick={openEditVideo}
+              title="Изменить ссылку"
+              className={`rounded-r-lg px-2 py-1.5 transition ${isManual ? 'bg-accent/[0.18] text-accent/60 hover:bg-accent/[0.28]' : 'bg-accent/[0.10] text-accent/40 hover:bg-accent/[0.18] hover:text-accent/70'}`}
+            >
+              {PENCIL_ICON}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={openEditVideo}
+            className="flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:bg-white/[0.1] hover:text-slate-300"
+          >
+            {YT_ICON}
+            Добавить видео
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AutoResizeTextarea({ value, onChange, className, placeholder, minRows = 1 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      rows={minRows}
+      placeholder={placeholder}
+      className={className + ' overflow-hidden'}
+    />
+  );
+}
+
 function ExerciseCard({
   apiKey,
   code,
   name,
-  imgPrompt,
   targetSets,
   weightNote,
   tempo,
   autoReg,
   cue,
+  focus,
+  week,
+  oneRM,
   onChangeName,
   onChangeSet,
   onAddSet,
@@ -374,68 +786,9 @@ function ExerciseCard({
   onChangeCue,
   onRegenerate,
 }) {
-  const [image, setImage] = useState(null);
-  const [imageError, setImageError] = useState('');
-  const [imageLoading, setImageLoading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
-
-  useEffect(() => {
-    if (!name?.trim() || !apiKey) return;
-    let cancelled = false;
-    let retryTimer = null;
-
-    function attemptLoad(retryCount = 0, force = false) {
-      if (cancelled) return;
-      retryTimer = null;
-      setImageLoading(true);
-      setImageError('');
-      fetch('/api/exercises/image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ name, ...(imgPrompt ? { img_prompt: imgPrompt } : {}), ...(force ? { force: true } : {}) }),
-      })
-        .then(async r => {
-          const data = await r.json().catch(() => ({}));
-          if (r.status === 429 && retryCount < 4) {
-            // Rate limited — retry with jitter so cards don't all retry simultaneously
-            const delay = 15000 + Math.random() * 30000;
-            if (!cancelled) retryTimer = setTimeout(() => attemptLoad(retryCount + 1), delay);
-            return;
-          }
-          if (!r.ok) throw new Error(data.error || 'Ошибка загрузки');
-          if (!cancelled) { setImage(data.image); setImageLoading(false); }
-        })
-        .catch(err => {
-          if (!cancelled) { setImageError(err.message); setImageLoading(false); }
-        });
-    }
-
-    attemptLoad();
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, apiKey]);
-
-  function regenerateImage() {
-    if (imageLoading || !apiKey) return;
-    setImage(null);
-    setImageError('');
-    setImageLoading(true);
-    fetch('/api/exercises/image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ name, ...(imgPrompt ? { img_prompt: imgPrompt } : {}), force: true }),
-    })
-      .then(async r => {
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(data.error || 'Ошибка загрузки');
-        setImage(data.image);
-      })
-      .catch(err => setImageError(err.message))
-      .finally(() => setImageLoading(false));
-  }
+  const blockLetter = (code || 'A')[0];
+  const bc = blockCfg(blockLetter);
 
   async function handleRegenerate() {
     if (regenerating || !onRegenerate) return;
@@ -444,60 +797,43 @@ function ExerciseCard({
   }
 
   return (
-    <div className="group overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025] backdrop-blur-sm transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04] hover:shadow-[0_4px_24px_rgba(0,0,0,0.4)] print:break-inside-avoid print:border-slate-300 print:bg-white">
+    <div className="group overflow-hidden rounded-2xl border border-white/[0.07] bg-gradient-to-b from-white/[0.04] to-white/[0.015] backdrop-blur-sm transition-all duration-300 hover:border-white/[0.14] hover:from-white/[0.06] hover:to-white/[0.025] hover:shadow-[0_8px_32px_rgba(0,0,0,0.4)] print:break-inside-avoid print:border-slate-300 print:bg-white">
       {/* Header */}
-      <div className="flex items-center gap-2 bg-gradient-to-r from-accent/[0.12] to-transparent px-3.5 py-2.5 print:bg-slate-100">
-        <span className="shrink-0 rounded-md bg-accent/20 px-1.5 py-0.5 text-[10px] font-black tracking-wide text-accent print:bg-slate-200 print:text-slate-700">
-          {code}
-        </span>
-        {tempo && (
-          <span className="shrink-0 rounded-md border border-blue-500/20 bg-blue-500/[0.08] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-blue-400 print:border-slate-200 print:text-slate-600">
-            {tempo}
+      <div className={`bg-gradient-to-r ${bc.headerFrom} to-transparent px-3.5 pt-2.5 pb-2 print:bg-slate-100`}>
+        {/* Row 1: badges + regenerate button */}
+        <div className="flex items-center gap-1.5">
+          <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-black tracking-wide ${bc.codeBg} print:bg-slate-200 print:text-slate-700`}>
+            {code}
           </span>
-        )}
-        <input
+          {tempo && (
+            <span className="shrink-0 rounded-md border border-white/[0.10] bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-mono font-semibold tracking-wider text-slate-400 print:border-slate-200 print:text-slate-600">
+              {tempo}
+            </span>
+          )}
+          <div className="flex-1" />
+          {onRegenerate && (
+            <button
+              type="button"
+              onClick={handleRegenerate}
+              disabled={regenerating}
+              title="Перегенерировать упражнение"
+              className="shrink-0 rounded-md p-1 text-slate-600 opacity-0 transition-all hover:bg-white/[0.08] hover:text-slate-300 group-hover:opacity-100 disabled:cursor-not-allowed print:hidden"
+            >
+              {regenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            </button>
+          )}
+        </div>
+        {/* Row 2: full exercise name */}
+        <AutoResizeTextarea
           value={name}
-          onChange={e => onChangeName(e.target.value)}
-          className="min-w-0 flex-1 bg-transparent text-right text-[13px] font-semibold text-slate-100 outline-none placeholder:text-slate-500 print:text-slate-900"
+          onChange={onChangeName}
+          minRows={1}
+          className="mt-1.5 w-full resize-none bg-transparent text-[13px] font-semibold leading-snug text-slate-100 outline-none placeholder:text-slate-500 print:text-slate-900"
         />
-        {onRegenerate && (
-          <button
-            type="button"
-            onClick={handleRegenerate}
-            disabled={regenerating}
-            title="Перегенерировать упражнение"
-            className="shrink-0 rounded-md p-1 text-slate-600 opacity-0 transition-all hover:bg-white/[0.08] hover:text-slate-300 group-hover:opacity-100 disabled:cursor-not-allowed print:hidden"
-          >
-            {regenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-          </button>
-        )}
       </div>
 
-      {/* Image */}
-      <div className="relative flex aspect-[4/3] items-center justify-center bg-white print:hidden">
-        {imageLoading && (
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 size={18} className="animate-spin text-slate-400" />
-            <span className="text-[10px] text-slate-400">Рисуем...</span>
-          </div>
-        )}
-        {!imageLoading && image && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt={name} className="h-full w-full object-contain" />
-        )}
-        {!imageLoading && !image && (
-          <span className="px-4 text-center text-[11px] text-slate-400">{imageError || '—'}</span>
-        )}
-        {!imageLoading && apiKey && (
-          <button
-            onClick={regenerateImage}
-            title="Перегенерировать картинку"
-            className="absolute bottom-1.5 right-1.5 rounded-md bg-black/40 p-1 text-white/60 opacity-0 transition-opacity hover:bg-black/60 hover:text-white group-hover:opacity-100"
-          >
-            <RefreshCw size={11} />
-          </button>
-        )}
-      </div>
+      {/* Image upload + YouTube link */}
+      <ExerciseImageUpload name={name} apiKey={apiKey} />
 
       {/* Sets & notes */}
       <div className="space-y-2 p-3">
@@ -529,70 +865,40 @@ function ExerciseCard({
           value={weightNote}
           onChange={e => onChangeWeight(e.target.value)}
           placeholder="Вес / интенсивность"
-          className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1.5 text-xs text-slate-300 outline-none transition focus:border-accent/40 focus:bg-white/[0.05] placeholder:text-slate-600 print:border-slate-300 print:text-slate-900"
+          className="w-full rounded-lg border border-transparent bg-transparent px-0 py-1 text-[12px] font-medium text-slate-300 outline-none transition placeholder:text-slate-700 focus:bg-white/[0.04] focus:px-2.5 focus:rounded-lg focus:border-white/[0.08] print:border-slate-300 print:text-slate-900"
         />
 
+        {/* Auto-weight hint */}
+        {(() => {
+          const hint = calcWeight(name, focus, week, oneRM);
+          if (!hint) return null;
+          return (
+            <div className="mt-1 text-[11px] text-slate-500 print:hidden">
+              Расчётный вес: <span className="font-semibold text-slate-400">{hint.kg} кг</span>
+              <span className="ml-1 text-slate-600">({hint.pctLow}–{hint.pctHigh}% 1ПМ)</span>
+            </div>
+          );
+        })()}
+
         {autoReg && (
-          <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/15 bg-amber-500/[0.06] px-2.5 py-1.5 print:border-amber-300 print:bg-amber-50">
-            <span className="mt-px text-[10px] text-amber-400/80">⚡</span>
-            <input
+          <div className="flex items-start gap-1.5 border-l-2 border-amber-400/40 pl-2.5 py-0.5">
+            <span className="text-[10px] text-amber-400/70 mt-px shrink-0">⚡</span>
+            <AutoResizeTextarea
               value={autoReg}
-              onChange={e => onChangeAutoReg(e.target.value)}
-              className="min-w-0 flex-1 bg-transparent text-[11px] leading-snug text-amber-300/80 outline-none placeholder:text-amber-600/50 print:text-amber-800"
+              onChange={onChangeAutoReg}
+              className="min-w-0 flex-1 resize-none border-0 bg-transparent text-[11px] leading-snug text-amber-300/70 outline-none placeholder:text-amber-700/50 print:text-amber-800"
             />
           </div>
         )}
 
-        <textarea
+        <AutoResizeTextarea
           value={cue}
-          onChange={e => onChangeCue(e.target.value)}
-          rows={2}
+          onChange={onChangeCue}
           placeholder="Техническая подсказка"
-          className="w-full resize-none rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1.5 text-xs leading-snug text-slate-400 outline-none transition focus:border-accent/40 focus:bg-white/[0.05] placeholder:text-slate-600 print:border-slate-300 print:text-slate-700"
+          className="w-full resize-none border-0 bg-transparent px-0 py-0.5 text-[11px] leading-snug text-slate-500 outline-none transition placeholder:text-slate-700 focus:text-slate-400 print:border-slate-300 print:text-slate-700"
         />
       </div>
     </div>
-  );
-}
-
-function ClearImageCacheButton({ apiKey }) {
-  const [status, setStatus] = useState('idle'); // idle | loading | done | error
-  const [deleted, setDeleted] = useState(0);
-
-  async function handleClear() {
-    if (status === 'loading') return;
-    setStatus('loading');
-    try {
-      const res = await fetch('/api/admin/clear-image-cache', {
-        method: 'POST',
-        headers: { 'x-api-key': apiKey },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ошибка');
-      setDeleted(data.deleted);
-      setStatus('done');
-      setTimeout(() => setStatus('idle'), 4000);
-    } catch (e) {
-      setStatus('error');
-      setTimeout(() => setStatus('idle'), 3000);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handleClear}
-      disabled={status === 'loading'}
-      className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/[0.06] px-3 py-1.5 text-[10px] font-semibold text-rose-400 transition hover:bg-rose-500/[0.12] disabled:opacity-50"
-    >
-      {status === 'loading' && <Loader2 size={10} className="animate-spin" />}
-      {status === 'done' && <Check size={10} />}
-      {status === 'idle' || status === 'error' ? <RefreshCw size={10} /> : null}
-      {status === 'loading' ? 'Очищаю кэш...' :
-       status === 'done'    ? `Удалено ${deleted} картинок` :
-       status === 'error'   ? 'Ошибка очистки' :
-       'Сбросить кэш картинок'}
-    </button>
   );
 }
 
@@ -621,6 +927,7 @@ export default function Home() {
   const [teamStatusLoading, setTeamStatusLoading] = useState(false);
 
   // Batch generation
+  const [batchId, setBatchId] = useState(null);
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchSelectedIds, setBatchSelectedIds] = useState(new Set());
   const [batchRunning, setBatchRunning] = useState(false);
@@ -629,14 +936,16 @@ export default function Home() {
 
   const [scheduleEvents, setScheduleEvents] = useState([]);
   const [showSchedule, setShowSchedule] = useState(false);
-  const [exerciseImages, setExerciseImages] = useState({});
-  const [imagesLoadedCount, setImagesLoadedCount] = useState(0);
 
   const [session, setSession] = useState(null);
   const [meta, setMeta] = useState(null);
   const [pendingSaved, setPendingSaved] = useState(null);
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  // True after an async gym generation completes — generate-status already persisted the
+  // session, so the manual "Сохранить" button is redundant (show "✓ Сохранено" instead).
+  const [autoSaved, setAutoSaved] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   // Sidebar navigation
   const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -659,10 +968,18 @@ export default function Home() {
   // Player photo editing
   const [editPhotoFor, setEditPhotoFor] = useState(null);
   const [photoInput, setPhotoInput] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoFileRef = useRef(null);
 
   // 1RM database
   const [oneRM, setOneRM] = useState({});
+  const [rmHistory, setRmHistory] = useState([]);
   const [oneRMPanelOpen, setOneRMPanelOpen] = useState(false);
+  // Microcycle templates
+  const [templates, setTemplates] = useState([]);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  // Player contraindications
+  const [restrictions, setRestrictions] = useState([]);
   const [oneRMSaveTimer, setOneRMSaveTimer] = useState(null);
 
   // Warmup → Gym integration
@@ -683,6 +1000,29 @@ export default function Home() {
       setKeyPanelOpen(false);
     }
   }, []);
+
+  // Resume a pending async gym generation after a tab reload. Only resumes when the saved
+  // batch matches the currently selected player + date, so we don't clobber other state.
+  const resumeAttempted = useRef(false);
+  useEffect(() => {
+    if (resumeAttempted.current || !apiKey || !playerId || !date) return;
+    let pending;
+    try { pending = JSON.parse(localStorage.getItem('pending_batch') || 'null'); } catch (_) { pending = null; }
+    if (!pending?.batchId) return;
+    if (pending.playerId !== playerId || pending.date !== date) return;
+
+    resumeAttempted.current = true;
+    setResuming(true);
+    setLoading(true);
+    setBatchId(pending.batchId);
+    setSessionType('gym');
+    setError('');
+    startGenProgress(true);
+    pollBatchResult(pending.batchId, pending.focusLabel || getFocusLabel(period, focus))
+      .catch(err => { setError(err.message); stopGenProgress(false); })
+      .finally(() => { setBatchId(null); setLoading(false); setResuming(false); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey, playerId, date]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -738,13 +1078,35 @@ export default function Home() {
     };
   }, [apiKey, playerId, date]);
 
-  // Fetch 1RM data when player changes
+  // Fetch 1RM data (+ history) when player changes
   useEffect(() => {
-    if (!apiKey || !playerId) { setOneRM({}); return; }
+    if (!apiKey || !playerId) { setOneRM({}); setRmHistory([]); return; }
     fetch(`/api/players/1rm?playerId=${encodeURIComponent(playerId)}`, { headers: { 'x-api-key': apiKey } })
       .then(r => r.json())
       .then(data => setOneRM(data.values || {}))
       .catch(() => setOneRM({}));
+    fetch(`/api/players/1rm-history?playerId=${encodeURIComponent(playerId)}`, { headers: { 'x-api-key': apiKey } })
+      .then(r => r.json())
+      .then(data => setRmHistory(Array.isArray(data.history) ? data.history : []))
+      .catch(() => setRmHistory([]));
+  }, [apiKey, playerId]);
+
+  // Load microcycle templates list when the coach key is present.
+  useEffect(() => {
+    if (!apiKey) { setTemplates([]); return; }
+    fetch('/api/programs/templates', { headers: { 'x-api-key': apiKey } })
+      .then(r => r.json())
+      .then(data => setTemplates(Array.isArray(data.templates) ? data.templates : []))
+      .catch(() => setTemplates([]));
+  }, [apiKey]);
+
+  // Fetch player contraindications when player changes.
+  useEffect(() => {
+    if (!apiKey || !playerId) { setRestrictions([]); return; }
+    fetch(`/api/player/restrictions?playerId=${encodeURIComponent(playerId)}`, { headers: { 'x-api-key': apiKey } })
+      .then(r => r.json())
+      .then(data => setRestrictions(Array.isArray(data.restrictions) ? data.restrictions : []))
+      .catch(() => setRestrictions([]));
   }, [apiKey, playerId]);
 
   // Fetch weekly volume when player changes
@@ -821,6 +1183,32 @@ export default function Home() {
     setEditPhotoFor(null);
   }
 
+  async function uploadPlayerPhoto(file) {
+    if (!file || !editPhotoFor) return;
+    setPhotoUploading(true);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = e => { img.src = e.target.result; };
+        img.onload = () => {
+          const MAX = 400;
+          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      await savePhoto(dataUrl);
+    } catch (_) {
+      setPhotoUploading(false);
+    }
+  }
+
   function selectPlayer(p) {
     setSelectedPlayer(p);
     setPlayerId(p.id);
@@ -829,25 +1217,38 @@ export default function Home() {
     setWeekPlan(null);
     setError('');
     setJustSaved(false);
+    setAutoSaved(false);
     setTodayWarmup(null);
     setLinkCopied(null);
     setMobileView('workspace');
   }
 
-  function startGenProgress() {
+  function startGenProgress(longRun = false) {
     genTimers.current.forEach(clearTimeout);
     genTimers.current = [];
     setGenProgress(0);
-    const stages = [
-      { delay: 0,     pct: 3,  msg: 'Загружаю данные игрока...' },
-      { delay: 1500,  pct: 12, msg: 'Анализирую состояние и историю...' },
-      { delay: 4000,  pct: 28, msg: 'Составляю структуру тренировки...' },
-      { delay: 10000, pct: 45, msg: 'Подбираю упражнения и нагрузку...' },
-      { delay: 22000, pct: 62, msg: 'Генерирую PAP-блоки...' },
-      { delay: 38000, pct: 76, msg: 'Рассчитываю прогрессию...' },
-      { delay: 55000, pct: 88, msg: 'Финализирую программу...' },
-      { delay: 75000, pct: 93, msg: 'Ожидаю ответ Claude...' },
-    ];
+    // Gym sessions now run on the Batch API (Sonnet, ~1-3 мин) — use a slower, longer
+    // timeline so the messaging matches reality. Warmup stays on the quick timeline.
+    const stages = longRun
+      ? [
+          { delay: 0,      pct: 3,  msg: 'Ставлю задачу в очередь...' },
+          { delay: 4000,   pct: 10, msg: 'Генерирую (Sonnet)... обычно 1-3 минуты' },
+          { delay: 20000,  pct: 25, msg: 'Анализирую состояние и историю...' },
+          { delay: 45000,  pct: 42, msg: 'Составляю структуру и подбираю упражнения...' },
+          { delay: 80000,  pct: 60, msg: 'Генерирую PAP-блоки и прогрессию...' },
+          { delay: 120000, pct: 76, msg: 'Финализирую программу...' },
+          { delay: 160000, pct: 88, msg: 'Почти готово, ожидаю ответ Claude...' },
+        ]
+      : [
+          { delay: 0,     pct: 3,  msg: 'Загружаю данные игрока...' },
+          { delay: 1500,  pct: 12, msg: 'Анализирую состояние и историю...' },
+          { delay: 4000,  pct: 28, msg: 'Составляю структуру тренировки...' },
+          { delay: 10000, pct: 45, msg: 'Подбираю упражнения и нагрузку...' },
+          { delay: 22000, pct: 62, msg: 'Генерирую PAP-блоки...' },
+          { delay: 38000, pct: 76, msg: 'Рассчитываю прогрессию...' },
+          { delay: 55000, pct: 88, msg: 'Финализирую программу...' },
+          { delay: 75000, pct: 93, msg: 'Ожидаю ответ Claude...' },
+        ];
     stages.forEach(({ delay, pct, msg }) => {
       const t = setTimeout(() => { setGenProgress(pct); setGenStage(msg); }, delay);
       genTimers.current.push(t);
@@ -909,27 +1310,61 @@ export default function Home() {
     if (!failed.length) return;
     setBatchResults(prev => prev.map(r => failedIds.has(r.playerId) ? { ...r, status: 'queued', error: undefined } : r));
     setBatchRunning(true);
-    for (const player of failed) {
-      setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'running' } : r));
-      try {
-        const genRes = await fetch('/api/programs/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-          body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, notes }),
-        });
-        const genData = await genRes.json();
-        if (!genRes.ok) throw new Error(genData.error || 'Ошибка генерации');
-        await fetch('/api/programs/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-          body: JSON.stringify({ playerId: player.id, date, session: genData.session, player: genData.player, dataSummary: genData.dataSummary || '', dayGoal: genData.dayGoal || dayGoal }),
-        });
-        setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done' } : r));
-      } catch (err) {
-        setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
+
+    const CONCURRENCY = 5;
+    const queue = [...failed];
+    async function worker() {
+      while (queue.length) {
+        const player = queue.shift();
+        try {
+          await generatePlayerAsync(player);
+          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done' } : r));
+        } catch (err) {
+          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
+        }
       }
     }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, failed.length) }, worker));
+
     setBatchRunning(false);
+  }
+
+  // Generate + poll one player's gym session via the async Sonnet (Batch API) path.
+  // generate-status persists the session on completion, so no separate save call is needed.
+  async function generatePlayerAsync(player) {
+    setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'generating' } : r));
+
+    // 1. Submit the batch.
+    const submitRes = await fetch('/api/programs/generate-async', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, notes }),
+    });
+    const submitData = await submitRes.json().catch(() => ({}));
+    if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
+    const batchId = submitData.batchId;
+    if (!batchId) throw new Error('Сервер не вернул идентификатор задачи');
+    setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, batchId } : r));
+
+    // 2. Poll every 6s, up to 8 minutes (80 attempts).
+    const MAX_ATTEMPTS = 80;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      await new Promise(r => setTimeout(r, 6000));
+      let statusData;
+      try {
+        const statusRes = await fetch(`/api/programs/generate-status?batchId=${encodeURIComponent(batchId)}`, {
+          headers: { 'x-api-key': apiKey },
+        });
+        statusData = await statusRes.json();
+        if (!statusRes.ok) throw new Error(statusData.error || 'Ошибка проверки статуса');
+      } catch (_) {
+        // Transient network blip during polling — keep trying until the attempt cap.
+        continue;
+      }
+      if (statusData.status === 'done') return; // generate-status already saved it
+      // status 'pending' → loop again
+    }
+    throw new Error('Генерация заняла слишком долго');
   }
 
   async function runBatchGeneration() {
@@ -938,36 +1373,22 @@ export default function Home() {
     setBatchResults(selected.map(p => ({ playerId: p.id, name: p.name, position: p.position, status: 'queued' })));
     setBatchRunning(true);
 
-    const usedExercises = [];
-
-    for (const player of selected) {
-      setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'running' } : r));
-      try {
-        const genRes = await fetch('/api/programs/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-          body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, notes, teamUsedExercises: usedExercises }),
-        });
-        const genData = await genRes.json();
-        if (!genRes.ok) throw new Error(genData.error || 'Ошибка генерации');
-
-        // Collect exercises to avoid repetition for next players
-        (genData.session?.blocks || []).forEach(b =>
-          (b.exercises || []).forEach(e => { if (e.name) usedExercises.push(e.name); })
-        );
-
-        // Auto-save immediately
-        await fetch('/api/programs/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-          body: JSON.stringify({ playerId: player.id, date, session: genData.session, player: genData.player, dataSummary: genData.dataSummary || '', dayGoal: genData.dayGoal || dayGoal }),
-        });
-
-        setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done' } : r));
-      } catch (err) {
-        setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
+    // Run players through a pool, max 5 concurrent (Anthropic Batch API limits).
+    const CONCURRENCY = 5;
+    const queue = [...selected];
+    async function worker() {
+      while (queue.length) {
+        const player = queue.shift();
+        try {
+          await generatePlayerAsync(player);
+          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done' } : r));
+        } catch (err) {
+          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
+        }
       }
     }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, selected.length) }, worker));
+
     setBatchRunning(false);
   }
 
@@ -980,36 +1401,98 @@ export default function Home() {
     setMeta(null);
     setWeekPlan(null);
     setJustSaved(false);
-    startGenProgress();
+    setAutoSaved(false);
+    setBatchId(null);
+    startGenProgress(sessionType === 'gym');
     try {
-      const endpoint = sessionType === 'warmup'
-        ? '/api/programs/generate-warmup'
-        : '/api/programs/generate';
-      const warmupSummary = sessionType === 'gym' && todayWarmup ? summarizeWarmupForGym(todayWarmup) : '';
-      const res = await fetch(endpoint, {
+      const fl = getFocusLabel(period, focus);
+
+      // ── Warmup: stays synchronous (Sonnet handles the smaller warmup fast) ──
+      if (sessionType === 'warmup') {
+        const res = await fetch('/api/programs/generate-warmup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({ playerId, date, dayGoal, days, focus, notes }),
+        });
+        let data;
+        try { data = await res.json(); } catch (_) {
+          throw new Error(res.status === 504
+            ? 'Превышено время ожидания — попробуйте ещё раз (обычно 2-я попытка быстрее из-за кэша)'
+            : 'Ошибка соединения — попробуйте ещё раз');
+        }
+        if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
+        setSession(data.session);
+        setMeta({ player: data.player, dataSummary: data.dataSummary, date: data.date, dayGoal: data.dayGoal || '', focusLabel: fl, sessionType });
+        setTodayWarmup(data.session);
+        setShowSummary(false);
+        stopGenProgress(true);
+        return;
+      }
+
+      // ── Gym: async via Anthropic Batch API (Sonnet, no 60s Vercel cap) ──
+      setAutoSaved(false);
+      const warmupSummary = todayWarmup ? summarizeWarmupForGym(todayWarmup) : '';
+      const submitRes = await fetch('/api/programs/generate-async', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
         body: JSON.stringify({ playerId, date, dayGoal, days, focus, notes, warmupSummary }),
       });
-      let data;
-      try { data = await res.json(); } catch (_) {
-        throw new Error(res.status === 504
-          ? 'Превышено время ожидания — попробуйте ещё раз (обычно 2-я попытка быстрее из-за кэша)'
-          : 'Ошибка соединения — попробуйте ещё раз');
+      let submitData;
+      try { submitData = await submitRes.json(); } catch (_) {
+        throw new Error('Ошибка соединения — попробуйте ещё раз');
       }
-      if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
-      setSession(data.session);
-      const fl = getFocusLabel(period, focus);
-      setMeta({ player: data.player, dataSummary: data.dataSummary, date: data.date, dayGoal: data.dayGoal || '', focusLabel: fl, sessionType });
-      if (sessionType === 'warmup') setTodayWarmup(data.session);
-      setShowSummary(false);
-      stopGenProgress(true);
+      if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
+      const newBatchId = submitData.batchId;
+      if (!newBatchId) throw new Error('Сервер не вернул идентификатор задачи');
+      // Persist so a tab reload can resume polling and still retrieve the session.
+      setBatchId(newBatchId);
+      try {
+        localStorage.setItem('pending_batch', JSON.stringify({ batchId: newBatchId, playerId, date, focusLabel: fl }));
+      } catch (_) {}
+
+      await pollBatchResult(newBatchId, fl);
     } catch (err) {
       setError(err.message);
       stopGenProgress(false);
+      try { localStorage.removeItem('pending_batch'); } catch (_) {}
     } finally {
+      setBatchId(null);
       setLoading(false);
     }
+  }
+
+  // Poll a submitted gym batch until done (or timeout). Used for fresh generation and for
+  // resuming a batch saved in localStorage after a tab reload. generate-status persists the
+  // session on completion, so on success we mark autoSaved and clear the localStorage marker.
+  async function pollBatchResult(batchId, focusLabel) {
+    // Poll every 5s, up to 6 minutes (72 attempts).
+    const MAX_ATTEMPTS = 72;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      await new Promise(r => setTimeout(r, 5000));
+      let statusData;
+      try {
+        const statusRes = await fetch(`/api/programs/generate-status?batchId=${encodeURIComponent(batchId)}`, {
+          headers: { 'x-api-key': apiKey },
+        });
+        statusData = await statusRes.json();
+        if (!statusRes.ok) throw new Error(statusData.error || 'Ошибка проверки статуса');
+      } catch (pollErr) {
+        // Transient network blip during polling — keep trying until the attempt cap.
+        continue;
+      }
+      if (statusData.status === 'done') {
+        setSession(statusData.session);
+        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel, sessionType: 'gym' });
+        setShowSummary(false);
+        setAutoSaved(true); // generate-status already saved the session
+        stopGenProgress(true);
+        try { localStorage.removeItem('pending_batch'); } catch (_) {}
+        return;
+      }
+      // status 'pending' → loop again
+    }
+    try { localStorage.removeItem('pending_batch'); } catch (_) {}
+    throw new Error('Генерация заняла слишком долго, попробуйте ещё раз');
   }
 
   async function handleGenerateWeek() {
@@ -1023,15 +1506,33 @@ export default function Home() {
     const dates = [date, addDaysToDate(date, 2), addDaysToDate(date, 4)];
     try {
       const warmupSummary = todayWarmup ? summarizeWarmupForGym(todayWarmup) : '';
-      const results = await Promise.all(
-        focusList.map((f, i) =>
-          fetch('/api/programs/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-            body: JSON.stringify({ playerId, date: dates[i], dayGoal, days, focus: f.focus, notes, warmupSummary: i === 0 ? warmupSummary : '' }),
-          }).then(r => r.json()).then(data => ({ ...data, planLabel: f.label, planDate: dates[i] }))
-        )
-      );
+      // Generate days sequentially, accumulating used exercises so each new day avoids
+      // repeating exercises from earlier days (a cohesive week, not 3 isolated days).
+      const usedExercises = [];
+      const results = [];
+      for (let i = 0; i < focusList.length; i++) {
+        const f = focusList[i];
+        const data = await fetch('/api/programs/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({
+            playerId,
+            date: dates[i],
+            dayGoal,
+            days,
+            focus: f.focus,
+            notes,
+            warmupSummary: i === 0 ? warmupSummary : '',
+            teamUsedExercises: usedExercises,
+          }),
+        }).then(r => r.json());
+
+        // Collect this day's exercises so subsequent days don't repeat them.
+        const dayExercises = (data.session?.blocks || []).flatMap(b => (b.exercises || []).map(e => e.name).filter(Boolean));
+        usedExercises.push(...dayExercises);
+
+        results.push({ ...data, planLabel: f.label, planDate: dates[i] });
+      }
       const planItems = results.map((data, i) => ({
         session: data.session,
         player: data.player,
@@ -1114,6 +1615,83 @@ export default function Home() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // ── Microcycle templates ──────────────────────────────────────────────────
+  async function reloadTemplates() {
+    if (!apiKey) return;
+    try {
+      const r = await fetch('/api/programs/templates', { headers: { 'x-api-key': apiKey } });
+      const data = await r.json();
+      setTemplates(Array.isArray(data.templates) ? data.templates : []);
+    } catch (_) {}
+  }
+
+  async function handleSaveTemplate() {
+    if (!session?.blocks?.length) return;
+    const name = (typeof window !== 'undefined' ? window.prompt('Название шаблона:') : '')?.trim();
+    if (!name) return;
+    try {
+      await fetch('/api/programs/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ action: 'save', name, focus, blocks: session.blocks }),
+      });
+      await reloadTemplates();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleLoadTemplate(name) {
+    setTemplatesOpen(false);
+    try {
+      const r = await fetch('/api/programs/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ action: 'load', name }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Ошибка загрузки шаблона');
+      const t = data.template;
+      if (t?.focus) setFocus(t.focus);
+      // Drop the loaded blocks into the editable session view.
+      setSession(prev => ({
+        assessment: prev?.assessment || '',
+        periodization_note: prev?.periodization_note || `Загружен шаблон: ${t.name}`,
+        warnings: prev?.warnings || '',
+        blocks: Array.isArray(t?.blocks) ? t.blocks : [],
+      }));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleDeleteTemplate(name) {
+    if (!confirm(`Удалить шаблон "${name}"?`)) return;
+    try {
+      await fetch(`/api/programs/templates?name=${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+        headers: { 'x-api-key': apiKey },
+      });
+      await reloadTemplates();
+    } catch (_) {}
+  }
+
+  // ── Player contraindications ───────────────────────────────────────────────
+  async function toggleRestriction(id) {
+    if (!playerId) return;
+    const next = restrictions.includes(id)
+      ? restrictions.filter(r => r !== id)
+      : [...restrictions, id];
+    setRestrictions(next);
+    try {
+      await fetch('/api/player/restrictions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ playerId, restrictions: next }),
+      });
+    } catch (_) {}
   }
 
   function updateExercise(blockIdx, exIdx, patch) {
@@ -1202,41 +1780,6 @@ export default function Home() {
 
   const suggestion = useMemo(() => computeSuggestion(date, scheduleEvents), [date, scheduleEvents]);
 
-  useEffect(() => {
-    if (!session || !apiKey) { setExerciseImages({}); setImagesLoadedCount(0); return; }
-    setExerciseImages({});
-    setImagesLoadedCount(0);
-    const exercises = (session.blocks || []).flatMap(b => b.exercises || []);
-    if (!exercises.length) return;
-    // Send in batches of 5 (OpenAI rate limit: 5/min). First batch immediate, then 62s apart.
-    const BATCH_SIZE = 5;
-    const BATCH_DELAY_MS = 62000;
-    const timers = [];
-    exercises.forEach((ex, i) => {
-      const batchDelay = Math.floor(i / BATCH_SIZE) * BATCH_DELAY_MS;
-      const t = setTimeout(() => {
-        if (!ex.name?.trim()) { setImagesLoadedCount(c => c + 1); return; }
-        fetch('/api/exercises/image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-          body: JSON.stringify({ name: ex.name, ...(ex.img_prompt ? { img_prompt: ex.img_prompt } : {}) }),
-        })
-          .then(r => r.json())
-          .then(data => { if (data.image) setExerciseImages(prev => ({ ...prev, [ex.name]: data.image })); })
-          .catch(() => {})
-          .finally(() => setImagesLoadedCount(c => c + 1));
-      }, batchDelay);
-      timers.push(t);
-    });
-    return () => timers.forEach(t => clearTimeout(t));
-  }, [session, apiKey]);
-
-  const totalPrintExercises = useMemo(
-    () => (session?.blocks || []).flatMap(b => b.exercises || []).length,
-    [session]
-  );
-  const printReady = !session || imagesLoadedCount >= totalPrintExercises;
-
   return (
     <>
       <Head>
@@ -1264,8 +1807,11 @@ export default function Home() {
           {/* Logo + API Key */}
           <div className="border-b border-white/[0.05] p-5">
             <div className="mb-4 flex items-center gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/nk-logo.jpg" alt="NK" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
+              <div className="relative h-10 w-10 shrink-0">
+                <div className="absolute -inset-[1.5px] rounded-[14px] bg-gradient-to-br from-accent/60 via-accent/20 to-transparent" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/nk-logo.jpg" alt="NK" className="relative h-10 w-10 rounded-xl object-cover" />
+              </div>
               <div>
                 <div className="text-[13px] font-black tracking-tight text-white leading-tight">Nikolay Korenchuk</div>
                 <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-accent">High Performance Coach</div>
@@ -1310,9 +1856,6 @@ export default function Home() {
                   <p className="mt-1.5 flex items-center gap-1 text-[11px] text-rose-400">
                     <AlertTriangle size={11} /> {playersError}
                   </p>
-                )}
-                {keyConnected && (
-                  <ClearImageCacheButton apiKey={apiKey} />
                 )}
               </div>
             )}
@@ -1477,14 +2020,14 @@ export default function Home() {
                       <div className="flex items-center gap-1 shrink-0">
                         {batchRow && (
                           <span className={`text-[10px] font-bold ${
-                            batchRow.status === 'done'    ? 'text-emerald-400' :
-                            batchRow.status === 'error'   ? 'text-rose-400' :
-                            batchRow.status === 'running' ? 'text-accent' :
+                            batchRow.status === 'done'       ? 'text-emerald-400' :
+                            batchRow.status === 'error'      ? 'text-rose-400' :
+                            batchRow.status === 'generating' ? 'text-accent' :
                             'text-slate-600'
                           }`}>
-                            {batchRow.status === 'done'    ? '✓' :
-                             batchRow.status === 'error'   ? '✗' :
-                             batchRow.status === 'running' ? '…' : '·'}
+                            {batchRow.status === 'done'       ? '✓' :
+                             batchRow.status === 'error'      ? '✗' :
+                             batchRow.status === 'generating' ? '…' : '·'}
                           </span>
                         )}
                         {!batchRow && fb && (
@@ -1651,6 +2194,19 @@ export default function Home() {
               </button>
             ))}
           </div>
+
+          {/* Library link */}
+          <div className="border-t border-white/[0.05] p-3">
+            <a
+              href="/library"
+              className="flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold text-slate-500 transition hover:bg-white/[0.04] hover:text-accent"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
+              </svg>
+              Библиотека упражнений
+            </a>
+          </div>
         </aside>
 
         {/* ══════════════════════════════════════
@@ -1738,7 +2294,7 @@ export default function Home() {
                             {initials(p.name)}
                           </div>
                         )}
-                        <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[#07101a] ${positionDot(p.position)}`} />
+                        <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[#060c15] ${positionDot(p.position)}`} />
                       </div>
                       <div>
                         <div className="text-[12px] font-bold text-slate-200 leading-tight">{p.name}</div>
@@ -1796,24 +2352,30 @@ export default function Home() {
                 ← Состав
               </button>
               <div
-                className="relative group/avatar shrink-0 cursor-pointer h-11 w-11"
+                className="relative group/avatar shrink-0 cursor-pointer h-14 w-14"
                 onClick={() => { setEditPhotoFor(selectedPlayer.id); setPhotoInput(selectedPlayer.photo || ''); }}
                 title="Изменить фото"
               >
+                {/* Gradient ring */}
+                <div className="absolute -inset-[2px] rounded-[18px] bg-gradient-to-br from-accent/70 via-accent/30 to-transparent" />
                 {selectedPlayer.photo ? (
-                  <img src={selectedPlayer.photo} alt="" className="h-11 w-11 rounded-2xl object-cover" />
+                  <img src={selectedPlayer.photo} alt="" className="relative h-14 w-14 rounded-2xl object-cover" />
                 ) : (
-                  <div className="h-11 w-11 flex items-center justify-center rounded-2xl bg-accent text-[13px] font-black text-[#060a0e]">
+                  <div className="relative h-14 w-14 flex items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-cyan-600 text-[15px] font-black text-[#060a0e]">
                     {initials(selectedPlayer.name)}
                   </div>
                 )}
-                <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity text-[14px]">
-                  📷
-                </div>
+                <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity text-[14px]">📷</div>
               </div>
               <div className="flex-1 min-w-0">
-                <h1 className="text-[22px] font-black tracking-tight text-white leading-tight truncate">{selectedPlayer.name}</h1>
-                <p className="text-[11px] text-slate-500">{selectedPlayer.position || 'Игрок'}</p>
+                <h1 className="text-[24px] font-black tracking-tight text-white leading-tight truncate">{selectedPlayer.name}</h1>
+                <div className="mt-1 flex items-center gap-2">
+                  {selectedPlayer.position && (
+                    <span className="inline-flex items-center rounded-md border border-white/[0.10] bg-white/[0.05] px-2 py-0.5 text-[10px] font-semibold text-slate-400">
+                      {selectedPlayer.position}
+                    </span>
+                  )}
+                </div>
               </div>
               {selectedPlayer.lastSessionDate && (
                 <div className="hidden sm:block shrink-0 text-right">
@@ -1823,6 +2385,47 @@ export default function Home() {
               )}
             </div>
           ) : !playerId && (
+            <></>
+          )}
+
+          {/* ── Player contraindications ── */}
+          {playerId && selectedPlayer && (
+            <div className={`mb-5 rounded-2xl border p-4 print:hidden transition-colors duration-300 ${
+              restrictions.length > 0
+                ? 'border-rose-500/25 bg-rose-500/[0.05]'
+                : 'border-white/[0.07] bg-white/[0.02]'
+            }`}>
+              <div className="mb-3 flex items-center gap-2">
+                <AlertTriangle size={12} className={restrictions.length > 0 ? 'text-rose-400' : 'text-slate-600'} />
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Ограничения</span>
+                {restrictions.length > 0 && (
+                  <span className="ml-auto rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-400">{restrictions.length} активно</span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {RESTRICTIONS.map(r => {
+                  const active = restrictions.includes(r.id);
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => toggleRestriction(r.id)}
+                      title={r.desc}
+                      className={`rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition-all duration-200 active:scale-95 ${
+                        active
+                          ? 'border-rose-500/50 bg-rose-500/[0.18] text-rose-300 shadow-[0_0_12px_rgba(239,68,68,0.12)]'
+                          : 'border-white/[0.07] bg-transparent text-slate-600 hover:border-white/[0.14] hover:text-slate-300'
+                      }`}
+                    >
+                      {active && <span className="mr-1 text-rose-400">⚡</span>}{r.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!playerId && (
             <div className="hidden sm:flex flex-col items-center justify-center min-h-[65vh] text-center print:hidden">
               <div className="mb-3 text-6xl opacity-10">🏋</div>
               <h2 className="text-[18px] font-black text-slate-600">Выберите игрока</h2>
@@ -1874,10 +2477,10 @@ export default function Home() {
           {playerId && <>
           <form
             onSubmit={handleGenerate}
-            className="rounded-2xl border border-white/[0.10] bg-white/[0.04] p-5 shadow-[0_8px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-xl sm:p-6 print:hidden"
+            className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.05] to-white/[0.02] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:p-6 print:hidden"
           >
             {/* Session type toggle */}
-            <div className="mb-5 flex gap-2">
+            <div className="mb-5 flex rounded-2xl border border-white/[0.08] bg-white/[0.025] p-1">
               {[
                 { value: 'gym', label: 'Тренажёрный зал', icon: <Dumbbell size={13} /> },
                 { value: 'warmup', label: 'Разминка', icon: <Zap size={13} /> },
@@ -1886,10 +2489,10 @@ export default function Home() {
                   key={opt.value}
                   type="button"
                   onClick={() => { setSessionType(opt.value); setSession(null); setMeta(null); setError(''); }}
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-semibold transition-all ${
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all duration-200 ${
                     sessionType === opt.value
-                      ? 'border-accent/40 bg-accent/10 text-accent shadow-[0_0_12px_rgba(34,211,238,0.1)]'
-                      : 'border-white/[0.07] text-slate-500 hover:border-white/[0.12] hover:text-slate-300'
+                      ? 'bg-accent text-[#060a0e] shadow-[0_2px_16px_rgba(34,211,238,0.25)]'
+                      : 'text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   {opt.icon}
@@ -1940,23 +2543,29 @@ export default function Home() {
                   <div className="mt-2 animate-fade-in rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 backdrop-blur-xl">
                     <p className="mb-3 text-[10px] text-slate-600">Тестовые максимумы — Claude будет рассчитывать точные кг в программе</p>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {ONE_RM_FIELDS.map(f => (
-                        <div key={f.key}>
-                          <label className="mb-1 block text-[10px] font-semibold text-slate-500">{f.label}</label>
-                          <div className="flex items-center overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.03]">
-                            <input
-                              type="number"
-                              min="0"
-                              step="2.5"
-                              value={oneRM[f.key] || ''}
-                              onChange={e => handleOneRMChange(f.key, e.target.value)}
-                              placeholder="—"
-                              className="w-full bg-transparent px-2.5 py-1.5 text-xs text-slate-200 outline-none placeholder:text-slate-600"
-                            />
-                            <span className="pr-2 text-[10px] text-slate-600">{f.unit}</span>
+                      {ONE_RM_FIELDS.map(f => {
+                        const fieldHistory = rmHistory.map(h => h[f.key]).filter(Boolean);
+                        return (
+                          <div key={f.key}>
+                            <div className="mb-1 flex items-center justify-between gap-1">
+                              <label className="block text-[10px] font-semibold text-slate-500">{f.label}</label>
+                              <Sparkline values={fieldHistory} />
+                            </div>
+                            <div className="flex items-center overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.03]">
+                              <input
+                                type="number"
+                                min="0"
+                                step="2.5"
+                                value={oneRM[f.key] || ''}
+                                onChange={e => handleOneRMChange(f.key, e.target.value)}
+                                placeholder="—"
+                                className="w-full bg-transparent px-2.5 py-1.5 text-xs text-slate-200 outline-none placeholder:text-slate-600"
+                              />
+                              <span className="pr-2 text-[10px] text-slate-600">{f.unit}</span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -2040,14 +2649,14 @@ export default function Home() {
                     key={ph.value}
                     type="button"
                     onClick={() => setFocus(ph.value)}
-                    className={`rounded-xl border px-3.5 py-3 text-left transition-all ${
+                    className={`rounded-xl border px-3.5 py-3 text-left transition-all duration-200 active:scale-[0.98] ${
                       focus === ph.value
-                        ? `${PERIOD_COLORS[period].card} ${PERIOD_COLORS[period].glow}`
-                        : 'border-white/[0.09] text-slate-400 hover:border-white/[0.15] hover:bg-white/[0.03]'
+                        ? `${PERIOD_COLORS[period].card}`
+                        : 'border-white/[0.07] text-slate-400 hover:border-white/[0.13] hover:bg-white/[0.025]'
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <div className={`h-1.5 w-1.5 shrink-0 rounded-full transition-colors ${focus === ph.value ? PERIOD_COLORS[period].dot : 'bg-slate-700'}`} />
+                      <div className={`shrink-0 rounded-full transition-all duration-200 ${focus === ph.value ? `h-2 w-2 ${PERIOD_COLORS[period].dot} shadow-[0_0_6px_currentColor]` : 'h-1.5 w-1.5 bg-slate-700'}`} />
                       <div className={`text-[11px] font-semibold leading-tight transition-colors ${focus === ph.value ? PERIOD_COLORS[period].text : 'text-slate-400'}`}>
                         {ph.label}
                       </div>
@@ -2082,7 +2691,7 @@ export default function Home() {
             </div>
 
             {/* ── Trend window (secondary, compact) ── */}
-            <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-2.5">
+            <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.015] px-4 py-2.5">
               <TrendingUp size={12} className="shrink-0 text-slate-600" />
               <span className="text-[11px] text-slate-600">Анализ данных:</span>
               <span className="text-[11px] font-semibold text-slate-400">последние {days} дн.</span>
@@ -2094,7 +2703,7 @@ export default function Home() {
                     onClick={() => setDays(v)}
                     className={`rounded-lg px-2.5 py-1 text-[10px] font-bold transition-all ${
                       days === v
-                        ? 'bg-white/[0.08] text-slate-200'
+                        ? 'bg-accent/[0.15] text-accent/90'
                         : 'text-slate-600 hover:text-slate-400'
                     }`}
                   >
@@ -2117,11 +2726,57 @@ export default function Home() {
               />
             </div>
 
+            {/* Microcycle templates */}
+            {sessionType === 'gym' && apiKey && (
+              <div className="relative mt-5">
+                <button
+                  type="button"
+                  onClick={() => setTemplatesOpen(o => !o)}
+                  className={`flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.04] px-4 py-2.5 text-xs font-semibold text-slate-300 transition-all hover:border-white/[0.18] hover:bg-white/[0.07] hover:text-white ${focusRing}`}
+                >
+                  <Layers size={14} />
+                  Шаблоны микроциклов
+                  {templates.length > 0 && (
+                    <span className="rounded bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-slate-400">{templates.length}</span>
+                  )}
+                  <ChevronDown size={13} className={`ml-auto transition-transform ${templatesOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {templatesOpen && (
+                  <div className="absolute left-0 right-0 z-20 mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-white/[0.10] bg-[#0b1622] p-1.5 shadow-2xl">
+                    {templates.length === 0 ? (
+                      <div className="px-3 py-3 text-center text-[11px] text-slate-600">Нет сохранённых шаблонов</div>
+                    ) : (
+                      templates.map(t => (
+                        <div key={t.name} className="flex items-center gap-2 rounded-lg px-2.5 py-2 transition hover:bg-white/[0.05]">
+                          <button
+                            type="button"
+                            onClick={() => handleLoadTemplate(t.name)}
+                            className="flex-1 text-left"
+                          >
+                            <div className="text-xs font-semibold text-slate-200">{t.name}</div>
+                            <div className="text-[10px] text-slate-600">{t.exerciseCount} упр.{t.focus ? ` · ${t.focus}` : ''}</div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTemplate(t.name)}
+                            className="rounded p-1 text-slate-600 transition hover:bg-rose-500/10 hover:text-rose-400"
+                            title="Удалить шаблон"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className={`mt-6 ${sessionType === 'gym' ? 'flex gap-3' : ''}`}>
             <button
               type="submit"
               disabled={loading || weekPlanLoading || !apiKey || !playerId}
-              className={`flex items-center justify-center gap-2.5 rounded-xl bg-accent px-5 py-3.5 text-sm font-bold text-[#060a0e] shadow-[0_4px_24px_rgba(34,211,238,0.38)] transition-all duration-200 hover:brightness-110 hover:shadow-[0_6px_32px_rgba(34,211,238,0.52)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none ${focusRing} ${sessionType === 'gym' ? 'flex-1' : 'w-full'}`}
+              className={`flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-accent to-cyan-300 px-5 py-4 text-[15px] font-black text-[#060a0e] shadow-[0_4px_32px_rgba(34,211,238,0.35)] transition-all duration-200 hover:shadow-[0_6px_40px_rgba(34,211,238,0.50)] hover:scale-[1.01] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none ${focusRing} ${sessionType === 'gym' ? 'flex-1' : 'w-full'}`}
             >
               {loading ? (
                 <>
@@ -2235,28 +2890,28 @@ export default function Home() {
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {batchResults.map(r => (
                       <div key={r.playerId} onClick={() => r.status === 'done' && setPlayerId(r.playerId)} className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-all ${r.status === 'done' ? 'cursor-pointer hover:border-emerald-500/50' : ''} ${
-                        r.status === 'done'    ? 'border-emerald-500/30 bg-emerald-500/[0.07]' :
-                        r.status === 'error'   ? 'border-rose-500/30 bg-rose-500/[0.07]' :
-                        r.status === 'running' ? 'border-accent/30 bg-accent/[0.06]' :
+                        r.status === 'done'       ? 'border-emerald-500/30 bg-emerald-500/[0.07]' :
+                        r.status === 'error'      ? 'border-rose-500/30 bg-rose-500/[0.07]' :
+                        r.status === 'generating' ? 'border-accent/30 bg-accent/[0.06]' :
                         'border-white/[0.05] bg-white/[0.015]'
                       }`}>
                         <div className="shrink-0">
-                          {r.status === 'done'    && <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400"><Check size={10} strokeWidth={3} /></div>}
-                          {r.status === 'error'   && <div className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500/20 text-rose-400"><X size={10} strokeWidth={3} /></div>}
-                          {r.status === 'running' && <Loader2 size={14} className="animate-spin text-accent" />}
-                          {r.status === 'queued'  && <div className="h-5 w-5 rounded-full border border-white/[0.08]" />}
+                          {r.status === 'done'       && <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400"><Check size={10} strokeWidth={3} /></div>}
+                          {r.status === 'error'      && <div className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500/20 text-rose-400"><X size={10} strokeWidth={3} /></div>}
+                          {r.status === 'generating' && <Loader2 size={14} className="animate-spin text-accent" />}
+                          {r.status === 'queued'     && <div className="h-5 w-5 rounded-full border border-white/[0.08]" />}
                         </div>
                         <div className="min-w-0">
                           <div className="truncate text-[12px] font-semibold leading-tight text-slate-200">{r.name.split(' ')[0]}</div>
                           <div className={`text-[10px] truncate ${
-                            r.status === 'done'    ? 'text-emerald-400' :
-                            r.status === 'error'   ? 'text-rose-400' :
-                            r.status === 'running' ? 'text-accent' :
+                            r.status === 'done'       ? 'text-emerald-400' :
+                            r.status === 'error'      ? 'text-rose-400' :
+                            r.status === 'generating' ? 'text-accent' :
                             'text-slate-600'
                           }`}>
-                            {r.status === 'done'    ? 'Сохранено' :
-                             r.status === 'error'   ? (r.error || 'Ошибка') :
-                             r.status === 'running' ? 'Генерирую...' : 'В очереди'}
+                            {r.status === 'done'       ? 'Сохранено' :
+                             r.status === 'error'      ? (r.error || 'Ошибка') :
+                             r.status === 'generating' ? 'Генерирую...' : 'В очереди'}
                           </div>
                         </div>
                       </div>
@@ -2321,7 +2976,7 @@ export default function Home() {
                   <div className="flex items-center gap-2.5">
                     <Loader2 size={14} className="animate-spin text-accent shrink-0" />
                     <span className="text-[13px] font-semibold text-slate-300 transition-all duration-500">
-                      {genStage || 'Запускаю генерацию...'}
+                      {resuming ? 'Продолжаю генерацию...' : (genStage || 'Запускаю генерацию...')}
                     </span>
                   </div>
                   <span className="text-[11px] font-bold text-slate-600 tabular-nums">
@@ -2380,23 +3035,40 @@ export default function Home() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => { if (printReady) window.print(); }}
-                    disabled={!printReady}
-                    className={`flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-xs font-medium transition hover:border-white/[0.15] ${focusRing} ${printReady ? 'text-slate-400 hover:text-slate-200' : 'cursor-wait text-slate-600'}`}
+                    onClick={() => window.print()}
+                    className={`flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-400 transition hover:border-white/[0.15] hover:text-slate-200 ${focusRing}`}
                   >
-                    {printReady ? <Printer size={13} /> : <Loader2 size={13} className="animate-spin" />}
-                    {printReady ? 'Печать' : `${imagesLoadedCount}/${totalPrintExercises}`}
+                    <Printer size={13} />
+                    {'Печать'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    disabled={saving}
-                    className={`flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-xs font-bold text-[#060a0e] shadow-[0_2px_14px_rgba(34,211,238,0.3)] transition hover:brightness-110 disabled:opacity-50 ${focusRing}`}
-                  >
-                    {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                    {justSaved ? 'Сохранено ✓' : 'Сохранить'}
-                  </button>
-                  {(justSaved || pendingSaved) && (
+                  {autoSaved && meta.sessionType === 'gym' ? (
+                    <span className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.10] px-3.5 py-2 text-xs font-bold text-emerald-400">
+                      <Check size={13} strokeWidth={3} />
+                      Сохранено
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      disabled={saving}
+                      className={`flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-xs font-bold text-[#060a0e] shadow-[0_2px_14px_rgba(34,211,238,0.3)] transition hover:brightness-110 disabled:opacity-50 ${focusRing}`}
+                    >
+                      {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                      {justSaved ? 'Сохранено ✓' : 'Сохранить'}
+                    </button>
+                  )}
+                  {session?.blocks?.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSaveTemplate}
+                      className={`flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-400 transition hover:border-white/[0.15] hover:text-slate-200 ${focusRing}`}
+                      title="Сохранить как шаблон микроцикла"
+                    >
+                      <Layers size={13} />
+                      Шаблон
+                    </button>
+                  )}
+                  {(justSaved || autoSaved || pendingSaved) && (
                     <button
                       type="button"
                       onClick={() => setCopyModalOpen(true)}
@@ -2412,37 +3084,52 @@ export default function Home() {
 
               {/* Volume stats bar */}
               {volumeStats && volumeStats.sessions > 0 && (
-                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.05] bg-white/[0.02] px-3.5 py-2.5 print:hidden">
-                  <BarChart2 size={11} className="text-slate-600" />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Объём за 7д</span>
-                  {['A', 'B', 'C', 'D', 'E'].map(label =>
-                    volumeStats.byBlock[label] ? (
-                      <span key={label} className="rounded-full border border-white/[0.06] bg-white/[0.03] px-2.5 py-0.5 text-[10px] font-medium text-slate-400">
-                        {label}: {volumeStats.byBlock[label]} подх.
-                      </span>
-                    ) : null
-                  )}
-                  <span className="text-[10px] text-slate-600">({volumeStats.sessions} сессий)</span>
+                <div className="mb-4 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 print:hidden">
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <BarChart2 size={10} className="text-slate-600" />
+                    <span className="text-[9px] font-black uppercase tracking-[0.20em] text-slate-600">Объём за 7д</span>
+                    <span className="ml-auto text-[9px] text-slate-700">{volumeStats.sessions} сессий</span>
+                  </div>
+                  <div className="flex gap-3">
+                    {['A', 'B', 'C', 'D', 'E'].map(label => {
+                      const val = volumeStats.byBlock[label];
+                      if (!val) return null;
+                      const bc = blockCfg(label);
+                      const maxVal = Math.max(...['A','B','C','D','E'].map(l => volumeStats.byBlock[l] || 0));
+                      const pct = Math.round((val / maxVal) * 100);
+                      return (
+                        <div key={label} className="flex flex-col items-center gap-1 min-w-0">
+                          <div className="relative h-12 w-5 rounded-full bg-white/[0.04] overflow-hidden">
+                            <div className={`absolute bottom-0 left-0 right-0 rounded-full transition-all duration-500 ${bc.circle}`} style={{ height: `${pct}%`, opacity: 0.7 }} />
+                          </div>
+                          <span className="text-[9px] font-bold text-slate-500">{label}</span>
+                          <span className="text-[8px] text-slate-600">{val}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
               {/* Assessment */}
               {session.assessment && (
-                <div className="mb-4 rounded-xl border-l-2 border-accent/50 bg-accent/[0.04] px-4 py-4 print:hidden">
-                  <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-accent/60">
-                    Оценка состояния
+                <div className="mb-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-5 py-4 print:hidden">
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="h-1 w-4 rounded-full bg-accent/50" />
+                    <span className="text-[9px] font-black uppercase tracking-[0.24em] text-accent/50">Оценка состояния</span>
                   </div>
-                  <p className="text-sm leading-relaxed text-slate-300">{session.assessment}</p>
+                  <p className="text-[13px] leading-relaxed text-slate-300">{session.assessment}</p>
                 </div>
               )}
 
               {/* Periodization note */}
               {session.periodization_note && (
-                <div className="mb-6 rounded-xl border-l-2 border-blue-500/40 bg-blue-500/[0.04] px-4 py-4 print:hidden">
-                  <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-blue-400/60">
-                    Логика периодизации
+                <div className="mb-6 rounded-2xl border border-white/[0.06] bg-white/[0.015] px-5 py-4 print:hidden">
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="h-1 w-4 rounded-full bg-slate-500/60" />
+                    <span className="text-[9px] font-black uppercase tracking-[0.24em] text-slate-600">Логика периодизации</span>
                   </div>
-                  <p className="text-sm leading-relaxed text-slate-400">{session.periodization_note}</p>
+                  <p className="text-[13px] leading-relaxed text-slate-400">{session.periodization_note}</p>
                 </div>
               )}
 
@@ -2450,20 +3137,20 @@ export default function Home() {
               <div className="space-y-8 print:hidden">
                 {(session.blocks || []).map((block, bi) => (
                   <div key={bi}>
-                    <div className="mb-3.5 flex items-center gap-3">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent text-xs font-black text-[#060a0e]">
+                    {(() => { const bc = blockCfg(block.label); return (
+                    <div className="mb-4 flex items-center gap-3.5">
+                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${bc.circle} text-sm font-black text-[#060a0e] shadow-[0_2px_10px_rgba(0,0,0,0.25)]`}>
                         {block.label}
                       </span>
-                      <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600">
-                        Блок {block.label}
-                      </span>
-                      {block.rest_note && (
-                        <span className="rounded-full border border-white/[0.06] bg-white/[0.03] px-2.5 py-0.5 text-[10px] text-slate-500">
-                          ⏱ {block.rest_note}
-                        </span>
-                      )}
-                      <div className="h-px flex-1 bg-gradient-to-r from-white/[0.07] to-transparent" />
+                      <div className="min-w-0">
+                        <div className={`text-[9px] font-black uppercase tracking-[0.22em] ${bc.sub}`}>Блок {block.label}</div>
+                        {block.rest_note && (
+                          <div className="text-[11px] leading-none text-slate-500 mt-0.5">⏱ {block.rest_note}</div>
+                        )}
+                      </div>
+                      <div className={`h-px flex-1 bg-gradient-to-r ${bc.line} to-transparent`} />
                     </div>
+                    ); })()}
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {(block.exercises || []).map((ex, ei) => (
                         <ExerciseCard
@@ -2471,12 +3158,14 @@ export default function Home() {
                           apiKey={apiKey}
                           code={ex.code}
                           name={ex.name}
-                          imgPrompt={ex.img_prompt || ''}
                           targetSets={ex.targetSets || []}
                           weightNote={ex.weightNote || ''}
                           tempo={ex.tempo || ''}
                           autoReg={ex.autoReg || ''}
                           cue={ex.cue || ''}
+                          focus={focus}
+                          week={weekFromFocus(focus)}
+                          oneRM={oneRM}
                           onChangeName={v => updateExercise(bi, ei, { name: v })}
                           onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
                           onAddSet={() => addSetRow(bi, ei)}
@@ -2494,11 +3183,12 @@ export default function Home() {
 
               {/* Warnings — screen only */}
               {session.warnings && (
-                <div className="mt-6 rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-4 print:hidden">
-                  <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-amber-400/70">
-                    Предостережения
+                <div className="mt-6 rounded-2xl border border-amber-500/25 bg-gradient-to-b from-amber-500/[0.08] to-amber-500/[0.03] p-5 print:hidden">
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <span className="text-base">⚠️</span>
+                    <span className="text-[9px] font-black uppercase tracking-[0.24em] text-amber-400/80">Предостережения</span>
                   </div>
-                  <p className="text-sm text-amber-200/70">{session.warnings}</p>
+                  <p className="text-[13px] leading-relaxed text-amber-200/75">{session.warnings}</p>
                 </div>
               )}
 
@@ -2570,14 +3260,6 @@ export default function Home() {
                           }}>
                             <span style={{ fontWeight: '900', color: '#0284c7', fontSize: '8pt', flexShrink: 0, lineHeight: '1.1', marginTop: '1px' }}>{ex.code}</span>
                             <span style={{ fontWeight: '700', color: '#0f172a', fontSize: '6pt', lineHeight: '1.2', wordBreak: 'break-word' }}>{ex.name}</span>
-                          </div>
-
-                          {/* Exercise illustration */}
-                          <div style={{ backgroundColor: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {exerciseImages[ex.name]
-                              ? <img src={exerciseImages[ex.name]} alt={ex.name} style={{ width: '100%', maxHeight: '95px', objectFit: 'contain', display: 'block' }} />
-                              : <div style={{ height: '55px', width: '100%', backgroundColor: '#f8fafc' }} />
-                            }
                           </div>
 
                           {/* Sets · weight · cue */}
@@ -2793,44 +3475,78 @@ export default function Home() {
       {editPhotoFor && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          onClick={() => setEditPhotoFor(null)}
+          onClick={() => { if (!photoUploading) setEditPhotoFor(null); }}
         >
           <div
             className="w-full max-w-xs rounded-2xl border border-white/[0.1] bg-[#0d1e30] p-5 shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="mb-1 text-sm font-bold text-white">Фото профиля</h3>
-            <p className="mb-4 text-[11px] text-slate-500">Вставь прямую ссылку на фото (jpg, png, webp)</p>
+            <h3 className="mb-4 text-sm font-bold text-white">Фото профиля</h3>
+
+            {/* File upload — primary */}
+            <button
+              type="button"
+              onClick={() => photoFileRef.current?.click()}
+              disabled={photoUploading}
+              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-accent/30 bg-accent/[0.05] py-4 text-[13px] font-semibold text-accent transition hover:border-accent/60 hover:bg-accent/[0.10] disabled:opacity-50"
+            >
+              {photoUploading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
+                  Загружаю…
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  Выбрать фото с компьютера
+                </>
+              )}
+            </button>
             <input
-              type="url"
-              placeholder="https://..."
-              value={photoInput}
-              onChange={e => setPhotoInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && savePhoto()}
-              className="w-full rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2.5 text-sm text-white placeholder:text-slate-600 outline-none focus:border-[#4ade80]/40"
-              autoFocus
+              ref={photoFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadPlayerPhoto(f); e.target.value = ''; }}
             />
-            <div className="mt-3 flex gap-2">
+
+            {/* URL fallback */}
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">или ссылка</div>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                placeholder="https://..."
+                value={photoInput}
+                onChange={e => setPhotoInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && savePhoto()}
+                className="min-w-0 flex-1 rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-accent/40"
+              />
               <button
                 type="button"
                 onClick={() => savePhoto()}
-                className="flex-1 rounded-xl bg-[#4ade80]/20 py-2 text-sm font-semibold text-[#4ade80] hover:bg-[#4ade80]/30 transition"
+                disabled={!photoInput.trim() || photoUploading}
+                className="rounded-xl bg-accent/20 px-3 py-2 text-sm font-semibold text-accent transition hover:bg-accent/30 disabled:opacity-40"
               >
-                Сохранить
+                ОК
               </button>
+            </div>
+
+            <div className="mt-3 flex justify-between gap-2">
               {players.find(p => p.id === editPhotoFor)?.photo && (
                 <button
                   type="button"
                   onClick={() => savePhoto('')}
-                  className="rounded-xl border border-white/[0.07] px-3 py-2 text-xs text-slate-500 hover:text-rose-400 transition"
+                  disabled={photoUploading}
+                  className="rounded-xl border border-white/[0.07] px-3 py-2 text-xs text-slate-500 hover:text-rose-400 transition disabled:opacity-40"
                 >
-                  Удалить
+                  Удалить фото
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setEditPhotoFor(null)}
-                className="rounded-xl border border-white/[0.07] px-3 py-2 text-xs text-slate-500 hover:text-slate-300 transition"
+                disabled={photoUploading}
+                className="ml-auto rounded-xl border border-white/[0.07] px-3 py-2 text-xs text-slate-500 hover:text-slate-300 transition disabled:opacity-40"
               >
                 Отмена
               </button>

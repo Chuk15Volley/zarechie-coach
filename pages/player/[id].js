@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, Component } from 'react';
 import Head from 'next/head';
 import { redis } from '../../lib/redis';
+import { findExerciseUrl } from '../../lib/exerciseBank';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -53,7 +54,7 @@ export async function getServerSideProps({ params }) {
   // Resolve token → playerId (never expose playerId to the client)
   const playerId = await redis('get', `coach:share_token:${token}`).catch(() => null);
   if (!playerId) {
-    return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: true, sessionDates: [], playerPhoto: null } };
+    return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: true, sessionDates: [], playerPhoto: null, serverLog: null } };
   }
 
   const [allDates, playerPhoto] = await Promise.all([
@@ -78,20 +79,25 @@ export async function getServerSideProps({ params }) {
   }
 
   if (!record) {
-    return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: false, sessionDates, playerPhoto: playerPhoto || null } };
+    return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: false, sessionDates, playerPhoto: playerPhoto || null, serverLog: null } };
   }
+
+  const resolvedDate = record.date || date;
+  const logRaw = await redis('get', `coach:log:${playerId}:${resolvedDate}`).catch(() => null);
+  const serverLog = logRaw ? (typeof logRaw === 'string' ? JSON.parse(logRaw) : logRaw) : null;
 
   return {
     props: {
       token,
       session: record.session || null,
       player: record.player || null,
-      sessionDate: record.date || date,
+      sessionDate: resolvedDate,
       dayGoal: record.dayGoal || '',
       isToday: (record.date || '') === date,
       notFound: false,
       sessionDates,
       playerPhoto: playerPhoto || null,
+      serverLog: serverLog || null,
     },
   };
 }
@@ -134,56 +140,70 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange }) {
   );
 }
 
-// ── Exercise illustration — token-authenticated, with 429 retry ──────────────
-function ExerciseImage({ name, imgPrompt, token }) {
-  const [image, setImage] = useState(null);
-  const [loading, setLoading] = useState(true);
+// ── Exercise video link — from the exercise bank ─────────────────────────────
+const YT_ICON_SMALL = (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1C4.5 20.5 12 20.5 12 20.5s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1C24 15.9 24 12 24 12s0-3.9-.5-5.8zM9.8 15.5V8.5l6.3 3.5-6.3 3.5z"/>
+  </svg>
+);
 
+function ExerciseMedia({ name, token }) {
+  const bankUrl = findExerciseUrl(name);
+  const [media, setMedia] = useState(null); // { hasImage, video }
+  const [imgBlobUrl, setImgBlobUrl] = useState(null);
+
+  // Fetch media meta (image existence + manual video URL)
   useEffect(() => {
-    if (!token) { setLoading(false); return; }
+    if (!name?.trim() || !token) return;
     let cancelled = false;
-    let retryTimer = null;
-
-    function attempt(retryCount = 0) {
-      if (cancelled) return;
-      fetch('/api/exercises/image-public', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, token, ...(imgPrompt ? { img_prompt: imgPrompt } : {}) }),
-      })
-        .then(async r => {
-          if (cancelled) return;
-          if (r.status === 429 && retryCount < 4) {
-            const delay = 15000 + Math.random() * 30000;
-            retryTimer = setTimeout(() => attempt(retryCount + 1), delay);
-            return;
-          }
-          if (!r.ok) { setLoading(false); return; }
-          const d = await r.json().catch(() => ({}));
-          if (!cancelled && d.image) { setImage(d.image); setLoading(false); }
-        })
-        .catch(() => { if (!cancelled) setLoading(false); });
-    }
-
-    attempt();
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-    };
+    fetch(`/api/exercises/player-media?token=${encodeURIComponent(token)}&name=${encodeURIComponent(name)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d) setMedia(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [name, token]);
 
-  if (loading) {
-    return (
-      <div className="flex aspect-[4/3] items-center justify-center bg-white/[0.02]">
-        <div className="h-5 w-5 rounded-full border-2 border-[#4ade80]/20 border-t-[#4ade80]/60 animate-spin" />
-      </div>
-    );
-  }
-  if (!image) return null;
+  // Fetch image bytes → blob URL
+  useEffect(() => {
+    if (!media?.hasImage || !token) return;
+    let objectUrl = null;
+    let cancelled = false;
+    fetch(`/api/exercises/player-media?token=${encodeURIComponent(token)}&name=${encodeURIComponent(name)}&serve=1`)
+      .then(r => r.ok ? r.blob() : null)
+      .then(blob => {
+        if (cancelled || !blob) return;
+        objectUrl = URL.createObjectURL(blob);
+        setImgBlobUrl(objectUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [media?.hasImage, name, token]);
+
+  const videoUrl = media?.video || bankUrl;
+
   return (
-    <div className="flex aspect-[4/3] items-center justify-center bg-white overflow-hidden">
-      <img src={image} alt={name} className="h-full w-full object-contain" />
-    </div>
+    <>
+      {imgBlobUrl && (
+        <div className="mx-0 mt-2 mb-1 aspect-square w-full overflow-hidden rounded-xl border border-white/[0.06]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imgBlobUrl} alt={name} className="h-full w-full object-contain" />
+        </div>
+      )}
+      {videoUrl && (
+        <a
+          href={videoUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 flex items-center gap-1.5 text-[11px] text-red-400 hover:text-red-300"
+        >
+          {YT_ICON_SMALL}
+          Видео упражнения
+        </a>
+      )}
+    </>
   );
 }
 
@@ -204,8 +224,10 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
         <span className="text-[15px] font-bold leading-snug text-white">{ex.name}</span>
       </div>
 
-      {/* Illustration */}
-      <ExerciseImage name={ex.name} imgPrompt={ex.img_prompt} token={token} />
+      {/* Image + video */}
+      <div className="px-4 pt-2">
+        <ExerciseMedia name={ex.name} token={token} />
+      </div>
 
       {/* Sets row */}
       <div className="flex flex-wrap gap-2 px-4 pt-3">
@@ -417,15 +439,18 @@ function InstallHint() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function PlayerPage({ token, session, player, sessionDate, dayGoal, isToday, notFound, sessionDates, playerPhoto }) {
-  const [done, setDone] = useState({});
-  const [weights, setWeights] = useState({});
+export default function PlayerPage({ token, session, player, sessionDate, dayGoal, isToday, notFound, sessionDates, playerPhoto, serverLog }) {
+  // Seed from the server log (cross-device source of truth) when present.
+  const [done, setDone] = useState(serverLog?.done || {});
+  const [weights, setWeights] = useState(serverLog?.weights || {});
   const [activeBlock, setActiveBlock] = useState(0);
   const blockRefs = useRef([]);
+  const saveTimer = useRef(null);
 
-  // Load progress from localStorage on mount
+  // Load progress on mount: prefer server log, fall back to localStorage.
   useEffect(() => {
     if (!token || !sessionDate) return;
+    if (serverLog && (serverLog.done || serverLog.weights)) return; // already seeded from server
     try {
       const saved = localStorage.getItem(`gym:${token}:${sessionDate}`);
       if (saved) {
@@ -434,7 +459,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
         if (parsed.weights) setWeights(parsed.weights);
       }
     } catch (_) {}
-  }, [token, sessionDate]);
+  }, [token, sessionDate, serverLog]);
 
   // Persist progress to localStorage on every change
   useEffect(() => {
@@ -443,6 +468,20 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
       localStorage.setItem(`gym:${token}:${sessionDate}`, JSON.stringify({ done, weights }));
     } catch (_) {}
   }, [done, weights, token, sessionDate]);
+
+  // Auto-sync progress to the server (debounced 3s) so the coach sees it live.
+  useEffect(() => {
+    if (!token || !sessionDate || !session) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      fetch('/api/player/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, date: sessionDate, done, weights }),
+      }).catch(() => {});
+    }, 3000);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [done, weights, token, sessionDate, session]);
 
   const [activeTab, setActiveTab] = useState('workout');
   const [selectedHistDate, setSelectedHistDate] = useState(null);

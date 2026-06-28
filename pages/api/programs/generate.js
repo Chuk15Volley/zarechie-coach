@@ -7,7 +7,8 @@
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { getRecentSessionSummaries } from '../../../lib/sessionHistory';
 import { isAuthorized } from '../../../lib/auth';
-import { redis } from '../../../lib/redis';
+import { redis, redisPipeline } from '../../../lib/redis';
+import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
 
 const FOCUS_LABELS = {
   // ── СБОРЫ ЗАРЕЧЬЕ 2025 (13 июля – 26 августа) ─────────────────────────────
@@ -34,87 +35,101 @@ const FOCUS_LABELS = {
   rehab:           'возврат после травмы / разгрузка',
 };
 
-const SESSION_TOOL = {
-  name: 'build_session',
-  description: 'Структурированная тренировка в зале на один конкретный день, разбитая на блоки (круги/суперсеты).',
-  input_schema: {
-    type: 'object',
-    required: ['assessment', 'periodization_note', 'blocks', 'warnings'],
-    properties: {
-      assessment: {
-        type: 'string',
-        description: 'Краткая оценка состояния игрока на сегодня, 2-3 предложения. Укажи, если каких-то данных нет.',
-      },
-      periodization_note: {
-        type: 'string',
-        description: 'Обоснование логики этой тренировки в контексте истории: что было в прошлых сессиях, почему выбран именно такой акцент/вектор/характер нагрузки сегодня. 2-4 предложения.',
-      },
-      blocks: {
-        type: 'array',
-        description: 'Блоки тренировки по порядку. Каждый блок — круг/суперсет из 1–4 упражнений (A1→A2→A3→пауза→повтор круга). Обычно 5 блоков: A, B, C, D, E.',
-        items: {
-          type: 'object',
-          required: ['label', 'rest_note', 'exercises'],
-          properties: {
-            label: { type: 'string', description: 'Буква блока: A, B, C, D, E' },
-            rest_note: {
-              type: 'string',
-              description: 'Протокол отдыха. PAP-тройка (A/B/C): "10-15 сек X1→X2 (PAP), 90 сек X2→X3, 2-3 мин после тройки". PAP-пара (A): "10-15 сек A1→A2, 3 мин после пары". Прямые подходы: "2-3 мин". Профилактика (E): "30-45 сек между упражнениями".',
-            },
-            exercises: {
-              type: 'array',
-              items: {
-                type: 'object',
-                required: ['code', 'name', 'targetSets', 'tempo', 'cue', 'img_prompt'],
-                properties: {
-                  code: { type: 'string', description: 'A1, A2, A3...' },
-                  name: { type: 'string', description: 'Название упражнения ТОЛЬКО НА РУССКОМ. Если упражнение широко известно по латинскому/английскому названию — транслитерируй + краткий перевод в скобках. Примеры: "Прыжок с контрдвижением (CMJ)", "Горизонтальная тяга (Inverted Row)", "Жим Паллофа", "Турецкий подъём", "Копенгагенская планка", "Ягодичный мост на одной ноге", "Тяга с трэп-штангой", "Румынская тяга на одной ноге с гирей", "Гоблет-присед с гирей", "Мах гирей". НЕЛЬЗЯ: Bulgarian Split Squat, Box Jump, Dead Bug, Bird-Dog, Pallof Press, Slider Hamstring Curl — только русские названия.' },
-                  targetSets: {
-                    type: 'array',
-                    description: 'Целевые повторения по подходам, например ["5","5","5"] или ["8","8","8","8"]. 3–5 элементов.',
-                    items: { type: 'string' },
-                  },
-                  weightNote: {
-                    type: 'string',
-                    description: 'Нагрузка на профессиональном языке S&C: %1ПМ с точными кг, RPE-цель. Если есть история — прогрессия: "83% 1ПМ = 108 кг (↑ с 104 кг)". Без объяснений — только цифры и цель.',
-                  },
-                  tempo: {
-                    type: 'string',
-                    description: 'Темп: Эксц-Пауза_низ-Конц-Пауза_верх. X = максимально быстро. Силовой тяжёлый: "3-1-X-0". Гипертрофия: "3-0-2-0". Взрывной/прыжок: "реактивный". Изометрия: "2-30сек-2-0". Профилактика: "контролируемый".',
-                  },
-                  autoReg: {
-                    type: 'string',
-                    description: 'Правило авторегуляции для спортсмена — чёткий критерий остановки или снижения нагрузки. Только для основных силовых (A1, B1, C1). Профессиональный язык без объяснений. Примеры: "Bar speed drops → terminate set.", "Потеря нейтрали поясницы — стоп.", "RPE достигает 9 → снизь нагрузку 5%."',
-                  },
-                  cue: {
-                    type: 'string',
-                    description: 'Одна техническая подсказка на профессиональном языке S&C тренера. Конкретный паттерн движения, угол сустава или точка активации — не общие слова. Императивно. Только на русском.\n\nПримеры по категориям:\nНижнее (присед): "Колено отслеживает второй палец — не заваливай медиально в подъёме." "Сначала сломай в бедре, потом в колене — не наоборот." "Толкай пол от себя — штанга идёт сама." "Удержи нейтраль поясницы: кор в изометрии через весь подход."\nНижнее (тяга): "Бедро ведёт движение вниз — лопатки над штангой на протяжении 60% эксцентрика." "Стопа — трипод: большой палец, мизинец, пятка в земле весь подход." "Не позволяй тазу скручиваться — оба гребня горизонтально."\nВерхнее жим: "Лопатки вниз и назад до начала жима — держи депрессию через всё движение." "Плечевая кость 60-70° от туловища — не разводи под 90°." "Полный диапазон: плечо ниже локтя внизу."\nВерхнее тяга: "Инициируй широчайшими — не бицепсом." "Тяни локти к задним карманам, не к ушам." "Лопатка опускается перед сгибанием локтя — депрессия первая."\nПрыжки: "Приземление: носок → передняя треть стопы → амортизируй бедром, не коленом." "Максимальная жёсткость в контакте — реактивный отскок, не амортизация." "Взрыв от пола: бёдра и плечи поднимаются одновременно."\nОдностороннее: "Таз горизонтален — не позволяй упасть в сторону опорной ноги." "Опорное колено отслеживает второй палец всё движение вниз." "Нагрузку — в пятку и первый палец, не в большой палец."\nКор/профилактика: "Поясница нейтральна под давлением — не позволяй разгибания в нижнем отделе." "Рёбра вниз к бёдрам на выдохе — создай внутрибрюшное давление."',
-                  },
-                  img_prompt: {
-                    type: 'string',
-                    description: 'English anatomical description for exercise illustration (20-35 words). Must specify: (1) athlete body position/stance, (2) key joint angles with degrees, (3) exact equipment used, (4) movement phase shown. Be precise — the image generator needs enough detail to draw the correct exercise, not a generic one. Format: "[body position], [joint angles], [equipment], [movement phase/key detail]". Examples — Strength: "female athlete performing Bulgarian split squat, rear foot elevated on bench at hip height, front knee at 90° directly over toes, holding two dumbbells at sides, upright torso, mid-descent phase". Isometric: "female athlete in Spanish squat isometric hold, long resistance band looped around vertical pole at knee height, both arms extended gripping band, both knees bent 90° over toes, deep squat position, back straight, static hold". Explosive/jump: "female athlete at peak of two-leg tuck jump, both knees pulled to chest level, arms swung up, fully airborne, side view". Hinge: "female athlete performing single-leg RDL, standing on left leg slightly bent, right leg extended behind hip height, holding kettlebell in right hand, hips hinging forward, flat back, side view mid-hinge". Upper push: "female athlete performing incline dumbbell press on 45-degree bench, lying back on bench, both dumbbells pressed up from chest level, elbows at 75° from torso, mid-press phase". Rehab/prehab: "female athlete performing slow eccentric single-leg step-down on 20cm box, standing leg knee tracking over second toe, opposite leg lowering toward floor, arms extended forward for balance, side view".',
-                  },
+// SESSION_TOOL factory. Pass includeImgPrompt=true to add the img_prompt field back into
+// each exercise (used by the async Sonnet generator, where token budget is not a concern).
+export function buildSessionTool({ includeImgPrompt = false } = {}) {
+  const exerciseProps = {
+    code: { type: 'string', description: 'A1, A2, A3...' },
+    name: { type: 'string', description: 'Exercise name in professional S&C English — the exact terminology used by elite strength coaches. Use standard nomenclature: modifier + equipment + movement pattern + bilateral/unilateral qualifier. Examples: "Trap Bar Romanian Deadlift", "Goblet Squat (KB)", "Bulgarian Split Squat", "Single-Leg Hip Thrust (DB)", "Copenhagen Adductor Plank", "Pallof Press (Band)", "Dead Bug", "Bird-Dog", "Slider Hamstring Curl", "Box Jump (Bilateral)", "Countermovement Jump (CMJ)", "Plyo Push-Up", "Inverted Row (TRX)", "Landmine Press", "DB Incline Press", "KB Swing (Two-Hand)", "MB Rotational Throw", "Turkish Get-Up (KB)", "Spanish Squat ISO (Band)", "SL Eccentric Step-Down", "Y-T-W (Band)", "Band Pull-Apart", "Face Pull (Band)", "RKC Plank", "Hollow Body Hold", "Suitcase Carry (DB)". Never use Russian transliterations. Never invent non-standard names.' },
+    targetSets: {
+      type: 'array',
+      description: 'Целевые повторения по подходам, например ["5","5","5"] или ["8","8","8","8"]. 3–5 элементов.',
+      items: { type: 'string' },
+    },
+    weightNote: {
+      type: 'string',
+      description: 'Нагрузка на профессиональном языке S&C: %1ПМ с точными кг, RPE-цель. Если есть история — прогрессия: "83% 1ПМ = 108 кг (↑ с 104 кг)". Без объяснений — только цифры и цель.',
+    },
+    tempo: {
+      type: 'string',
+      description: 'Темп: Эксц-Пауза_низ-Конц-Пауза_верх. X = максимально быстро. Силовой тяжёлый: "3-1-X-0". Гипертрофия: "3-0-2-0". Взрывной/прыжок: "реактивный". Изометрия: "2-30сек-2-0". Профилактика: "контролируемый".',
+    },
+    autoReg: {
+      type: 'string',
+      description: 'Правило авторегуляции — СТРОГО 1 критерий остановки или снижения нагрузки. Только для основных силовых (A1, B1, C1). Русский язык. Без объяснений — только факт и действие. Примеры: "Скорость штанги падает → заканчивай подход.", "Потеря нейтрали поясницы → стоп.", "RPE достигает 9 → снизь нагрузку 5%.", "Отрыв пятки → прекрати повтор."',
+    },
+    cue: {
+      type: 'string',
+      description: 'ОДНА техническая подсказка, максимум 12 слов, на русском языке. Профессиональный язык тренера S&C: конкретный угол сустава, паттерн движения или точка активации. Императивно. Без "потому что", без "старайся", без воды. Примеры: "Колено над вторым пальцем — не заваливай внутрь.", "Нейтраль таза до старта.", "Тяни штангу к бедру — не к животу.", "Лопатки вниз до старта тяги.", "Шарнир в бедре — позвоночник нейтрален.", "Мягкое приземление — гасишь через бедро."',
+    },
+  };
+  const exerciseRequired = ['code', 'name', 'targetSets', 'tempo', 'cue'];
+
+  if (includeImgPrompt) {
+    exerciseProps.img_prompt = {
+      type: 'string',
+      description: 'English anatomical description for exercise illustration (20-35 words): body position, joint angles with degrees, equipment, movement phase. Be precise.',
+    };
+    exerciseRequired.push('img_prompt');
+  }
+
+  return {
+    name: 'build_session',
+    description: 'Структурированная тренировка в зале на один конкретный день, разбитая на блоки (круги/суперсеты).',
+    input_schema: {
+      type: 'object',
+      required: ['blocks', 'assessment', 'periodization_note', 'warnings'],
+      properties: {
+        assessment: {
+          type: 'string',
+          description: 'Краткая оценка состояния игрока на сегодня. СТРОГО 2 предложения, не больше. Укажи, если каких-то данных нет.',
+        },
+        periodization_note: {
+          type: 'string',
+          description: 'Логика тренировки относительно истории сессий: что было вчера/позавчера, почему этот вектор/акцент сегодня. СТРОГО 3 предложения, не больше.',
+        },
+        blocks: {
+          type: 'array',
+          description: 'Блоки тренировки по порядку. Каждый блок — круг/суперсет из 1–4 упражнений (A1→A2→A3→пауза→повтор круга). Обычно 5 блоков: A, B, C, D, E.',
+          items: {
+            type: 'object',
+            required: ['label', 'rest_note', 'exercises'],
+            properties: {
+              label: { type: 'string', description: 'Буква блока: A, B, C, D, E' },
+              rest_note: {
+                type: 'string',
+                description: 'Протокол отдыха. PAP-тройка (A/B/C): "10-15 сек X1→X2 (PAP), 90 сек X2→X3, 2-3 мин после тройки". PAP-пара (A): "10-15 сек A1→A2, 3 мин после пары". Прямые подходы: "2-3 мин". Профилактика (E): "30-45 сек между упражнениями".',
+              },
+              exercises: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: exerciseRequired,
+                  properties: exerciseProps,
                 },
               },
             },
           },
         },
-      },
-      warnings: {
-        type: 'string',
-        description: 'Предостережения и акценты тренеру на этой сессии (травмы, усталость, технические моменты).',
+        warnings: {
+          type: 'string',
+          description: 'Предостережения и акценты тренеру на этой сессии (травмы, усталость, технические моменты).',
+        },
       },
     },
-  },
-};
+  };
+}
 
-function avg(arr) {
+// Synchronous Haiku generator keeps the token-lean schema (no img_prompt).
+const SESSION_TOOL = buildSessionTool({ includeImgPrompt: false });
+
+export function avg(arr) {
   const vals = arr.filter(v => v != null && !Number.isNaN(v));
   if (!vals.length) return null;
   return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
 }
 
-function stdev(arr) {
+export function stdev(arr) {
   const vals = arr.filter(v => v != null && !Number.isNaN(v));
   if (vals.length < 2) return null;
   const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
@@ -514,7 +529,7 @@ function summarizeSnapshot(snap) {
   return lines.join('\n');
 }
 
-const SYSTEM_PROMPT = `Ты — элитный тренер S&C (силовая и кондиционная подготовка) профессионального волейбольного клуба «Заречье» (Суперлига России). Составляешь индивидуальные тренировки в зале под каждого игрока на основе данных мониторинга из дашборда тренера.
+export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (силовая и кондиционная подготовка) профессионального волейбольного клуба «Заречье» (Суперлига России). Составляешь индивидуальные тренировки в зале под каждого игрока на основе данных мониторинга из дашборда тренера.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 СТРУКТУРА КАЖДОЙ СЕССИИ — 5 БЛОКОВ
@@ -969,22 +984,24 @@ E4 — КОЛЕНО/СУХОЖИЛИЕ (обязательно всегда · 1
   "Потеря нейтрали поясницы — стоп."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ЯЗЫК — ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА
+LANGUAGE — MANDATORY RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-ПОЛЕ name — ТОЛЬКО РУССКИЙ ЯЗЫК:
-  ✅ "Болгарский сплит-присед", "Прыжок с контрдвижением (CMJ)", "Горизонтальная тяга (Inverted Row)"
-  ✅ "Жим Паллофа", "Копенгагенская планка", "Мёртвый жук", "Птица-Собака"
-  ✅ "Гоблет-присед с гирей", "Ягодичный мост на одной ноге", "Мах гирей"
-  ❌ ЗАПРЕЩЕНО: "Box Jump", "Dead Bug", "Bird-Dog", "Pallof Press", "Bulgarian Split Squat"
-  ❌ ЗАПРЕЩЕНО: "CMJ" без перевода, "SL RDL", "DB Press", "Inverted Row" без перевода
-  → Если нет устоявшегося русского — транслитерируй и добавь оригинал в скобках.
+FIELD name — ENGLISH ONLY (professional S&C terminology):
+  ✅ "Bulgarian Split Squat", "Trap Bar Romanian Deadlift", "Single-Leg Hip Thrust (DB)"
+  ✅ "Goblet Squat (KB)", "Copenhagen Adductor Plank", "Pallof Press (Band)", "Dead Bug", "Bird-Dog"
+  ✅ "Box Jump (Bilateral)", "Countermovement Jump (CMJ)", "Slider Hamstring Curl"
+  ❌ NEVER Russian transliterations or mixed language names.
 
-ПОЛЯ cue, autoReg, weightNote — профессиональный язык S&C тренера:
-  ✅ Технические термины: "нейтраль поясницы", "депрессия лопатки", "hip hinge", "амортизация в бедре"
-  ✅ Императивно, без объяснений: "Толкай пол.", "Лопатки вниз до старта.", "Контролируй 5 сек вниз."
-  ✅ Точные цифры: "83% 1ПМ = 108 кг", "RPE 8", "5 сек эксцентрик"
-  ❌ Без "потому что...", без "это активирует...", без "хорошая техника", без "будь аккуратен"
+ПОЛЯ cue, autoReg — русский язык, профессиональный S&C, без воды:
+  ✅ Конкретный угол/паттерн/активация: "Колено над вторым пальцем.", "Шарнир в бедре.", "Нейтраль таза до старта."
+  ✅ Императивно, без объяснений: "Тяни к бедру.", "Лопатки вниз до старта.", "Гасишь через бедро."
+  ✅ AutoReg — один критерий: "Скорость падает → стоп.", "RPE 9 → снизь 5%."
+  ❌ Без "потому что", без "старайся", без "это активирует", без воды.
+
+ПОЛЕ weightNote — профессиональный S&C, только цифры:
+  ✅ Точная нагрузка: "83% 1ПМ = 108 кг (↑ с 104 кг)", "RPE 8", "Вес тела + 10 кг жилет"
+  ❌ Без объяснений, без текста.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ТЕМП (поле tempo — обязательно для каждого упражнения)
@@ -1042,6 +1059,61 @@ E4 — КОЛЕНО/СУХОЖИЛИЕ (обязательно всегда · 1
 
 Заполни структуру через инструмент build_session.`;
 
+// Fetches all player data and builds the full SYSTEM/userPrompt for one session.
+// Shared by the synchronous generator (this file) and the async Batch-API generator
+// (generate-async.js) so both produce byte-identical prompts. Returns either
+// { error, status } on failure or { snapshot, userPrompt, dataSummary, targetDate, dayGoal }.
+export async function buildGenerationInputs(body) {
+  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', notes = '', warmupSummary = '', teamUsedExercises = [] } = body || {};
+  if (!playerId) return { error: 'playerId required', status: 400 };
+
+  const today = todayISO();
+  const targetDate = date || today;
+  const dayAfterTomorrow = new Date(today + 'T12:00:00');
+  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+  if (targetDate >= dayAfterTomorrow.toISOString().slice(0, 10)) {
+    return { error: 'Дата не может быть позже завтрашнего дня', status: 400 };
+  }
+
+  const [snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions] = await Promise.all([
+    getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate),
+    getRecentSessionSummaries(String(playerId), 6).catch(() => []),
+    redis('get', 'schedule:team').catch(() => null),
+    redis('get', `coach:1rm:${String(playerId)}`).catch(() => null),
+    (async () => {
+      const dates = Array.from({ length: 5 }, (_, i) => {
+        const d = new Date(targetDate + 'T12:00:00');
+        d.setDate(d.getDate() - i);
+        return d.toISOString().slice(0, 10);
+      });
+      const raws = await redisPipeline(dates.map(dateStr => ['get', `coach:feedback:${String(playerId)}:${dateStr}`])).catch(() => []);
+      return dates.flatMap((dateStr, i) => {
+        const raw = raws[i];
+        if (!raw) return [];
+        try { return [{ date: dateStr, ...(typeof raw === 'string' ? JSON.parse(raw) : raw) }]; }
+        catch (_) { return []; }
+      });
+    })(),
+    redis('get', `coach:restrictions:${String(playerId)}`).catch(() => null),
+  ]);
+
+  if (!snapshot) return { error: 'Player not found', status: 404 };
+
+  let { userPrompt, dataSummary } = buildUserPrompt({
+    snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks,
+    targetDate, dayGoal, focus, notes, warmupSummary, teamUsedExercises,
+  });
+
+  // Append player contraindications to the user prompt (keeps cached SYSTEM_PROMPT intact).
+  const restrictions = rawRestrictions
+    ? (typeof rawRestrictions === 'string' ? JSON.parse(rawRestrictions) : rawRestrictions)
+    : [];
+  const restrictionsText = restrictionsToPrompt(Array.isArray(restrictions) ? restrictions : []);
+  if (restrictionsText) userPrompt += restrictionsText;
+
+  return { snapshot, userPrompt, dataSummary, targetDate, dayGoal };
+}
+
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -1055,43 +1127,61 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: 'ANTHROPIC_API_KEY не настроен в переменных среды Vercel' });
   }
 
-  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', notes = '', warmupSummary = '', teamUsedExercises = [] } = req.body || {};
-  if (!playerId) return res.status(400).json({ error: 'playerId required' });
+  const inputs = await buildGenerationInputs(req.body || {});
+  if (inputs.error) return res.status(inputs.status || 400).json({ error: inputs.error });
+  const { snapshot, userPrompt, dataSummary, targetDate } = inputs;
+  const { dayGoal: bodyDayGoal = '' } = req.body || {};
 
-  const today = todayISO();
-  const targetDate = date || today;
-  // Allow up to tomorrow so coaches can plan the next session in the evening
-  const dayAfterTomorrow = new Date(today + 'T12:00:00');
-  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
-  if (targetDate >= dayAfterTomorrow.toISOString().slice(0, 10)) {
-    return res.status(400).json({ error: 'Дата не может быть позже завтрашнего дня' });
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 6500,
+        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+        messages: [{ role: 'user', content: userPrompt }],
+        tools: [SESSION_TOOL],
+        tool_choice: { type: 'tool', name: 'build_session' },
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      return res.status(502).json({ error: err.error?.message || `API error ${response.status}` });
+    }
+
+    const data = await response.json();
+    console.log('GEN stop_reason:', data.stop_reason, 'usage:', JSON.stringify(data.usage));
+    const toolUse = data.content?.find(c => c.type === 'tool_use' && c.name === 'build_session');
+    if (!toolUse) {
+      console.log('GEN no tool_use, content types:', data.content?.map(c => c.type));
+      return res.status(502).json({ error: 'Модель не вернула структурированную тренировку' });
+    }
+    console.log('GEN blocks:', toolUse.input?.blocks?.length,
+      'ex per block:', toolUse.input?.blocks?.map(b => b.exercises?.length));
+
+    return res.status(200).json({
+      session: toolUse.input,
+      player: snapshot.player,
+      dataSummary,
+      date: targetDate,
+      dayGoal: bodyDayGoal,
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
+}
 
-  // Fetch player bio-metrics, session history, team schedule, 1RM and last 5 feedbacks in parallel
-  const [snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks] = await Promise.all([
-    getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate),
-    getRecentSessionSummaries(String(playerId), 10).catch(() => []),
-    redis('get', 'schedule:team').catch(() => null),
-    redis('get', `coach:1rm:${String(playerId)}`).catch(() => null),
-    (async () => {
-      const results = [];
-      for (let i = 0; i < 5; i++) {
-        const d = new Date(targetDate + 'T12:00:00');
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().slice(0, 10);
-        const raw = await redis('get', `coach:feedback:${String(playerId)}:${dateStr}`).catch(() => null);
-        if (raw) {
-          try {
-            const fb = typeof raw === 'string' ? JSON.parse(raw) : raw;
-            results.push({ date: dateStr, ...fb });
-          } catch (_) {}
-        }
-      }
-      return results;
-    })(),
-  ]);
-
-  if (!snapshot) return res.status(404).json({ error: 'Player not found' });
+// ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
+function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', notes = '', warmupSummary = '', teamUsedExercises = [] }) {
+  const dataSummary = summarizeSnapshot(snapshot);
+  const focusLabel = FOCUS_LABELS[focus] || focus;
 
   // Compute schedule proximity context
   function shiftDate(d, n) {
@@ -1141,9 +1231,6 @@ export default async function handler(req, res) {
   } catch (_) {
     // Schedule unavailable — continue without it
   }
-
-  const dataSummary = summarizeSnapshot(snapshot);
-  const focusLabel = FOCUS_LABELS[focus] || focus;
 
   // 1RM context
   const oneRM = raw1RM ? (() => { try { return typeof raw1RM === 'string' ? JSON.parse(raw1RM) : raw1RM; } catch(_) { return null; } })() : null;
@@ -1389,44 +1476,5 @@ ${notes ? `Комментарии тренера: ${notes}` : ''}
 
 Составь ОДНУ тренировку в зале на ${targetDate} — не микроцикл, а конкретно эту сессию. Обязательно заполни все поля: tempo для каждого упражнения, rest_note для каждого блока, E-блок строго 3 упражнения (E1 + E4 всегда, третий слот по позиции). Для каждого упражнения заполни img_prompt кратким английским анатомическим описанием.`;
 
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'prompt-caching-2024-07-31',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 5000,
-        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-        messages: [{ role: 'user', content: userPrompt }],
-        tools: [SESSION_TOOL],
-        tool_choice: { type: 'tool', name: 'build_session' },
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      return res.status(502).json({ error: err.error?.message || `API error ${response.status}` });
-    }
-
-    const data = await response.json();
-    const toolUse = data.content?.find(c => c.type === 'tool_use' && c.name === 'build_session');
-    if (!toolUse) {
-      return res.status(502).json({ error: 'Модель не вернула структурированную тренировку' });
-    }
-
-    return res.status(200).json({
-      session: toolUse.input,
-      player: snapshot.player,
-      dataSummary,
-      date: targetDate,
-      dayGoal,
-    });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
-  }
+  return { userPrompt, dataSummary };
 }

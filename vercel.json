@@ -1,19 +1,16 @@
 {
   "functions": {
-    "pages/api/programs/generate.js": {
-      "maxDuration": 60
-    },
-    "pages/api/programs/generate-warmup.js": {
-      "maxDuration": 60
-    },
-    "pages/api/exercises/image.js": {
-      "maxDuration": 60
-    },
-    "pages/api/exercises/image-public.js": {
-      "maxDuration": 60
-    },
-    "pages/api/programs/regenerate-exercise.js": {
-      "maxDuration": 60
-    }
+    "pages/api/programs/generate.js": { "maxDuration": 60 },
+    "pages/api/programs/generate-async.js": { "maxDuration": 15 },
+    "pages/api/programs/generate-status.js": { "maxDuration": 30 },
+    "pages/api/programs/generate-warmup.js": { "maxDuration": 60 },
+    "pages/api/programs/regenerate-exercise.js": { "maxDuration": 60 },
+    "pages/api/exercises/youtube-search.js": { "maxDuration": 10 },
+    "pages/api/exercises/manual-image.js": { "maxDuration": 15 },
+    "pages/api/exercises/manual-video.js": { "maxDuration": 10 },
+    "pages/api/exercises/library.js": { "maxDuration": 20 },
+    "pages/api/exercises/migrate.js": { "maxDuration": 60 },
+    "pages/api/exercises/sync-videos.js": { "maxDuration": 60 },
+    "pages/api/exercises/player-media.js": { "maxDuration": 15 }
   }
 }

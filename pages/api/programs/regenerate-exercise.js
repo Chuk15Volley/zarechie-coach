@@ -62,11 +62,10 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
 • Сохрани: code="${exercise.code}", tempo="${exercise.tempo || ''}"
 • НЕ используй упражнения, уже стоящие в программе: ${others}
 • ЗАПРЕЩЕНО навсегда: ${BANNED}
-• ЯЗЫК: поле name — ТОЛЬКО на русском ("Болгарский сплит-присед", "Тяга с трэп-штангой", "Прыжок на ящик"). Поле cue — профессиональный язык тренера S&C, императивно, конкретный паттерн движения или угол сустава, без объяснений.
-• img_prompt: 20-35 слов на английском, позиция тела в ключевой фазе движения, суставные углы, оборудование
+• ЯЗЫК: поле name — профессиональный английский S&C ("Bulgarian Split Squat", "Trap Bar Deadlift", "Box Jump (Bilateral)"). Поле cue — одна фраза, максимум 12 слов, РУССКИЙ язык, конкретный паттерн/угол, без воды ("Колено над вторым пальцем.", "Шарнир в бедре — позвоночник нейтрален.", "Нейтраль таза до старта."). Поле autoReg — один критерий остановки, РУССКИЙ язык ("Скорость падает → стоп.", "RPE 9 → снизь 5%.").
 
 ОТВЕТ — только JSON, без markdown, без пояснений:
-{"code":"${exercise.code}","name":"...","tempo":"${exercise.tempo || ''}","targetSets":${JSON.stringify(exercise.targetSets || ['3x8'])},"weightNote":"${exercise.weightNote || ''}","cue":"...","autoReg":"${exercise.autoReg || ''}","img_prompt":"..."}`;
+{"code":"${exercise.code}","name":"...","tempo":"${exercise.tempo || ''}","targetSets":${JSON.stringify(exercise.targetSets || ['3x8'])},"weightNote":"${exercise.weightNote || ''}","cue":"...","autoReg":"${exercise.autoReg || ''}"}`;
 
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (!anthropicKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY не настроен' });

@@ -28,6 +28,17 @@ export default async function handler(req, res) {
       if (!Number.isNaN(v) && v > 0) clean[field] = v;
     }
     await redis('set', `coach:1rm:${playerId}`, JSON.stringify(clean));
+
+    // Append to history (one entry per day, last 20 kept).
+    const histRaw = await redis('get', `coach:rm_history:${playerId}`).catch(() => null);
+    const history = histRaw ? (typeof histRaw === 'string' ? JSON.parse(histRaw) : histRaw) : [];
+    const today = new Date().toISOString().slice(0, 10);
+    const todayIdx = history.findIndex(h => h.date === today);
+    const entry = { date: today, ...clean };
+    if (todayIdx >= 0) history[todayIdx] = entry; else history.push(entry);
+    const trimmed = history.slice(-20);
+    await redis('set', `coach:rm_history:${playerId}`, JSON.stringify(trimmed)).catch(() => {});
+
     return res.status(200).json({ ok: true });
   }
 
