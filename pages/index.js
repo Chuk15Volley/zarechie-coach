@@ -1910,15 +1910,18 @@ export default function Home() {
       if (forceSync) {
         const sr = await fetch('/api/nkperf/sync', { method: 'POST', headers: { 'x-api-key': apiKey } });
         const sd = await sr.json().catch(() => ({}));
+        if (!sr.ok) throw new Error(sd.error || `Ошибка NK Performance (${sr.status})`);
         if (sr.ok && Array.isArray(sd.players)) { setPlayers(sd.players); return; }
       }
       const r = await fetch('/api/nkperf/sync', { headers: { 'x-api-key': apiKey } });
       const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `Ошибка NK Performance (${r.status})`);
       const list = data.players || [];
       if (!list.length) {
         // Auto-sync on first load
         const sr2 = await fetch('/api/nkperf/sync', { method: 'POST', headers: { 'x-api-key': apiKey } });
         const sd2 = await sr2.json().catch(() => ({}));
+        if (!sr2.ok) throw new Error(sd2.error || `Ошибка NK Performance (${sr2.status})`);
         setPlayers(sd2.players || []);
       } else {
         setPlayers(list);
