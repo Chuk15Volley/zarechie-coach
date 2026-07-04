@@ -2682,28 +2682,23 @@ export default function Home() {
         return;
       }
 
-      // ── Gym: async generation path ──
+      // ── Gym: synchronous OpenAI generation path ──
       setAutoSaved(false);
       const warmupSummary = todayWarmup ? summarizeWarmupForGym(todayWarmup) : '';
-      const submitRes = await fetch('/api/programs/generate-async', {
+      const res = await fetch('/api/programs/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
         body: JSON.stringify({ playerId, date, dayGoal, days, focus, notes, warmupSummary, coachRecovery: recoveryStatus, workspace }),
       });
-      let submitData;
-      try { submitData = await submitRes.json(); } catch (_) {
+      let data;
+      try { data = await res.json(); } catch (_) {
         throw new Error('Ошибка соединения — попробуйте ещё раз');
       }
-      if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
-      const newBatchId = submitData.batchId;
-      if (!newBatchId) throw new Error('Сервер не вернул идентификатор задачи');
-      // Persist so a tab reload can resume polling and still retrieve the session.
-      setBatchId(newBatchId);
-      try {
-        localStorage.setItem('pending_batch', JSON.stringify({ batchId: newBatchId, playerId, date, focusLabel: fl }));
-      } catch (_) {}
-
-      await pollBatchResult(newBatchId, fl);
+      if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
+      setSession(data.session);
+      setMeta({ player: data.player, dataSummary: data.dataSummary, date: data.date, dayGoal: data.dayGoal || '', focusLabel: fl, sessionType: 'gym' });
+      setShowSummary(false);
+      stopGenProgress(true);
     } catch (err) {
       setError(err.message);
       stopGenProgress(false);
