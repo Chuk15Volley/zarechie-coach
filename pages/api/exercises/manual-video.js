@@ -8,7 +8,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
-import { resolveId, getCard, setVideo, deleteVideo } from '../../../lib/exerciseLibrary';
+import { normalize, resolveId, getCard, setVideo, deleteVideo } from '../../../lib/exerciseLibrary';
 
 export const config = { maxDuration: 10 };
 
@@ -24,7 +24,9 @@ export default async function handler(req, res) {
   if (!name) return res.status(400).json({ error: 'name required' });
 
   if (req.method === 'GET') {
-    const { canonicalId } = await resolveId(name);
+    // Use deterministic normalize() for reads — avoids polluting ex:alias with every lookup.
+    // resolveId() is reserved for writes (POST/DELETE) where we want fuzzy dedup.
+    const { canonicalId } = normalize(name);
     const card = await getCard(canonicalId);
     if (card?.video) return res.status(200).json({ url: card.video });
 

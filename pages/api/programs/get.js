@@ -4,6 +4,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { sessionKey } from '../../../lib/workspacePrefix';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
@@ -13,13 +14,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { playerId, date } = req.query || {};
+  const { playerId, date, workspace = 'zarechie' } = req.query || {};
   if (!playerId || !date) {
     return res.status(400).json({ error: 'playerId and date are required' });
   }
 
   try {
-    const raw = await redis('get', `coach:session:${playerId}:${date}`);
+    const raw = await redis('get', sessionKey(workspace, playerId, date));
     if (!raw) return res.status(200).json({ record: null });
     const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
     return res.status(200).json({ record });

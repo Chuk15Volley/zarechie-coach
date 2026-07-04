@@ -38,6 +38,7 @@ export default async function handler(req, res) {
       title: c.title || c.canonicalId,
       hasImage: !!c.image,
       video: c.video || null,
+      category: c.category || '',
       createdAt: c.createdAt || null,
       updatedAt: c.updatedAt || null,
     }));

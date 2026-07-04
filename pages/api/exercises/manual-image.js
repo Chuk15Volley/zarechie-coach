@@ -7,13 +7,13 @@
 // Images are stored as base64 data URLs in Redis (no Vercel Blob). The client
 // pre-compresses to ≤512×512 JPEG (typically 30-80 KB) before sending.
 //
-// Backed by lib/exerciseLibrary: names are normalised + fuzzy-matched so the same
-// exercise spelled differently maps to one card. Legacy exercise:manual:{slug}
-// keys are still read as a fallback on a miss.
+// All operations use the DERIVED canonicalId (from normalize()) — NOT fuzzy-matched.
+// This prevents a new exercise from accidentally using another exercise's image slot.
+// Legacy exercise:manual:{slug} keys are still read as a fallback on a miss.
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
-import { resolveId, getCard, setImage, deleteImage } from '../../../lib/exerciseLibrary';
+import { normalize, getCard, setImage } from '../../../lib/exerciseLibrary';
 
 export const config = { api: { bodyParser: { sizeLimit: '4mb' } }, maxDuration: 15 };
 
@@ -27,7 +27,8 @@ function streamDataUrl(res, dataUrl) {
   if (!m) return false;
   const buf = Buffer.from(m[2], 'base64');
   res.setHeader('Content-Type', m[1]);
-  res.setHeader('Cache-Control', 'private, max-age=86400');
+  // no-cache so the browser always revalidates; avoids stale image after delete+re-upload
+  res.setHeader('Cache-Control', 'private, no-cache');
   res.send(buf);
   return true;
 }
@@ -38,9 +39,11 @@ export default async function handler(req, res) {
   const nameParam = (req.query.name || req.body?.name || '').trim();
   if (!nameParam) return res.status(400).json({ error: 'name required' });
 
+  // Use derived canonicalId (no fuzzy match) so each exercise owns its own image slot.
+  const { normName, canonicalId } = normalize(nameParam);
+
   // ── SERVE (img src) ──────────────────────────────────────────────────────
   if (req.method === 'GET' && req.query.serve === '1') {
-    const { canonicalId } = await resolveId(nameParam);
     const card = await getCard(canonicalId);
     if (card?.image && streamDataUrl(res, card.image)) return;
 
@@ -53,7 +56,6 @@ export default async function handler(req, res) {
 
   // ── GET (check existence) ────────────────────────────────────────────────
   if (req.method === 'GET') {
-    const { canonicalId } = await resolveId(nameParam);
     const card = await getCard(canonicalId);
     if (card?.image) return res.status(200).json({ hasImage: true });
 
@@ -63,7 +65,7 @@ export default async function handler(req, res) {
 
   // ── DELETE ───────────────────────────────────────────────────────────────
   if (req.method === 'DELETE') {
-    await deleteImage(nameParam).catch(() => {});
+    await redis('hdel', `ex:lib:${canonicalId}`, 'image').catch(() => {});
     // Also drop any stale legacy key so it can't shadow the deletion.
     await redis('del', `exercise:manual:${legacySlug(nameParam)}`).catch(() => {});
     return res.status(200).json({ ok: true });
@@ -76,6 +78,10 @@ export default async function handler(req, res) {
   if (!imageData) return res.status(400).json({ error: 'imageData required' });
 
   try {
+    // Pin alias to the derived canonicalId so that resolveId() in other code
+    // (e.g. video API) also maps this exercise name to the correct card,
+    // overriding any fuzzy match that may have been registered previously.
+    await redis('hset', 'ex:alias', normName, canonicalId).catch(() => {});
     await setImage(nameParam, imageData);
     return res.status(200).json({ ok: true });
   } catch (e) {
