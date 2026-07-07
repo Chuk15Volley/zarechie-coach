@@ -6,6 +6,8 @@ import { useState, useEffect, useRef, Component } from 'react';
 import Head from 'next/head';
 import { redis } from '../../lib/redis';
 import { findExerciseUrl } from '../../lib/exerciseBank';
+import { resolveShareToken } from '../../lib/shareToken';
+import { pfx, sessionKey, sessionsKey } from '../../lib/workspacePrefix';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -51,29 +53,30 @@ export async function getServerSideProps({ params }) {
   const token = params.id;
   const date = todayISO();
 
-  // Resolve token → playerId (never expose playerId to the client)
-  const playerId = await redis('get', `coach:share_token:${token}`).catch(() => null);
-  if (!playerId) {
+  // Resolve token → playerId + workspace (never expose playerId to the client)
+  const resolved = await resolveShareToken(token);
+  if (!resolved?.playerId) {
     return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: true, sessionDates: [], playerPhoto: null, serverLog: null } };
   }
+  const { playerId, workspace } = resolved;
 
   const [allDates, playerPhoto] = await Promise.all([
-    redis('zrange', `coach:sessions:${playerId}`, 0, -1).catch(() => []),
+    redis('zrange', sessionsKey(workspace, playerId), 0, -1).catch(() => []),
     redis('get', `player:photo:${playerId}`).catch(() => null),
   ]);
   const sessionDates = [...(allDates || [])].reverse();
 
   let record = null;
-  const rawToday = await redis('get', `coach:session:${playerId}:${date}`).catch(() => null);
+  const rawToday = await redis('get', sessionKey(workspace, playerId, date)).catch(() => null);
 
   if (rawToday) {
     try { record = typeof rawToday === 'string' ? JSON.parse(rawToday) : rawToday; } catch (_) {}
   }
 
   if (!record) {
-    const dates = await redis('zrange', `coach:sessions:${playerId}`, -1, -1).catch(() => []);
+    const dates = await redis('zrange', sessionsKey(workspace, playerId), -1, -1).catch(() => []);
     if (dates?.length) {
-      const rawLast = await redis('get', `coach:session:${playerId}:${dates[0]}`).catch(() => null);
+      const rawLast = await redis('get', sessionKey(workspace, playerId, dates[0])).catch(() => null);
       if (rawLast) { try { record = typeof rawLast === 'string' ? JSON.parse(rawLast) : rawLast; } catch (_) {} }
     }
   }
@@ -83,7 +86,7 @@ export async function getServerSideProps({ params }) {
   }
 
   const resolvedDate = record.date || date;
-  const logRaw = await redis('get', `coach:log:${playerId}:${resolvedDate}`).catch(() => null);
+  const logRaw = await redis('get', `${pfx(workspace)}:log:${playerId}:${resolvedDate}`).catch(() => null);
   const serverLog = logRaw ? (typeof logRaw === 'string' ? JSON.parse(logRaw) : logRaw) : null;
 
   return {

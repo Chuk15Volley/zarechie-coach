@@ -6,26 +6,17 @@
 import { redis, redisPipeline } from '../../../lib/redis';
 import { normExName } from '../players/progression';
 import { updateExerciseMemory, linkPainToExercises } from '../../../lib/exerciseMemory';
+import { resolveShareToken } from '../../../lib/shareToken';
+import { exweightKey, feedbackKey, sessionKey } from '../../../lib/workspacePrefix';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   const { token, date, rpe, feel, note, doms, soreness, painAreas = [] } = req.body || {};
   if (!token || !date || !rpe) return res.status(400).json({ error: 'token, date, rpe required' });
 
-  // coach:share_token:{token} normally holds a bare playerId string, but tolerate a
-  // JSON { playerId } object too (matches the ICS feed's resolution logic).
-  const tokenRaw = await redis('get', `coach:share_token:${token}`).catch(() => null);
-  if (!tokenRaw) return res.status(401).json({ error: 'invalid token' });
-  let playerId = null;
-  if (typeof tokenRaw === 'object' && tokenRaw.playerId != null) {
-    playerId = String(tokenRaw.playerId);
-  } else if (typeof tokenRaw === 'string' && tokenRaw.startsWith('{')) {
-    try { const o = JSON.parse(tokenRaw); playerId = o && o.playerId != null ? String(o.playerId) : String(tokenRaw); }
-    catch { playerId = String(tokenRaw); }
-  } else {
-    playerId = String(tokenRaw);
-  }
-  if (!playerId) return res.status(401).json({ error: 'invalid token' });
+  const resolved = await resolveShareToken(token);
+  if (!resolved?.playerId) return res.status(401).json({ error: 'invalid token' });
+  const { playerId, workspace } = resolved;
 
   const rpeNum = Number(rpe);
   const record = {
@@ -37,7 +28,7 @@ export default async function handler(req, res) {
 
   // Load the session for this date to find which exercises had weight data.
   // Add RPE to each exercise's progression record so suggestKg can use it next time.
-  const sessionRaw = await redis('get', `coach:session:${playerId}:${date}`).catch(() => null);
+  const sessionRaw = await redis('get', sessionKey(workspace, playerId, date)).catch(() => null);
   const rpeUpdateCmds = [];
   const allExercises = [];
   if (sessionRaw) {
@@ -48,7 +39,7 @@ export default async function handler(req, res) {
           if (ex.name) allExercises.push(ex);
           const kg = parseFloat(ex.weightKg);
           if (!kg || kg <= 0 || !ex.name) continue;
-          const key = `coach:exweight:${playerId}:${normExName(ex.name)}`;
+          const key = exweightKey(workspace, playerId, normExName(ex.name));
           rpeUpdateCmds.push(['HSET', key, 'rpe', String(rpeNum)]);
         }
       }
@@ -57,19 +48,19 @@ export default async function handler(req, res) {
 
   // Per-player exercise-response memory (avg RPE / feel per exercise).
   if (allExercises.length) {
-    await updateExerciseMemory(playerId, allExercises, rpeNum, feel, date, 'zarechie').catch(() => {});
+    await updateExerciseMemory(playerId, allExercises, rpeNum, feel, date, workspace).catch(() => {});
   }
 
   const cmds = [
-    ['SET', `coach:feedback:${playerId}:${date}`, JSON.stringify(record)],
+    ['SET', feedbackKey(workspace, playerId, date), JSON.stringify(record)],
     ...rpeUpdateCmds,
   ];
   await redisPipeline(cmds).catch(() =>
-    redis('set', `coach:feedback:${playerId}:${date}`, JSON.stringify(record))
+    redis('set', feedbackKey(workspace, playerId, date), JSON.stringify(record))
   );
 
   // #13 — Link evening pain/DOMS back onto yesterday's exercises (fire-and-forget).
-  linkPainToExercises(playerId, painAreas || [], Number(doms ?? soreness ?? 0) || 0, date, 'zarechie').catch(() => {});
+  linkPainToExercises(playerId, painAreas || [], Number(doms ?? soreness ?? 0) || 0, date, workspace).catch(() => {});
 
   return res.status(200).json({ ok: true });
 }

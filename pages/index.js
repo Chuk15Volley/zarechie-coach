@@ -2366,7 +2366,7 @@ export default function Home() {
       await fetch('/api/programs/copy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ fromPlayerId: playerId, toPlayerId: targetPlayerId, date }),
+        body: JSON.stringify({ fromPlayerId: playerId, toPlayerId: targetPlayerId, date, workspace }),
       });
       const target = players.find(p => p.id === targetPlayerId);
       setCopyDone(target?.name || 'Игрок');
@@ -3790,7 +3790,7 @@ export default function Home() {
                       const r = await fetch('/api/players/share-token', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-                        body: JSON.stringify({ playerId: p.id }),
+                        body: JSON.stringify({ playerId: p.id, workspace }),
                       });
                       const d = await r.json();
                       if (!d.token) return;
@@ -3956,7 +3956,7 @@ export default function Home() {
                           const r = await fetch('/api/players/share-token', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-                            body: JSON.stringify({ playerId: p.id }),
+                            body: JSON.stringify({ playerId: p.id, workspace }),
                           });
                           const d = await r.json();
                           if (!d.token) return;

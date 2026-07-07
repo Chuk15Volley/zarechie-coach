@@ -1,12 +1,13 @@
 // pages/api/exercises/player-media.js
 // Public-facing exercise media endpoint for player pages.
-// Auth: valid share token (coach:share_token:{token} exists in Redis) — not the trainer key.
+// Auth: valid player share token — not the trainer key.
 //
 // GET ?token=xxx&name=yyy          → { hasImage, video }
 // GET ?token=xxx&name=yyy&serve=1  → stream image bytes
 
 import { redis } from '../../../lib/redis';
 import { resolveId, getCard } from '../../../lib/exerciseLibrary';
+import { resolveShareToken } from '../../../lib/shareToken';
 
 export const config = { maxDuration: 15 };
 
@@ -16,8 +17,8 @@ function legacySlug(name) {
 
 async function isValidToken(token) {
   if (!token) return false;
-  const playerId = await redis('get', `coach:share_token:${token}`).catch(() => null);
-  return !!playerId;
+  const resolved = await resolveShareToken(token);
+  return !!resolved?.playerId;
 }
 
 function streamDataUrl(res, dataUrl) {
