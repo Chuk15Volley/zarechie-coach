@@ -1996,11 +1996,11 @@ export default function Home() {
   useEffect(() => {
     setLsiValue('');
     if (!apiKey || !playerId) return;
-    fetch(`/api/players/lsi?playerId=${encodeURIComponent(playerId)}`, { headers: { 'x-api-key': apiKey } })
+    fetch(`/api/players/lsi?playerId=${encodeURIComponent(playerId)}&workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } })
       .then(r => r.json())
       .then(d => { if (d && d.lsi != null) setLsiValue(String(d.lsi)); })
       .catch(() => {});
-  }, [apiKey, playerId]);
+  }, [apiKey, playerId, workspace]);
 
   // Persist LSI to Redis (debounced on blur/change via the handler below)
   const saveLSI = useCallback((val) => {
@@ -2008,9 +2008,9 @@ export default function Home() {
     fetch('/api/players/lsi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ playerId, lsi: val === '' ? null : Number(val) }),
+      body: JSON.stringify({ playerId, lsi: val === '' ? null : Number(val), workspace }),
     }).catch(() => {});
-  }, [apiKey, playerId]);
+  }, [apiKey, playerId, workspace]);
 
   const handleLSIChange = useCallback((val) => {
     setLsiValue(val);
