@@ -1829,11 +1829,13 @@ export default function Home() {
   }
 
   // Workspace: 'zarechie' | 'nkperf'
-  const [workspace, setWorkspace] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('workspace') || 'zarechie';
-    return 'zarechie';
-  });
+  const [workspace, setWorkspace] = useState('zarechie');
   const [nkSyncing, setNkSyncing] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('workspace');
+    if (saved === 'nkperf') setWorkspace('nkperf');
+  }, []);
 
   // Team readiness (Feature 1)
   const [readinessDate, setReadinessDate] = useState(() => todayISO());
