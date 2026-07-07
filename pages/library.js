@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { findExerciseUrl } from '../lib/exerciseBank';
 
+const LIBRARY_AI_ENABLED = process.env.NEXT_PUBLIC_ENABLE_LIBRARY_AI === 'true';
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 function extractYtId(url) {
   if (!url) return null;
@@ -420,7 +422,7 @@ export default function LibraryPage() {
   const [sort, setSort] = useState('updated'); // 'updated' | 'alpha' | 'nophoto'
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'list'
 
-  // AI actions
+  // Optional AI actions
   const [aiRenaming, setAiRenaming] = useState(false);
   const [aiRenameResult, setAiRenameResult] = useState(null);
   const [aiClassifying, setAiClassifying] = useState(false);
@@ -494,7 +496,7 @@ export default function LibraryPage() {
   };
 
   const handleAiRename = async () => {
-    if (!apiKey || aiRenaming) return;
+    if (!LIBRARY_AI_ENABLED || !apiKey || aiRenaming) return;
     setAiRenaming(true);
     setAiRenameResult(null);
     setError('');
@@ -514,7 +516,7 @@ export default function LibraryPage() {
   };
 
   const handleAiClassify = async () => {
-    if (!apiKey || aiClassifying) return;
+    if (!LIBRARY_AI_ENABLED || !apiKey || aiClassifying) return;
     setAiClassifying(true);
     setAiClassifyResult(null);
     setError('');
@@ -593,27 +595,31 @@ export default function LibraryPage() {
 
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2">
-              {/* AI Classify */}
-              <button
-                type="button"
-                onClick={handleAiClassify}
-                disabled={!apiKey || aiClassifying || noneCount === 0}
-                className="rounded-xl border border-amber-500/30 bg-amber-500/[0.07] px-3.5 py-2 text-[12px] font-semibold text-amber-400 transition hover:border-amber-500/50 hover:bg-amber-500/[0.12] disabled:opacity-40"
-                title={noneCount === 0 ? 'Все упражнения уже классифицированы' : `Классифицировать ${noneCount} упражнений через AI`}
-              >
-                {aiClassifying ? 'Классификация…' : `AI Классифицировать${noneCount > 0 ? ` (${noneCount})` : ''}`}
-              </button>
+              {LIBRARY_AI_ENABLED && (
+                <>
+                  {/* AI Classify */}
+                  <button
+                    type="button"
+                    onClick={handleAiClassify}
+                    disabled={!apiKey || aiClassifying || noneCount === 0}
+                    className="rounded-xl border border-amber-500/30 bg-amber-500/[0.07] px-3.5 py-2 text-[12px] font-semibold text-amber-400 transition hover:border-amber-500/50 hover:bg-amber-500/[0.12] disabled:opacity-40"
+                    title={noneCount === 0 ? 'Все упражнения уже классифицированы' : `Классифицировать ${noneCount} упражнений через AI`}
+                  >
+                    {aiClassifying ? 'Классификация…' : `AI Классифицировать${noneCount > 0 ? ` (${noneCount})` : ''}`}
+                  </button>
 
-              {/* AI Rename */}
-              <button
-                type="button"
-                onClick={handleAiRename}
-                disabled={!apiKey || aiRenaming}
-                className="rounded-xl border border-accent/30 bg-accent/[0.07] px-3.5 py-2 text-[12px] font-semibold text-accent transition hover:border-accent/50 hover:bg-accent/[0.12] disabled:opacity-40"
-                title="Перевести русские названия в проф. английский через AI"
-              >
-                {aiRenaming ? 'Перевожу…' : 'AI → English'}
-              </button>
+                  {/* AI Rename */}
+                  <button
+                    type="button"
+                    onClick={handleAiRename}
+                    disabled={!apiKey || aiRenaming}
+                    className="rounded-xl border border-accent/30 bg-accent/[0.07] px-3.5 py-2 text-[12px] font-semibold text-accent transition hover:border-accent/50 hover:bg-accent/[0.12] disabled:opacity-40"
+                    title="Перевести русские названия в проф. английский через AI"
+                  >
+                    {aiRenaming ? 'Перевожу…' : 'AI → English'}
+                  </button>
+                </>
+              )}
 
               {/* Dedupe */}
               <button
@@ -733,7 +739,7 @@ export default function LibraryPage() {
               </div>
 
               {/* ── Uncategorized hint ── */}
-              {tab === 'all' && noneCount > 0 && (
+              {tab === 'all' && noneCount > 0 && LIBRARY_AI_ENABLED && (
                 <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/15 bg-amber-500/[0.04] px-4 py-2.5 text-[12px] text-amber-400/80">
                   <span>{noneCount} упражнений без категории</span>
                   <button
