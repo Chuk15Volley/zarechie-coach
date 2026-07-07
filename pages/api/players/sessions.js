@@ -13,7 +13,8 @@ export default async function handler(req, res) {
   if (!playerId) return res.status(400).json({ error: 'playerId required' });
 
   const lim = Math.min(parseInt(limit, 10) || 20, 40);
-  const dates = await redis('zrange', sessionsKey(workspace, playerId), '-1', `-${lim}`, 'REV').catch(() => []);
+  const allDates = await redis('zrange', sessionsKey(workspace, playerId), 0, -1).catch(() => []);
+  const dates = Array.isArray(allDates) ? allDates.slice(-lim).reverse() : [];
 
   if (!dates || !dates.length) return res.status(200).json({ sessions: [] });
 
