@@ -3,6 +3,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { pfx } from '../../../lib/workspacePrefix';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
@@ -12,8 +13,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const { workspace = 'zarechie' } = req.query || {};
+
   try {
-    const members = await redis('smembers', 'coach:warmup:index');
+    const members = await redis('smembers', `${pfx(workspace)}:warmup:index`);
     const dates = Array.isArray(members) ? [...members] : [];
     dates.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0)); // descending, newest first
     return res.status(200).json({ dates });

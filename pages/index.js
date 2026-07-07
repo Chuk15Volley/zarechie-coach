@@ -2505,7 +2505,7 @@ export default function Home() {
   async function loadWarmupHistory() {
     if (!apiKey) return;
     try {
-      const r = await fetch('/api/warmup/history', { headers: { 'x-api-key': apiKey } });
+      const r = await fetch(`/api/warmup/history?workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } });
       const d = await r.json();
       if (r.ok) setWarmupHistory(d.dates || []);
     } catch (_) {}
@@ -2515,7 +2515,7 @@ export default function Home() {
     if (!apiKey) return;
     setWarmupDate(d);
     try {
-      const r = await fetch(`/api/warmup/get?date=${d}`, { headers: { 'x-api-key': apiKey } });
+      const r = await fetch(`/api/warmup/get?date=${encodeURIComponent(d)}&workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } });
       const data = await r.json();
       if (r.ok && data.plan) setWarmupPlan(data.plan);
     } catch (_) {}
@@ -2530,7 +2530,7 @@ export default function Home() {
       const r = await fetch('/api/warmup/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ date: warmupDate, phase: warmupPhase }),
+        body: JSON.stringify({ date: warmupDate, phase: warmupPhase, workspace }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Ошибка генерации');

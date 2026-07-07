@@ -6,6 +6,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { pfx } from '../../../lib/workspacePrefix';
 
 const FOCUS_LABELS = {
   anterior: 'передняя цепь',
@@ -138,7 +139,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { date, phase } = req.body || {};
+  const { date, phase, workspace = 'zarechie' } = req.body || {};
   if (!date) {
     return res.status(400).json({ error: 'date is required' });
   }
@@ -151,7 +152,7 @@ export default async function handler(req, res) {
   // Try to find a saved session of any player for this date, for prompt context.
   let morningExercisesContext = 'данные о конкретных упражнениях недоступны';
   try {
-    const keys = await redis('keys', `coach:session:*:${date}`);
+    const keys = await redis('keys', `${pfx(workspace)}:session:*:${date}`);
     if (Array.isArray(keys) && keys.length) {
       const raw = await redis('get', keys[0]);
       if (raw) {
@@ -228,8 +229,8 @@ ${phaseGuidance}
     plan.morningFocus = morningFocus;
 
     await Promise.all([
-      redis('set', `coach:warmup:${date}`, JSON.stringify(plan)),
-      redis('sadd', 'coach:warmup:index', date),
+      redis('set', `${pfx(workspace)}:warmup:${date}`, JSON.stringify(plan)),
+      redis('sadd', `${pfx(workspace)}:warmup:index`, date),
     ]);
 
     return res.status(200).json({ plan });

@@ -3,6 +3,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { pfx } from '../../../lib/workspacePrefix';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
@@ -12,13 +13,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { date } = req.query || {};
+  const { date, workspace = 'zarechie' } = req.query || {};
   if (!date) {
     return res.status(400).json({ error: 'date is required' });
   }
 
   try {
-    const raw = await redis('get', `coach:warmup:${date}`);
+    const raw = await redis('get', `${pfx(workspace)}:warmup:${date}`);
     const plan = raw ? JSON.parse(raw) : null;
     return res.status(200).json({ plan });
   } catch (e) {
