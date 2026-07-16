@@ -3283,7 +3283,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Nikolay Korenchuk — High Performance Coach</title>
+        <title>Korenchuk Performance System</title>
         <meta
           name="description"
           content="Генерация тренировок в зале на конкретный день под состояние и цели игрока."
@@ -3314,7 +3314,7 @@ export default function Home() {
               </div>
               <div>
                 <div className="text-[13px] font-black tracking-tight text-white leading-tight">Nikolay Korenchuk</div>
-                <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-accent">High Performance Coach</div>
+                <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-accent">Performance System</div>
               </div>
             </div>
 
@@ -4106,7 +4106,7 @@ export default function Home() {
                 <img src="/nk-logo.jpg" alt="NK" className="h-9 w-9 shrink-0 rounded-xl object-cover" />
                 <div>
                   <div className="text-[13px] font-black tracking-tight text-white leading-tight">Nikolay Korenchuk</div>
-                  <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-accent">High Performance Coach</div>
+                  <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-accent">Performance System</div>
                 </div>
               </div>
               <button
@@ -6439,11 +6439,11 @@ export default function Home() {
           {/* ── Footer ── */}
           {playerId && (
             <footer className="mt-14 flex items-center justify-center gap-3 print:hidden">
-              <span className="text-[11px] font-medium text-white/[0.15]">Periodyx</span>
-              <span className="h-px w-5 bg-white/[0.08]" />
-              <span className="text-[11px] text-white/[0.10]">AI Performance Coach</span>
-              <span className="h-px w-5 bg-white/[0.08]" />
-              <span className="text-[11px] text-white/[0.10]">powered by AI</span>
+              <span className="text-[11px] font-semibold tracking-[0.18em] text-white/[0.18] uppercase">
+                Korenchuk Performance System
+              </span>
+              <span className="h-px w-5 bg-accent/[0.16]" />
+              <span className="text-[11px] font-medium text-white/[0.12]">Strength & Conditioning Platform</span>
             </footer>
           )}
 

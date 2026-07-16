@@ -6,9 +6,9 @@ export default function handler(req, res) {
   const playerIcon = `/api/player-photo/${encodeURIComponent(tokenValue || '')}`;
 
   const manifest = {
-    name: 'NK Coach — Моя тренировка',
-    short_name: 'NK Coach',
-    description: 'Nikolay Korenchuk · High Performance Coach',
+    name: 'Korenchuk Performance - Моя тренировка',
+    short_name: 'KP System',
+    description: 'Korenchuk Performance System · Strength & Conditioning',
     start_url: `/player/${tokenValue}`,
     scope: `/player/${tokenValue}`,
     display: 'standalone',

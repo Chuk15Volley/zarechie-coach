@@ -586,7 +586,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                 )}
                 <div className="min-w-0">
                   <div className="text-[9px] font-black uppercase tracking-[0.22em] text-[#4ade80]/60 mb-0.5">
-                    Nikolay Korenchuk · High Performance Coach
+                    Korenchuk Performance System
                   </div>
                   <div className="text-xl font-black leading-none text-white truncate">{player?.name || 'Игрок'}</div>
                   {player?.position && (
@@ -851,7 +851,9 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
 
         {/* ── Footer ── */}
         <div className="fixed bottom-0 left-0 right-0 flex items-center justify-center py-3 bg-[#07101a]/80 backdrop-blur-xl border-t border-white/[0.05]">
-          <span className="text-[10px] text-white/[0.15] font-medium tracking-wide">Periodyx · AI Performance Coach</span>
+          <span className="text-[10px] text-white/[0.15] font-medium tracking-[0.18em] uppercase">
+            Korenchuk Performance System
+          </span>
         </div>
       </div>
 

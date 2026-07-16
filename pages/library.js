@@ -580,7 +580,7 @@ export default function LibraryPage() {
 
   return (
     <>
-      <Head><title>Библиотека упражнений · Periodyx</title></Head>
+      <Head><title>Библиотека упражнений · Korenchuk Performance System</title></Head>
       <div className="min-h-screen px-4 py-6 text-slate-100 sm:px-8 sm:py-10" style={{ background: '#060c15' }}>
         <div className="mx-auto max-w-6xl">
 
