@@ -665,6 +665,37 @@ const PHASES_BY_PERIOD = {
   ],
 };
 
+const NK_PHASE_SUB = {
+  inseason_strength: 'Ручной выбор · силовая',
+  inseason_power: 'Ручной выбор · мощность',
+  inseason_prophylaxis: 'Ручной выбор · профилактика',
+  inseason_deload: 'Ручной выбор · deload',
+  inseason_accumulation: 'Ручной выбор · накопление',
+  inseason_conversion: 'Ручной выбор · конверсия',
+  inseason_taper: 'Ручной выбор · тейпер',
+  inseason_md1_activation: 'Ручной выбор · активация',
+  camp_ecc_anterior: 'Методика · передняя цепь',
+  camp_ecc_posterior: 'Методика · задняя цепь',
+  camp_ecc_fullbody: 'Методика · всё тело',
+  camp_iso_anterior: 'Методика · передняя цепь',
+  camp_iso_posterior: 'Методика · задняя цепь',
+  camp_explosive: 'Методика · взрыв',
+};
+
+const NK_PHASE_LABEL = {
+  inseason_accumulation: 'Накопление силы',
+  inseason_conversion: 'Конверсия в мощность',
+  inseason_md1_activation: 'Активация / тонус',
+};
+
+function phaseLabelForWorkspace(phase, workspace) {
+  return workspace === 'nkperf' ? (NK_PHASE_LABEL[phase.value] || phase.label) : phase.label;
+}
+
+function phaseSubForWorkspace(phase, workspace) {
+  return workspace === 'nkperf' ? (NK_PHASE_SUB[phase.value] || 'Ручной выбор') : phase.sub;
+}
+
 function getPeriodForFocus(focusValue) {
   for (const [p, phases] of Object.entries(PHASES_BY_PERIOD)) {
     if (phases.some(ph => ph.value === focusValue)) return p;
@@ -1890,6 +1921,12 @@ export default function Home() {
 
   useEffect(() => {
     if (!apiKey) return;
+    if (workspace === 'nkperf') {
+      setScheduleEvents([]);
+      setShowSchedule(false);
+      setAutoFocusNote(null);
+      return;
+    }
     fetch(`/api/schedule?workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
       .then(r => r.json())
       .then(data => { if (Array.isArray(data.events)) setScheduleEvents(data.events); })
@@ -2235,6 +2272,10 @@ export default function Home() {
 
   // Auto-apply schedule suggestion when date changes
   useEffect(() => {
+    if (workspace === 'nkperf') {
+      setAutoFocusNote(null);
+      return;
+    }
     const sug = computeSuggestion(date, scheduleEvents);
     if (!sug) { setAutoFocusNote(null); return; }
     const p = getPeriodForFocus(sug.focus);
@@ -2244,7 +2285,7 @@ export default function Home() {
     const t = setTimeout(() => setAutoFocusNote(null), 5000);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
+  }, [date, workspace, scheduleEvents]);
 
   const filteredPlayers = (positionFilter === 'all' ? players : players.filter(p => {
     const pos = (p.position || '').toLowerCase();
@@ -3063,7 +3104,10 @@ export default function Home() {
     saveScheduleToServer(updated);
   }
 
-  const suggestion = useMemo(() => computeSuggestion(date, scheduleEvents), [date, scheduleEvents]);
+  const suggestion = useMemo(
+    () => (workspace === 'nkperf' ? null : computeSuggestion(date, scheduleEvents)),
+    [date, scheduleEvents, workspace]
+  );
 
   return (
     <>
@@ -4858,7 +4902,7 @@ export default function Home() {
           )}
 
           {/* ── Schedule panel ── */}
-          {workspaceTab === 'program' && keyConnected && playerId && (
+          {workspaceTab === 'program' && keyConnected && playerId && workspace !== 'nkperf' && (
             <div className="mb-5 print:hidden">
               <button
                 type="button"
@@ -5169,11 +5213,11 @@ export default function Home() {
                     <div className="flex items-center gap-2">
                       <div className={`shrink-0 rounded-full transition-all duration-200 ${focus === ph.value ? `h-2 w-2 ${PERIOD_COLORS[period].dot} shadow-[0_0_6px_currentColor]` : 'h-1.5 w-1.5 bg-slate-700'}`} />
                       <div className={`text-[11px] font-semibold leading-tight transition-colors ${focus === ph.value ? PERIOD_COLORS[period].text : 'text-slate-400'}`}>
-                        {ph.label}
+                        {phaseLabelForWorkspace(ph, workspace)}
                       </div>
                     </div>
-                    {ph.sub && (
-                      <div className="mt-1 ml-3.5 text-[10px] leading-tight text-slate-600">{ph.sub}</div>
+                    {phaseSubForWorkspace(ph, workspace) && (
+                      <div className="mt-1 ml-3.5 text-[10px] leading-tight text-slate-600">{phaseSubForWorkspace(ph, workspace)}</div>
                     )}
                   </button>
                 ))}

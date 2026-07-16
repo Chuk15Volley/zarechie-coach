@@ -48,6 +48,30 @@ const FOCUS_LABELS = {
   rehab:           'возврат после травмы / разгрузка',
 };
 
+const NK_MANUAL_FOCUS_LABELS = {
+  camp_ecc_anterior:  'СБОРЫ · ЭКСЦЕНТРИКА · Передняя цепь — ручной выбор тренера; квадрицепс, жим, сгибатель бедра; темп 5-0-X-0; без привязки к дню недели или календарю Заречья',
+  camp_ecc_posterior: 'СБОРЫ · ЭКСЦЕНТРИКА · Задняя цепь — ручной выбор тренера; бицепс бедра, ягодицы, верхняя тяга; темп 5-0-X-0; без привязки к дню недели или календарю Заречья',
+  camp_ecc_fullbody:  'СБОРЫ · ЭКСЦЕНТРИКА · Всё тело — ручной выбор тренера; интеграция обеих цепей, высокое качество движения; без привязки к дню недели или календарю Заречья',
+  camp_iso_anterior:  'СБОРЫ · ИЗОМЕТРИКА · Передняя цепь — ручной выбор тренера; изо-удержание 30-45 сек в угле 60-90° колено → взрывные повторы; без календарной привязки',
+  camp_iso_posterior: 'СБОРЫ · ИЗОМЕТРИКА · Задняя цепь — ручной выбор тренера; изо-удержание 30-45 сек в угле 45° бедро → взрывные повторы; без календарной привязки',
+  camp_explosive:     'СБОРЫ · ВЗРЫВ / ПОТЕНЦИАЦИЯ — ручной выбор тренера; нагрузка 50-60% 1ПМ, максимальная скорость, объём -40-50%; без привязки к дню недели',
+  inseason_strength:  'СЕЗОН · СИЛОВАЯ — ручной выбор тренера; 40-60 мин, развитие/поддержание силы, блоки под позицию игрока; без MD-логики, дня недели и расписания Заречья',
+  inseason_power:     'СЕЗОН · МОЩНОСТНАЯ — ручной выбор тренера; 30-45 мин, скорость штанги, плиометрика только по готовности CMJ/RSI/Recovery; без MD-логики и расписания Заречья',
+  inseason_prophylaxis: 'СЕЗОН · ПРОФИЛАКТИКА/ВОССТАНОВЛЕНИЕ — ручной выбор тренера; слабые звенья, мобильность, контроль движения, стабилизация суставов; без привязки к матчу',
+  inseason_accumulation: 'СЕЗОН · БЛОК НАКОПЛЕНИЯ СИЛЫ — ручной выбор тренера; 60 мин, больше сетов/упражнений, 80-87% 1ПМ с поправкой по состоянию',
+  inseason_conversion: 'СЕЗОН · КОНВЕРСИЯ В МОЩНОСТЬ — ручной выбор тренера; перевод силы в скоростно-силовые качества, меньше медленной силовой работы',
+  inseason_deload:    'СЕЗОН · DELOAD — ручной выбор тренера; объём -40-50%, паттерны сохранены, профилактика не сокращается',
+  inseason_md1_activation: 'СЕЗОН · АКТИВАЦИЯ / ТОНУС — ручной выбор тренера; 15-20 мин, нейромышечная потенциация без накопления усталости',
+  inseason_taper:     'СЕЗОН · ТЕЙПЕР — ручной выбор тренера; минимальный объём, высокая скорость, поддержание тонуса',
+};
+
+function focusLabelForWorkspace(focus, workspace) {
+  if (workspace === 'nkperf') {
+    return NK_MANUAL_FOCUS_LABELS[focus] || `${FOCUS_LABELS[focus] || focus} — ручной выбор тренера; без привязки к календарю Заречья, дню недели или MD-логике`;
+  }
+  return FOCUS_LABELS[focus] || focus;
+}
+
 // SESSION_TOOL factory. Pass includeImgPrompt=true to add the img_prompt field back into
 // each exercise (used by the async AI generator, where token budget is not a concern).
 export function buildSessionTool({ includeImgPrompt = false } = {}) {
@@ -1315,7 +1339,7 @@ export async function buildGenerationInputs(body) {
   const [snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, 28, workspace),
     getRecentSessionSummaries(String(playerId), 6, workspace).catch(() => []),
-    redis('get', scheduleKey(workspace)).catch(() => null),
+    workspace === 'zarechie' ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
     redis('get', `${wpfx}:1rm:${String(playerId)}`).catch(() => null),
     (async () => {
       const dates = Array.from({ length: 5 }, (_, i) => {
@@ -1394,7 +1418,7 @@ export async function buildGenerationInputs(body) {
   let { userPrompt, dataSummary } = buildUserPrompt({
     snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks,
     targetDate, dayGoal, focus: effectiveFocus, notes, warmupSummary, teamUsedExercises, coachRecovery,
-    playbookText,
+    playbookText, workspace,
   });
   if (focusDowngradeNote) { userPrompt += focusDowngradeNote; dataSummary += focusDowngradeNote; }
 
@@ -1556,7 +1580,7 @@ export default async function handler(req, res) {
 }
 
 // ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
-function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '' }) {
+function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie' }) {
   let dataSummary = summarizeSnapshot(snapshot);
 
   // Coach manual recovery status (светофор тренера) — appended after biometric data.
@@ -1568,7 +1592,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, 
     const context = whoopToday ? '[дополнительный сигнал к WHOOP-данным]' : '[WHOOP нет — ориентируйся на этот статус]';
     dataSummary += `\n• ⚑ Статус от тренера (ручная оценка): ${statusLine} ${context}`;
   }
-  const focusLabel = FOCUS_LABELS[focus] || focus;
+  const focusLabel = focusLabelForWorkspace(focus, workspace);
 
   // Compute schedule proximity context
   function shiftDate(d, n) {
@@ -1582,7 +1606,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, 
     const events = rawSchedule
       ? JSON.parse(typeof rawSchedule === 'string' ? rawSchedule : JSON.stringify(rawSchedule))
       : [];
-    if (events.length > 0) {
+    if (workspace === 'zarechie' && events.length > 0) {
       const evMap = {};
       events.forEach(e => { evMap[e.date] = e.type; });
 
@@ -1618,6 +1642,10 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, 
   } catch (_) {
     // Schedule unavailable — continue without it
   }
+
+  const manualWorkspaceContext = workspace === 'nkperf'
+    ? '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNK PERFORMANCE · РУЧНОЙ РЕЖИМ ПЛАНИРОВАНИЯ:\n• НЕ используй расписание, матчи, перелёты, день недели или MD-логику Заречья.\n• Тренер сам выбрал цикл и вид тренировки через focus.\n• Генерируй программу только по выбранной методике, состоянию игрока, истории нагрузок, ограничениям и комментариям тренера.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+    : '';
 
   // 1RM context
   const oneRM = raw1RM ? (() => { try { return typeof raw1RM === 'string' ? JSON.parse(raw1RM) : raw1RM; } catch(_) { return null; } })() : null;
@@ -1856,7 +1884,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, 
     : '';
 
   const userPrompt = `${dataSummary}
-${onermContext}${warmupContext}${hrvTrendAlert}${hoopers7dAlert}${acwrAlert}${jumpACWRAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
+${onermContext}${warmupContext}${manualWorkspaceContext}${hrvTrendAlert}${hoopers7dAlert}${acwrAlert}${jumpACWRAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${historyBlock}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
