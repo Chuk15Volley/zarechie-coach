@@ -122,6 +122,7 @@ export default async function handler(req, res) {
       dataSummary: record.dataSummary || '',
       date: record.date,
       dayGoal: record.dayGoal || '',
+      autoSaved: !!record.autoSaved,
     });
   }
 
