@@ -1869,7 +1869,6 @@ export default function Home() {
   const [recoveryStatus, setRecoveryStatus] = useState('green'); // 'green' | 'yellow' | 'red'
   // Microcycle templates
   const [templates, setTemplates] = useState([]);
-  const [templatesOpen, setTemplatesOpen] = useState(false);
   // Player contraindications
   const [restrictions, setRestrictions] = useState([]);
   const [oneRMSaveTimer, setOneRMSaveTimer] = useState(null);
@@ -3086,7 +3085,6 @@ export default function Home() {
   }
 
   async function handleLoadTemplate(name) {
-    setTemplatesOpen(false);
     try {
       const r = await fetch('/api/programs/templates', {
         method: 'POST',
@@ -5197,12 +5195,34 @@ export default function Home() {
           {workspaceTab === 'program' && playerId && <>
           <form
             onSubmit={handleGenerate}
-            className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4 shadow-[0_12px_34px_rgba(0,0,0,0.38)] backdrop-blur-xl sm:p-5 print:hidden"
+            className="relative overflow-hidden rounded-2xl border border-white/[0.10] bg-[linear-gradient(145deg,rgba(17,31,33,0.92),rgba(10,19,27,0.88))] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:p-5 print:hidden"
           >
-            <div className="mb-4 grid gap-3 lg:grid-cols-[1.1fr_1fr_1.15fr]">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent" />
+
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.24em] text-accent/55">План тренировки</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-slate-200">
+                  <span>{date}</span>
+                  <span className="text-slate-700">/</span>
+                  <span>{getFocusLabel(period, focus)}</span>
+                  <span className="text-slate-700">/</span>
+                  <span className="text-slate-400">{TRAINING_TYPE_LABELS[trainingType] || 'Тип тренировки'}</span>
+                </div>
+              </div>
+              <div className={`rounded-full border px-3 py-1 text-[11px] font-black ${
+                recoveryStatus === 'green' ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300' :
+                recoveryStatus === 'yellow' ? 'border-amber-400/30 bg-amber-400/10 text-amber-300' :
+                'border-rose-400/30 bg-rose-400/10 text-rose-300'
+              }`}>
+                {recoveryStatus === 'green' ? 'Готов к работе' : recoveryStatus === 'yellow' ? 'Объём снижен' : 'Только качество'}
+              </div>
+            </div>
+
+            <div className="mb-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_1.15fr]">
               <div>
                 <SectionLabel icon={<Dumbbell size={11} />} text="Формат" />
-                <div className="flex rounded-xl border border-white/[0.08] bg-white/[0.025] p-1">
+                <div className="flex rounded-xl border border-white/[0.09] bg-black/20 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                   {[
                     { value: 'gym', label: 'Зал', icon: <Dumbbell size={13} /> },
                     { value: 'warmup', label: 'Разминка', icon: <Zap size={13} /> },
@@ -5213,7 +5233,7 @@ export default function Home() {
                       onClick={() => { setSessionType(opt.value); setSession(null); setMeta(null); setError(''); }}
                       className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12px] font-bold transition-all duration-200 ${
                         sessionType === opt.value
-                          ? 'bg-accent text-[#060a0e] shadow-[0_2px_12px_rgba(34,211,238,0.20)]'
+                          ? 'bg-emerald-400 text-[#05130e] shadow-[0_8px_22px_-10px_rgba(74,222,128,0.9)]'
                           : 'text-slate-500 hover:text-slate-300'
                       }`}
                     >
@@ -5241,8 +5261,8 @@ export default function Home() {
                       key={b.v}
                       type="button"
                       onClick={() => changeRecovery(b.v)}
-                      className={`flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition ${
-                        recoveryStatus === b.v ? b.on : 'border-white/[0.07] text-slate-500 hover:border-white/[0.14] hover:text-slate-300'
+                      className={`flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${
+                        recoveryStatus === b.v ? b.on : 'border-white/[0.08] bg-black/10 text-slate-500 hover:border-white/[0.16] hover:text-slate-300'
                       }`}
                     >
                       <span className={`h-2 w-2 rounded-full ${b.dot}`} />
@@ -5496,57 +5516,11 @@ export default function Home() {
               />
             </div>
 
-            {/* Microcycle templates */}
-            {sessionType === 'gym' && apiKey && (
-              <div className="relative mt-5">
-                <button
-                  type="button"
-                  onClick={() => setTemplatesOpen(o => !o)}
-                  className={`flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.04] px-4 py-2.5 text-xs font-semibold text-slate-300 transition-all hover:border-white/[0.18] hover:bg-white/[0.07] hover:text-white ${focusRing}`}
-                >
-                  <Layers size={14} />
-                  Шаблоны микроциклов
-                  {templates.length > 0 && (
-                    <span className="rounded bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-slate-400">{templates.length}</span>
-                  )}
-                  <ChevronDown size={13} className={`ml-auto transition-transform ${templatesOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {templatesOpen && (
-                  <div className="absolute left-0 right-0 z-20 mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-white/[0.10] bg-[#0b1622] p-1.5 shadow-2xl">
-                    {templates.length === 0 ? (
-                      <div className="px-3 py-3 text-center text-[11px] text-slate-600">Нет сохранённых шаблонов</div>
-                    ) : (
-                      templates.map(t => (
-                        <div key={t.name} className="flex items-center gap-2 rounded-lg px-2.5 py-2 transition hover:bg-white/[0.05]">
-                          <button
-                            type="button"
-                            onClick={() => handleLoadTemplate(t.name)}
-                            className="flex-1 text-left"
-                          >
-                            <div className="text-xs font-semibold text-slate-200">{t.name}</div>
-                            <div className="text-[10px] text-slate-600">{t.exerciseCount} упр.{t.focus ? ` · ${t.focus}` : ''}</div>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteTemplate(t.name)}
-                            className="rounded p-1 text-slate-600 transition hover:bg-rose-500/10 hover:text-rose-400"
-                            title="Удалить шаблон"
-                          >
-                            <X size={13} />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className={`mt-6 ${sessionType === 'gym' ? 'flex gap-3' : ''}`}>
+            <div className={`mt-5 rounded-2xl border border-white/[0.08] bg-black/20 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${sessionType === 'gym' ? 'flex gap-2' : ''}`}>
             <button
               type="submit"
               disabled={loading || weekPlanLoading || !apiKey || !playerId}
-              className={`flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-b from-cyan-400 to-cyan-500 px-5 py-4 text-[15px] font-black text-[#04212b] shadow-[0_2px_20px_-4px_rgba(34,211,238,0.45)] transition-all duration-200 hover:from-cyan-300 hover:to-cyan-400 hover:shadow-[0_4px_28px_-4px_rgba(34,211,238,0.55)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none ${focusRing} ${sessionType === 'gym' ? 'flex-1' : 'w-full'}`}
+              className={`flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-b from-[#55f08a] to-[#14b8c8] px-5 py-3.5 text-[15px] font-black text-[#031411] shadow-[0_14px_38px_-18px_rgba(34,211,238,0.95),0_0_0_1px_rgba(255,255,255,0.12)_inset] transition-all duration-200 hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none ${focusRing} ${sessionType === 'gym' ? 'flex-1' : 'w-full'}`}
             >
               {loading ? (
                 <>
@@ -5565,7 +5539,7 @@ export default function Home() {
                 type="button"
                 onClick={handleGenerateWeek}
                 disabled={weekPlanLoading || loading || !apiKey || !playerId}
-                className={`flex items-center justify-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.04] px-4 py-3.5 text-sm font-semibold text-slate-300 transition-all hover:border-white/[0.18] hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
+                className={`flex items-center justify-center gap-2 rounded-xl border border-white/[0.11] bg-white/[0.045] px-4 py-3 text-sm font-semibold text-slate-300 transition-all hover:border-white/[0.20] hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
                 title="Сгенерировать план на 3 дня: Силовой → Мощностной → Восстановление"
               >
                 {weekPlanLoading ? <Loader2 size={15} className="animate-spin" /> : <Calendar size={15} />}
@@ -5577,7 +5551,7 @@ export default function Home() {
                 type="button"
                 onClick={() => { setBatchOpen(o => !o); setBatchResults([]); }}
                 disabled={loading || weekPlanLoading || batchRunning}
-                className={`flex items-center justify-center gap-2 rounded-xl border ${batchOpen ? 'border-accent/40 bg-accent/10 text-accent' : 'border-white/[0.10] bg-white/[0.04] text-slate-300'} px-4 py-3.5 text-sm font-semibold transition-all hover:border-white/[0.18] hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
+                className={`flex items-center justify-center gap-2 rounded-xl border ${batchOpen ? 'border-accent/40 bg-accent/10 text-accent' : 'border-white/[0.11] bg-white/[0.045] text-slate-300'} px-4 py-3 text-sm font-semibold transition-all hover:border-white/[0.20] hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
                 title="Сгенерировать тренировки для всей команды сразу"
               >
                 <Users size={15} />
@@ -5585,6 +5559,45 @@ export default function Home() {
               </button>
             )}
             </div>
+
+            {sessionType === 'gym' && apiKey && (
+              <details className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.015]">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-2 text-[11px] font-semibold text-slate-600 transition hover:text-slate-300">
+                  <Layers size={13} />
+                  Шаблоны микроциклов
+                  {templates.length > 0 && (
+                    <span className="rounded bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-slate-500">{templates.length}</span>
+                  )}
+                  <ChevronDown size={13} className="ml-auto text-slate-700" />
+                </summary>
+                <div className="border-t border-white/[0.05] p-1.5">
+                  {templates.length === 0 ? (
+                    <div className="px-3 py-3 text-center text-[11px] text-slate-600">Нет сохранённых шаблонов</div>
+                  ) : (
+                    templates.map(t => (
+                      <div key={t.name} className="flex items-center gap-2 rounded-lg px-2.5 py-2 transition hover:bg-white/[0.05]">
+                        <button
+                          type="button"
+                          onClick={() => handleLoadTemplate(t.name)}
+                          className="flex-1 text-left"
+                        >
+                          <div className="text-xs font-semibold text-slate-200">{t.name}</div>
+                          <div className="text-[10px] text-slate-600">{t.exerciseCount} упр.{t.focus ? ` · ${t.focus}` : ''}</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTemplate(t.name)}
+                          className="rounded p-1 text-slate-600 transition hover:bg-rose-500/10 hover:text-rose-400"
+                          title="Удалить шаблон"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </details>
+            )}
           </form>
 
           {/* ── Batch generation panel ── */}
