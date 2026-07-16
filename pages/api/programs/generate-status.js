@@ -8,7 +8,7 @@ import { isAuthorized } from '../../../lib/auth';
 import { redis } from '../../../lib/redis';
 import { getPlayerSnapshot } from '../../../lib/playerData';
 import { sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
-import { SYSTEM_PROMPT } from './generate';
+import { SYSTEM_PROMPT, normalizeExerciseLanguage } from './generate';
 
 export const config = { maxDuration: 60 };
 
@@ -108,7 +108,7 @@ export default async function handler(req, res) {
     }
   }
 
-  const { playerId, date, dayGoal = '', workspace = 'zarechie', userPrompt, sessionTool } = record;
+  const { playerId, date, dayGoal = '', workspace = 'zarechie', focus = '', userPrompt, sessionTool } = record;
   if (!userPrompt || !sessionTool) {
     return res.status(500).json({ error: 'Неполные данные задачи генерации' });
   }
@@ -122,10 +122,11 @@ export default async function handler(req, res) {
 
     const generated = await callOpenAIForSession(apiKey, userPrompt, sessionTool);
     if (generated.error) return res.status(generated.status || 502).json({ error: generated.error });
-    const session = generated.session;
+    let session = generated.session;
     if (!session) {
       return res.status(502).json({ error: 'Модель не вернула структурированную тренировку' });
     }
+    session = normalizeExerciseLanguage(session, focus);
 
     // Persist the session (same Redis layout as pages/api/programs/save.js).
     const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 28, workspace).catch(() => null);

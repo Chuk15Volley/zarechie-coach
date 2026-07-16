@@ -5,6 +5,7 @@
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { sessionKey } from '../../../lib/workspacePrefix';
+import { normalizeExerciseLanguage } from './generate';
 
 const BANNED =
   'Присед со штангой на спине (Back Squat) | Жим штанги лёжа (Bench Press barbell) | Nordic Curl | Ab Wheel Rollout / Ab Roller | Broad Jump | DB Floor Press | Band Wrist Stability | Jump Set Drill | KB Press / жим с гирями | Tricep Pushdown с резиновой петлёй / Band Tricep Pushdown';
@@ -79,7 +80,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
 • Сохрани: code="${exercise.code}", tempo="${exercise.tempo || ''}"
 • НЕ используй упражнения, уже стоящие в программе: ${others}
 • ЗАПРЕЩЕНО навсегда: ${BANNED}
-• ЯЗЫК: поле name — профессиональный английский S&C ("Bulgarian Split Squat", "Trap Bar Deadlift", "Box Jump (Bilateral)"). Поле cue — одна фраза, максимум 12 слов, РУССКИЙ язык, конкретный паттерн/угол, без воды ("Колено над вторым пальцем.", "Шарнир в бедре — позвоночник нейтрален.", "Нейтраль таза до старта."). Поле autoReg — один критерий остановки, РУССКИЙ язык ("Скорость падает → стоп.", "RPE 9 → снизь 5%.").
+• ЯЗЫК: поле name — профессиональный английский S&C ("Bulgarian Split Squat", "Trap Bar Deadlift", "Box Jump (Bilateral)"). Поле cue — короткое описание для игрока на русском языке: СНАЧАЛА описание темпа, ПОТОМ одна профессиональная подсказка S&C. Если tempo="5-0-X-0", начни cue так: "Темп: опускаемся 5 секунд медленно вниз, вверх максимально резко." Если tempo="0-5сек-X-0", начни cue так: "Темп: пауза в напряжении 5 секунд, вверх максимально резко." Поле autoReg — один критерий остановки, РУССКИЙ язык ("Скорость падает → стоп.", "RPE 9 → снизь 5%.").
 
 ОТВЕТ — только JSON, без markdown, без пояснений:
 {"code":"${exercise.code}","name":"...","tempo":"${exercise.tempo || ''}","targetSets":${JSON.stringify(exercise.targetSets || ['3x8'])},"weightNote":"${exercise.weightNote || ''}","cue":"...","autoReg":"${exercise.autoReg || ''}"}`;
@@ -112,7 +113,9 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return res.status(502).json({ error: 'Не удалось распознать ответ', raw: text });
 
-    const newExercise = JSON.parse(match[0]);
+    const parsedExercise = JSON.parse(match[0]);
+    const normalized = normalizeExerciseLanguage({ blocks: [{ exercises: [parsedExercise] }] }, '');
+    const newExercise = normalized.blocks?.[0]?.exercises?.[0] || parsedExercise;
 
     // Persist updated session — preserve the { session, player, ... } wrapper from save.js
     session.blocks[blockIndex].exercises[exerciseIndex] = newExercise;
