@@ -176,7 +176,7 @@ export default async function handler(req, res) {
     }
     session = normalizeExerciseLanguage(session, focus);
 
-    const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 28, workspace).catch(() => null);
+    const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 7, workspace).catch(() => null);
     const player = snapshot?.player || null;
     const dataSummary = record.dataSummary || '';
 

@@ -238,7 +238,7 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
         },
         triggers: {
           type: 'array',
-          description: 'Массив триггеров, объясняющих ключевые решения тренировки. Каждый элемент: { signal: "название сигнала", value: "значение", action: "что изменено в тренировке" }. Только значимые решения — 2-5 триггеров максимум. Пример: { signal: "ACWR", value: "1.4", action: "Объём A/B блоков снижен на 15%" }',
+          description: 'Массив триггеров, объясняющих ключевые решения тренировки. Каждый элемент: { signal: "название сигнала", value: "значение", action: "что изменено в тренировке" }. Только значимые решения — 2-5 триггеров максимум. Пример: { signal: "HRV", value: "ниже baseline", action: "объём A/B снижен на 20%" }',
           items: {
             type: 'object',
             required: ['signal', 'value', 'action'],
@@ -371,7 +371,7 @@ function fmt(field, value, suffix = '') {
 }
 
 function summarizeSnapshot(snap) {
-  const { player, whoop, surveys, morning, neuro, manual, periodDays, targetDate, chronicWhoop, chronicSurveys, injuryLog, annotations } = snap;
+  const { player, whoop, surveys, morning, neuro, manual, periodDays, targetDate, injuryLog, annotations } = snap;
 
   const todayWhoop = onDay(whoop, targetDate);
   const todayMorning = onDay(morning, targetDate);
@@ -443,9 +443,7 @@ function summarizeSnapshot(snap) {
   // Local date helper (daysBefore lives in playerData.js, not here)
   const _dBefore = (date, n) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
 
-  // ── ACWR: Acute:Chronic Workload Ratio (sRPE-load) ──────────────
-  // Daily load = sRPE × duration (duration from manual if available, else 60 min default)
-  // Acute = sum last 7 days; Chronic = sum last 28 days / 4 (weekly average)
+  // ── Foster load signals: daily load = sRPE × duration.
   const computeLoad = (surveyArr, manualObj) => {
     const result = {};
     for (const s of surveyArr) {
@@ -459,24 +457,7 @@ function summarizeSnapshot(snap) {
     return result;
   };
 
-  const loadMap = computeLoad(chronicSurveys || surveys, manual || {});
-
-  const acuteLoad = (() => {
-    const cutoff = _dBefore(targetDate, 7);
-    return Object.entries(loadMap)
-      .filter(([d]) => d > cutoff && d <= targetDate)
-      .reduce((s, [, v]) => s + v, 0);
-  })();
-
-  const chronicLoad = (() => {
-    const cutoff = _dBefore(targetDate, 28);
-    const total = Object.entries(loadMap)
-      .filter(([d]) => d > cutoff && d <= targetDate)
-      .reduce((s, [, v]) => s + v, 0);
-    return total / 4; // weekly average from 28-day window
-  })();
-
-  const acwr = chronicLoad > 0 ? Math.round((acuteLoad / chronicLoad) * 100) / 100 : null;
+  const loadMap = computeLoad(surveys, manual || {});
 
   // Foster Monotony and Strain Index (last 7 days)
   const last7Loads = (() => {
@@ -494,23 +475,6 @@ function summarizeSnapshot(snap) {
     : null;
   const weeklyLoad7 = last7Loads.reduce((s, v) => s + v, 0);
   const strain = monotony != null ? Math.round(weeklyLoad7 * monotony) : null;
-
-  // ── Jump-ACWR ───────────────────────────────────────────────────
-  const manualForJumps = manual || {};
-  const acuteJumps = (() => {
-    const cutoff = _dBefore(targetDate, 7);
-    return Object.entries(manualForJumps)
-      .filter(([d]) => d > cutoff && d <= targetDate && manualForJumps[d]?.jumps)
-      .reduce((s, [, v]) => s + (v.jumps || 0), 0);
-  })();
-  const chronicJumps = (() => {
-    const cutoff = _dBefore(targetDate, 28);
-    const total = Object.entries(manualForJumps)
-      .filter(([d]) => d > cutoff && d <= targetDate && manualForJumps[d]?.jumps)
-      .reduce((s, [, v]) => s + (v.jumps || 0), 0);
-    return total / 4;
-  })();
-  const jumpACWR = chronicJumps > 0 ? Math.round((acuteJumps / chronicJumps) * 100) / 100 : null;
 
   const lines = [
     `Игрок: ${player.name}, позиция: ${player.position || 'не указана'}`,
@@ -621,26 +585,8 @@ function summarizeSnapshot(snap) {
         }`
       : null,
 
-    // ACWR section
-    acwr != null
-      ? `• ACWR (нагрузка 7д/28д): ${acwr}${
-          acwr > 1.5  ? ' 🔴🔴 ОПАСНАЯ ЗОНА — объём −30-40%, убрать взрывную нагрузку A2/B2' :
-          acwr > 1.3  ? ' 🔴 повышенный риск — не прогрессируй, объём −15%' :
-          acwr >= 0.8 ? ' ✅ оптимальная зона (0.8-1.3)' :
-                        ' ⚠ недогруз (<0.8) — можно добавить стимул если Recovery зелёный'
-        }`
-      : '• ACWR: недостаточно данных (менее 7 дней нагрузки)',
-
     monotony != null
       ? `• Монотонность нагрузки (Foster): ${monotony}${monotony > 1.5 ? ' ⚠ высокая монотонность — варьируй интенсивность' : ' ✅'} | Strain: ${strain}`
-      : null,
-
-    jumpACWR != null
-      ? `• Прыжковый ACWR (7д/28д): ${jumpACWR}${
-          jumpACWR > 1.5 ? ' 🔴 критический объём прыжков — A2/B2 минимизировать независимо от вчера' :
-          jumpACWR > 1.3 ? ' ⚠ повышенный прыжковый объём — A2 -25%' :
-          ' ✅'
-        } | Недельный объём: ${acuteJumps} прыжков`
       : null,
   ].filter(v => v != null);
 
@@ -949,19 +895,6 @@ EWS (Evening Wellness Score вчера):
 Тренд RHR (пульс покоя):
   Рост RHR на +4 и выше от baseline → ⚠ маркер накопленного стресса: не форсируй нагрузку
   Рост RHR 3 дня подряд → маркер вегетативного перенапряжения: снизь объём A/B на 15%
-
-ACWR (Acute:Chronic Workload Ratio — нагрузка 7 дней / средненедельная за 28 дней):
-  > 1.5  → 🔴🔴 ОПАСНАЯ ЗОНА: объём −30-40%, убрать A2 взрывное и B2, только силовое. Приоритет — не навредить.
-  1.3-1.5 → 🔴 повышенный риск: не прогрессируй вес, объём −15%, мониторь состояние.
-  0.8-1.3 → ✅ оптимальная тренировочная зона: нагрузка по плану.
-  < 0.8  → ⚠ недогруз: можно добавить стимул (объём или интенсивность +10%), если Recovery ≥67%.
-  «недостаточно данных» → ориентируйся на Recovery и HRV.
-
-Прыжковый ACWR (jump-ACWR — прыжки 7д / средн.нед. за 28д):
-  > 1.5  → 🔴 критический объём прыжков: A2/B2 плиометрику убрать НЕЗАВИСИМО от вчерашней нагрузки.
-  1.3-1.5 → ⚠ повышенный: A2 объём −25%.
-  ✅ норма: по плану.
-  Это ДОПОЛНЯЕТ (не заменяет) анализ вчерашних прыжков — оба сигнала важны.
 
 Foster Monotony (монотонность нагрузки):
   > 1.5  → ⚠ нагрузка слишком однообразна по интенсивности: чередуй тяжёлые/лёгкие дни активнее.
@@ -1531,44 +1464,6 @@ FIELD name — ENGLISH ONLY (professional S&C terminology):
 // Shared by the synchronous generator (this file) and the async Batch-API generator
 // (generate-async.js) so both produce byte-identical prompts. Returns either
 // { error, status } on failure or { snapshot, userPrompt, dataSummary, targetDate, dayGoal }.
-// Gym-ACWR: acute:chronic ratio of session tonnage (kg lifted), EWMA-based.
-// Reads coach:gym_tonnage_dates:{playerId} (ZSET) + per-date tonnage values.
-async function computeGymAcwrLine(playerId, targetDate, workspace = 'zarechie') {
-  const wp = pfx(workspace);
-  const _dBefore = (date, n) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
-  const cutoff = _dBefore(targetDate, 56);
-  const cutoffScore = parseInt(cutoff.replace(/-/g, ''), 10);
-  const targetScore = parseInt(targetDate.replace(/-/g, ''), 10);
-
-  const dates = (await redis('zrangebyscore', `${wp}:gym_tonnage_dates:${playerId}`, String(cutoffScore), String(targetScore)).catch(() => [])) || [];
-  if (!Array.isArray(dates) || !dates.length) return null;
-
-  const raws = await redisPipeline(dates.map(d => ['get', `${wp}:gym_tonnage:${playerId}:${d}`])).catch(() => []);
-  const loadMap = {};
-  dates.forEach((d, i) => { const v = parseFloat(raws[i]); if (v > 0) loadMap[d] = v; });
-  if (!Object.keys(loadMap).length) return null;
-
-  // EWMA acute (7-day) vs chronic (28-day)
-  const lambdaAcute = 2 / 8, lambdaChronic = 2 / 29;
-  let ewmaAcute = 0, ewmaChronic = 0;
-  const sorted = Object.keys(loadMap).sort();
-  // Walk every calendar day up to targetDate so gaps decay the EWMA correctly.
-  let cur = sorted[0];
-  while (cur <= targetDate) {
-    const load = loadMap[cur] || 0;
-    ewmaAcute = lambdaAcute * load + (1 - lambdaAcute) * ewmaAcute;
-    ewmaChronic = lambdaChronic * load + (1 - lambdaChronic) * ewmaChronic;
-    cur = _dBefore(cur, -1); // +1 day
-  }
-  if (ewmaChronic <= 0) return null;
-  const acwr = Math.round((ewmaAcute / ewmaChronic) * 100) / 100;
-  const note = acwr > 1.5 ? '🔴 высокая — объём зала снизить'
-    : acwr > 1.3 ? '⚠ повышенная — без прогрессии веса'
-    : acwr >= 0.8 ? 'умеренная нагрузка'
-    : 'недогруз зала';
-  return `• Gym-ACWR (тоннаж зала 7д/28д): ${acwr} — ${note}`;
-}
-
 export async function buildGenerationInputs(body) {
   const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie' } = body || {};
   if (!playerId) return { error: 'playerId required', status: 400 };
@@ -1584,7 +1479,7 @@ export async function buildGenerationInputs(body) {
 
   const prevDate = shiftDateStr(targetDate, -1);
   const [snapshot, sessionSummaries, actualSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev] = await Promise.all([
-    getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, 28, workspace),
+    getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, Number(days) || 7, workspace),
     getRecentSessionSummaries(String(playerId), 6, workspace).catch(() => []),
     getRecentActualSummaries(String(playerId), workspace, 5).catch(() => []),
     workspace === 'zarechie' ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
@@ -1610,11 +1505,10 @@ export async function buildGenerationInputs(body) {
 
   if (!snapshot) return { error: 'Player not found', status: 404 };
 
-  // Per-player exercise-response memory + LSI (jump symmetry) + gym-ACWR — appended to prompt.
-  const [exMemory, neuroDataRaw, gymAcwrText] = await Promise.all([
+  // Per-player exercise-response memory + LSI (jump symmetry) — appended to prompt.
+  const [exMemory, neuroDataRaw] = await Promise.all([
     getExerciseMemory(String(playerId), workspace).catch(() => ({})),
     workspace === 'zarechie' ? redis('get', 'neuro:data').catch(() => null) : Promise.resolve(null),
-    computeGymAcwrLine(String(playerId), targetDate, workspace).catch(() => null),
   ]);
   const memoryText = formatMemoryForPrompt(exMemory);
   // Extract LSI from workspace-safe neuro data. NK Performance data is already inside snapshot.neuro.
@@ -1690,12 +1584,6 @@ export async function buildGenerationInputs(body) {
     const memBlock = `\n• Индивидуальная история реакции на упражнения:\n  ${memoryText.replace(/\n/g, '\n  ')}`;
     dataSummary += memBlock;
     userPrompt += memBlock;
-  }
-
-  // Gym-ACWR (tonnage-based)
-  if (gymAcwrText) {
-    dataSummary += `\n${gymAcwrText}`;
-    userPrompt += `\n${gymAcwrText}`;
   }
 
   // LSI (jump limb-symmetry index)
@@ -1802,14 +1690,13 @@ export default async function handler(req, res) {
     }
 
     // Post-validation: check the AI honoured hard rules.
-    const snapshotForValidator = { acwr: snapshot ? (() => { try { const s = summarizeSnapshot(snapshot); const m = s.match(/ACWR[^:]*:\s*([\d.]+)/); return m ? parseFloat(m[1]) : null; } catch { return null; } })() : null };
-    let validation = validateSession(session, playerRestrictions, snapshotForValidator);
+    let validation = validateSession(session, playerRestrictions);
     if (!validation.valid) {
       console.log('GEN validation failed, retrying:', validation.errors);
       const fixPrompt = `${userPrompt}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n⚠ Твой предыдущий ответ нарушил следующие правила:\n${validation.errors.join('\n')}\n\nИсправь сессию, строго соблюдая все запреты и ограничения игрока. Верни ТОЛЬКО исправленную тренировку через build_session.`;
       const retry = await callOpenAIForSession(apiKey, fixPrompt);
       if (retry.session) {
-        const retryValidation = validateSession(retry.session, playerRestrictions, snapshotForValidator);
+        const retryValidation = validateSession(retry.session, playerRestrictions);
         // Accept the retry if it's valid; otherwise keep whichever has fewer errors.
         if (retryValidation.valid || retryValidation.errors.length < validation.errors.length) {
           session = retry.session;
@@ -1959,8 +1846,8 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     ? Math.round((hooper - _hooperBaseline) * 10) / 10
     : null;
 
-  // ACWR alert (recomputed from snapshot for alert context)
-  const _chronicSurveys = snapshot.chronicSurveys || snapshot.surveys || [];
+  // Foster load alert: use last 7 days only for monotony/strain.
+  const _recentSurveys = snapshot.surveys || [];
   const _manual = snapshot.manual || {};
   const _targetDate = targetDate;
 
@@ -1971,37 +1858,13 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     }
     return m;
   };
-  const _loadMap = _computeLoad(_chronicSurveys, _manual);
+  const _loadMap = _computeLoad(_recentSurveys, _manual);
 
   const _shiftBack = (date, n) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
-
-  const _acuteLoad = Object.entries(_loadMap).filter(([d]) => d > _shiftBack(_targetDate, 7) && d <= _targetDate).reduce((s, [,v]) => s+v, 0);
-  const _chronicLoad28 = Object.entries(_loadMap).filter(([d]) => d > _shiftBack(_targetDate, 28) && d <= _targetDate).reduce((s, [,v]) => s+v, 0) / 4;
-  const _acwr = _chronicLoad28 > 0 ? Math.round((_acuteLoad / _chronicLoad28) * 100) / 100 : null;
-
-  const _acuteJumps = Object.entries(_manual).filter(([d]) => d > _shiftBack(_targetDate, 7) && d <= _targetDate && _manual[d]?.jumps).reduce((s,[,v])=>s+(v.jumps||0),0);
-  const _chronicJumps = Object.entries(_manual).filter(([d]) => d > _shiftBack(_targetDate, 28) && d <= _targetDate && _manual[d]?.jumps).reduce((s,[,v])=>s+(v.jumps||0),0) / 4;
-  const _jumpACWR = _chronicJumps > 0 ? Math.round((_acuteJumps / _chronicJumps) * 100) / 100 : null;
 
   const _last7Loads = Object.entries(_loadMap).filter(([d]) => d > _shiftBack(_targetDate, 7) && d <= _targetDate).map(([,v]) => v);
   const _monotony = _last7Loads.length >= 4 ? (() => { const m = avg(_last7Loads); const sd = stdev(_last7Loads); return (m && sd && sd > 0) ? Math.round(m/sd*10)/10 : null; })() : null;
   const _strain = _monotony != null ? Math.round(_last7Loads.reduce((s,v)=>s+v,0) * _monotony) : null;
-
-  let acwrAlert = '';
-  if (_acwr != null) {
-    if (_acwr > 1.5) {
-      acwrAlert = `\n🔴🔴 ACWR = ${_acwr} (ОПАСНАЯ ЗОНА >1.5): объём A/B −30-40%, убрать взрывную нагрузку A2/B2 — только силовое. Риск травмы высокий.\n`;
-    } else if (_acwr > 1.3) {
-      acwrAlert = `\n🔴 ACWR = ${_acwr} (повышенный риск 1.3-1.5): не прогрессируй вес, объём −15%.\n`;
-    } else if (_acwr < 0.8 && (snapshot.whoop || []).slice(-1)[0]?.recovery >= 67) {
-      acwrAlert = `\n✅ ACWR = ${_acwr} (недогруз <0.8, Recovery в норме): можно добавить тренировочный стимул +10% к объёму или интенсивности.\n`;
-    }
-  }
-
-  let jumpACWRAlert = '';
-  if (_jumpACWR != null && _jumpACWR > 1.3) {
-    jumpACWRAlert = `\n${_jumpACWR > 1.5 ? '🔴' : '⚠'} Прыжковый ACWR = ${_jumpACWR}: ${_jumpACWR > 1.5 ? 'убрать A2/B2 плиометрику' : 'A2 −25%'} (недельный объём ${_acuteJumps} прыжков).\n`;
-  }
 
   let monotonyAlert = '';
   if (_monotony != null && _monotony > 1.5) {
@@ -2150,7 +2013,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     : '';
 
   const userPrompt = `${dataSummary}
-${onermContext}${warmupContext}${manualWorkspaceContext}${trainingTypeContext}${hrvTrendAlert}${hoopers7dAlert}${acwrAlert}${jumpACWRAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
+${onermContext}${warmupContext}${manualWorkspaceContext}${trainingTypeContext}${hrvTrendAlert}${hoopers7dAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${historyBlock}
 ${actualHistoryBlock}
