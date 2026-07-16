@@ -42,6 +42,7 @@ import {
   RotateCcw,
   CalendarRange,
   CheckCircle2,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { findExerciseUrl } from '../lib/exerciseBank';
 import { calcWeight } from '../lib/loadCalc';
@@ -4904,18 +4905,22 @@ export default function Home() {
 
           {/* ── Player contraindications (only on program tab) ── */}
           {playerId && selectedPlayer && workspaceTab === 'program' && (
-            <div className={`mb-5 rounded-2xl border p-4 print:hidden transition-colors duration-300 ${
+            <details className={`mb-4 rounded-2xl border print:hidden transition-colors duration-300 ${
               restrictions.length > 0
                 ? 'border-rose-500/25 bg-rose-500/[0.05]'
                 : 'border-white/[0.07] bg-white/[0.02]'
             }`}>
-              <div className="mb-3 flex items-center gap-2">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3">
                 <AlertTriangle size={12} className={restrictions.length > 0 ? 'text-rose-400' : 'text-slate-600'} />
                 <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Ограничения</span>
                 {restrictions.length > 0 && (
                   <span className="ml-auto rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-400">{restrictions.length} активно</span>
                 )}
-              </div>
+                {restrictions.length === 0 && (
+                  <span className="ml-auto text-[10px] font-semibold text-slate-700">нет активных</span>
+                )}
+              </summary>
+              <div className="border-t border-white/[0.05] px-4 pb-4 pt-3">
               <div className="flex flex-wrap gap-1.5">
                 {RESTRICTIONS.map(r => {
                   const active = restrictions.includes(r.id);
@@ -4936,7 +4941,8 @@ export default function Home() {
                   );
                 })}
               </div>
-            </div>
+              </div>
+            </details>
           )}
 
           {/* ── История тренировок ── */}
@@ -5100,7 +5106,7 @@ export default function Home() {
             </div>
           )}
 
-          {workspaceTab === 'program' && !playerId && (
+          {workspaceTab === 'program' && !playerId && batchSelectedIds.size === 0 && (
             <div className="hidden sm:flex flex-col items-center justify-center min-h-[65vh] text-center print:hidden">
               <div className="mb-3 text-6xl opacity-10">🏋</div>
               <h2 className="text-[18px] font-black text-slate-600">Выберите игрока</h2>
@@ -5108,8 +5114,47 @@ export default function Home() {
             </div>
           )}
 
+          {workspaceTab === 'program' && !playerId && batchSelectedIds.size > 0 && (
+            <div className="mx-auto flex min-h-[58vh] max-w-xl flex-col justify-center print:hidden">
+              <div className="rounded-2xl border border-accent/20 bg-accent/[0.05] p-6 text-center shadow-[0_12px_34px_rgba(0,0,0,0.35)]">
+                <Users size={22} className="mx-auto mb-3 text-accent" />
+                <h2 className="text-[18px] font-black text-white">Генерация для выбранных игроков</h2>
+                <p className="mt-1 text-[13px] text-slate-500">
+                  {batchSelectedIds.size} игрок(ов) · {date} · {TRAINING_TYPE_LABELS[trainingType] || getFocusLabel(period, focus)}
+                </p>
+                <button
+                  type="button"
+                  onClick={runBatchGeneration}
+                  disabled={batchRunning || !apiKey}
+                  className={`mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-5 py-3.5 text-sm font-black text-[#061116] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`}
+                >
+                  {batchRunning ? <Loader2 size={15} className="animate-spin" /> : <Zap size={15} />}
+                  {batchRunning ? 'Генерация...' : 'Сгенерировать выбранным'}
+                </button>
+                {batchResults.length > 0 && (
+                  <div className="mt-4 grid grid-cols-2 gap-2 text-left">
+                    {batchResults.map(r => (
+                      <div key={r.playerId} className={`rounded-xl border px-3 py-2 ${
+                        r.status === 'done' ? 'border-emerald-500/25 bg-emerald-500/[0.07]' :
+                        r.status === 'error' ? 'border-rose-500/25 bg-rose-500/[0.07]' :
+                        r.status === 'generating' ? 'border-accent/25 bg-accent/[0.07]' :
+                        'border-white/[0.07] bg-white/[0.03]'
+                      }`}>
+                        <div className="truncate text-[12px] font-semibold text-slate-200">{r.name}</div>
+                        <div className="mt-0.5 text-[10px] text-slate-600">
+                          {r.status === 'done' ? 'Сохранено' : r.status === 'error' ? 'Ошибка' : r.status === 'generating' ? 'Генерирую...' : 'В очереди'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-3 text-[11px] text-slate-600">Параметры берутся из панели слева: период, тип тренировки, комментарий тренера.</p>
+              </div>
+            </div>
+          )}
+
           {/* ── Schedule panel ── */}
-          {workspaceTab === 'program' && keyConnected && playerId && workspace !== 'nkperf' && (
+          {workspaceTab === 'program' && keyConnected && playerId && workspace !== 'nkperf' && period !== 'camp' && (
             <div className="mb-5 print:hidden">
               <button
                 type="button"
@@ -5152,93 +5197,77 @@ export default function Home() {
           {workspaceTab === 'program' && playerId && <>
           <form
             onSubmit={handleGenerate}
-            className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.05] to-white/[0.02] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:p-6 print:hidden"
+            className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4 shadow-[0_12px_34px_rgba(0,0,0,0.38)] backdrop-blur-xl sm:p-5 print:hidden"
           >
-            {/* Session type toggle */}
-            <div className="mb-5 flex rounded-2xl border border-white/[0.08] bg-white/[0.025] p-1">
-              {[
-                { value: 'gym', label: 'Тренажёрный зал', icon: <Dumbbell size={13} /> },
-                { value: 'warmup', label: 'Разминка', icon: <Zap size={13} /> },
-              ].map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => { setSessionType(opt.value); setSession(null); setMeta(null); setError(''); }}
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all duration-200 ${
-                    sessionType === opt.value
-                      ? 'bg-accent text-[#060a0e] shadow-[0_2px_16px_rgba(34,211,238,0.25)]'
-                      : 'text-slate-500 hover:text-slate-300'
-                  }`}
-                >
-                  {opt.icon}
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-
-            <div>
-              <SectionLabel icon={<CalendarDays size={11} />} text="Дата тренировки" />
-              <DatePicker value={date} onChange={setDate} maxDate={addDaysToStr(todayISO(), 1)} />
-              <div className="mt-2 flex items-center gap-1.5">
-                {[
-                  { label: 'Вчера', offset: -1 },
-                  { label: 'Сег.', offset: 0 },
-                  { label: 'Завтра', offset: 1 },
-                ].map(({ label, offset }) => {
-                  const target = offset === 0 ? todayISO() : addDaysToStr(todayISO(), offset);
-                  const active = date === target;
-                  return (
+            <div className="mb-4 grid gap-3 lg:grid-cols-[1.1fr_1fr_1.15fr]">
+              <div>
+                <SectionLabel icon={<Dumbbell size={11} />} text="Формат" />
+                <div className="flex rounded-xl border border-white/[0.08] bg-white/[0.025] p-1">
+                  {[
+                    { value: 'gym', label: 'Зал', icon: <Dumbbell size={13} /> },
+                    { value: 'warmup', label: 'Разминка', icon: <Zap size={13} /> },
+                  ].map(opt => (
                     <button
-                      key={label}
+                      key={opt.value}
                       type="button"
-                      onClick={() => setDate(target)}
-                      className={`rounded-lg border px-2 py-1 text-[10px] font-bold transition ${
-                        active
-                          ? 'border-accent/30 bg-accent/[0.07] text-accent'
-                          : 'border-white/[0.07] bg-white/[0.02] text-slate-600 hover:border-white/[0.12] hover:text-slate-400'
+                      onClick={() => { setSessionType(opt.value); setSession(null); setMeta(null); setError(''); }}
+                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12px] font-bold transition-all duration-200 ${
+                        sessionType === opt.value
+                          ? 'bg-accent text-[#060a0e] shadow-[0_2px_12px_rgba(34,211,238,0.20)]'
+                          : 'text-slate-500 hover:text-slate-300'
                       }`}
                     >
-                      {label}
+                      {opt.icon}
+                      {opt.label}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-              {date > todayISO() && (
-                <p className="mt-1.5 text-[10px] text-accent/70">
-                  Данные сегодняшнего вечера будут использованы для генерации завтрашней тренировки
-                </p>
-              )}
-            </div>
 
-            {/* Recovery status */}
-            {playerId && (
-              <div className="mt-4 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
-                <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-slate-600">Состояние игрока</p>
-                <div className="grid grid-cols-3 gap-2">
+              <div>
+                <SectionLabel icon={<CalendarDays size={11} />} text="Дата" />
+                <DatePicker value={date} onChange={setDate} maxDate={addDaysToStr(todayISO(), 1)} />
+              </div>
+
+              <div>
+                <SectionLabel icon={<Activity size={11} />} text="Готовность" />
+                <div className="grid grid-cols-3 gap-1.5">
                   {[
-                    { v: 'green',  emoji: '🟢', label: 'Норма',  on: 'border-emerald-400/50 bg-emerald-400/10 text-emerald-300' },
-                    { v: 'yellow', emoji: '🟡', label: '−25%',   on: 'border-amber-400/50 bg-amber-400/10 text-amber-300' },
-                    { v: 'red',    emoji: '🔴', label: 'Тонус',  on: 'border-rose-400/50 bg-rose-400/10 text-rose-300' },
+                    { v: 'green',  dot: 'bg-emerald-400', label: 'Норма',  on: 'border-emerald-400/50 bg-emerald-400/10 text-emerald-300' },
+                    { v: 'yellow', dot: 'bg-amber-400', label: '-25%',   on: 'border-amber-400/50 bg-amber-400/10 text-amber-300' },
+                    { v: 'red',    dot: 'bg-rose-400', label: 'Тонус',  on: 'border-rose-400/50 bg-rose-400/10 text-rose-300' },
                   ].map(b => (
                     <button
                       key={b.v}
                       type="button"
                       onClick={() => changeRecovery(b.v)}
-                      className={`flex flex-col items-center gap-0.5 rounded-xl border px-2 py-2 text-[10px] font-semibold transition ${
+                      className={`flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition ${
                         recoveryStatus === b.v ? b.on : 'border-white/[0.07] text-slate-500 hover:border-white/[0.14] hover:text-slate-300'
                       }`}
                     >
-                      <span className="text-[15px] leading-none">{b.emoji}</span>
+                      <span className={`h-2 w-2 rounded-full ${b.dot}`} />
                       {b.label}
                     </button>
                   ))}
                 </div>
               </div>
+            </div>
+
+            {date > todayISO() && (
+              <p className="mb-4 rounded-xl border border-accent/15 bg-accent/[0.04] px-3 py-2 text-[11px] text-accent/75">
+                Вечерние данные за сегодня будут учтены для завтрашней тренировки.
+              </p>
             )}
 
-            {/* 1RM Panel */}
+            {/* Advanced data */}
             {playerId && (
-              <div className="mt-4">
+              <details className="mt-3 rounded-xl border border-white/[0.07] bg-white/[0.015]">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-[12px] font-semibold text-slate-500 transition hover:text-slate-300">
+                  <SlidersHorizontal size={13} className="text-slate-600" />
+                  Дополнительные данные
+                  <span className="ml-auto text-[10px] text-slate-700">1ПМ · нагрузка · LSI</span>
+                </summary>
+              <div className="border-t border-white/[0.05] p-3">
                 <button
                   type="button"
                   onClick={() => setOneRMPanelOpen(o => !o)}
@@ -5332,6 +5361,7 @@ export default function Home() {
                   </div>
                 )}
               </div>
+              </details>
             )}
 
             {pendingSaved && !session && (
@@ -5365,73 +5395,70 @@ export default function Home() {
               </div>
             )}
 
-            <div className="mt-5">
-              <SectionLabel icon={<Target size={11} />} text="Цель именно этой тренировки" />
-              <input
-                type="text"
-                value={dayGoal}
-                onChange={e => setDayGoal(e.target.value)}
-                placeholder="Например: верх тела + кор, восстановительная сессия, акцент на прыжок"
-                className={`${inputBase} ${focusRing}`}
-              />
+            {/* ── Plan controls ── */}
+            <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr]">
+              <div>
+                <SectionLabel icon={<Layers size={11} />} text="Период и фаза" />
+                <div className="mb-2 flex gap-1">
+                  {PERIODS.map(p => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => {
+                        const nextFocus = PHASES_BY_PERIOD[p.value][0].value;
+                        setPeriod(p.value);
+                        setFocus(nextFocus);
+                        setTrainingType(defaultTrainingTypeForFocus(nextFocus));
+                      }}
+                      className={`flex-1 rounded-lg border px-2 py-1.5 text-[10px] font-bold transition-all ${
+                        period === p.value
+                          ? PERIOD_COLORS[p.value].tab
+                          : 'border-white/[0.08] text-slate-600 hover:border-white/[0.14] hover:text-slate-300'
+                      }`}
+                    >
+                      {p.value === 'offseason' ? 'Межсезонье' : p.label}
+                    </button>
+                  ))}
+                </div>
+                <select
+                  value={focus}
+                  onChange={e => {
+                    setFocus(e.target.value);
+                    setTrainingType(defaultTrainingTypeForFocus(e.target.value));
+                  }}
+                  className={`${inputBase} ${focusRing} [color-scheme:dark]`}
+                >
+                  {PHASES_BY_PERIOD[period].map(ph => (
+                    <option key={ph.value} value={ph.value}>
+                      {phaseLabelForWorkspace(ph, workspace)}{phaseSubForWorkspace(ph, workspace) ? ` · ${phaseSubForWorkspace(ph, workspace)}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <SectionLabel icon={<Target size={11} />} text="Тип и акцент" />
+                <select
+                  value={trainingType}
+                  onChange={e => setTrainingType(e.target.value)}
+                  className={`${inputBase} ${focusRing} mb-2 [color-scheme:dark]`}
+                >
+                  {TRAINING_TYPES.map(type => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={dayGoal}
+                  onChange={e => setDayGoal(e.target.value)}
+                  placeholder="Акцент дня: прыжок, плечо, корпус, восстановление..."
+                  className={`${inputBase} ${focusRing}`}
+                />
+              </div>
             </div>
 
-            {/* ── Divider ── */}
-            <div className="mt-5 h-px bg-white/[0.08]" />
-
-            {/* ── Period & Phase ── */}
-            <div className="mt-5">
-              <SectionLabel icon={<Layers size={11} />} text="Период и фаза" />
-
-              {/* Period tabs */}
-              <div className="flex gap-1.5">
-                {PERIODS.map(p => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => {
-                      setPeriod(p.value);
-                      setFocus(PHASES_BY_PERIOD[p.value][0].value);
-                    }}
-                    className={`flex-1 rounded-xl border py-2.5 text-[11px] font-bold tracking-wide transition-all ${
-                      period === p.value
-                        ? `${PERIOD_COLORS[p.value].tab} ${PERIOD_COLORS[p.value].glow}`
-                        : 'border-white/[0.09] text-slate-500 hover:border-white/[0.15] hover:text-slate-300'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Phase cards */}
-              <div className={`mt-2 grid gap-1.5 ${PHASES_BY_PERIOD[period].length === 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                {PHASES_BY_PERIOD[period].map(ph => (
-                  <button
-                    key={ph.value}
-                    type="button"
-                    onClick={() => setFocus(ph.value)}
-                    className={`rounded-xl border px-3.5 py-3 text-left transition-all duration-200 active:scale-[0.98] ${
-                      focus === ph.value
-                        ? `${PERIOD_COLORS[period].card}`
-                        : 'border-white/[0.07] text-slate-400 hover:border-white/[0.13] hover:bg-white/[0.025]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`shrink-0 rounded-full transition-all duration-200 ${focus === ph.value ? `h-2 w-2 ${PERIOD_COLORS[period].dot} shadow-[0_0_6px_currentColor]` : 'h-1.5 w-1.5 bg-slate-700'}`} />
-                      <div className={`text-[11px] font-semibold leading-tight transition-colors ${focus === ph.value ? PERIOD_COLORS[period].text : 'text-slate-400'}`}>
-                        {phaseLabelForWorkspace(ph, workspace)}
-                      </div>
-                    </div>
-                    {phaseSubForWorkspace(ph, workspace) && (
-                      <div className="mt-1 ml-3.5 text-[10px] leading-tight text-slate-600">{phaseSubForWorkspace(ph, workspace)}</div>
-                    )}
-                  </button>
-                ))}
-              </div>
-
               {autoFocusNote && (
-                <div className="mb-2 flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2">
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2">
                   <Check size={12} className="shrink-0 text-emerald-400" />
                   <span className="text-[11px] text-emerald-300">Фокус применён автоматически: {autoFocusNote}</span>
                 </div>
@@ -5457,40 +5484,14 @@ export default function Home() {
                   </button>
                 </div>
               )}
-            </div>
 
-            {/* ── Trend window (secondary, compact) ── */}
-            <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.015] px-4 py-2.5">
-              <TrendingUp size={12} className="shrink-0 text-slate-600" />
-              <span className="text-[11px] text-slate-600">Анализ данных:</span>
-              <span className="text-[11px] font-semibold text-slate-400">последние {days} дн.</span>
-              <div className="ml-auto flex items-center gap-1">
-                {[3, 7, 14, 21].map(v => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setDays(v)}
-                    className={`rounded-lg px-2.5 py-1 text-[10px] font-bold transition-all ${
-                      days === v
-                        ? 'bg-accent/[0.15] text-accent/90'
-                        : 'text-slate-600 hover:text-slate-400'
-                    }`}
-                  >
-                    {v}д
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-5 h-px bg-white/[0.08]" />
-
-            <div className="mt-5">
-              <SectionLabel icon={<MessageSquare size={11} />} text="Комментарии тренера (необязательно)" />
+            <div className="mt-4">
+              <SectionLabel icon={<MessageSquare size={11} />} text="Комментарии тренера" />
               <textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                rows={3}
-                placeholder={"Особые условия, ограничения по травмам...\nПример: «Сегодня утром была скоростная — снизить объём низа»\nИли: «Завтра COD-сессия — не перегружать колено»"}
+                rows={2}
+                placeholder="Только важное: боль, утренняя скорость, COD завтра, ограничить низ..."
                 className={`${inputBase} ${focusRing} resize-none`}
               />
             </div>
