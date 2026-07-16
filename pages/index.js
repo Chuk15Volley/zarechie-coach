@@ -1755,8 +1755,7 @@ export default function Home() {
   const [tonnageData, setTonnageData] = useState(null);
   const [tonnageLoading, setTonnageLoading] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  // True after an async gym generation completes — generate-status already persisted the
-  // session, so the manual "Сохранить" button is redundant (show "✓ Сохранено" instead).
+  // True after an async gym generation completes with autoSave enabled.
   const [autoSaved, setAutoSaved] = useState(false);
   const [resuming, setResuming] = useState(false);
 
@@ -2626,7 +2625,7 @@ export default function Home() {
   }
 
   // Generate + poll one player's gym session via the async generation path.
-  // generate-status persists the session on completion, so no separate save call is needed.
+  // Batch generation keeps autoSave enabled so no separate save call is needed.
   async function generatePlayerAsync(player) {
     setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'generating' } : r));
 
@@ -2634,7 +2633,7 @@ export default function Home() {
     const submitRes = await fetch('/api/programs/generate-async', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, notes, coachRecovery: recoveryStatus, workspace }),
+      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, notes, coachRecovery: recoveryStatus, workspace, autoSave: true }),
     });
     const submitData = await submitRes.json().catch(() => ({}));
     if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
@@ -2725,23 +2724,35 @@ export default function Home() {
         return;
       }
 
-      // ── Gym: synchronous OpenAI generation path ──
+      // ── Gym: OpenAI background generation path ──
       setAutoSaved(false);
       const warmupSummary = todayWarmup ? summarizeWarmupForGym(todayWarmup) : '';
-      const res = await fetch('/api/programs/generate', {
+      const submitRes = await fetch('/api/programs/generate-async', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ playerId, date, dayGoal, days, focus, notes, warmupSummary, coachRecovery: recoveryStatus, workspace }),
+        body: JSON.stringify({
+          playerId,
+          date,
+          dayGoal,
+          days,
+          focus,
+          notes,
+          warmupSummary,
+          coachRecovery: recoveryStatus,
+          workspace,
+          autoSave: false,
+        }),
       });
-      let data;
-      try { data = await res.json(); } catch (_) {
-        throw new Error('Ошибка соединения — попробуйте ещё раз');
-      }
-      if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
-      setSession(data.session);
-      setMeta({ player: data.player, dataSummary: data.dataSummary, date: data.date, dayGoal: data.dayGoal || '', focusLabel: fl, sessionType: 'gym' });
-      setShowSummary(false);
-      stopGenProgress(true);
+      const submitData = await submitRes.json().catch(() => ({}));
+      if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
+      const nextBatchId = submitData.batchId;
+      if (!nextBatchId) throw new Error('Сервер не вернул идентификатор задачи');
+
+      setBatchId(nextBatchId);
+      try {
+        localStorage.setItem('pending_batch', JSON.stringify({ batchId: nextBatchId, playerId, date, focusLabel: fl }));
+      } catch (_) {}
+      await pollBatchResult(nextBatchId, fl);
     } catch (err) {
       setError(err.message);
       stopGenProgress(false);
@@ -2753,8 +2764,7 @@ export default function Home() {
   }
 
   // Poll a submitted gym batch until done (or timeout). Used for fresh generation and for
-  // resuming a batch saved in localStorage after a tab reload. generate-status persists the
-  // session on completion, so on success we mark autoSaved and clear the localStorage marker.
+  // resuming a batch saved in localStorage after a tab reload.
   async function pollBatchResult(batchId, focusLabel) {
     // Poll every 5s, up to 6 minutes (72 attempts).
     const MAX_ATTEMPTS = 72;
@@ -2775,7 +2785,7 @@ export default function Home() {
         setSession(statusData.session);
         setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel, sessionType: 'gym' });
         setShowSummary(false);
-        setAutoSaved(true); // generate-status already saved the session
+        setAutoSaved(!!statusData.autoSaved);
         stopGenProgress(true);
         try { localStorage.removeItem('pending_batch'); } catch (_) {}
         return;

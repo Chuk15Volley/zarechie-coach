@@ -1,8 +1,8 @@
 // pages/api/programs/generate-status.js
-// GET ?batchId=xxx → polls a queued OpenAI Responses API session.
+// GET ?batchId=xxx -> polls a queued OpenAI background Responses API session.
 // While processing: { status: 'pending', processing_status }.
-// When done: extracts the build_session function call, persists the session to Redis (same
-// layout as save.js), and returns { status: 'done', session, player, dataSummary, date, dayGoal }.
+// When done: extracts the build_session function call, optionally persists the session to
+// Redis, and returns { status: 'done', session, player, dataSummary, date, dayGoal }.
 
 import { isAuthorized } from '../../../lib/auth';
 import { redis } from '../../../lib/redis';
@@ -42,7 +42,7 @@ function findOpenAIFunctionCall(output, name) {
   return null;
 }
 
-async function callOpenAIForSession(apiKey, userPrompt, sessionTool) {
+async function createOpenAIBackgroundResponse(apiKey, userPrompt, sessionTool) {
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -54,7 +54,7 @@ async function callOpenAIForSession(apiKey, userPrompt, sessionTool) {
       instructions: SYSTEM_PROMPT,
       input: userPrompt,
       max_output_tokens: 6500,
-      store: false,
+      background: true,
       tools: [sessionToolForOpenAI(sessionTool)],
       tool_choice: { type: 'function', name: 'build_session' },
     }),
@@ -63,9 +63,33 @@ async function callOpenAIForSession(apiKey, userPrompt, sessionTool) {
     const err = await response.json().catch(() => ({}));
     return { error: err.error?.message || `OpenAI API error ${response.status}`, status: 502 };
   }
-  const data = await response.json();
-  const functionCall = findOpenAIFunctionCall(data.output, 'build_session');
-  return { session: parseFunctionArguments(functionCall?.arguments) };
+  return { response: await response.json() };
+}
+
+async function retrieveOpenAIResponse(apiKey, responseId) {
+  const response = await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(responseId)}`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+    },
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    return { error: err.error?.message || `OpenAI API error ${response.status}`, status: 502 };
+  }
+  return { response: await response.json() };
+}
+
+function responseFailureMessage(response) {
+  return response?.error?.message
+    || response?.incomplete_details?.reason
+    || response?.last_error?.message
+    || `OpenAI response ended with status ${response?.status || 'unknown'}`;
+}
+
+function parseSessionFromResponse(response) {
+  const functionCall = findOpenAIFunctionCall(response?.output, 'build_session');
+  return parseFunctionArguments(functionCall?.arguments);
 }
 
 export default async function handler(req, res) {
@@ -101,57 +125,83 @@ export default async function handler(req, res) {
     });
   }
 
-  if (record.status === 'running') {
-    const started = record.startedAt ? Date.parse(record.startedAt) : 0;
-    if (started && Date.now() - started < 90_000) {
-      return res.status(200).json({ status: 'pending', processing_status: 'running' });
-    }
-  }
-
-  const { playerId, date, dayGoal = '', workspace = 'zarechie', focus = '', userPrompt, sessionTool } = record;
+  const { playerId, date, dayGoal = '', workspace = 'zarechie', focus = '', userPrompt, sessionTool, autoSave = true } = record;
   if (!userPrompt || !sessionTool) {
     return res.status(500).json({ error: 'Неполные данные задачи генерации' });
   }
 
   try {
-    await redis('set', `coach:batch:${batchId}`, JSON.stringify({
-      ...record,
-      status: 'running',
-      startedAt: new Date().toISOString(),
-    }), 'EX', 3600).catch(() => {});
+    let openaiResponse = null;
+    let openaiResponseId = record.openaiResponseId;
 
-    const generated = await callOpenAIForSession(apiKey, userPrompt, sessionTool);
-    if (generated.error) return res.status(generated.status || 502).json({ error: generated.error });
-    let session = generated.session;
+    if (!openaiResponseId) {
+      const created = await createOpenAIBackgroundResponse(apiKey, userPrompt, sessionTool);
+      if (created.error) return res.status(created.status || 502).json({ error: created.error });
+      openaiResponse = created.response;
+      openaiResponseId = openaiResponse?.id;
+      if (!openaiResponseId) return res.status(502).json({ error: 'OpenAI не вернул response id' });
+
+      record = {
+        ...record,
+        status: 'submitted',
+        openaiResponseId,
+        openaiStatus: openaiResponse.status || 'queued',
+        submittedToOpenAIAt: new Date().toISOString(),
+      };
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', 3600).catch(() => {});
+    } else {
+      const retrieved = await retrieveOpenAIResponse(apiKey, openaiResponseId);
+      if (retrieved.error) return res.status(retrieved.status || 502).json({ error: retrieved.error });
+      openaiResponse = retrieved.response;
+    }
+
+    if (['queued', 'in_progress'].includes(openaiResponse?.status)) {
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify({
+        ...record,
+        status: 'submitted',
+        openaiStatus: openaiResponse.status,
+        lastPolledAt: new Date().toISOString(),
+      }), 'EX', 3600).catch(() => {});
+      return res.status(200).json({ status: 'pending', processing_status: openaiResponse.status });
+    }
+
+    if (openaiResponse?.status !== 'completed') {
+      return res.status(502).json({ error: responseFailureMessage(openaiResponse) });
+    }
+
+    let session = parseSessionFromResponse(openaiResponse);
     if (!session) {
       return res.status(502).json({ error: 'Модель не вернула структурированную тренировку' });
     }
     session = normalizeExerciseLanguage(session, focus);
 
-    // Persist the session (same Redis layout as pages/api/programs/save.js).
     const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 28, workspace).catch(() => null);
     const player = snapshot?.player || null;
+    const dataSummary = record.dataSummary || '';
 
     const record2 = {
       session,
       player,
-      dataSummary: '',
+      dataSummary,
       dayGoal: dayGoal || '',
       date,
       savedAt: new Date().toISOString(),
     };
-    const dateScore = parseInt(String(date).replace(/-/g, ''), 10);
-    await Promise.all([
-      redis('set', sessionKey(workspace, playerId, date), JSON.stringify(record2)),
-      redis('zadd', sessionsKey(workspace, playerId), dateScore, date),
-    ]).catch(e => console.error('Redis save session failed:', e.message));
+    if (autoSave) {
+      const dateScore = parseInt(String(date).replace(/-/g, ''), 10);
+      await Promise.all([
+        redis('set', sessionKey(workspace, playerId, date), JSON.stringify(record2)),
+        redis('zadd', sessionsKey(workspace, playerId), dateScore, date),
+      ]).catch(e => console.error('Redis save session failed:', e.message));
+    }
 
     await redis('set', `coach:batch:${batchId}`, JSON.stringify({
       ...record,
       status: 'done',
       session,
       player,
-      dataSummary: '',
+      dataSummary,
+      autoSaved: !!autoSave,
       completedAt: new Date().toISOString(),
     }), 'EX', 3600).catch(() => {});
 
@@ -159,9 +209,10 @@ export default async function handler(req, res) {
       status: 'done',
       session,
       player,
-      dataSummary: '',
+      dataSummary,
       date,
       dayGoal,
+      autoSaved: !!autoSave,
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });

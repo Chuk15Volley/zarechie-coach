@@ -1,5 +1,5 @@
 // pages/api/programs/generate-async.js
-// POST { playerId, date, dayGoal, days, focus, notes, warmupSummary, teamUsedExercises }
+// POST { playerId, date, dayGoal, days, focus, notes, warmupSummary, teamUsedExercises, autoSave }
 // Queues one gym-session generation for the polling endpoint. The public contract stays
 // the same for the UI: return { batchId }, then the client polls generate-status.js.
 
@@ -18,12 +18,12 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: 'OPENAI_API_KEY не настроен в переменных среды Vercel' });
   }
 
-  const { playerId, dayGoal = '', workspace = 'zarechie', focus = '' } = req.body || {};
+  const { playerId, dayGoal = '', workspace = 'zarechie', focus = '', autoSave = true } = req.body || {};
 
   // Build the exact same SYSTEM_PROMPT / userPrompt / tool as the synchronous generator.
   const inputs = await buildGenerationInputs(req.body || {});
   if (inputs.error) return res.status(inputs.status || 400).json({ error: inputs.error });
-  const { userPrompt, targetDate } = inputs;
+  const { userPrompt, dataSummary, targetDate } = inputs;
 
   // Keep the full schema for the polled path.
   const sessionTool = buildSessionTool({ includeImgPrompt: true });
@@ -40,7 +40,9 @@ export default async function handler(req, res) {
         dayGoal,
         workspace,
         focus,
+        autoSave: autoSave !== false,
         userPrompt,
+        dataSummary,
         sessionTool,
         status: 'pending',
         submittedAt: new Date().toISOString(),
