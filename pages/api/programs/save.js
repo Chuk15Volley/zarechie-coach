@@ -10,6 +10,27 @@ import { isAuthorized } from '../../../lib/auth';
 import { normExName } from '../players/progression';
 import { sessionKey, sessionsKey, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey } from '../../../lib/workspacePrefix';
 
+function formatKg(value) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
+}
+
+function normalizeSavedWeights(session) {
+  if (!session?.blocks) return session;
+  return {
+    ...session,
+    blocks: session.blocks.map(block => ({
+      ...block,
+      exercises: (block.exercises || []).map(ex => {
+        const kg = formatKg(ex.weightKg);
+        if (!kg || String(ex.weightNote || '').trim()) return ex;
+        return { ...ex, weightNote: `${kg} кг` };
+      }),
+    })),
+  };
+}
+
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -23,8 +44,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'playerId, date and session are required' });
   }
 
+  const normalizedSession = normalizeSavedWeights(session);
+
   const record = {
-    session,
+    session: normalizedSession,
     player: player || null,
     dataSummary: dataSummary || '',
     dayGoal: dayGoal || '',
@@ -37,7 +60,7 @@ export default async function handler(req, res) {
 
   // Collect per-exercise weight records and history entries to write in one pipeline.
   const exweightCmds = [];
-  for (const block of session.blocks || []) {
+  for (const block of normalizedSession.blocks || []) {
     for (const ex of block.exercises || []) {
       const kg = parseFloat(ex.weightKg);
       if (!kg || kg <= 0 || !ex.name) continue;
@@ -49,7 +72,7 @@ export default async function handler(req, res) {
 
   // Calculate session tonnage = Σ(weightKg × reps × sets)
   let totalTonnage = 0;
-  for (const block of session.blocks || []) {
+  for (const block of normalizedSession.blocks || []) {
     for (const ex of block.exercises || []) {
       const kg = parseFloat(ex.weightKg) || 0;
       const sets = (ex.targetSets || []).length || parseInt(ex.sets, 10) || 3;

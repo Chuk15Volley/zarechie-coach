@@ -113,8 +113,25 @@ function initials(name) {
   return (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
+function formatKgValue(value) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
+}
+
+function parseKgFromNote(note) {
+  const m = String(note || '').match(/(\d+(?:[.,]\d+)?)\s*(?:кг|kg)\b/i);
+  return m ? m[1].replace(',', '.') : '';
+}
+
+function plannedWeightLabel(ex) {
+  const kg = formatKgValue(ex?.weightKg) || formatKgValue(parseKgFromNote(ex?.weightNote));
+  if (kg) return `${kg} кг`;
+  return String(ex?.weightNote || '').trim();
+}
+
 // ── Set button — tappable, turns green when done, shows weight input ──────────
-function SetBtn({ label, value, done, onToggle, weight, onWeightChange }) {
+function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedWeight }) {
   return (
     <button
       type="button"
@@ -131,6 +148,11 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange }) {
       <span className={`text-sm font-black leading-none ${done ? 'text-emerald-300' : 'text-slate-200'}`}>
         {value}
       </span>
+      {plannedWeight && (
+        <span className="mt-1 text-[9px] font-semibold leading-none text-slate-500">
+          план {plannedWeight}
+        </span>
+      )}
       {done && (
         <input
           type="text"
@@ -138,7 +160,7 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange }) {
           value={weight || ''}
           onChange={e => onWeightChange(e.target.value)}
           onClick={e => e.stopPropagation()}
-          placeholder="кг"
+          placeholder={plannedWeight ? plannedWeight.replace(/\s*кг$/i, '') : 'кг'}
           className="mt-1.5 w-full rounded-lg border border-emerald-500/20 bg-black/20 px-1 py-0.5 text-center text-[10px] text-emerald-200 placeholder-emerald-800 outline-none focus:border-emerald-500/40"
           maxLength={6}
         />
@@ -216,6 +238,11 @@ function ExerciseMedia({ name, token }) {
 
 // ── Single exercise card ──────────────────────────────────────────────────────
 function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) {
+  const plannedWeight = plannedWeightLabel(ex);
+  const plannedSetWeight = /^\d/.test(plannedWeight) ? plannedWeight : '';
+  const weightNote = String(ex.weightNote || '').trim();
+  const showWeightNote = weightNote && weightNote !== plannedWeight && !weightNote.includes(plannedWeight);
+
   return (
     <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03]">
       {/* Header */}
@@ -230,6 +257,13 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
         )}
         <span className="text-[15px] font-bold leading-snug text-white">{ex.name}</span>
       </div>
+
+      {plannedWeight && (
+        <div className="border-b border-white/[0.05] bg-[#4ade80]/[0.06] px-4 py-2">
+          <div className="text-[11px] font-black uppercase tracking-[0.14em] text-[#4ade80]/55">Рабочий вес</div>
+          <div className="mt-0.5 text-[18px] font-black leading-none text-[#4ade80]">{plannedWeight}</div>
+        </div>
+      )}
 
       {/* Image + video */}
       <div className="px-4 pt-2">
@@ -249,6 +283,7 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
               onToggle={() => onToggle(key)}
               weight={weights?.[key] || ''}
               onWeightChange={val => onWeightChange(key, val)}
+              plannedWeight={plannedSetWeight}
             />
           );
         })}
@@ -256,8 +291,8 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
 
       {/* Details */}
       <div className="space-y-2 px-4 pb-4 pt-3">
-        {ex.weightNote && (
-          <div className="text-[15px] font-semibold text-slate-200">{ex.weightNote}</div>
+        {showWeightNote && (
+          <div className="text-[14px] font-semibold text-slate-300">{weightNote}</div>
         )}
         {ex.autoReg && (
           <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2.5">
@@ -819,11 +854,18 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                               {ex.tempo && <span className="shrink-0 rounded-lg border border-blue-500/25 bg-blue-500/[0.10] px-2 py-0.5 text-[10px] font-bold text-blue-400">{ex.tempo}</span>}
                               <span className="text-[15px] font-bold leading-snug text-white">{ex.name}</span>
                             </div>
+                            {plannedWeightLabel(ex) && (
+                              <div className="border-b border-white/[0.05] bg-[#4ade80]/[0.06] px-4 py-2">
+                                <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#4ade80]/55">Рабочий вес</div>
+                                <div className="mt-0.5 text-[16px] font-black leading-none text-[#4ade80]">{plannedWeightLabel(ex)}</div>
+                              </div>
+                            )}
                             <div className="px-4 py-3 flex flex-wrap gap-2">
                               {(ex.targetSets || []).map((s, si) => (
                                 <div key={si} className="flex min-w-[58px] flex-col items-center rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
                                   <span className="text-[10px] font-bold mb-0.5 text-slate-600">{si + 1}</span>
                                   <span className="text-sm font-black leading-none text-slate-400">{s}</span>
+                                  {/^\d/.test(plannedWeightLabel(ex)) && <span className="mt-1 text-[9px] font-semibold leading-none text-slate-600">план {plannedWeightLabel(ex)}</span>}
                                 </div>
                               ))}
                             </div>
