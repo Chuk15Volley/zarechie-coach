@@ -269,12 +269,12 @@ function isMainStrengthCode(code) {
   return /^[ABC]1\b/i.test(String(code || ''));
 }
 
-function tempoLeadIn(tempo, focus) {
+function tempoLeadIn(tempo) {
   const t = String(tempo || '').toLowerCase();
-  if (isEccFocus(focus) || /^5-0-x-0$/i.test(String(tempo || '').trim())) {
+  if (isFiveSecondEccTempo(tempo)) {
     return 'Темп: опускаемся 5 секунд медленно вниз, вверх максимально резко.';
   }
-  if (isIsoFocus(focus) || t.includes('5сек') || t.includes('iso') || t.includes('изо')) {
+  if (isFiveSecondIsoTempo(tempo)) {
     return 'Темп: пауза в напряжении 5 секунд, вверх максимально резко.';
   }
   if (t.includes('реактив') || t === 'x-0-x-0') {
@@ -292,14 +292,31 @@ function tempoLeadIn(tempo, focus) {
   return tempo ? `Темп: ${tempo}.` : 'Темп: контролируемо вниз, вверх активно.';
 }
 
+function isFiveSecondEccTempo(tempo) {
+  return /^5-0-x-0$/i.test(String(tempo || '').trim());
+}
+
+function isFiveSecondIsoTempo(tempo) {
+  const t = String(tempo || '').toLowerCase();
+  return t.includes('5сек') || t.includes('iso') || t.includes('изо');
+}
+
 function stripTempoLeadIn(text) {
   return String(text || '')
     .replace(/^темп\s*[:—-]\s*[^.?!]*(?:[.?!]\s*)?/i, '')
     .trim();
 }
 
-function conciseCue(text) {
-  const cleaned = stripTempoLeadIn(text)
+function stripMismatchedFiveSecondCue(text, tempo) {
+  if (isFiveSecondEccTempo(tempo) || isFiveSecondIsoTempo(tempo)) return text;
+  return String(text || '')
+    .replace(/\b(?:опускайся|опускаемся|опускание|вниз)[^.?!]*(?:5\s*(?:сек|sec|seconds?)|медленн)[^.?!]*(?:[.?!]\s*)?/gi, '')
+    .replace(/\b(?:пауза|удержание|hold)[^.?!]*5\s*(?:сек|sec|seconds?)[^.?!]*(?:[.?!]\s*)?/gi, '')
+    .trim();
+}
+
+function conciseCue(text, tempo = '') {
+  const cleaned = stripMismatchedFiveSecondCue(stripTempoLeadIn(text), tempo)
     .replace(/\s+/g, ' ')
     .trim();
   if (!cleaned) return 'Держи корпус жёстко, движение чистое.';
@@ -320,8 +337,8 @@ export function normalizeExerciseLanguage(session, focus = '') {
           : isMainStrength && isIsoFocus(focus)
             ? '0-5сек-X-0'
             : (ex.tempo || '');
-        const lead = tempoLeadIn(nextTempo || ex.tempo, focus);
-        const cue = conciseCue(ex.cue);
+        const lead = tempoLeadIn(nextTempo || ex.tempo);
+        const cue = conciseCue(ex.cue, nextTempo || ex.tempo);
         return {
           ...ex,
           tempo: nextTempo || ex.tempo || '',
