@@ -1980,7 +1980,7 @@ export default function Home() {
       return;
     }
 
-    fetch('/api/players/list', { headers: { 'x-api-key': apiKey } })
+    fetch(`/api/players/list?workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } })
       .then(async r => {
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(data.error || `Ошибка (${r.status})`);

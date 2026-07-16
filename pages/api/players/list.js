@@ -4,6 +4,7 @@
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { extractPlayerPhoto, hydratePlayerPhotos } from '../../../lib/playerPhotos';
+import { rosterKey, sessionsKey } from '../../../lib/workspacePrefix';
 
 // Upstash REST may return already-parsed objects — parse defensively.
 function parseJSON(raw) {
@@ -18,6 +19,39 @@ export default async function handler(req, res) {
   }
 
   try {
+  const workspace = String(req.query.workspace || 'zarechie');
+
+  if (workspace === 'nkperf') {
+    const raw = await redis('get', rosterKey(workspace)).catch(() => null);
+    const roster = parseJSON(raw);
+    const players = Array.isArray(roster) ? roster : [];
+    const hydrated = await hydratePlayerPhotos(
+      players
+        .map(p => ({
+          id: String(p.id || p.whoopUserId || p.whoopId || p.externalId || ''),
+          name: p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim(),
+          position: p.position || '',
+          photo: extractPlayerPhoto(p) || null,
+        }))
+        .filter(p => p.id && p.name)
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+      workspace
+    );
+
+    const meta = await redisPipeline(
+      hydrated.flatMap(p => [
+        ['zrange', sessionsKey(workspace, p.id), -1, -1],
+      ])
+    ).catch(() => []);
+
+    const playersWithMeta = hydrated.map((p, i) => ({
+      ...p,
+      lastSessionDate: Array.isArray(meta[i]) && meta[i].length ? meta[i][0] : null,
+    }));
+
+    return res.status(200).json({ players: playersWithMeta });
+  }
+
   const [whoopIds, rosterIds] = await Promise.all([
     redis('smembers', 'whoop:players'),
     redis('smembers', 'roster:players'),
@@ -76,7 +110,7 @@ export default async function handler(req, res) {
 
   const meta = await redisPipeline(
     deduped.flatMap(p => [
-      ['zrange', `coach:sessions:${p.id}`, -1, -1],
+      ['zrange', sessionsKey(workspace, p.id), -1, -1],
     ])
   ).catch(() => []);
 
