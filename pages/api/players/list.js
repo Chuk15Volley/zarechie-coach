@@ -3,6 +3,7 @@
 
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { extractPlayerPhoto, hydratePlayerPhotos } from '../../../lib/playerPhotos';
 
 // Upstash REST may return already-parsed objects — parse defensively.
 function parseJSON(raw) {
@@ -31,14 +32,15 @@ export default async function handler(req, res) {
   );
   const players = ids
     .map((id, i) => {
-      const raw = raws[i * 2] || raws[i * 2 + 1];
-      if (!raw) return null;
-      const p = parseJSON(raw);
+      const whoop = parseJSON(raws[i * 2]);
+      const roster = parseJSON(raws[i * 2 + 1]);
+      const p = roster || whoop;
       if (!p) return null;
       return {
         id,
         name: p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim(),
         position: p.position || '',
+        photo: extractPlayerPhoto(roster) || extractPlayerPhoto(whoop) || null,
       };
     })
     .filter(Boolean);
@@ -54,34 +56,39 @@ export default async function handler(req, res) {
       byCanon.set(canon, { ...p, id: canon });
     } else if (String(p.id).startsWith('whoop_')) {
       // roster:player (whoop_ prefix) has fresher name from dashboard — use it, keep numeric id
-      byCanon.set(canon, { ...p, id: canon });
+      byCanon.set(canon, { ...p, id: canon, photo: p.photo || existing.photo || null });
+    } else if (!existing.photo && p.photo) {
+      byCanon.set(canon, { ...existing, photo: p.photo });
     }
   }
   // Second pass: dedupe any remaining same-name entries (manually added roster-only players)
   const byName = new Map();
   for (const p of byCanon.values()) {
-    if (!byName.has(p.name)) byName.set(p.name, p);
+    const existing = byName.get(p.name);
+    if (!existing) byName.set(p.name, p);
+    else if (!existing.photo && p.photo) byName.set(p.name, { ...existing, photo: p.photo });
   }
 
-  const deduped = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  const deduped = await hydratePlayerPhotos(
+    Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+    'zarechie'
+  );
 
   const meta = await redisPipeline(
     deduped.flatMap(p => [
       ['zrange', `coach:sessions:${p.id}`, -1, -1],
-      ['get', `player:photo:${p.id}`],
     ])
   ).catch(() => []);
 
   const playersWithMeta = deduped.map((p, i) => ({
     ...p,
-    lastSessionDate: Array.isArray(meta[i * 2]) && meta[i * 2].length ? meta[i * 2][0] : null,
-    photo: meta[i * 2 + 1] || null,
+    lastSessionDate: Array.isArray(meta[i]) && meta[i].length ? meta[i][0] : null,
   }));
 
   // Keep coach:roster in sync (used by readiness/schedule endpoints).
   // Fire-and-forget — doesn't block the response.
   redis('set', 'coach:roster', JSON.stringify(
-    deduped.map(p => ({ id: p.id, name: p.name, position: p.position }))
+    deduped.map(p => ({ id: p.id, name: p.name, position: p.position, photo: p.photo || null }))
   )).catch(() => {});
 
   res.status(200).json({ players: playersWithMeta });

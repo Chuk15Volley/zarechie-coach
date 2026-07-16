@@ -2423,7 +2423,7 @@ export default function Home() {
       await fetch('/api/players/photo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ playerId: editPhotoFor, photoUrl }),
+        body: JSON.stringify({ playerId: editPhotoFor, photoUrl, workspace }),
       });
       setPlayers(prev => prev.map(p => p.id === editPhotoFor ? { ...p, photo: photoUrl || null } : p));
       if (selectedPlayer?.id === editPhotoFor) {

@@ -2,20 +2,23 @@
 // Gives each player a standalone PWA that opens directly to their session URL.
 export default function handler(req, res) {
   const { token } = req.query;
+  const tokenValue = Array.isArray(token) ? token[0] : token;
+  const playerIcon = `/api/player-photo/${encodeURIComponent(tokenValue || '')}`;
 
   const manifest = {
     name: 'NK Coach — Моя тренировка',
     short_name: 'NK Coach',
     description: 'Nikolay Korenchuk · High Performance Coach',
-    start_url: `/player/${token}`,
-    scope: `/player/${token}`,
+    start_url: `/player/${tokenValue}`,
+    scope: `/player/${tokenValue}`,
     display: 'standalone',
     background_color: '#07101a',
     theme_color: '#07101a',
     orientation: 'portrait-primary',
     icons: [
+      { src: playerIcon, sizes: '512x512', purpose: 'any maskable' },
+      { src: playerIcon, sizes: '192x192', purpose: 'any maskable' },
       { src: '/nk-logo.jpg', sizes: '512x512', type: 'image/jpeg', purpose: 'any' },
-      { src: '/nk-logo.jpg', sizes: '192x192', type: 'image/jpeg', purpose: 'any' },
     ],
   };
 

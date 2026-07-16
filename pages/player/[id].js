@@ -7,7 +7,7 @@ import Head from 'next/head';
 import { redis } from '../../lib/redis';
 import { findExerciseUrl } from '../../lib/exerciseBank';
 import { resolveShareToken } from '../../lib/shareToken';
-import { pfx, sessionKey, sessionsKey } from '../../lib/workspacePrefix';
+import { pfx, playerPhotoKey, sessionKey, sessionsKey } from '../../lib/workspacePrefix';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -60,10 +60,12 @@ export async function getServerSideProps({ params }) {
   }
   const { playerId, workspace } = resolved;
 
-  const [allDates, playerPhoto] = await Promise.all([
+  const [allDates, storedPhoto, legacyPhoto] = await Promise.all([
     redis('zrange', sessionsKey(workspace, playerId), 0, -1).catch(() => []),
-    redis('get', `player:photo:${playerId}`).catch(() => null),
+    redis('get', playerPhotoKey(workspace, playerId)).catch(() => null),
+    workspace === 'zarechie' ? redis('get', `player:photo:${playerId}`).catch(() => null) : Promise.resolve(null),
   ]);
+  let playerPhoto = storedPhoto || legacyPhoto || null;
   const sessionDates = [...(allDates || [])].reverse();
 
   let record = null;
@@ -84,6 +86,8 @@ export async function getServerSideProps({ params }) {
   if (!record) {
     return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: false, sessionDates, playerPhoto: playerPhoto || null, serverLog: null } };
   }
+
+  playerPhoto = playerPhoto || record.player?.photo || null;
 
   const resolvedDate = record.date || date;
   const logRaw = await redis('get', `${pfx(workspace)}:log:${playerId}:${resolvedDate}`).catch(() => null);
