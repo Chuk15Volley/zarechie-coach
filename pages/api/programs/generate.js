@@ -14,6 +14,60 @@ import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseM
 import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlaybook';
 import { pfx, scheduleKey } from '../../../lib/workspacePrefix';
 
+const TRAINING_TYPE_LABELS = {
+  anterior_chain: 'Передняя цепь',
+  posterior_chain: 'Задняя цепь',
+  full_body: 'Все тело',
+  recovery_prehab: 'Восстановление / профилактика',
+  activation_power: 'Активация / мощность',
+};
+
+const MATCH_LOAD_LABELS = {
+  high: 'Высокая игровая нагрузка',
+  medium: 'Средняя игровая нагрузка',
+  low: 'Низкая игровая нагрузка',
+  none: 'Не играла',
+  inactive: 'Не в заявке / травма',
+};
+
+function shiftDateStr(date, n) {
+  const d = new Date(date + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function matchLoadKey(workspace, date) {
+  return `${pfx(workspace)}:match_load:${date}`;
+}
+
+function parseJSONSafe(raw, fallback = null) {
+  if (raw == null) return fallback;
+  if (typeof raw === 'object') return raw;
+  try { return JSON.parse(raw); } catch { return fallback; }
+}
+
+function formatMatchLoadForPrompt(playerId, targetDate, rawToday, rawPrev) {
+  const todayLoads = parseJSONSafe(rawToday, {});
+  const prevLoads = parseJSONSafe(rawPrev, {});
+  const today = todayLoads?.[String(playerId)] || null;
+  const prevDate = shiftDateStr(targetDate, -1);
+  const prev = prevLoads?.[String(playerId)] || null;
+  const lines = [];
+  const pushLoad = (label, load) => {
+    if (!load?.status) return;
+    const status = MATCH_LOAD_LABELS[load.status] || load.status;
+    lines.push(`• ${label}: ${status}${load.rpe ? `, RPE матча ${load.rpe}/10` : ''}${load.pain ? ', боль/дискомфорт: да' : ''}${load.note ? `, заметка: ${load.note}` : ''}`);
+  };
+  pushLoad(`Игровая нагрузка сегодня (${targetDate})`, today);
+  pushLoad(`Игровая нагрузка вчера (${prevDate})`, prev);
+  if (!lines.length) {
+    return '\n• Игровая нагрузка после последнего матча: не отмечена — если рядом матч Заречья, действуй консервативно для всех игроков.';
+  }
+  lines.push('→ Если вчера была высокая/средняя игровая нагрузка: приоритет восстановлению, профилактике, снижению прыжков и осевой нагрузки. Если низкая/не играла: можно дать более полноценную работу с учетом расписания и готовности.');
+  lines.push('→ Если статус "Не в заявке / травма": не считать игрока свежим автоматически; использовать только безопасную работу с учетом причины/ограничений.');
+  return '\n' + lines.join('\n');
+}
+
 const FOCUS_LABELS = {
   // ── СБОРЫ ЗАРЕЧЬЕ 2025 (13 июля – 26 августа) ─────────────────────────────
   camp_ecc_anterior:  'СБОРЫ · ЭКСЦЕНТРИКА · Передняя цепь — ПОНЕДЕЛЬНИК нед.1-3; квадрицепс, жим, сгибатель бедра; темп 5-0-X-0; прогрессия: нед.1=3×75-78%, нед.2=4×80-83%, нед.3=4×83-87%; вечером ЛИНЕЙНАЯ СКОРОСТЬ — не доводи квадрицепс и сгибатели бедра до отказа',
@@ -33,7 +87,7 @@ const FOCUS_LABELS = {
   zvs_power_transfer: 'Межсезонье: Мощность и перенос — полные PAP-кластеры 80-87.5%, Resisted Approach Jump, позиционная работа; тейпер последняя неделя; RPE 8-9; JLU ≤500',
   // ── СЕЗОН ЗАРЕЧЬЕ 2025–2026 (сентябрь 2025 — апрель 2026) ───────────────
   inseason_strength:     'СЕЗОН · СИЛОВАЯ — 40 мин, без разминки (разминка уже сделана в игровом зале). 4 блока строго: 1) НИЗ ТЕЛА — преимущественно унилатерально, колено+таз-доминантно (Bulgarian Split Squat, Split Squat, выпады, Goblet Squat, Romanian Deadlift, SL RDL); 2) ВЕРХ ТЕЛА — жимы + подтягивания + тяги (DB Bench Press, Pull-up, Australian Pull-up, DB Row, Landmine Press); 3) АКЦЕНТ — профилактика / слабое звено по позиции; 4) КОР — антиротация / антиэкстензия / переноски (Pallof, Dead Bug, Suitcase Carry). ТОЛЬКО свободные веса, НИКАКИХ тренажёров. Не позже MD-3. Позиционные протоколы (Либеро/Связка/ОПП/MB/OH) применять как на сборах.',
-  inseason_power:        'СЕЗОН · МОЩНОСТНАЯ — 40 мин, гибрид-контраст: (1) 1 движение со штангой на СКОРОСТЬ 40–60% 1ПМ максимальная скорость концентрики; (2) вертикальная плиометрика (CMJ, Box Jump, Split Jump, Depth Jump по готовности). Позиция в неделе ситуационная по триггеру: ≥3 дня до игры + утренний CMJ/RSI в норме + важность матча. Не позже MD-3. Без медленной эксцентрики и высокообъёмной плиометрики рядом с игрой.',
+  inseason_power:        'СЕЗОН · МОЩНОСТНАЯ — 40-45 мин, гибрид-контраст: (1) безопасное скоростное движение DB/KB/trap-bar/medball/landmine/sled с максимальной скоростью концентрики; (2) низко- или среднеударная плиометрика по готовности (pogo, snap-down, box jump low, medball throw, plyo push-up). Не позже MD-3. Без медленной эксцентрики, без высокообъёмной плиометрики рядом с игрой, без обычной штанги.',
   inseason_prophylaxis:  'СЕЗОН · ПРОФИЛАКТИКА/ВОССТАНОВЛЕНИЕ — день MD+2 после игры (обычно понедельник) + pre-game MD-1. Слабые звенья волейболиста, мобильность, контроль движения, стабилизация суставов. БЕЗ тяжёлой штанги, БЕЗ высокоударной плиометрики. Pre-game MD-1: короткая нейромышечная активация + тонус, не утомлять.',
   inseason_accumulation: 'СЕЗОН · ФЕВРАЛЬ · БЛОК НАКОПЛЕНИЯ СИЛЫ — 60 мин (вместо обычных 40). Структура та же (4 блока), все блоки удлиняются пропорционально: больше сетов/упражнений. Интенсивность 80–87% 1ПМ с индивидуальной поправкой по состоянию (CMJ/RSI baseline + Recovery). Единственное окно сезона для реального набора силы перед мартовской конверсией. Волна 3:1 сохраняется. «Священные» упражнения обязательны.',
   inseason_conversion:   'СЕЗОН · МАРТ-АПРЕЛЬ · КОНВЕРСИЯ В МОЩНОСТЬ — перевод накопленной февральской силы в скоростно-силовые качества к плей-офф. Смещение акцента: больше баллистики и плиометрики, снижение медленной силовой работы, поддержание нейромышечной готовности. 40–50 мин.',
@@ -56,7 +110,7 @@ const NK_MANUAL_FOCUS_LABELS = {
   camp_iso_posterior: 'СБОРЫ · ИЗОМЕТРИКА · Задняя цепь — ручной выбор тренера; пауза в напряжении 5 сек в угле 45° бедро → вверх максимально резко; без календарной привязки',
   camp_explosive:     'СБОРЫ · ВЗРЫВ / ПОТЕНЦИАЦИЯ — ручной выбор тренера; нагрузка 50-60% 1ПМ, максимальная скорость, объём -40-50%; без привязки к дню недели',
   inseason_strength:  'СЕЗОН · СИЛОВАЯ — ручной выбор тренера; 40-60 мин, развитие/поддержание силы, блоки под позицию игрока; без MD-логики, дня недели и расписания Заречья',
-  inseason_power:     'СЕЗОН · МОЩНОСТНАЯ — ручной выбор тренера; 30-45 мин, скорость штанги, плиометрика только по готовности CMJ/RSI/Recovery; без MD-логики и расписания Заречья',
+  inseason_power:     'СЕЗОН · МОЩНОСТНАЯ — ручной выбор тренера; 30-45 мин, скорость DB/KB/trap-bar/medball/landmine/sled, плиометрика только по готовности CMJ/RSI/Recovery; без расписания Заречья',
   inseason_prophylaxis: 'СЕЗОН · ПРОФИЛАКТИКА/ВОССТАНОВЛЕНИЕ — ручной выбор тренера; слабые звенья, мобильность, контроль движения, стабилизация суставов; без привязки к матчу',
   inseason_accumulation: 'СЕЗОН · БЛОК НАКОПЛЕНИЯ СИЛЫ — ручной выбор тренера; 60 мин, больше сетов/упражнений, 80-87% 1ПМ с поправкой по состоянию',
   inseason_conversion: 'СЕЗОН · КОНВЕРСИЯ В МОЩНОСТЬ — ручной выбор тренера; перевод силы в скоростно-силовые качества, меньше медленной силовой работы',
@@ -95,12 +149,17 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
       type: 'string',
       description: 'Правило авторегуляции — СТРОГО 1 критерий остановки или снижения нагрузки. Только для основных силовых (A1, B1, C1). Русский язык. Без объяснений — только факт и действие. Примеры: "Скорость штанги падает → заканчивай подход.", "Потеря нейтрали поясницы → стоп.", "RPE достигает 9 → снизь нагрузку 5%.", "Отрыв пятки → прекрати повтор."',
     },
+    alternatives: {
+      type: 'array',
+      description: '2-3 профессиональные альтернативы только для основных упражнений блоков A/B/C. Для D/E оставь пустой массив. Названия упражнений на английском.',
+      items: { type: 'string' },
+    },
     cue: {
       type: 'string',
       description: 'Короткое описание для игрока на русском языке. ВСЕГДА начинай с описания темпа. Потом 1 профессиональная S&C-подсказка: конкретный угол сустава, паттерн движения или точка активации. Без "потому что", без "старайся", без воды. Примеры: "Темп: опускаемся 5 секунд медленно вниз, вверх максимально резко. Колено над вторым пальцем.", "Темп: пауза в напряжении 5 секунд, вверх максимально резко. Таз нейтрален."',
     },
   };
-  const exerciseRequired = ['code', 'name', 'targetSets', 'tempo', 'cue'];
+  const exerciseRequired = ['code', 'name', 'targetSets', 'tempo', 'alternatives', 'cue'];
 
   if (includeImgPrompt) {
     exerciseProps.img_prompt = {
@@ -181,6 +240,10 @@ function isEccFocus(focus) {
   return String(focus || '').startsWith('camp_ecc_');
 }
 
+function isMainStrengthCode(code) {
+  return /^[ABC]1\b/i.test(String(code || ''));
+}
+
 function tempoLeadIn(tempo, focus) {
   const t = String(tempo || '').toLowerCase();
   if (isEccFocus(focus) || /^5-0-x-0$/i.test(String(tempo || '').trim())) {
@@ -226,9 +289,10 @@ export function normalizeExerciseLanguage(session, focus = '') {
     blocks: session.blocks.map(block => ({
       ...block,
       exercises: (block.exercises || []).map(ex => {
-        const nextTempo = isEccFocus(focus)
+        const isMainStrength = isMainStrengthCode(ex.code);
+        const nextTempo = isMainStrength && isEccFocus(focus)
           ? '5-0-X-0'
-          : isIsoFocus(focus)
+          : isMainStrength && isIsoFocus(focus)
             ? '0-5сек-X-0'
             : (ex.tempo || '');
         const lead = tempoLeadIn(nextTempo || ex.tempo, focus);
@@ -664,6 +728,73 @@ function summarizeSnapshot(snap) {
 export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (силовая и кондиционная подготовка) профессионального волейбольного клуба «Заречье» (Суперлига России). Составляешь индивидуальные тренировки в зале под каждого игрока на основе данных мониторинга из дашборда тренера.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+МЕТОДОЛОГИЯ 2026/2027 — ПРИОРИТЕТ ВЫШЕ ВСЕХ СТАРЫХ ПРАВИЛ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Правила методологии одинаковые для Заречья и NK Performance. Разница только в контексте:
+  • Заречье учитывает расписание команды, матчи, перелёты и MD-логику.
+  • NK Performance НЕ привязан к расписанию Заречья; тренер вручную выбирает фазу и тип тренировки.
+
+Периодизация по датам:
+  • 13.07.2026-02.08.2026 — эксцентрика / тканевая подготовка, 3 тренировки в неделю: 1) Передняя цепь, 2) Задняя цепь, 3) Все тело. Длительность 60-75 мин. Эксцентрический темп 5 секунд вниз + вверх максимально резко применяется ТОЛЬКО в основных силовых упражнениях A1/B1/C1.
+  • 03.08.2026-16.08.2026 — изометрика + сила, 4 тренировки в неделю: 1) Передняя цепь, 2) Задняя цепь, 3) Передняя цепь, 4) Задняя цепь. Длительность 60-75 мин. Изометрия: пауза 5 секунд в напряжении + вверх максимально резко ТОЛЬКО в основных силовых A1/B1/C1.
+  • С 17.08.2026 — мощность / скорость / переход к сезону. Соревновательная логика: 40-45 мин, осторожно, адаптивно, минимум лишнего риска, акцент на мощность и взрывную силу. НЕ используй медленную 5-секундную эксцентрику/изометрику как метод сезона.
+
+Главные качества волейболиста:
+  сила нижней части, мощность прыжка, скорость перемещений, торможение/приземление, плечевой пояс, стабилизация корпуса, профилактика колена/поясницы/голеностопа.
+
+Позиционная дифференциация:
+  • Центральные: приземление, голеностоп, колено, плечо, блок/первый темп.
+  • Доигровщики/диагональные: мощность, торможение, плечо, ротация.
+  • Либеро: скорость перемещений, корпус, плечо, низкая стойка.
+
+Ручной тип тренировки:
+  • Передняя цепь — knee-dominant + жимовой акцент + профилактика колена.
+  • Задняя цепь — hip hinge + тяговой акцент + профилактика задней цепи/поясницы.
+  • Все тело — интеграция обеих цепей, качество движения, умеренный объём.
+  • Восстановление / профилактика — mobility, tissue quality, low-level activation, E-блок расширен.
+  • Активация / мощность — 25-35 мин перед матчем/в день матча утром; A Activation, B Power, C Mobility / Prehab.
+
+Готовность и объём:
+  • Сборы: основная сила RPE 7-8, без отказа.
+  • Сезон: обычно RPE 6-7, редко 8.
+  • Recovery <33%: RPE 5-6, объём -30-50%, 5-7 упражнений, прыжки убрать или оставить только low-level (pogo jumps low amplitude, snap-down, landing mechanics, medball throw, ankle hops).
+  • Если тренер выбрал тяжёлую тему, но готовность/боль плохие: сохрани тему, но снизь нагрузку и замени рискованные упражнения.
+
+Размер сессии:
+  • Сборы 60-75 мин: 10-12 упражнений.
+  • Сезон 40-45 мин: 7-10 упражнений.
+  • Recovery <33% или Recovery / Prehab: 5-7 упражнений.
+
+Структура результата:
+  Обычная сессия: A. Strength / PAP низ тела; B. Strength / PAP верх тела; C. Power / PAP; D. Accessory; E. Prehab / Mobility.
+  Укороченная activation/power: A. Activation; B. Power; C. Mobility / Prehab.
+  Язык игроку: русский компактно и профессионально. Названия упражнений — на английском. Без длинных объяснений методики.
+  В каждом упражнении: подходы/повторы, темп, вес/RPE, короткий cue. Альтернативы 2-3 штуки только для основных упражнений A/B/C.
+
+Вес и прогрессия:
+  • Если есть история фактических весов — предложи конкретный вес и цель RPE.
+  • Если истории нет — НЕ выдумывай точные кг; пиши "вес указать вручную, цель RPE 6-7/7-8" по фазе.
+  • Правило на будущее: если RPE блока/упражнения ≤6 и нет боли → +2.5-5% в следующей аналогичной тренировке; RPE ≥9 или боль → снизить/заменить упражнение в следующей тренировке.
+
+Оборудование и стиль:
+  Основной выбор: trap-bar, DB, KB, TRX, cable, landmine, sled, medball, box, bands, mini bands, свободные веса.
+  Тренажёры НЕ использовать как основной силовой блок. Только редкое исключение для rehab/prehab.
+  Любимые упражнения: Goblet Squat, Bulgarian Split Squat, Split Squat, Trap-bar Deadlift, RDL DB, SL RDL DB, DB Bench Press, DB Incline Press, Landmine Press, Half-kneeling Landmine Press, TRX Row, Cable Row, Pull-down, Copenhagen Plank, medball throws, pogo, bounds, lateral shuffle, resisted sprint, plyo push-up, box jump low, snap-down.
+
+Абсолютные запреты:
+  Nordic Hamstring/Nordic Curl, Barbell Back Squat, Barbell Front Squat, обычная Barbell Deadlift, Olympic lifts со штангой, Depth Jump при низкой готовности, Heavy Good Morning, Barbell Overhead Press, Leg Press, Smith Machine, Leg Extension, Hamstring Curl, работа до отказа.
+  Разрешены deadlift-варианты: Trap-bar Deadlift, DB/KB Deadlift, DB/KB RDL, SL RDL DB/KB.
+
+Логика расписания Заречья:
+  • День после матча всегда выходной; если тренер нажал генерацию — только Восстановление / профилактика.
+  • Первый рабочий день после матча — recovery/prehab only, если игровая нагрузка высокая/средняя.
+  • За 1 день до матча или в день матча утром — Activation / Power 25-35 мин.
+  • За 2 дня до матча — moderate power/strength.
+  • 3+ дня до матча — полноценная работа.
+  • Если игровая нагрузка после матча не отмечена — действуй консервативно для всех.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 СТРУКТУРА КАЖДОЙ СЕССИИ — 5 БЛОКОВ
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -705,9 +836,9 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
 ❌ ЗАПРЕЩЁННЫЕ УПРАЖНЕНИЯ НАВСЕГДА:
   Присед со штангой на спине (Back Squat) | Жим штанги лёжа (Bench Press barbell) | Nordic Curl (любые вариации) | Ab Wheel Rollout / Ab Roller (любые вариации) | Broad Jump (горизонтальный прыжок — заменяй вертикальными: Tuck Jump / Weighted Jump Squat / CMJ) | DB Floor Press / жим гантелей лёжа на полу (заменяй жимом на скамье с полным ROM) | Band Wrist Stability / резиновая петля стабилизация запястья (любые вариации с петлёй на запястье) | Jump Set Drill / прыжок с имитацией передачи (любые вариации — запрещено для всех позиций) | KB Press / жим с гирями (все вариации жимовых движений с гирей стоя или лёжа — заменяй на DB Press на скамье или Landmine Press) | Tricep Pushdown с резиновой петлёй / Разгибание локтя с петлёй (любые вариации Tricep Band Pushdown — заменяй на Tricep Dip / Close-Grip Push-Up / Overhead DB Tricep Extension)
 
-✅ ОБОРУДОВАНИЕ В ЗАЛЕ СБОРОВ:
-  Трэп-штанга | Гири (KB) | Гантели (DB) | Медболы | Слайдеры | Петли TRX | Резиновые петли | Плиометрические ящики | Турник
-  НЕТ: обычная штанга, блочные тренажёры, машины
+✅ ОБОРУДОВАНИЕ:
+  Трэп-штанга | Гири (KB) | Гантели (DB) | Медболы | Слайдеры | Петли TRX | Cable | Landmine | Sled | Резиновые петли | Mini bands | Плиометрические ящики | Турник
+  НЕТ: обычная штанга как основной инструмент, тренажёры/машины как основной силовой блок
 
 ✅ РАЗНООБРАЗИЕ ОБЯЗАТЕЛЬНО:
   Никогда не повторять одно упражнение в рамках одной недели (7 дней)
@@ -721,7 +852,7 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
 Recovery WHOOP:
   🟢 67-100% (зелёная): тренировка по плану
   🟡 34-66% (жёлтая): объём -25%, интенсивность та же
-  🔴 0-33% (красная): ТОЛЬКО ТОНУС + ПРОФИЛАКТИКА — никакой силовой нагрузки, никаких прыжков, расширенный E-блок
+  🔴 0-33% (красная): качество без риска — RPE 5-6, объём -30-50%, 5-7 упражнений, без тяжёлой силы; прыжки убрать или оставить только low-level по технике
 
 Крепатура (DOMS из утреннего чек-ина, шкала 1-5):
   ≤3/5 → нагрузка по плану
@@ -1396,7 +1527,7 @@ async function computeGymAcwrLine(playerId, targetDate, workspace = 'zarechie') 
 }
 
 export async function buildGenerationInputs(body) {
-  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie' } = body || {};
+  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie' } = body || {};
   if (!playerId) return { error: 'playerId required', status: 400 };
   const wpfx = pfx(workspace);
 
@@ -1408,7 +1539,8 @@ export async function buildGenerationInputs(body) {
     return { error: 'Дата не может быть позже завтрашнего дня', status: 400 };
   }
 
-  const [snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions] = await Promise.all([
+  const prevDate = shiftDateStr(targetDate, -1);
+  const [snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, 28, workspace),
     getRecentSessionSummaries(String(playerId), 6, workspace).catch(() => []),
     workspace === 'zarechie' ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
@@ -1428,6 +1560,8 @@ export async function buildGenerationInputs(body) {
       });
     })(),
     redis('get', `${wpfx}:restrictions:${String(playerId)}`).catch(() => null),
+    redis('get', matchLoadKey(workspace, targetDate)).catch(() => null),
+    redis('get', matchLoadKey(workspace, prevDate)).catch(() => null),
   ]);
 
   if (!snapshot) return { error: 'Player not found', status: 404 };
@@ -1489,10 +1623,16 @@ export async function buildGenerationInputs(body) {
 
   let { userPrompt, dataSummary } = buildUserPrompt({
     snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks,
-    targetDate, dayGoal, focus: effectiveFocus, notes, warmupSummary, teamUsedExercises, coachRecovery,
+    targetDate, dayGoal, focus: effectiveFocus, trainingType, notes, warmupSummary, teamUsedExercises, coachRecovery,
     playbookText, workspace,
   });
   if (focusDowngradeNote) { userPrompt += focusDowngradeNote; dataSummary += focusDowngradeNote; }
+
+  const matchLoadText = formatMatchLoadForPrompt(String(playerId), targetDate, rawMatchLoadToday, rawMatchLoadPrev);
+  if (matchLoadText) {
+    dataSummary += `\n${matchLoadText}`;
+    userPrompt += `\n${matchLoadText}`;
+  }
 
   // Append player contraindications to the user prompt (keeps cached SYSTEM_PROMPT intact).
   const restrictions = rawRestrictions
@@ -1654,7 +1794,7 @@ export default async function handler(req, res) {
 }
 
 // ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
-function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie' }) {
+function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie' }) {
   let dataSummary = summarizeSnapshot(snapshot);
 
   // Coach manual recovery status (светофор тренера) — appended after biometric data.
@@ -1662,11 +1802,15 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, 
     const whoopToday = (snapshot.whoop || []).find(d => d.date === targetDate);
     const statusLine = coachRecovery === 'yellow'
       ? '🟡 ЖЁЛТЫЙ — объём -25%, интенсивность без изменений'
-      : '🔴 КРАСНЫЙ — только тонус + профилактика, никакой силовой нагрузки, никаких прыжков, расширенный E-блок';
+      : '🔴 КРАСНЫЙ — RPE 5-6, объём -30-50%, без тяжёлой силы, прыжки только low-level по технике или убрать';
     const context = whoopToday ? '[дополнительный сигнал к WHOOP-данным]' : '[WHOOP нет — ориентируйся на этот статус]';
     dataSummary += `\n• ⚑ Статус от тренера (ручная оценка): ${statusLine} ${context}`;
   }
   const focusLabel = focusLabelForWorkspace(focus, workspace);
+  const trainingTypeLabel = TRAINING_TYPE_LABELS[trainingType] || '';
+  const trainingTypeContext = trainingTypeLabel
+    ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nРУЧНОЙ ТИП ТРЕНИРОВКИ ОТ ТРЕНЕРА: ${trainingTypeLabel}\n→ Это главный тематический акцент сессии. Если готовность/боль/расписание конфликтуют с типом, сохрани тему, но снизь нагрузку и замени рискованные упражнения.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
+    : '';
 
   // Compute schedule proximity context
   function shiftDate(d, n) {
@@ -1958,16 +2102,17 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, 
     : '';
 
   const userPrompt = `${dataSummary}
-${onermContext}${warmupContext}${manualWorkspaceContext}${hrvTrendAlert}${hoopers7dAlert}${acwrAlert}${jumpACWRAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
+${onermContext}${warmupContext}${manualWorkspaceContext}${trainingTypeContext}${hrvTrendAlert}${hoopers7dAlert}${acwrAlert}${jumpACWRAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${historyBlock}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${scheduleContext}
 Фаза подготовки: ${focusLabel}
+Ручной тип тренировки: ${trainingTypeLabel || 'не выбран'}
 Цель именно этой тренировки: ${dayGoal || 'не указана — ориентируйся на фазу подготовки и логику периодизации из истории'}
 ${notes ? `Комментарии тренера: ${notes}` : ''}
 
-Составь ОДНУ тренировку в зале на ${targetDate} — не микроцикл, а конкретно эту сессию. Обязательно заполни все поля: tempo для каждого упражнения, cue для каждого упражнения начинается с короткого описания темпа выполнения, rest_note для каждого блока, E-блок строго 3 упражнения (E1 + E4 всегда, третий слот по позиции). Для каждого упражнения заполни img_prompt кратким английским анатомическим описанием.`;
+Составь ОДНУ тренировку в зале на ${targetDate} — не микроцикл, а конкретно эту сессию. Обязательно заполни все поля: tempo для каждого упражнения, cue для каждого упражнения начинается с короткого описания темпа выполнения, rest_note для каждого блока. Формат компактный: без длинных объяснений, только параметры и короткие технические подсказки. Альтернативы 2-3 штуки заполни только для основных упражнений A/B/C, для D/E оставь alternatives пустым массивом. Для каждого упражнения заполни img_prompt кратким английским анатомическим описанием.`;
 
   return { userPrompt, dataSummary };
 }

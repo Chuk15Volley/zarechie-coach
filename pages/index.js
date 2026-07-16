@@ -638,14 +638,14 @@ const WARMUP_PHASE_MAP = { 1: 'Эксцентрика · нед. 1-3', 2: 'Из�
 
 const PHASES_BY_PERIOD = {
   inseason: [
-    { value: 'inseason_strength',     label: 'Силовая',              sub: 'Вт · MD-4 · 40 мин' },
-    { value: 'inseason_power',        label: 'Мощностная',           sub: 'Ср · MD-3 · 40 мин' },
-    { value: 'inseason_prophylaxis',  label: 'Профилактика',         sub: 'Пн MD+2 / Пт MD-1' },
+    { value: 'inseason_strength',     label: 'Силовая / поддержание', sub: '40-45 мин · RPE 6-7' },
+    { value: 'inseason_power',        label: 'Мощность / скорость',   sub: '40-45 мин · взрывная сила' },
+    { value: 'inseason_prophylaxis',  label: 'Профилактика',          sub: 'Слабые звенья · суставы' },
     { value: 'inseason_deload',       label: 'Разгрузочная неделя',  sub: 'Каждые 4 недели' },
     { value: 'inseason_accumulation', label: 'Накопление · Февраль', sub: '60 мин · 80–87% 1ПМ' },
     { value: 'inseason_conversion',   label: 'Конверсия · Март',     sub: 'Сила → Мощность' },
     { value: 'inseason_taper',        label: 'Тейпер к пику',        sub: '10 дней · Суперкубок / Кубок / Плей-офф' },
-    { value: 'inseason_md1_activation', label: 'Активация MD-1',      sub: 'День до игры · 15-20 мин' },
+    { value: 'inseason_md1_activation', label: 'Активация / мощность', sub: 'MD-1 / утро матча · 25-35 мин' },
   ],
   camp: [
     { value: 'camp_ecc_anterior',  label: 'Эксцентрика · Передняя цепь',  sub: 'Понедельник / Нед.1-3' },
@@ -664,6 +664,32 @@ const PHASES_BY_PERIOD = {
     { value: 'rehab', label: 'Реабилитация / Травма', sub: null },
   ],
 };
+
+const TRAINING_TYPES = [
+  { value: 'anterior_chain', label: 'Передняя цепь' },
+  { value: 'posterior_chain', label: 'Задняя цепь' },
+  { value: 'full_body', label: 'Все тело' },
+  { value: 'recovery_prehab', label: 'Восстановление / профилактика' },
+  { value: 'activation_power', label: 'Активация / мощность' },
+];
+
+const MATCH_LOAD_OPTIONS = [
+  { value: '', label: 'Матч: —' },
+  { value: 'high', label: 'Высокая' },
+  { value: 'medium', label: 'Средняя' },
+  { value: 'low', label: 'Низкая' },
+  { value: 'none', label: 'Не играла' },
+  { value: 'inactive', label: 'Не в заявке' },
+];
+
+function defaultTrainingTypeForFocus(focusValue) {
+  const f = String(focusValue || '');
+  if (f.includes('posterior')) return 'posterior_chain';
+  if (f.includes('fullbody')) return 'full_body';
+  if (f.includes('recovery') || f.includes('prophylaxis') || f.includes('deload') || f === 'rehab') return 'recovery_prehab';
+  if (f.includes('power') || f.includes('activation') || f.includes('explosive') || f.includes('taper')) return 'activation_power';
+  return 'anterior_chain';
+}
 
 const NK_PHASE_SUB = {
   inseason_strength: 'Ручной выбор · силовая',
@@ -1337,6 +1363,7 @@ function ExerciseCard({
   weightKg,
   tempo,
   autoReg,
+  alternatives,
   cue,
   focus,
   week,
@@ -1670,6 +1697,24 @@ function ExerciseCard({
           </div>
         )}
 
+        {Array.isArray(alternatives) && alternatives.length > 0 && (
+          <div className="rounded-lg border border-white/[0.06] bg-white/[0.025] px-2.5 py-2 print:hidden">
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">Альтернативы</div>
+            <div className="flex flex-wrap gap-1.5">
+              {alternatives.slice(0, 3).map((alt, i) => (
+                <button
+                  key={`${alt}-${i}`}
+                  type="button"
+                  onClick={() => doSwap(alt)}
+                  className="rounded-md bg-white/[0.05] px-2 py-1 text-[11px] text-slate-400 transition hover:bg-white/[0.09] hover:text-slate-200"
+                >
+                  {alt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <AutoResizeTextarea
           value={cue}
           onChange={onChangeCue}
@@ -1683,9 +1728,18 @@ function ExerciseCard({
 
 const CAMP_FORBIDDEN = [
   { re: /back squat|классический присед|присед.*со штанг.*спин/i, label: 'Классический присед (Back Squat)' },
-  { re: /bench press|жим лёжа(?!.*наклон)/i, label: 'Жим лёжа (Bench Press)' },
+  { re: /barbell bench press|bench press barbell|жим штанги лёжа/i, label: 'Жим штанги лёжа' },
+  { re: /front squat|присед.*со штанг.*груд|фронтальн.*присед/i, label: 'Front Squat' },
+  { re: /barbell deadlift|conventional deadlift|становая.*штанг/i, label: 'Обычная Barbell Deadlift' },
   { re: /bent.?over row|тяга.*наклон|barbell row/i, label: 'Тяга в наклоне' },
   { re: /nordic curl|nordic hamstring|нордик/i, label: 'Nordic Curl' },
+  { re: /olympic lift|clean\b|snatch\b|рывок|толчок.*штанг|power clean|hang clean/i, label: 'Olympic lifts со штангой' },
+  { re: /heavy good morning|good morning/i, label: 'Heavy Good Morning' },
+  { re: /barbell overhead press|overhead press.*barbell|military press|жим штанги стоя/i, label: 'Barbell Overhead Press' },
+  { re: /leg press|жим ногами/i, label: 'Leg Press' },
+  { re: /smith machine|машин[ае].*смита/i, label: 'Smith Machine' },
+  { re: /leg extension|разгибание ног/i, label: 'Leg Extension' },
+  { re: /hamstring curl|сгибание ног/i, label: 'Hamstring Curl' },
   { re: /ab wheel|ab roller|ролик.*пресс|rollout/i, label: 'Ab Wheel Rollout' },
   { re: /broad jump|прыжок в длину/i, label: 'Broad Jump (заменять вертикальными)' },
   { re: /floor press|жим.*пол[уе]|жим на полу/i, label: 'DB Floor Press' },
@@ -1708,6 +1762,7 @@ export default function Home() {
   const [days, setDays] = useState(7);
   const [period, setPeriod] = useState('camp');
   const [focus, setFocus] = useState('camp_ecc_anterior');
+  const [trainingType, setTrainingType] = useState('anterior_chain');
   const [notes, setNotes] = useState('');
   const [sessionType, setSessionType] = useState('gym'); // 'gym' | 'warmup'
   const [loading, setLoading] = useState(false);
@@ -1724,6 +1779,8 @@ export default function Home() {
   // Left panel tabs
   const [leftTab, setLeftTab] = useState('players'); // 'players' | 'day'
   const [teamStatus, setTeamStatus] = useState({});
+  const [matchLoads, setMatchLoads] = useState({});
+  const [matchLoadSaving, setMatchLoadSaving] = useState(false);
 
   // Warmup
   const [warmupDate, setWarmupDate] = useState(todayISO());
@@ -2536,11 +2593,48 @@ export default function Home() {
     setTeamStatusLoading(false);
   }
 
+  async function loadMatchLoads() {
+    if (!apiKey || !date) return;
+    try {
+      const r = await fetch(`/api/team/match-load?date=${encodeURIComponent(date)}&workspace=${encodeURIComponent(workspace)}`, {
+        headers: { 'x-api-key': apiKey },
+      });
+      const data = await r.json();
+      if (r.ok) setMatchLoads(data.loads || {});
+    } catch (_) {}
+  }
+
+  async function saveMatchLoads(nextLoads) {
+    if (!apiKey || !date) return;
+    setMatchLoadSaving(true);
+    try {
+      await fetch('/api/team/match-load', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ date, workspace, loads: nextLoads }),
+      });
+    } catch (_) {
+    } finally {
+      setMatchLoadSaving(false);
+    }
+  }
+
+  function updateMatchLoad(playerId, status) {
+    const next = { ...matchLoads };
+    if (!status) delete next[playerId];
+    else next[playerId] = { ...(next[playerId] || {}), status };
+    setMatchLoads(next);
+    saveMatchLoads(next);
+  }
+
   // Auto-load team status when switching to 'day' tab
   useEffect(() => {
-    if (leftTab === 'day' && players.length > 0 && apiKey) loadTeamStatus();
+    if (leftTab === 'day' && players.length > 0 && apiKey) {
+      loadTeamStatus();
+      loadMatchLoads();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leftTab, date]);
+  }, [leftTab, date, workspace, players.length]);
 
   async function loadWarmupHistory() {
     if (!apiKey) return;
@@ -2633,7 +2727,7 @@ export default function Home() {
     const submitRes = await fetch('/api/programs/generate-async', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, notes, coachRecovery: recoveryStatus, workspace, autoSave: true }),
+      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, trainingType, notes, coachRecovery: recoveryStatus, workspace, autoSave: true }),
     });
     const submitData = await submitRes.json().catch(() => ({}));
     if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
@@ -2736,6 +2830,7 @@ export default function Home() {
           dayGoal,
           days,
           focus,
+          trainingType,
           notes,
           warmupSummary,
           coachRecovery: recoveryStatus,
@@ -2822,6 +2917,7 @@ export default function Home() {
             dayGoal,
             days,
             focus: f.focus,
+            trainingType,
             notes,
             warmupSummary: i === 0 ? warmupSummary : '',
             teamUsedExercises: usedExercises,
@@ -3559,7 +3655,12 @@ export default function Home() {
                       <button
                         key={p.value}
                         type="button"
-                        onClick={() => { setPeriod(p.value); setFocus(PHASES_BY_PERIOD[p.value][0].value); }}
+                        onClick={() => {
+                          const nextFocus = PHASES_BY_PERIOD[p.value][0].value;
+                          setPeriod(p.value);
+                          setFocus(nextFocus);
+                          setTrainingType(defaultTrainingTypeForFocus(nextFocus));
+                        }}
                         className={`flex-1 rounded-lg py-1 text-[9px] font-bold transition-all ${
                           period === p.value
                             ? PERIOD_COLORS[p.value].tab
@@ -3574,11 +3675,26 @@ export default function Home() {
                   {/* Phase select */}
                   <select
                     value={focus}
-                    onChange={e => setFocus(e.target.value)}
+                    onChange={e => {
+                      setFocus(e.target.value);
+                      setTrainingType(defaultTrainingTypeForFocus(e.target.value));
+                    }}
                     className="w-full rounded-lg border border-white/[0.08] bg-[#0a1520] px-2 py-1.5 text-[11px] text-slate-300 outline-none focus:border-accent/40 [color-scheme:dark]"
                   >
                     {PHASES_BY_PERIOD[period].map(ph => (
                       <option key={ph.value} value={ph.value}>{ph.label}</option>
+                    ))}
+                  </select>
+
+                  {/* Manual training type */}
+                  <select
+                    value={trainingType}
+                    onChange={e => setTrainingType(e.target.value)}
+                    className="w-full rounded-lg border border-white/[0.08] bg-[#0a1520] px-2 py-1.5 text-[11px] text-slate-300 outline-none focus:border-accent/40 [color-scheme:dark]"
+                    title="Ручной тип тренировки"
+                  >
+                    {TRAINING_TYPES.map(type => (
+                      <option key={type.value} value={type.value}>{type.label}</option>
                     ))}
                   </select>
 
@@ -3658,6 +3774,21 @@ export default function Home() {
                           <div className="text-[10px] text-slate-600">{p.position || '—'}</div>
                         </div>
                       </button>
+
+                      {/* Match load marker */}
+                      <select
+                        value={matchLoads[p.id]?.status || ''}
+                        onChange={e => updateMatchLoad(p.id, e.target.value)}
+                        disabled={matchLoadSaving || batchRunning}
+                        className={`shrink-0 rounded-lg border border-white/[0.07] bg-[#071018] px-1.5 py-1 text-[10px] outline-none [color-scheme:dark] ${
+                          matchLoads[p.id]?.status ? 'text-amber-300' : 'text-slate-600'
+                        }`}
+                        title="Игровая нагрузка после матча"
+                      >
+                        {MATCH_LOAD_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
 
                       {/* Status badges */}
                       <div className="flex items-center gap-1 shrink-0">
@@ -5863,6 +5994,7 @@ export default function Home() {
                           weightKg={ex.weightKg != null ? ex.weightKg : parseKgFromNote(ex.weightNote)}
                           tempo={ex.tempo || ''}
                           autoReg={ex.autoReg || ''}
+                          alternatives={ex.alternatives || []}
                           cue={ex.cue || ''}
                           focus={focus}
                           week={weekFromFocus(focus)}

@@ -1,5 +1,5 @@
 // pages/api/programs/generate-async.js
-// POST { playerId, date, dayGoal, days, focus, notes, warmupSummary, teamUsedExercises, autoSave }
+// POST { playerId, date, dayGoal, days, focus, trainingType, notes, warmupSummary, teamUsedExercises, autoSave }
 // Queues one gym-session generation for the polling endpoint. The public contract stays
 // the same for the UI: return { batchId }, then the client polls generate-status.js.
 
