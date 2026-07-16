@@ -20,6 +20,7 @@ export default async function handler(req, res) {
   const ts = String(Date.now());
 
   await redis('hset', `ex:lib:${canonicalId}`, 'title', clean, 'updatedAt', ts);
+  await redis('sadd', 'ex:index', canonicalId).catch(() => {});
   // Register English normName → same canonicalId so future lookups succeed.
   await redis('hset', 'ex:alias', normName, canonicalId);
 

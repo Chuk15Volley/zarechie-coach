@@ -124,7 +124,7 @@ function LibraryCard({ card, apiKey, onDelete, onRename, onCategoryChange }) {
       const r = await fetch('/api/exercises/library-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ id: card.canonicalId, imageData }),
+        body: JSON.stringify({ id: card.canonicalId, title: card.title, imageData }),
       });
       if (r.ok) { setImgUrl(null); setLocalHasImage(true); setImgVersion(Date.now()); }
     } finally {
@@ -163,6 +163,7 @@ function LibraryCard({ card, apiKey, onDelete, onRename, onCategoryChange }) {
   const ytId = extractYtId(resolvedVideoUrl);
 
   const handleDelete = async () => {
+    if (card.source === 'bank') return;
     if (!confirm(`Удалить "${card.title}" из библиотеки?`)) return;
     setDeleting(true);
     try { await onDelete(card.canonicalId); } finally { setDeleting(false); }
@@ -293,14 +294,16 @@ function LibraryCard({ card, apiKey, onDelete, onRename, onCategoryChange }) {
             {localHasImage && <span className="rounded border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold text-accent">фото</span>}
             {ytId && <span className="rounded border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[9px] font-bold text-red-400">YT</span>}
           </div>
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={deleting}
-            className="rounded-md px-2 py-1 text-[10px] font-semibold text-slate-700 transition hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-40"
-          >
-            {deleting ? '…' : '✕'}
-          </button>
+          {card.source !== 'bank' && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="rounded-md px-2 py-1 text-[10px] font-semibold text-slate-700 transition hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-40"
+            >
+              {deleting ? '…' : '✕'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -344,6 +347,7 @@ function LibraryRow({ card, apiKey, onDelete, onRename, onCategoryChange }) {
   }
 
   const handleDelete = async () => {
+    if (card.source === 'bank') return;
     if (!confirm(`Удалить "${card.title}"?`)) return;
     setDeleting(true);
     try { await onDelete(card.canonicalId); } finally { setDeleting(false); }
@@ -396,14 +400,16 @@ function LibraryRow({ card, apiKey, onDelete, onRename, onCategoryChange }) {
             YT
           </a>
         )}
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={deleting}
-          className="ml-1 rounded-md px-2 py-1 text-[10px] font-semibold text-slate-700 opacity-0 transition group-hover:opacity-100 hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-40"
-        >
-          {deleting ? '…' : '✕'}
-        </button>
+        {card.source !== 'bank' && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="ml-1 rounded-md px-2 py-1 text-[10px] font-semibold text-slate-700 opacity-0 transition group-hover:opacity-100 hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-40"
+          >
+            {deleting ? '…' : '✕'}
+          </button>
+        )}
       </div>
     </div>
   );

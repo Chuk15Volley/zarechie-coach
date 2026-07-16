@@ -17,29 +17,39 @@ export function normExName(name) {
     .slice(0, 80);
 }
 
+function isDumbbellExercise(name) {
+  return /\bdb\b|dumbbell|гантел/i.test(name || '');
+}
+
+function incrementStepFor(name) {
+  return isDumbbellExercise(name) ? 2 : 2.5;
+}
+
 function roundToStep(value, step = 2.5) {
   return Math.max(Math.round(value / step) * step, step);
 }
 
 // Suggest next weight based on previous actual weight + RPE + pain.
-export function suggestKg(kg, rpe, pain = false) {
+export function suggestKg(kg, rpe, pain = false, exerciseName = '') {
   const k = parseFloat(kg);
   if (!k || k <= 0) return null;
-  if (pain) return roundToStep(k * 0.9);
+  const step = incrementStepFor(exerciseName);
+  if (pain) return roundToStep(k * 0.9, step);
   const r = parseFloat(rpe);
   if (!r || isNaN(r)) return k; // no RPE data → keep same
-  if (r <= 6) return roundToStep(Math.max(k + 2.5, k * 1.05)); // easy + no pain → +2.5–5%
+  if (r <= 6) return roundToStep(Math.max(k + step, k * 1.05), step); // easy + no pain → +1 step / 5%
   if (r < 9) return k;                                          // on target → same
-  if (r < 10) return roundToStep(k * 0.95);                     // hard → -5%
-  return roundToStep(k * 0.9);                                  // maximal → -10%
+  if (r < 10) return roundToStep(k * 0.95, step);                // hard → -5%
+  return roundToStep(k * 0.9, step);                             // maximal → -10%
 }
 
-function progressionDecision(kg, rpe, pain = false) {
+function progressionDecision(kg, rpe, pain = false, exerciseName = '') {
   if (!kg) return 'Нет истории фактического веса — указать вручную по целевому RPE.';
   if (pain) return 'Была боль/дискомфорт — снизить нагрузку и рассмотреть замену в следующей тренировке.';
   const r = parseFloat(rpe);
+  const stepText = isDumbbellExercise(exerciseName) ? ' (гантели: 2 кг)' : '';
   if (!r || isNaN(r)) return 'Есть вес из истории, RPE не указан — оставить вес и оценить RPE после блока.';
-  if (r <= 6) return 'RPE <= 6 и боли нет — можно прогрессировать +2.5-5%.';
+  if (r <= 6) return `RPE <= 6 и боли нет — можно прогрессировать на 1 шаг${stepText} или +5%.`;
   if (r < 9) return 'RPE в целевой зоне — оставить вес или минимальная прогрессия по технике.';
   return 'RPE >= 9 — снизить вес или заменить упражнение в следующей тренировке.';
 }
@@ -88,8 +98,8 @@ export default async function handler(req, res) {
       blockRpe: record.blockRpe ? parseFloat(record.blockRpe) : null,
       source: record.source || 'planned',
       date: record.date || null,
-      suggestedKg: suggestKg(kg, rpe, pain),
-      decision: progressionDecision(kg, rpe, pain),
+      suggestedKg: suggestKg(kg, rpe, pain, name),
+      decision: progressionDecision(kg, rpe, pain, name),
     };
   });
 

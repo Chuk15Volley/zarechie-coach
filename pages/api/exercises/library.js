@@ -6,7 +6,7 @@
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { getAllCards, getCard, normalize } from '../../../lib/exerciseLibrary';
-import { findExerciseUrl } from '../../../lib/exerciseBank';
+import { EXERCISE_BANK, findExerciseUrl } from '../../../lib/exerciseBank';
 
 export const config = { maxDuration: 20 };
 
@@ -33,15 +33,40 @@ export default async function handler(req, res) {
   // ── GET: list ──────────────────────────────────────────────────────────────
   if (req.method === 'GET') {
     const cards = await getAllCards();
-    const list = cards.map(c => ({
-      canonicalId: c.canonicalId,
-      title: c.title || c.canonicalId,
-      hasImage: !!c.image,
-      video: c.video || null,
-      category: c.category || '',
-      createdAt: c.createdAt || null,
-      updatedAt: c.updatedAt || null,
-    }));
+    const listById = new Map();
+
+    for (const item of EXERCISE_BANK) {
+      const { canonicalId } = normalize(item.n);
+      if (!canonicalId || listById.has(canonicalId)) continue;
+      listById.set(canonicalId, {
+        canonicalId,
+        title: item.n,
+        hasImage: false,
+        video: item.u || null,
+        autoVideo: item.u || null,
+        category: '',
+        createdAt: null,
+        updatedAt: null,
+        source: 'bank',
+      });
+    }
+
+    cards.forEach(c => {
+      const existing = listById.get(c.canonicalId);
+      listById.set(c.canonicalId, {
+        canonicalId: c.canonicalId,
+        title: c.title || existing?.title || c.canonicalId,
+        hasImage: !!c.image,
+        video: c.video || existing?.video || null,
+        autoVideo: existing?.autoVideo || null,
+        category: c.category || '',
+        createdAt: c.createdAt || null,
+        updatedAt: c.updatedAt || null,
+        source: existing?.source === 'bank' ? 'bank+custom' : 'custom',
+      });
+    });
+
+    const list = Array.from(listById.values());
 
     // Step 1: yt-manual by legacySlug (migrated together, slugs match).
     const needAuto = list.filter(c => !c.video);

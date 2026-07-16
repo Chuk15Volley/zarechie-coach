@@ -20,6 +20,16 @@ function streamDataUrl(res, dataUrl) {
   return true;
 }
 
+function parseHash(raw) {
+  if (!raw) return null;
+  if (Array.isArray(raw)) {
+    const obj = {};
+    for (let i = 0; i < raw.length - 1; i += 2) obj[raw[i]] = raw[i + 1];
+    return obj;
+  }
+  return typeof raw === 'object' ? raw : null;
+}
+
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -42,14 +52,16 @@ export default async function handler(req, res) {
   // ── UPLOAD / REPLACE ──────────────────────────────────────────────────────
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { imageData } = req.body || {};
+  const { imageData, title } = req.body || {};
   if (!imageData) return res.status(400).json({ error: 'imageData required' });
 
   try {
     const ts = String(Date.now());
-    const existing = await redis('hgetall', `ex:lib:${id}`).catch(() => null);
-    const createdAt = (existing?.createdAt) || ts;
-    await redis('hset', `ex:lib:${id}`, 'image', imageData, 'updatedAt', ts, 'createdAt', createdAt);
+    const existing = parseHash(await redis('hgetall', `ex:lib:${id}`).catch(() => null));
+    const createdAt = existing?.createdAt || ts;
+    const fields = ['image', imageData, 'updatedAt', ts, 'createdAt', createdAt];
+    if (title?.trim() && !existing?.title) fields.push('title', title.trim());
+    await redis('hset', `ex:lib:${id}`, ...fields);
     await redis('sadd', 'ex:index', id).catch(() => {});
     return res.status(200).json({ ok: true });
   } catch (e) {

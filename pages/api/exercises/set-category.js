@@ -15,5 +15,6 @@ export default async function handler(req, res) {
   if (!['gym', 'warmup', ''].includes(cat)) return res.status(400).json({ error: 'category must be gym|warmup|""' });
 
   await redis('hset', `ex:lib:${id}`, 'category', cat, 'updatedAt', String(Date.now()));
+  await redis('sadd', 'ex:index', id).catch(() => {});
   return res.status(200).json({ ok: true });
 }
