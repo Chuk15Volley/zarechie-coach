@@ -28,7 +28,7 @@ export function suggestKg(kg, rpe, pain = false) {
   if (pain) return roundToStep(k * 0.9);
   const r = parseFloat(rpe);
   if (!r || isNaN(r)) return k; // no RPE data → keep same
-  if (r <= 6) return roundToStep(k * (k >= 50 ? 1.05 : 1.025)); // easy + no pain → +2.5–5%
+  if (r <= 6) return roundToStep(Math.max(k + 2.5, k * 1.05)); // easy + no pain → +2.5–5%
   if (r < 9) return k;                                          // on target → same
   if (r < 10) return roundToStep(k * 0.95);                     // hard → -5%
   return roundToStep(k * 0.9);                                  // maximal → -10%
