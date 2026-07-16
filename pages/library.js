@@ -10,7 +10,18 @@ const LIBRARY_AI_ENABLED = process.env.NEXT_PUBLIC_ENABLE_LIBRARY_AI === 'true';
 // ── helpers ──────────────────────────────────────────────────────────────────
 function extractYtId(url) {
   if (!url) return null;
-  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') return parsed.pathname.split('/').filter(Boolean)[0] || null;
+    if (host.endsWith('youtube.com')) {
+      const watchId = parsed.searchParams.get('v');
+      if (watchId) return watchId;
+      const [, kind, id] = parsed.pathname.match(/^\/(embed|shorts)\/([\w-]{11})/) || [];
+      if (kind && id) return id;
+    }
+  } catch (_) {}
+  const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
   return m ? m[1] : null;
 }
 

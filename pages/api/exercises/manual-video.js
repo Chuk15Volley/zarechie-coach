@@ -17,6 +17,26 @@ function legacySlug(name) {
   return name.toLowerCase().trim().replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-+|-+$/g, '');
 }
 
+function extractYouTubeId(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') return parsed.pathname.split('/').filter(Boolean)[0] || null;
+    if (host.endsWith('youtube.com')) {
+      const watchId = parsed.searchParams.get('v');
+      if (watchId) return watchId;
+      const [, , id] = parsed.pathname.match(/^\/(embed|shorts)\/([\w-]{11})/) || [];
+      if (id) return id;
+    }
+  } catch (_) {}
+  return null;
+}
+
+function normalizeYouTubeUrl(url) {
+  const id = extractYouTubeId(url);
+  return id ? `https://www.youtube.com/watch?v=${id}` : null;
+}
+
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -42,8 +62,9 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     const { url } = req.body || {};
-    if (!url?.trim()) return res.status(400).json({ error: 'url required' });
-    await setVideo(name, url.trim());
+    const normalizedUrl = normalizeYouTubeUrl((url || '').trim());
+    if (!normalizedUrl) return res.status(400).json({ error: 'valid YouTube url required' });
+    await setVideo(name, normalizedUrl);
     return res.status(200).json({ ok: true });
   }
 
