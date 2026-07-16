@@ -5,7 +5,8 @@
 
 import { redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
-import { pfx } from '../../../lib/workspacePrefix';
+import { normExName } from '../players/progression';
+import { pfx, exweightKey, exhistKey } from '../../../lib/workspacePrefix';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
@@ -15,7 +16,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { playerId, date, workspace = 'zarechie', exercises = [] } = req.body || {};
+  const { playerId, date, workspace = 'zarechie', exercises = [], blockFeedback = {} } = req.body || {};
   if (!playerId || !date) {
     return res.status(400).json({ error: 'playerId and date are required' });
   }
@@ -46,6 +47,7 @@ export default async function handler(req, res) {
 
   const record = {
     exercises,
+    blockFeedback,
     compliance,
     actualTonnage,
     savedAt: new Date().toISOString(),
@@ -55,6 +57,28 @@ export default async function handler(req, res) {
   const cmds = [
     ['SET', `${p}:session:actual:${playerId}:${date}`, JSON.stringify(record)],
   ];
+  for (const ex of exercises) {
+    const actualKg = parseFloat(ex.actualKg) || 0;
+    if (!actualKg || !ex.name) continue;
+    const norm = normExName(ex.name);
+    const block = ex.block || '';
+    const blockFb = block ? blockFeedback[block] || {} : {};
+    const rpe = ex.actualRpe != null && ex.actualRpe !== '' ? String(ex.actualRpe) : '';
+    const pain = ex.pain || blockFb.pain ? '1' : '0';
+    const blockRpe = blockFb.rpe != null && blockFb.rpe !== '' ? String(blockFb.rpe) : '';
+    cmds.push([
+      'HSET',
+      exweightKey(workspace, playerId, norm),
+      'kg', String(actualKg),
+      'date', date,
+      'rpe', rpe,
+      'pain', pain,
+      'block', block,
+      'blockRpe', blockRpe,
+      'source', 'actual',
+    ]);
+    cmds.push(['HSET', exhistKey(workspace, playerId, norm), date, String(actualKg)]);
+  }
   if (actualTonnage > 0) {
     cmds.push(['SET', `${p}:gym_tonnage_actual:${playerId}:${date}`, String(actualTonnage)]);
   }

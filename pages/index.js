@@ -41,14 +41,15 @@ import {
   Shield,
   RotateCcw,
   CalendarRange,
+  CheckCircle2,
 } from 'lucide-react';
 import { findExerciseUrl } from '../lib/exerciseBank';
 import { calcWeight } from '../lib/loadCalc';
 import { RESTRICTIONS, hasRestriction } from '../lib/exerciseRestrictions';
 
-// Camp date anchors (сборы 2025).
-const CAMP_START = '2025-07-13';
-const CAMP_ECC_END = '2025-08-02'; // конец эксцентрической фазы (нед.1-3)
+// Camp date anchors (сборы 2026).
+const CAMP_START = '2026-07-13';
+const CAMP_ECC_END = '2026-08-02'; // конец эксцентрической фазы
 
 // Evening-conditioning info for weeks 1-3 of camp (Mon/Tue/Sat).
 function campEveningNote(dateStr) {
@@ -1371,7 +1372,9 @@ function ExerciseCard({
   position,
   prevKg,
   prevRpe,
+  prevPain,
   suggestedKg,
+  progressionDecision,
   restrictions,
   exHistory,
   actualKg,
@@ -1637,7 +1640,7 @@ function ExerciseCard({
         {prevKg ? (
           <div className="mt-1 flex flex-wrap items-center gap-1.5 print:hidden">
             <span className="text-[11px] text-slate-600">
-              ↑ {prevKg} кг{prevRpe ? ` · RPE ${prevRpe}` : ''}
+              ↑ {prevKg} кг{prevRpe ? ` · RPE ${prevRpe}` : ''}{prevPain ? ' · боль' : ''}
               {effectiveSuggestedKg && effectiveSuggestedKg !== prevKg && (
                 <span className={effectiveSuggestedKg > prevKg ? ' text-emerald-400/80' : ' text-rose-400/70'}>
                   {' → '}{effectiveSuggestedKg} кг
@@ -1658,6 +1661,9 @@ function ExerciseCard({
                 {rmSuggestion.pctLow}–{rmSuggestion.pctHigh}% от 1ПМ
                 {rmSuggestion.maxSets && <span className="ml-1 text-amber-400/70">· макс. {rmSuggestion.maxSets} сета</span>}
               </div>
+            )}
+            {progressionDecision && (
+              <div className="w-full text-[10px] text-slate-500">{progressionDecision}</div>
             )}
           </div>
         ) : (
@@ -1750,6 +1756,12 @@ const CAMP_FORBIDDEN = [
 ];
 
 const JUMP_TAGS = ['прыжок', 'jump', 'hop', 'bound', 'cmj', 'плиометр', 'tuck jump', 'split jump', 'box jump', 'depth jump'];
+
+const TRAINING_TYPE_LABELS = Object.fromEntries(TRAINING_TYPES.map(t => [t.value, t.label]));
+
+function qualityTone(ok) {
+  return ok ? 'border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-300' : 'border-amber-500/20 bg-amber-500/[0.07] text-amber-300';
+}
 
 export default function Home() {
   const [apiKey, setApiKey] = useState('coach-ui');
@@ -2384,7 +2396,7 @@ export default function Home() {
   }, [session]);
 
   const methodViolations = useMemo(() => {
-    if (!session || period !== 'camp') return [];
+    if (!session) return [];
     const v = [];
     (session.blocks || []).forEach(b =>
       (b.exercises || []).forEach(ex => {
@@ -2393,7 +2405,7 @@ export default function Home() {
       })
     );
     return v;
-  }, [session, period]);
+  }, [session]);
 
   const jumpVolume = useMemo(() => {
     if (!session) return null;
@@ -2408,6 +2420,35 @@ export default function Home() {
     );
     return exCount > 0 ? { exCount, sets } : null;
   }, [session]);
+
+  const generationQuality = useMemo(() => {
+    if (!session || !meta) return [];
+    const blocks = session.blocks || [];
+    const exercises = blocks.flatMap(b => (b.exercises || []).map(ex => ({ ...ex, block: b.label })));
+    const exCount = exercises.length;
+    const isRecovery = trainingType === 'recovery_prehab' || recoveryStatus === 'red';
+    const isSeason = period === 'inseason';
+    const targetMin = isRecovery ? 5 : isSeason ? 7 : 10;
+    const targetMax = isRecovery ? 7 : isSeason ? 10 : 12;
+    const hasMainAlternatives = exercises.some(ex => /^[ABC]1\b/i.test(ex.code || '') && Array.isArray(ex.alternatives) && ex.alternatives.length >= 2);
+    const dOrEAlt = exercises.some(ex => ['D','E'].includes(String(ex.block || '')) && Array.isArray(ex.alternatives) && ex.alternatives.length > 0);
+    const nonMainFiveSec = exercises.some(ex => !/^[ABC]1\b/i.test(ex.code || '') && /5-0-X-0|0-5/i.test(ex.tempo || ''));
+    const hasKgOrManual = exercises.every(ex => {
+      const note = String(ex.weightNote || '').toLowerCase();
+      return ex.weightKg != null || note.includes('rpe') || note.includes('вручную') || note.includes('вес тела') || !/^[ABC]1\b/i.test(ex.code || '');
+    });
+    return [
+      { label: 'Фаза', ok: !!focus, detail: getFocusLabel(period, focus) },
+      { label: 'Тип', ok: !!trainingType, detail: TRAINING_TYPE_LABELS[trainingType] || 'не выбран' },
+      { label: workspace === 'nkperf' ? 'NK ручной режим' : 'Расписание Заречья', ok: true, detail: workspace === 'nkperf' ? 'без календаря Заречья' : 'учитывается для MD-логики' },
+      { label: 'Recovery', ok: recoveryStatus !== 'red' || exCount <= 8, detail: recoveryStatus === 'red' ? 'сниженный объем' : 'по готовности' },
+      { label: 'Упражнения', ok: exCount >= targetMin && exCount <= targetMax, detail: `${exCount} / цель ${targetMin}-${targetMax}` },
+      { label: 'Запреты', ok: methodViolations.length === 0, detail: methodViolations.length ? `${methodViolations.length} наруш.` : 'чисто' },
+      { label: 'Альтернативы', ok: hasMainAlternatives && !dOrEAlt, detail: hasMainAlternatives ? 'A/B/C есть' : 'нет в основных' },
+      { label: 'Темп', ok: !nonMainFiveSec, detail: nonMainFiveSec ? '5 сек вне A1/B1/C1' : 'методически чисто' },
+      { label: 'Вес/RPE', ok: hasKgOrManual, detail: hasKgOrManual ? 'задан' : 'проверь основные' },
+    ];
+  }, [session, meta, focus, period, trainingType, workspace, recoveryStatus, methodViolations]);
 
   // Keyboard shortcuts: G=generate, S=save, Alt+←/→=prev/next player, Esc=blur
   useEffect(() => {
@@ -3083,12 +3124,22 @@ export default function Home() {
     if (!session || !meta || !pendingSaved) return;
     setSavingActual(true);
     try {
+      const blockFeedback = {};
+      for (const block of session.blocks || []) {
+        blockFeedback[block.label] = {
+          rpe: block.actualRpe ?? null,
+          pain: !!block.pain,
+          note: block.feedbackNote || '',
+        };
+      }
       const exercises = (session.blocks || []).flatMap(b =>
         (b.exercises || []).map(ex => ({
+          block: b.label,
           name: ex.name,
           plannedKg: parseFloat(ex.weightKg) || 0,
           actualKg: parseFloat(ex.actualKg) || 0,
           actualRpe: ex.actualRpe ?? null,
+          pain: !!b.pain,
           sets: (ex.targetSets || []).length || parseInt(ex.sets, 10) || 3,
           reps: parseInt((ex.targetSets || [])[0], 10) || parseInt(ex.reps, 10) || 8,
           completed: (parseFloat(ex.actualKg) || 0) > 0,
@@ -3097,12 +3148,20 @@ export default function Home() {
       const res = await fetch('/api/programs/save-actual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ playerId, date: meta.date, workspace, exercises }),
+        body: JSON.stringify({ playerId, date: meta.date, workspace, exercises, blockFeedback }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
       const plannedTonnage = exercises.reduce((s, e) => s + e.plannedKg * e.sets * e.reps, 0);
       setCompliance({ percent: data.compliance, actualTonnage: data.actualTonnage, plannedTonnage: Math.round(plannedTonnage) });
+      const names = exercises.map(e => e.name).filter(Boolean);
+      if (names.length) {
+        fetch('/api/players/progression', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({ playerId, names, workspace }),
+        }).then(r => r.json()).then(d => setProgressionMap(d.progression || {})).catch(() => {});
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -3134,6 +3193,13 @@ export default function Home() {
           ? b
           : { ...b, exercises: b.exercises.map((ex, ei) => (ei !== exIdx ? ex : { ...ex, ...patch })) }
       ),
+    }));
+  }
+
+  function updateBlock(blockIdx, patch) {
+    setSession(prev => ({
+      ...prev,
+      blocks: prev.blocks.map((b, bi) => (bi !== blockIdx ? b : { ...b, ...patch })),
     }));
   }
 
@@ -5810,6 +5876,32 @@ export default function Home() {
                 </div>
               )}
 
+              {generationQuality.length > 0 && (
+                <div className="mb-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 print:hidden">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={12} className="text-emerald-400" />
+                      <span className="text-[10px] font-black uppercase tracking-[0.20em] text-slate-500">Качество генерации</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-600">
+                      {generationQuality.filter(i => i.ok).length}/{generationQuality.length}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {generationQuality.map(item => (
+                      <div
+                        key={item.label}
+                        className={`rounded-lg border px-2 py-1 ${qualityTone(item.ok)}`}
+                        title={item.detail}
+                      >
+                        <span className="text-[10px] font-bold">{item.ok ? '✓' : '!' } {item.label}</span>
+                        <span className="ml-1 text-[10px] opacity-70">{item.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Volume stats bar */}
               {volumeStats && volumeStats.sessions > 0 && (
                 <div className="mb-4 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 print:hidden">
@@ -6002,7 +6094,9 @@ export default function Home() {
                           position={selectedPlayer?.position || null}
                           prevKg={progressionMap[ex.name]?.kg || null}
                           prevRpe={progressionMap[ex.name]?.rpe || null}
+                          prevPain={progressionMap[ex.name]?.pain || false}
                           suggestedKg={progressionMap[ex.name]?.suggestedKg || null}
+                          progressionDecision={progressionMap[ex.name]?.decision || ''}
                           restrictions={restrictions}
                           exHistory={exHistoryMap[ex.name] || []}
                           actualKg={ex.actualKg ?? null}
@@ -6024,6 +6118,42 @@ export default function Home() {
                         />
                       ))}
                     </div>
+                    )}
+                    {!collapsedBlocks.has(block.label) && pendingSaved && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 print:hidden">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Факт блока {block.label}</span>
+                        <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                          RPE
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="1"
+                            max="10"
+                            value={block.actualRpe ?? ''}
+                            onChange={e => {
+                              const raw = e.target.value;
+                              const v = raw === '' ? null : parseFloat(raw);
+                              updateBlock(bi, { actualRpe: isNaN(v) ? null : v });
+                            }}
+                            className="w-14 rounded-md border border-white/[0.07] bg-white/[0.04] px-2 py-1 text-[11px] text-sky-300 outline-none focus:border-sky-400/50"
+                          />
+                        </label>
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                          <input
+                            type="checkbox"
+                            checked={!!block.pain}
+                            onChange={e => updateBlock(bi, { pain: e.target.checked })}
+                            className="h-3.5 w-3.5 rounded border-white/[0.15] bg-white/[0.04]"
+                          />
+                          боль/дискомфорт
+                        </label>
+                        <input
+                          value={block.feedbackNote || ''}
+                          onChange={e => updateBlock(bi, { feedbackNote: e.target.value })}
+                          placeholder="заметка по блоку"
+                          className="min-w-[160px] flex-1 rounded-md border border-white/[0.07] bg-white/[0.04] px-2 py-1 text-[11px] text-slate-300 outline-none placeholder:text-slate-700 focus:border-accent/40"
+                        />
+                      </div>
                     )}
                     {/* Quick-add exercise */}
                     {!collapsedBlocks.has(block.label) && (

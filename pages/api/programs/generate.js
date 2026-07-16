@@ -12,7 +12,7 @@ import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
 import { validateSession } from '../../../lib/sessionValidator';
 import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseMemory';
 import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlaybook';
-import { pfx, scheduleKey } from '../../../lib/workspacePrefix';
+import { pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
 
 const TRAINING_TYPE_LABELS = {
   anterior_chain: 'Передняя цепь',
@@ -66,6 +66,31 @@ function formatMatchLoadForPrompt(playerId, targetDate, rawToday, rawPrev) {
   lines.push('→ Если вчера была высокая/средняя игровая нагрузка: приоритет восстановлению, профилактике, снижению прыжков и осевой нагрузки. Если низкая/не играла: можно дать более полноценную работу с учетом расписания и готовности.');
   lines.push('→ Если статус "Не в заявке / травма": не считать игрока свежим автоматически; использовать только безопасную работу с учетом причины/ограничений.');
   return '\n' + lines.join('\n');
+}
+
+async function getRecentActualSummaries(playerId, workspace = 'zarechie', limit = 5) {
+  const wp = pfx(workspace);
+  const dates = await redis('zrange', sessionsKey(workspace, playerId), -12, -1).catch(() => []);
+  const recentDates = (dates || []).slice(-limit).reverse();
+  if (!recentDates.length) return [];
+  const raws = await redisPipeline(
+    recentDates.map(d => ['get', `${wp}:session:actual:${playerId}:${d}`])
+  ).catch(() => []);
+  return recentDates.flatMap((date, i) => {
+    const raw = raws[i];
+    const rec = parseJSONSafe(raw, null);
+    if (!rec) return [];
+    const blockLines = rec.blockFeedback && typeof rec.blockFeedback === 'object'
+      ? Object.entries(rec.blockFeedback).map(([block, fb]) => `${block}: RPE ${fb.rpe ?? '—'}${fb.pain ? ', боль' : ''}`).join('; ')
+      : '';
+    const exLines = (rec.exercises || [])
+      .filter(ex => Number(ex.actualKg) > 0)
+      .slice(0, 10)
+      .map(ex => `${ex.block ? `${ex.block} ` : ''}${ex.name}: ${ex.actualKg} кг${ex.actualRpe ? `, RPE ${ex.actualRpe}` : ''}${ex.pain ? ', боль' : ''}`)
+      .join('; ');
+    if (!blockLines && !exLines) return [];
+    return [`${date}${blockLines ? ` | блоки: ${blockLines}` : ''}${exLines ? ` | упражнения: ${exLines}` : ''}`];
+  });
 }
 
 const FOCUS_LABELS = {
@@ -1540,9 +1565,10 @@ export async function buildGenerationInputs(body) {
   }
 
   const prevDate = shiftDateStr(targetDate, -1);
-  const [snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev] = await Promise.all([
+  const [snapshot, sessionSummaries, actualSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, 28, workspace),
     getRecentSessionSummaries(String(playerId), 6, workspace).catch(() => []),
+    getRecentActualSummaries(String(playerId), workspace, 5).catch(() => []),
     workspace === 'zarechie' ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
     redis('get', `${wpfx}:1rm:${String(playerId)}`).catch(() => null),
     (async () => {
@@ -1623,7 +1649,7 @@ export async function buildGenerationInputs(body) {
 
   let { userPrompt, dataSummary } = buildUserPrompt({
     snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks,
-    targetDate, dayGoal, focus: effectiveFocus, trainingType, notes, warmupSummary, teamUsedExercises, coachRecovery,
+    actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType, notes, warmupSummary, teamUsedExercises, coachRecovery,
     playbookText, workspace,
   });
   if (focusDowngradeNote) { userPrompt += focusDowngradeNote; dataSummary += focusDowngradeNote; }
@@ -1794,7 +1820,7 @@ export default async function handler(req, res) {
 }
 
 // ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
-function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie' }) {
+function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie' }) {
   let dataSummary = summarizeSnapshot(snapshot);
 
   // Coach manual recovery status (светофор тренера) — appended after biometric data.
@@ -2097,6 +2123,10 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, 
       ? `ИСТОРИЯ ПОСЛЕДНИХ ${sessionSummaries.length} СОХРАНЁННЫХ ТРЕНИРОВОК ИГРОКА:\n${sessionSummaries.join('\n\n')}\n\nНА ОСНОВЕ ИСТОРИИ — перед составлением определи:\n1. Какие векторы/паттерны получили нагрузку в последние 48–72 ч — избегай их или делай лёгкую работу в том же паттерне.\n2. Какой характер нагрузки преобладал в последних сессиях (силовой, объёмный, взрывной) — выбери другой для сегодняшней.\n3. Какие конкретные упражнения повторялись недавно — смени вариацию из библиотеки движений.\n4. Логика DUP: куда по волне нагрузки должна идти сегодняшняя сессия.\n5. Прогрессия: если есть weightNote по упражнению — применяй правило прогрессии.`
       : 'ИСТОРИЯ ТРЕНИРОВОК: нет сохранённых сессий для этого игрока — составь первую тренировку без привязки к предыдущим.';
 
+  const actualHistoryBlock = actualSummaries.length > 0
+    ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nФАКТИЧЕСКОЕ ВЫПОЛНЕНИЕ ПОСЛЕДНИХ СЕССИЙ (вес + RPE + боль):\n${actualSummaries.map(s => `• ${s}`).join('\n')}\n→ Используй именно фактический вес/RPE для weightNote. Если RPE <=6 и боли нет — можно +2.5-5%. Если RPE >=9 или была боль — снизь вес или замени упражнение в следующей аналогичной тренировке.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
+    : '';
+
   const playbookContext = playbookText
     ? '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' + playbookText + '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
     : '';
@@ -2105,6 +2135,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], rawSchedule = null, 
 ${onermContext}${warmupContext}${manualWorkspaceContext}${trainingTypeContext}${hrvTrendAlert}${hoopers7dAlert}${acwrAlert}${jumpACWRAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${historyBlock}
+${actualHistoryBlock}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${scheduleContext}
 Фаза подготовки: ${focusLabel}

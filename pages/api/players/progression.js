@@ -17,16 +17,31 @@ export function normExName(name) {
     .slice(0, 80);
 }
 
-// Suggest next weight based on previous weight + RPE.
-export function suggestKg(kg, rpe) {
+function roundToStep(value, step = 2.5) {
+  return Math.max(Math.round(value / step) * step, step);
+}
+
+// Suggest next weight based on previous actual weight + RPE + pain.
+export function suggestKg(kg, rpe, pain = false) {
   const k = parseFloat(kg);
   if (!k || k <= 0) return null;
-  const r = parseInt(rpe, 10);
+  if (pain) return roundToStep(k * 0.9);
+  const r = parseFloat(rpe);
   if (!r || isNaN(r)) return k; // no RPE data → keep same
-  if (r <= 7) return Math.round((k + 2.5) / 2.5) * 2.5;  // easy → +2.5
-  if (r === 8) return k;                                    // on target → same
-  if (r === 9) return Math.max(Math.round((k - 2.5) / 2.5) * 2.5, 2.5); // hard → -2.5
-  return Math.max(Math.round((k - 5) / 2.5) * 2.5, 2.5);  // RPE 10 → -5
+  if (r <= 6) return roundToStep(k * (k >= 50 ? 1.05 : 1.025)); // easy + no pain → +2.5–5%
+  if (r < 9) return k;                                          // on target → same
+  if (r < 10) return roundToStep(k * 0.95);                     // hard → -5%
+  return roundToStep(k * 0.9);                                  // maximal → -10%
+}
+
+function progressionDecision(kg, rpe, pain = false) {
+  if (!kg) return 'Нет истории фактического веса — указать вручную по целевому RPE.';
+  if (pain) return 'Была боль/дискомфорт — снизить нагрузку и рассмотреть замену в следующей тренировке.';
+  const r = parseFloat(rpe);
+  if (!r || isNaN(r)) return 'Есть вес из истории, RPE не указан — оставить вес и оценить RPE после блока.';
+  if (r <= 6) return 'RPE <= 6 и боли нет — можно прогрессировать +2.5-5%.';
+  if (r < 9) return 'RPE в целевой зоне — оставить вес или минимальная прогрессия по технике.';
+  return 'RPE >= 9 — снизить вес или заменить упражнение в следующей тренировке.';
 }
 
 export default async function handler(req, res) {
@@ -61,14 +76,20 @@ export default async function handler(req, res) {
     }
 
     const kg = record.kg ? parseFloat(record.kg) : null;
-    const rpe = record.rpe ? parseInt(record.rpe, 10) : null;
+    const rpe = record.rpe ? parseFloat(record.rpe) : null;
+    const pain = record.pain === '1' || record.pain === true || record.pain === 'true';
     if (!kg) return;
 
     progression[name] = {
       kg,
       rpe: rpe || null,
+      pain,
+      block: record.block || null,
+      blockRpe: record.blockRpe ? parseFloat(record.blockRpe) : null,
+      source: record.source || 'planned',
       date: record.date || null,
-      suggestedKg: suggestKg(kg, rpe),
+      suggestedKg: suggestKg(kg, rpe, pain),
+      decision: progressionDecision(kg, rpe, pain),
     };
   });
 
