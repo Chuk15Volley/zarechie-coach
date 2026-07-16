@@ -14,6 +14,10 @@ function legacySlug(name) {
   return (name || '').toLowerCase().trim().replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-+|-+$/g, '');
 }
 
+function isBannedLibraryExercise(name) {
+  return /incline push[ -]?up|наклонн.*отжим/i.test(name || '');
+}
+
 // SCAN helper — follows cursor to collect all matching keys.
 async function scanKeys(pattern) {
   const keys = [];
@@ -36,6 +40,7 @@ export default async function handler(req, res) {
     const listById = new Map();
 
     for (const item of EXERCISE_BANK) {
+      if (isBannedLibraryExercise(item.n)) continue;
       const { canonicalId } = normalize(item.n);
       if (!canonicalId || listById.has(canonicalId)) continue;
       listById.set(canonicalId, {
@@ -52,6 +57,7 @@ export default async function handler(req, res) {
     }
 
     cards.forEach(c => {
+      if (isBannedLibraryExercise(c.title || c.canonicalId)) return;
       const existing = listById.get(c.canonicalId);
       listById.set(c.canonicalId, {
         canonicalId: c.canonicalId,
