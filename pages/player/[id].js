@@ -200,7 +200,6 @@ function youtubeVideoId(url) {
 function ExerciseMedia({ name, token }) {
   const bankUrl = findExerciseUrl(name);
   const [media, setMedia] = useState(null); // { video }
-  const [playerOpen, setPlayerOpen] = useState(false);
 
   // Fetch media meta (manual video URL)
   useEffect(() => {
@@ -216,73 +215,35 @@ function ExerciseMedia({ name, token }) {
   const videoUrl = media?.video || bankUrl;
   const videoId = youtubeVideoId(videoUrl);
   const watchUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : videoUrl;
-  const embedUrl = videoId
-    ? `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&rel=0&modestbranding=1`
-    : null;
 
   return (
     <>
       {videoId ? (
-        <>
-          <button
-            type="button"
-            onClick={() => setPlayerOpen(true)}
-            className="relative mt-2 block aspect-video w-full overflow-hidden rounded-xl border border-white/[0.08] bg-black text-left"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover opacity-80"
-            />
-            <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-            <span className="absolute inset-0 grid place-items-center">
-              <span className="grid h-14 w-14 place-items-center rounded-full bg-red-600 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="ml-1">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </span>
+        <a
+          href={watchUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="relative mt-2 block aspect-video w-full overflow-hidden rounded-xl border border-white/[0.08] bg-black text-left"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover opacity-80"
+          />
+          <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+          <span className="absolute inset-0 grid place-items-center">
+            <span className="grid h-14 w-14 place-items-center rounded-full bg-red-600 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="ml-1">
+                <path d="M8 5v14l11-7z" />
+              </svg>
             </span>
-            <span className="absolute bottom-2 left-2 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white">
-              Смотреть технику
-            </span>
-          </button>
-          {playerOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-3 py-5" onClick={() => setPlayerOpen(false)}>
-              <div className="w-full max-w-3xl" onClick={e => e.stopPropagation()}>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="min-w-0 truncate text-[13px] font-bold text-white">{name}</div>
-                  <button
-                    type="button"
-                    onClick={() => setPlayerOpen(false)}
-                    className="rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-bold text-white"
-                  >
-                    Закрыть
-                  </button>
-                </div>
-                <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
-                  <iframe
-                    src={embedUrl}
-                    title={`Видео упражнения ${name}`}
-                    className="aspect-video w-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                    referrerPolicy="strict-origin-when-cross-origin"
-                  />
-                </div>
-                <a
-                  href={watchUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 block rounded-xl bg-white/10 px-4 py-3 text-center text-[13px] font-bold text-white"
-                >
-                  Открыть в YouTube
-                </a>
-              </div>
-            </div>
-          )}
-        </>
+          </span>
+          <span className="absolute bottom-2 left-2 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white">
+            Открыть в YouTube
+          </span>
+        </a>
       ) : videoUrl ? (
         <>
           <div className="mt-1 flex items-center gap-2">

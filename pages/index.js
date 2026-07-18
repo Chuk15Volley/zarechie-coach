@@ -1082,7 +1082,6 @@ function ExerciseVideoPanel({ name, apiKey }) {
   const [videoInput, setVideoInput] = useState('');
   const [savingVideo, setSavingVideo] = useState(false);
   const [videoSaveError, setVideoSaveError] = useState(null);
-  const [playerOpen, setPlayerOpen] = useState(false);
 
   useEffect(() => {
     setManualVideoUrl(undefined);
@@ -1091,7 +1090,6 @@ function ExerciseVideoPanel({ name, apiKey }) {
     setVideoInput('');
     setSavingVideo(false);
     setVideoSaveError(null);
-    setPlayerOpen(false);
   }, [name]);
 
   // Fetch manual override
@@ -1121,9 +1119,6 @@ function ExerciseVideoPanel({ name, apiKey }) {
   const isManual = !!manualVideoUrl;
   const videoId = youtubeVideoId(videoUrl);
   const watchUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : videoUrl;
-  const embedUrl = videoId
-    ? `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&rel=0&modestbranding=1`
-    : null;
 
   async function handleSaveVideo() {
     const trimmed = videoInput.trim();
@@ -1167,9 +1162,10 @@ function ExerciseVideoPanel({ name, apiKey }) {
     <div className="print:hidden">
       <div className="mx-3.5 mt-1 mb-2 overflow-hidden rounded-2xl border border-white/[0.07] bg-[#05090f] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         {videoId ? (
-          <button
-            type="button"
-            onClick={() => setPlayerOpen(true)}
+          <a
+            href={watchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             className="relative block aspect-video w-full overflow-hidden bg-black text-left"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1188,9 +1184,9 @@ function ExerciseVideoPanel({ name, apiKey }) {
               </span>
             </span>
             <span className="absolute bottom-2 left-2 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white">
-              Смотреть технику
+              Открыть в YouTube
             </span>
-          </button>
+          </a>
         ) : (
           <button
             type="button"
@@ -1202,40 +1198,6 @@ function ExerciseVideoPanel({ name, apiKey }) {
           </button>
         )}
       </div>
-      {playerOpen && embedUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-6" onClick={() => setPlayerOpen(false)}>
-          <div className="w-full max-w-4xl" onClick={e => e.stopPropagation()}>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="min-w-0 truncate text-[13px] font-bold text-white">{name}</div>
-              <button
-                type="button"
-                onClick={() => setPlayerOpen(false)}
-                className="rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-bold text-white"
-              >
-                Закрыть
-              </button>
-            </div>
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
-              <iframe
-                src={embedUrl}
-                title={`Видео упражнения ${name}`}
-                className="aspect-video w-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                referrerPolicy="strict-origin-when-cross-origin"
-              />
-            </div>
-            <a
-              href={watchUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-3 block rounded-xl bg-white/10 px-4 py-3 text-center text-[13px] font-bold text-white"
-            >
-              Открыть в YouTube
-            </a>
-          </div>
-        </div>
-      )}
 
       {/* Inline URL editor */}
       {editingVideo && (
