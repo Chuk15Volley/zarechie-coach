@@ -1014,23 +1014,23 @@ const YT_ICON = (
   </svg>
 );
 
-function youtubeEmbedUrl(url) {
+function youtubeVideoId(url) {
   if (!url) return null;
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.replace(/^www\./, '');
     if (host === 'youtu.be') {
       const id = parsed.pathname.split('/').filter(Boolean)[0];
-      return id ? `https://www.youtube.com/embed/${id}` : null;
+      return /^[\w-]{11}$/.test(id || '') ? id : null;
     }
     if (host.endsWith('youtube.com')) {
-      const [, , pathId] = parsed.pathname.match(/^\/(embed|shorts)\/([\w-]{11})/) || [];
+      const [, , pathId] = parsed.pathname.match(/^\/(embed|shorts|live)\/([\w-]{11})/) || [];
       const id = parsed.searchParams.get('v') || pathId;
-      return id ? `https://www.youtube.com/embed/${id}` : null;
+      return /^[\w-]{11}$/.test(id || '') ? id : null;
     }
   } catch (_) {
-    const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
-    return m ? `https://www.youtube.com/embed/${m[1]}` : null;
+    const m = String(url).match(/(?:youtube\.com\/(?:watch\?(?:[^#\s]+&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/);
+    return m ? m[1] : null;
   }
   return null;
 }
@@ -1082,6 +1082,7 @@ function ExerciseVideoPanel({ name, apiKey }) {
   const [videoInput, setVideoInput] = useState('');
   const [savingVideo, setSavingVideo] = useState(false);
   const [videoSaveError, setVideoSaveError] = useState(null);
+  const [playerOpen, setPlayerOpen] = useState(false);
 
   useEffect(() => {
     setManualVideoUrl(undefined);
@@ -1090,6 +1091,7 @@ function ExerciseVideoPanel({ name, apiKey }) {
     setVideoInput('');
     setSavingVideo(false);
     setVideoSaveError(null);
+    setPlayerOpen(false);
   }, [name]);
 
   // Fetch manual override
@@ -1117,7 +1119,11 @@ function ExerciseVideoPanel({ name, apiKey }) {
   // Priority: manual → bank → auto-search
   const videoUrl = manualVideoUrl || bankUrl || autoVideoUrl;
   const isManual = !!manualVideoUrl;
-  const embedUrl = youtubeEmbedUrl(videoUrl);
+  const videoId = youtubeVideoId(videoUrl);
+  const watchUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : videoUrl;
+  const embedUrl = videoId
+    ? `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&rel=0&modestbranding=1`
+    : null;
 
   async function handleSaveVideo() {
     const trimmed = videoInput.trim();
@@ -1160,14 +1166,31 @@ function ExerciseVideoPanel({ name, apiKey }) {
   return (
     <div className="print:hidden">
       <div className="mx-3.5 mt-1 mb-2 overflow-hidden rounded-2xl border border-white/[0.07] bg-[#05090f] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        {embedUrl ? (
-          <iframe
-            src={embedUrl}
-            title={`Видео упражнения ${name}`}
-            className="aspect-video w-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
+        {videoId ? (
+          <button
+            type="button"
+            onClick={() => setPlayerOpen(true)}
+            className="relative block aspect-video w-full overflow-hidden bg-black text-left"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover opacity-80"
+            />
+            <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+            <span className="absolute inset-0 grid place-items-center">
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-red-600 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="ml-1">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </span>
+            </span>
+            <span className="absolute bottom-2 left-2 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white">
+              Смотреть технику
+            </span>
+          </button>
         ) : (
           <button
             type="button"
@@ -1179,6 +1202,40 @@ function ExerciseVideoPanel({ name, apiKey }) {
           </button>
         )}
       </div>
+      {playerOpen && embedUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-6" onClick={() => setPlayerOpen(false)}>
+          <div className="w-full max-w-4xl" onClick={e => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="min-w-0 truncate text-[13px] font-bold text-white">{name}</div>
+              <button
+                type="button"
+                onClick={() => setPlayerOpen(false)}
+                className="rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-bold text-white"
+              >
+                Закрыть
+              </button>
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
+              <iframe
+                src={embedUrl}
+                title={`Видео упражнения ${name}`}
+                className="aspect-video w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                referrerPolicy="strict-origin-when-cross-origin"
+              />
+            </div>
+            <a
+              href={watchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 block rounded-xl bg-white/10 px-4 py-3 text-center text-[13px] font-bold text-white"
+            >
+              Открыть в YouTube
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Inline URL editor */}
       {editingVideo && (
@@ -1233,7 +1290,7 @@ function ExerciseVideoPanel({ name, apiKey }) {
               {PENCIL_ICON}
             </button>
             <a
-              href={videoUrl}
+              href={watchUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="ml-1 rounded-lg bg-white/[0.05] px-2 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:bg-white/[0.09] hover:text-slate-300"
