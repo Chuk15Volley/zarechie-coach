@@ -176,10 +176,32 @@ const YT_ICON_SMALL = (
   </svg>
 );
 
+function youtubeEmbedUrl(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.split('/').filter(Boolean)[0];
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+    if (host.endsWith('youtube.com')) {
+      const [, , pathId] = parsed.pathname.match(/^\/(embed|shorts)\/([\w-]{11})/) || [];
+      const id = parsed.searchParams.get('v') || pathId;
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+  } catch (_) {
+    const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
+    return m ? `https://www.youtube.com/embed/${m[1]}` : null;
+  }
+  return null;
+}
+
 function ExerciseMedia({ name, token }) {
   const bankUrl = findExerciseUrl(name);
   const [media, setMedia] = useState(null); // { hasImage, video }
   const [imgBlobUrl, setImgBlobUrl] = useState(null);
+  const [showVideo, setShowVideo] = useState(false);
 
   // Fetch media meta (image existence + manual video URL)
   useEffect(() => {
@@ -212,6 +234,7 @@ function ExerciseMedia({ name, token }) {
   }, [media?.hasImage, name, token]);
 
   const videoUrl = media?.video || bankUrl;
+  const embedUrl = youtubeEmbedUrl(videoUrl);
 
   return (
     <>
@@ -222,15 +245,37 @@ function ExerciseMedia({ name, token }) {
         </div>
       )}
       {videoUrl && (
-        <a
-          href={videoUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-1 flex items-center gap-1.5 text-[11px] text-red-400 hover:text-red-300"
-        >
-          {YT_ICON_SMALL}
-          Видео упражнения
-        </a>
+        <>
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => embedUrl ? setShowVideo(v => !v) : window.open(videoUrl, '_blank', 'noopener,noreferrer')}
+              className="flex items-center gap-1.5 rounded-lg bg-red-500/10 px-2 py-1.5 text-[11px] font-semibold text-red-300"
+            >
+              {YT_ICON_SMALL}
+              {showVideo ? 'Скрыть видео' : 'Видео упражнения'}
+            </button>
+            <a
+              href={videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg bg-white/[0.06] px-2 py-1.5 text-[11px] font-semibold text-slate-400"
+            >
+              YouTube
+            </a>
+          </div>
+          {showVideo && embedUrl && (
+            <div className="mt-2 overflow-hidden rounded-xl border border-white/[0.08] bg-black">
+              <iframe
+                src={embedUrl}
+                title={`Видео упражнения ${name}`}
+                className="aspect-video w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+          )}
+        </>
       )}
     </>
   );

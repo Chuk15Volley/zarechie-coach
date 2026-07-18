@@ -1014,6 +1014,27 @@ const YT_ICON = (
   </svg>
 );
 
+function youtubeEmbedUrl(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.split('/').filter(Boolean)[0];
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+    if (host.endsWith('youtube.com')) {
+      const [, , pathId] = parsed.pathname.match(/^\/(embed|shorts)\/([\w-]{11})/) || [];
+      const id = parsed.searchParams.get('v') || pathId;
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+  } catch (_) {
+    const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
+    return m ? `https://www.youtube.com/embed/${m[1]}` : null;
+  }
+  return null;
+}
+
 function ExerciseVideoLink({ name, apiKey }) {
   const bankUrl = findExerciseUrl(name);
   const [searchUrl, setSearchUrl] = useState(undefined);
@@ -1183,6 +1204,8 @@ function ExerciseImageUpload({ name, apiKey }) {
   // Priority: manual → bank → auto-search
   const videoUrl = manualVideoUrl || bankUrl || autoVideoUrl;
   const isManual = !!manualVideoUrl;
+  const embedUrl = youtubeEmbedUrl(videoUrl);
+  const [showVideo, setShowVideo] = useState(false);
 
   async function handleSaveVideo() {
     const trimmed = videoInput.trim();
@@ -1292,19 +1315,18 @@ function ExerciseImageUpload({ name, apiKey }) {
         </div>
       )}
 
-      {/* Bottom bar: video link */}
+      {/* Bottom bar: inline video */}
       <div className="flex items-center gap-2 px-3.5 pb-2">
         {videoUrl ? (
           <div className="flex items-center gap-0.5">
-            <a
-              href={videoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => embedUrl ? setShowVideo(v => !v) : window.open(videoUrl, '_blank', 'noopener,noreferrer')}
               className={`flex items-center gap-1.5 rounded-l-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${isManual ? 'bg-accent/[0.18] text-accent hover:bg-accent/[0.28]' : 'bg-accent/[0.10] text-accent/80 hover:bg-accent/[0.18] hover:text-accent'}`}
             >
               {YT_ICON}
-              Видео{isManual ? ' ★' : ''}
-            </a>
+              {showVideo ? 'Скрыть видео' : `Видео${isManual ? ' ★' : ''}`}
+            </button>
             <button
               onClick={openEditVideo}
               title="Изменить ссылку"
@@ -1312,6 +1334,15 @@ function ExerciseImageUpload({ name, apiKey }) {
             >
               {PENCIL_ICON}
             </button>
+            <a
+              href={videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-1 rounded-lg bg-white/[0.05] px-2 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:bg-white/[0.09] hover:text-slate-300"
+              title="Открыть YouTube в новой вкладке"
+            >
+              ↗
+            </a>
           </div>
         ) : (
           <button
@@ -1323,6 +1354,17 @@ function ExerciseImageUpload({ name, apiKey }) {
           </button>
         )}
       </div>
+      {showVideo && embedUrl && (
+        <div className="mx-3.5 mb-3 overflow-hidden rounded-xl border border-white/[0.08] bg-black shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
+          <iframe
+            src={embedUrl}
+            title={`Видео упражнения ${name}`}
+            className="aspect-video w-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        </div>
+      )}
     </div>
   );
 }

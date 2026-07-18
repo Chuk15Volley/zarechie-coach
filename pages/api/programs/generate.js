@@ -1499,8 +1499,8 @@ export async function buildGenerationInputs(body) {
       });
     })(),
     redis('get', `${wpfx}:restrictions:${String(playerId)}`).catch(() => null),
-    redis('get', matchLoadKey(workspace, targetDate)).catch(() => null),
-    redis('get', matchLoadKey(workspace, prevDate)).catch(() => null),
+    workspace === 'zarechie' ? redis('get', matchLoadKey(workspace, targetDate)).catch(() => null) : Promise.resolve(null),
+    workspace === 'zarechie' ? redis('get', matchLoadKey(workspace, prevDate)).catch(() => null) : Promise.resolve(null),
   ]);
 
   if (!snapshot) return { error: 'Player not found', status: 404 };
@@ -1537,7 +1537,7 @@ export async function buildGenerationInputs(body) {
   // #9: Auto-downgrade inseason_power → inseason_strength when CMJ is depressed
   let effectiveFocus = focus;
   let focusDowngradeNote = '';
-  if (focus === 'inseason_power' && snapshot.neuro?.history?.length) {
+  if (workspace === 'zarechie' && focus === 'inseason_power' && snapshot.neuro?.history?.length) {
     const sortedHist = [...snapshot.neuro.history]
       .filter(e => e.date && e.cmj != null)
       .sort((a, b) => b.date.localeCompare(a.date));
@@ -1566,8 +1566,10 @@ export async function buildGenerationInputs(body) {
   });
   if (focusDowngradeNote) { userPrompt += focusDowngradeNote; dataSummary += focusDowngradeNote; }
 
-  const matchLoadText = formatMatchLoadForPrompt(String(playerId), targetDate, rawMatchLoadToday, rawMatchLoadPrev);
-  if (matchLoadText) {
+  const matchLoadText = workspace === 'zarechie'
+    ? formatMatchLoadForPrompt(String(playerId), targetDate, rawMatchLoadToday, rawMatchLoadPrev)
+    : '';
+  if (workspace === 'zarechie' && matchLoadText) {
     dataSummary += `\n${matchLoadText}`;
     userPrompt += `\n${matchLoadText}`;
   }
@@ -1734,7 +1736,9 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     const statusLine = coachRecovery === 'yellow'
       ? '🟡 ЖЁЛТЫЙ — объём -25%, интенсивность без изменений'
       : '🔴 КРАСНЫЙ — RPE 5-6, объём -30-50%, без тяжёлой силы, прыжки только low-level по технике или убрать';
-    const context = whoopToday ? '[дополнительный сигнал к WHOOP-данным]' : '[WHOOP нет — ориентируйся на этот статус]';
+    const context = whoopToday
+      ? '[ГЛАВНЫЙ override: статус тренера сильнее WHOOP/HRV/опросов]'
+      : '[WHOOP нет — ориентируйся на этот статус]';
     dataSummary += `\n• ⚑ Статус от тренера (ручная оценка): ${statusLine} ${context}`;
   }
   const focusLabel = focusLabelForWorkspace(focus, workspace);
@@ -1777,7 +1781,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
         lines.push(`• Следующая игра: через ${daysToNext} дн. (${nextGameDate})`);
         if (hasTravelSoon) lines.push('• ⚠ Перелёт в ближайшие 2 дня — засчитывай как игровой стресс-фактор, снижай нагрузку соответственно');
         if (daysSinceLast === 1) {
-          lines.push('→ РЕЖИМ СЕССИИ: Восстановление (день после игры) — JLU=0, мобильность, без силовой нагрузки');
+          lines.push('→ РЕЖИМ СЕССИИ: Recovery / Prehab (день после игры) — считать консервативно, JLU=0, мобильность/профилактика, без тяжёлой силы и осевой нагрузки');
         } else if (daysToNext === 1 || (daysToNext === 2 && hasTravelSoon)) {
           lines.push('→ РЕЖИМ СЕССИИ: Мощностная активация (1-2 дня до игры / перелёт) — 30-40 мин, JLU ≤80, без накопительной усталости');
         } else {
@@ -1785,6 +1789,9 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
         }
       } else {
         lines.push('• Ближайших игр в календаре нет (ближайшие 3 недели)');
+        if (daysSinceLast === 1) {
+          lines.push('→ РЕЖИМ СЕССИИ: Recovery / Prehab (день после игры) — считать консервативно, даже если игровая нагрузка игрока ещё не отмечена');
+        }
       }
       scheduleContext = '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' + lines.join('\n') + '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
     }
@@ -1793,7 +1800,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
   }
 
   const manualWorkspaceContext = workspace === 'nkperf'
-    ? '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNK PERFORMANCE · РУЧНОЙ РЕЖИМ ПЛАНИРОВАНИЯ:\n• НЕ используй расписание, матчи, перелёты, день недели или MD-логику Заречья.\n• Тренер сам выбрал цикл и вид тренировки через focus.\n• Генерируй программу только по выбранной методике, состоянию игрока, истории нагрузок, ограничениям и комментариям тренера.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+    ? '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNK PERFORMANCE · РУЧНОЙ РЕЖИМ ПЛАНИРОВАНИЯ:\n• НЕ используй расписание, матчи, перелёты, день недели, match load или MD-логику Заречья.\n• Тренер сам выбрал цикл и вид тренировки через focus/trainingType.\n• Генерируй программу только по выбранной методике, ручному статусу тренера, состоянию игрока, истории веса/RPE, ограничениям, 1ПМ и комментариям тренера.\n• Если WHOOP/опросы/нейро отсутствуют — не блокируй генерацию: работай в coach/manual mode и будь консервативен.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
     : '';
 
   // 1RM context
