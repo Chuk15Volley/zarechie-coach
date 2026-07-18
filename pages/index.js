@@ -1081,6 +1081,16 @@ function ExerciseVideoPanel({ name, apiKey }) {
   const [editingVideo, setEditingVideo] = useState(false);
   const [videoInput, setVideoInput] = useState('');
   const [savingVideo, setSavingVideo] = useState(false);
+  const [videoSaveError, setVideoSaveError] = useState(null);
+
+  useEffect(() => {
+    setManualVideoUrl(undefined);
+    setAutoVideoUrl(undefined);
+    setEditingVideo(false);
+    setVideoInput('');
+    setSavingVideo(false);
+    setVideoSaveError(null);
+  }, [name]);
 
   // Fetch manual override
   useEffect(() => {
@@ -1113,15 +1123,24 @@ function ExerciseVideoPanel({ name, apiKey }) {
     const trimmed = videoInput.trim();
     if (!trimmed) return;
     setSavingVideo(true);
+    setVideoSaveError(null);
     try {
-      await fetch('/api/exercises/manual-video', {
+      const res = await fetch('/api/exercises/manual-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
         body: JSON.stringify({ name, url: trimmed }),
       });
-      setManualVideoUrl(trimmed);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok || !data.url) {
+        throw new Error(data.error || `Ошибка сохранения ${res.status}`);
+      }
+      setManualVideoUrl(data.url);
+      setAutoVideoUrl(null);
+      setVideoInput(data.url);
       setEditingVideo(false);
-    } catch (_) {}
+    } catch (e) {
+      setVideoSaveError(e.message || 'Не удалось сохранить видео');
+    }
     setSavingVideo(false);
   }
 
@@ -1163,31 +1182,38 @@ function ExerciseVideoPanel({ name, apiKey }) {
 
       {/* Inline URL editor */}
       {editingVideo && (
-        <div className="flex items-center gap-1.5 border-t border-white/[0.06] px-3.5 py-2">
-          <input
-            autoFocus
-            type="url"
-            value={videoInput}
-            onChange={e => setVideoInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleSaveVideo(); if (e.key === 'Escape') setEditingVideo(false); }}
-            placeholder="https://youtube.com/watch?v=..."
-            className="min-w-0 flex-1 rounded-md bg-white/[0.06] px-2.5 py-1.5 text-[11px] text-slate-200 outline-none placeholder:text-slate-600 focus:bg-white/[0.1] focus:ring-1 focus:ring-accent/40"
-          />
-          <button
-            onClick={handleSaveVideo}
-            disabled={savingVideo || !videoInput.trim()}
-            className="rounded-md bg-accent/20 px-2.5 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/30 disabled:opacity-40"
-          >
-            {savingVideo ? <Loader2 size={11} className="animate-spin" /> : 'Сохранить'}
-          </button>
-          {isManual && (
-            <button onClick={handleDeleteVideo} className="rounded-md bg-rose-500/10 px-2 py-1.5 text-[11px] text-rose-400 hover:bg-rose-500/20">
-              Сбросить
+        <div className="border-t border-white/[0.06] px-3.5 py-2">
+          <div className="flex items-center gap-1.5">
+            <input
+              autoFocus
+              type="url"
+              value={videoInput}
+              onChange={e => { setVideoInput(e.target.value); setVideoSaveError(null); }}
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveVideo(); if (e.key === 'Escape') setEditingVideo(false); }}
+              placeholder="https://youtube.com/watch?v=..."
+              className="min-w-0 flex-1 rounded-md bg-white/[0.06] px-2.5 py-1.5 text-[11px] text-slate-200 outline-none placeholder:text-slate-600 focus:bg-white/[0.1] focus:ring-1 focus:ring-accent/40"
+            />
+            <button
+              onClick={handleSaveVideo}
+              disabled={savingVideo || !videoInput.trim()}
+              className="rounded-md bg-accent/20 px-2.5 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/30 disabled:opacity-40"
+            >
+              {savingVideo ? <Loader2 size={11} className="animate-spin" /> : 'Сохранить'}
             </button>
+            {isManual && (
+              <button onClick={handleDeleteVideo} className="rounded-md bg-rose-500/10 px-2 py-1.5 text-[11px] text-rose-400 hover:bg-rose-500/20">
+                Сбросить
+              </button>
+            )}
+            <button onClick={() => setEditingVideo(false)} className="rounded-md px-2 py-1.5 text-[11px] text-slate-500 hover:text-slate-300">
+              ✕
+            </button>
+          </div>
+          {videoSaveError && (
+            <div className="mt-1.5 rounded-md bg-rose-500/10 px-2 py-1 text-[11px] text-rose-300">
+              {videoSaveError}
+            </div>
           )}
-          <button onClick={() => setEditingVideo(false)} className="rounded-md px-2 py-1.5 text-[11px] text-slate-500 hover:text-slate-300">
-            ✕
-          </button>
         </div>
       )}
 
