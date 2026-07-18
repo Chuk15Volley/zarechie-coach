@@ -1074,104 +1074,7 @@ const PENCIL_ICON = (
   </svg>
 );
 
-function ExerciseImageUpload({ name, apiKey }) {
-  // ── Image state ──────────────────────────────────────────────────────────
-  const [hasImage, setHasImage] = useState(undefined); // undefined=checking, null=none, timestamp=exists
-  const [imageBlobUrl, setImageBlobUrl] = useState(null); // object URL for <img src>
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState(null);
-  const fileInputRef = useRef(null);
-
-  // Check existence on mount
-  useEffect(() => {
-    if (!name?.trim() || !apiKey) return;
-    let cancelled = false;
-    fetch(`/api/exercises/manual-image?name=${encodeURIComponent(name)}`, { headers: { 'x-api-key': apiKey } })
-      .then(r => r.json())
-      .then(d => { if (!cancelled) setHasImage(d.hasImage ? Date.now() : null); })
-      .catch(() => { if (!cancelled) setHasImage(null); });
-    return () => { cancelled = true; };
-  }, [name, apiKey]);
-
-  // Fetch the actual image bytes with auth header → blob URL for <img>
-  useEffect(() => {
-    if (!hasImage || !apiKey) { setImageBlobUrl(null); return; }
-    let objectUrl = null;
-    let cancelled = false;
-    fetch(`/api/exercises/manual-image?name=${encodeURIComponent(name)}&serve=1&t=${hasImage}`, { headers: { 'x-api-key': apiKey } })
-      .then(r => r.ok ? r.blob() : null)
-      .then(blob => {
-        if (cancelled || !blob) return;
-        objectUrl = URL.createObjectURL(blob);
-        setImageBlobUrl(objectUrl);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [hasImage, name, apiKey]);
-
-  function compressImage(file, maxPx = 600, quality = 0.78) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-      img.src = url;
-    });
-  }
-
-  function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setUploadError(null);
-    compressImage(file).then(async (imageData) => {
-      if (!imageData) {
-        setUploadError('Не удалось обработать изображение');
-        setUploading(false);
-        return;
-      }
-      try {
-        const res = await fetch('/api/exercises/manual-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-          body: JSON.stringify({ name, imageData }),
-        });
-        const data = await res.json();
-        if (data.ok) {
-          // Revoke old blob URL before setting new timestamp (triggers re-fetch effect)
-          setImageBlobUrl(null);
-          setHasImage(Date.now());
-        } else {
-          setUploadError(data.error || `Ошибка ${res.status}`);
-        }
-      } catch (err) {
-        setUploadError(err.message);
-      }
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    });
-  }
-
-  async function handleDeleteImage() {
-    await fetch(`/api/exercises/manual-image?name=${encodeURIComponent(name)}`, {
-      method: 'DELETE', headers: { 'x-api-key': apiKey },
-    }).catch(() => {});
-    setHasImage(null);
-  }
-
-  // ── Video URL state ───────────────────────────────────────────────────────
+function ExerciseVideoPanel({ name, apiKey }) {
   const bankUrl = findExerciseUrl(name);
   const [manualVideoUrl, setManualVideoUrl] = useState(undefined); // undefined = checking
   const [autoVideoUrl, setAutoVideoUrl] = useState(undefined);
@@ -1205,7 +1108,6 @@ function ExerciseImageUpload({ name, apiKey }) {
   const videoUrl = manualVideoUrl || bankUrl || autoVideoUrl;
   const isManual = !!manualVideoUrl;
   const embedUrl = youtubeEmbedUrl(videoUrl);
-  const [showVideo, setShowVideo] = useState(false);
 
   async function handleSaveVideo() {
     const trimmed = videoInput.trim();
@@ -1238,52 +1140,26 @@ function ExerciseImageUpload({ name, apiKey }) {
 
   return (
     <div className="print:hidden">
-      {/* Square image area */}
-      {uploadError && (
-        <div className="mx-3.5 mb-1 rounded-lg bg-rose-500/10 px-3 py-1.5 text-[11px] text-rose-400">{uploadError}</div>
-      )}
-      <div className="relative mx-3.5 mt-1 mb-2 aspect-square overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0d1520] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] print:block print:border-slate-200">
-        {imageBlobUrl ? (
-          <div className="group/img relative h-full w-full">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageBlobUrl} alt={name} className="h-full w-full object-contain opacity-90 mix-blend-luminosity" style={{ filter: 'brightness(0.85) contrast(1.1)' }} />
-            <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover/img:opacity-100">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-lg bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/20"
-              >
-                Заменить
-              </button>
-              <button
-                onClick={handleDeleteImage}
-                className="rounded-lg bg-rose-500/20 px-3 py-1.5 text-[11px] font-semibold text-rose-400 hover:bg-rose-500/30"
-              >
-                Удалить
-              </button>
-            </div>
-          </div>
+      <div className="mx-3.5 mt-1 mb-2 overflow-hidden rounded-2xl border border-white/[0.07] bg-[#05090f] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        {embedUrl ? (
+          <iframe
+            src={embedUrl}
+            title={`Видео упражнения ${name}`}
+            className="aspect-video w-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
         ) : (
           <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="flex h-full w-full flex-col items-center justify-center gap-2 text-slate-600 transition hover:bg-white/[0.04] hover:text-slate-400 disabled:opacity-50"
+            type="button"
+            onClick={openEditVideo}
+            className="flex aspect-video w-full flex-col items-center justify-center gap-2 text-slate-600 transition hover:bg-white/[0.04] hover:text-slate-400"
           >
-            {uploading ? (
-              <Loader2 size={22} className="animate-spin" />
-            ) : (
-              <>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/>
-                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                  <polyline points="21 15 16 10 5 21"/>
-                </svg>
-                <span className="text-[11px] font-medium">Добавить фото</span>
-              </>
-            )}
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-red-500/10 text-red-300">{YT_ICON}</span>
+            <span className="text-[11px] font-semibold">Добавить YouTube-видео</span>
           </button>
         )}
       </div>
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
       {/* Inline URL editor */}
       {editingVideo && (
@@ -1319,14 +1195,10 @@ function ExerciseImageUpload({ name, apiKey }) {
       <div className="flex items-center gap-2 px-3.5 pb-2">
         {videoUrl ? (
           <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => embedUrl ? setShowVideo(v => !v) : window.open(videoUrl, '_blank', 'noopener,noreferrer')}
-              className={`flex items-center gap-1.5 rounded-l-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${isManual ? 'bg-accent/[0.18] text-accent hover:bg-accent/[0.28]' : 'bg-accent/[0.10] text-accent/80 hover:bg-accent/[0.18] hover:text-accent'}`}
-            >
+            <span className={`flex items-center gap-1.5 rounded-l-lg px-2.5 py-1.5 text-[11px] font-semibold ${isManual ? 'bg-accent/[0.18] text-accent' : 'bg-accent/[0.10] text-accent/80'}`}>
               {YT_ICON}
-              {showVideo ? 'Скрыть видео' : `Видео${isManual ? ' ★' : ''}`}
-            </button>
+              Видео{isManual ? ' ★' : ''}
+            </span>
             <button
               onClick={openEditVideo}
               title="Изменить ссылку"
@@ -1354,17 +1226,6 @@ function ExerciseImageUpload({ name, apiKey }) {
           </button>
         )}
       </div>
-      {showVideo && embedUrl && (
-        <div className="mx-3.5 mb-3 overflow-hidden rounded-xl border border-white/[0.08] bg-black shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
-          <iframe
-            src={embedUrl}
-            title={`Видео упражнения ${name}`}
-            className="aspect-video w-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -1589,8 +1450,8 @@ function ExerciseCard({
         )}
       </div>
 
-      {/* Image upload + YouTube link */}
-      <ExerciseImageUpload name={name} apiKey={apiKey} />
+      {/* Exercise video */}
+      <ExerciseVideoPanel name={name} apiKey={apiKey} />
 
       {/* Sets & notes */}
       <div className="space-y-2.5 p-4">

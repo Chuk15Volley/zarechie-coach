@@ -199,11 +199,9 @@ function youtubeEmbedUrl(url) {
 
 function ExerciseMedia({ name, token }) {
   const bankUrl = findExerciseUrl(name);
-  const [media, setMedia] = useState(null); // { hasImage, video }
-  const [imgBlobUrl, setImgBlobUrl] = useState(null);
-  const [showVideo, setShowVideo] = useState(false);
+  const [media, setMedia] = useState(null); // { video }
 
-  // Fetch media meta (image existence + manual video URL)
+  // Fetch media meta (manual video URL)
   useEffect(() => {
     if (!name?.trim() || !token) return;
     let cancelled = false;
@@ -214,68 +212,40 @@ function ExerciseMedia({ name, token }) {
     return () => { cancelled = true; };
   }, [name, token]);
 
-  // Fetch image bytes → blob URL
-  useEffect(() => {
-    if (!media?.hasImage || !token) return;
-    let objectUrl = null;
-    let cancelled = false;
-    fetch(`/api/exercises/player-media?token=${encodeURIComponent(token)}&name=${encodeURIComponent(name)}&serve=1`)
-      .then(r => r.ok ? r.blob() : null)
-      .then(blob => {
-        if (cancelled || !blob) return;
-        objectUrl = URL.createObjectURL(blob);
-        setImgBlobUrl(objectUrl);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [media?.hasImage, name, token]);
-
   const videoUrl = media?.video || bankUrl;
   const embedUrl = youtubeEmbedUrl(videoUrl);
 
   return (
     <>
-      {imgBlobUrl && (
-        <div className="mx-0 mt-2 mb-1 aspect-square w-full overflow-hidden rounded-xl border border-white/[0.06]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imgBlobUrl} alt={name} className="h-full w-full object-contain" />
+      {embedUrl ? (
+        <div className="mt-2 overflow-hidden rounded-xl border border-white/[0.08] bg-black">
+          <iframe
+            src={embedUrl}
+            title={`Видео упражнения ${name}`}
+            className="aspect-video w-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
         </div>
-      )}
-      {videoUrl && (
+      ) : videoUrl ? (
         <>
           <div className="mt-1 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => embedUrl ? setShowVideo(v => !v) : window.open(videoUrl, '_blank', 'noopener,noreferrer')}
-              className="flex items-center gap-1.5 rounded-lg bg-red-500/10 px-2 py-1.5 text-[11px] font-semibold text-red-300"
-            >
-              {YT_ICON_SMALL}
-              {showVideo ? 'Скрыть видео' : 'Видео упражнения'}
-            </button>
             <a
               href={videoUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-lg bg-white/[0.06] px-2 py-1.5 text-[11px] font-semibold text-slate-400"
+              className="flex items-center gap-1.5 rounded-lg bg-red-500/10 px-2 py-1.5 text-[11px] font-semibold text-red-300"
             >
-              YouTube
+              {YT_ICON_SMALL}
+              Видео упражнения
             </a>
           </div>
-          {showVideo && embedUrl && (
-            <div className="mt-2 overflow-hidden rounded-xl border border-white/[0.08] bg-black">
-              <iframe
-                src={embedUrl}
-                title={`Видео упражнения ${name}`}
-                className="aspect-video w-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-              />
-            </div>
-          )}
         </>
+      ) : (
+        <div className="mt-2 flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-xl border border-white/[0.06] bg-black/20 text-slate-600">
+          {YT_ICON_SMALL}
+          <span className="text-[11px] font-semibold">Видео не добавлено</span>
+        </div>
       )}
     </>
   );
