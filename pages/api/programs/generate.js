@@ -370,6 +370,61 @@ function fmt(field, value, suffix = '') {
   return `• ${field}: ${value != null ? value + suffix : 'нет данных'}`;
 }
 
+function eveningZoneDetails(survey) {
+  const entries = Object.entries(survey?.zoneDetails || {})
+    .map(([area, detail]) => {
+      const level = Number(detail?.level);
+      if (!area || !Number.isFinite(level) || level <= 0) return null;
+      return {
+        area,
+        level,
+        type: detail?.type === 'pain' ? 'pain' : 'soreness',
+      };
+    })
+    .filter(Boolean);
+
+  // Older survey records only have painAreas. Treat them conservatively, but
+  // retain the distinction whenever the current questionnaire provided it.
+  if (!entries.length && Array.isArray(survey?.painAreas)) {
+    return survey.painAreas.map(area => ({ area, level: null, type: 'pain' }));
+  }
+  return entries;
+}
+
+function formatEveningZones(survey) {
+  const zones = eveningZoneDetails(survey);
+  if (!zones.length) return null;
+  return zones.map(zone => `${zone.area}: ${zone.type === 'pain' ? 'боль' : 'крепатура'}${zone.level ? ` ${zone.level}/5` : ''}`).join('; ');
+}
+
+function eveningSafetyContext(surveys, targetDate) {
+  const latest = [...(surveys || [])].filter(record => record.date <= targetDate).pop() || null;
+  if (!latest) return '';
+
+  const previousDate = shiftDateStr(targetDate, -1);
+  const isFreshForSession = latest.date === previousDate || latest.date === targetDate;
+  const zones = eveningZoneDetails(latest);
+  const painZones = zones.filter(zone => zone.type === 'pain');
+  const sorenessZones = zones.filter(zone => zone.type === 'soreness');
+  const lines = [
+    `${isFreshForSession ? 'СВЕЖИЙ ВЕЧЕРНИЙ ОПРОСНИК — ГЛАВНЫЙ СУБЪЕКТИВНЫЙ СТАТУС ПЕРЕД ЭТОЙ СЕССИЕЙ' : 'ПОСЛЕДНИЙ ДОСТУПНЫЙ ВЕЧЕРНИЙ ОПРОСНИК'} (${latest.date})`,
+    `• Общая усталость: ${latest.fatigue ?? '—'}/5 | готовность к следующему дню: ${latest.tomorrowReadiness ?? '—'}/5 | EWS: ${latest.ews ?? '—'}%`,
+    `• Усталость ног: ${latest.legFatigue ?? '—'}/5 | нагрузка на плечо: ${latest.shoulderLoad ?? '—'}/5 | крепатура: ${latest.soreness ?? '—'}/5`,
+  ];
+  if (latest.sessionType) lines.push(`• Предыдущая сессия: ${latest.sessionType}`);
+  if (sorenessZones.length) lines.push(`• Крепатура по зонам: ${sorenessZones.map(zone => `${zone.area}${zone.level ? ` ${zone.level}/5` : ''}`).join(', ')}.`);
+  if (painZones.length) {
+    lines.push(`• ⚠ Боль по зонам: ${painZones.map(zone => `${zone.area}${zone.level ? ` ${zone.level}/5` : ''}`).join(', ')}.`);
+    lines.push('→ Боль 3/5 и выше: исключи прямую нагрузку на эту зону. Боль 1-2/5: снизь ROM/объём и выбери безболезненную вариацию.');
+  }
+  if (latest.hasInjury) {
+    lines.push(`• ⛔ Новая травма: ${(latest.injuryAreas || []).join(', ') || 'зона не указана'}, боль ${latest.pain_level ?? '—'}/10. ${latest.injuryText || ''}`);
+    lines.push('→ Прямая нагрузка на травмированную зону запрещена; сессия только Recovery / Prehab в пределах безболезненных движений.');
+  }
+  if (isFreshForSession) lines.push('→ Эти данные новее трендов и используются в первую очередь при выборе объёма, упражнений и риска.');
+  return `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${lines.join('\n')}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+}
+
 function summarizeSnapshot(snap) {
   const { player, whoop, surveys, morning, neuro, manual, periodDays, targetDate, injuryLog, annotations } = snap;
 
@@ -508,7 +563,7 @@ function summarizeSnapshot(snap) {
           lastSurvey.shoulderLoad ? `  Нагрузка на плечо: ${lastSurvey.shoulderLoad}/5` : null,
           lastSurvey.tomorrowReadiness ? `  Готовность к след.дню (самооценка): ${lastSurvey.tomorrowReadiness}/5` : null,
           lastSurvey.sessionType ? `  Тип прошлой сессии: ${lastSurvey.sessionType}` : null,
-          lastSurvey.painAreas?.length ? `  Зоны боли: ${lastSurvey.painAreas.join(', ')}` : null,
+          formatEveningZones(lastSurvey) ? `  Зоны: ${formatEveningZones(lastSurvey)}` : null,
         ].filter(Boolean).join('\n')
       : '• Вечерних опросников в доступном окне нет.',
     recentInjury
@@ -870,8 +925,10 @@ Recovery WHOOP:
   5–6 ч → объём −15%, не форсируй максимальные нагрузки
   ≥ 7 ч → норма
 
-Зоны боли из вечернего опросника (painAreas):
-  При наличии зон боли → ИСКЛЮЧИТЬ прямую нагрузку на эти зоны, перенести акцент, расширить E-блок профилактикой смежных областей
+Зоны из вечернего опросника (zoneDetails):
+  Тип "pain", 3/5 и выше → ИСКЛЮЧИТЬ прямую нагрузку на эту зону, перенести акцент, расширить E-блок профилактикой смежных областей
+  Тип "pain", 1-2/5 → снизить ROM/объём и оставить только безболезненную вариацию
+  Тип "soreness" (крепатура) → не считать травмой: при 4/5 снизить объём этой цепи на 30-40%, при 5/5 перенести основной акцент на другую цепь
 
 Strain WHOOP (вчерашний):
   > 18 → очень высокая вчерашняя нагрузка: снизь объём A/B на 15%, не форсируй прогрессию
@@ -1729,6 +1786,7 @@ export default async function handler(req, res) {
 // ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
 function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie' }) {
   let dataSummary = summarizeSnapshot(snapshot);
+  const freshEveningContext = eveningSafetyContext(snapshot.surveys, targetDate);
 
   // Coach manual recovery status (светофор тренера) — appended after biometric data.
   if (coachRecovery !== 'green') {
@@ -2020,7 +2078,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     : '';
 
   const userPrompt = `${dataSummary}
-${onermContext}${warmupContext}${manualWorkspaceContext}${trainingTypeContext}${hrvTrendAlert}${hoopers7dAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
+${freshEveningContext}${onermContext}${warmupContext}${manualWorkspaceContext}${trainingTypeContext}${hrvTrendAlert}${hoopers7dAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${historyBlock}
 ${actualHistoryBlock}
