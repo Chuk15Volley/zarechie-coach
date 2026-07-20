@@ -1712,6 +1712,103 @@ function qualityTone(ok) {
   return ok ? 'border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-300' : 'border-amber-500/20 bg-amber-500/[0.07] text-amber-300';
 }
 
+function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
+  const tone = (level) => ({
+    green: 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300',
+    yellow: 'border-amber-500/20 bg-amber-500/[0.06] text-amber-300',
+    red: 'border-rose-500/25 bg-rose-500/[0.07] text-rose-300',
+  }[level] || 'border-white/[0.08] bg-white/[0.02] text-slate-400');
+  const indicator = (level) => ({ green: 'bg-emerald-400', yellow: 'bg-amber-400', red: 'bg-rose-400' }[level] || 'bg-slate-600');
+  const shortTime = (value) => {
+    if (!value) return '';
+    try {
+      return new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+    } catch (_) { return ''; }
+  };
+
+  if (loading) {
+    return (
+      <section className="mt-4 border-t border-white/[0.07] pt-3" aria-live="polite">
+        <div className="flex items-center gap-2 text-[11px] text-slate-600"><Loader2 size={13} className="animate-spin" /> Проверяю данные для решения...</div>
+      </section>
+    );
+  }
+  if (!data) return null;
+
+  const evening = data.evening || {};
+  const zones = evening.zones || [];
+  const painZones = zones.filter(zone => zone.type === 'pain');
+  const sorenessZones = zones.filter(zone => zone.type === 'soreness');
+  const activeInjuries = data.activeInjuries || [];
+  const manualLevel = coachRecovery === 'red' ? 'red' : coachRecovery === 'yellow' ? 'yellow' : 'green';
+  const finalLevel = manualLevel === 'red' || data.decision?.level === 'red'
+    ? 'red'
+    : manualLevel === 'yellow' || data.decision?.level === 'yellow' ? 'yellow' : 'green';
+  const morningExpected = data.targetDate > data.today;
+
+  return (
+    <section className="mt-4 border-t border-white/[0.07] pt-3" aria-live="polite">
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Shield size={13} className="text-accent" />
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Данные для решения</span>
+        </div>
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${tone(finalLevel)}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${indicator(finalLevel)}`} />
+          {coachRecovery !== 'green' ? 'Статус тренера применён' : data.decision?.label}
+        </span>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${tone(evening.fresh ? 'green' : 'yellow')}`}>
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"><CheckCircle2 size={11} /> Вечерний опросник</div>
+          {evening.date ? (
+            <>
+              <p className="mt-1 text-[12px] font-semibold">{evening.fresh ? 'Свежий ответ учтён' : 'Последний ответ не свежий'}</p>
+              <p className="mt-0.5 text-[10px] opacity-70">{evening.date}{shortTime(evening.submittedAt) ? ` · ${shortTime(evening.submittedAt)}` : ''}</p>
+              {(painZones.length > 0 || sorenessZones.length > 0 || evening.hasInjury) && (
+                <p className="mt-1.5 line-clamp-2 text-[10px] leading-snug opacity-90">
+                  {evening.hasInjury ? `Травма: ${(evening.injuryAreas || []).join(', ') || 'указана'}` : painZones.length ? `Боль: ${painZones.map(zone => zone.area).join(', ')}` : `Крепатура: ${sorenessZones.map(zone => zone.area).join(', ')}`}
+                </p>
+              )}
+            </>
+          ) : <p className="mt-1 text-[12px] font-semibold">Нет вечернего ответа</p>}
+        </div>
+
+        <div className="min-w-0 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500"><Activity size={11} /> Утро и мониторинг</div>
+          {data.morning ? (
+            <p className="mt-1 text-[12px] font-semibold text-slate-300">Готовность {data.morning.readiness ?? '—'}/5 · DOMS {data.morning.doms ?? '—'}/5</p>
+          ) : (
+            <p className="mt-1 text-[12px] font-semibold text-slate-400">{morningExpected ? 'Утренний чек-ин ожидается' : 'Утреннего чек-ина нет'}</p>
+          )}
+          <p className="mt-0.5 text-[10px] text-slate-600">
+            {data.whoop ? `WHOOP: Recovery ${data.whoop.recovery ?? '—'}% · сон ${data.whoop.sleepHours ?? '—'} ч` : morningExpected ? 'WHOOP будет добавлен утром' : 'WHOOP за дату отсутствует'}
+          </p>
+        </div>
+
+        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${data.restrictions?.length || activeInjuries.length ? tone('red') : evening.hasInjury || painZones.length ? tone('yellow') : 'border-white/[0.08] bg-white/[0.02] text-slate-400'}`}>
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"><AlertTriangle size={11} /> Ограничения</div>
+          <p className="mt-1 text-[12px] font-semibold">
+            {activeInjuries.length ? `Активная травма: ${activeInjuries[0].bodyPart}` : evening.hasInjury ? evening.fresh ? 'Свежая травма: Recovery / Prehab' : 'Травма отмечена в старой анкете' : data.restrictions?.length ? `${data.restrictions.length} активно` : 'Нет активных ограничений'}
+          </p>
+          <p className="mt-0.5 text-[10px] opacity-70">
+            {data.neuro?.cmj != null || data.neuro?.rsi != null ? `Нейро: CMJ ${data.neuro.cmj ?? '—'} · RSI ${data.neuro.rsi ?? '—'}` : 'Нейротест: нет актуальных данных'}
+          </p>
+        </div>
+
+        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${workspace === 'zarechie' ? tone(data.schedule?.level) : 'border-accent/20 bg-accent/[0.05] text-accent/90'}`}>
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"><CalendarDays size={11} /> {workspace === 'zarechie' ? 'Клубный режим' : 'Режим NK Performance'}</div>
+          <p className="mt-1 text-[12px] font-semibold">{workspace === 'zarechie' ? data.schedule?.label : 'Ручной выбор тренера'}</p>
+          <p className="mt-0.5 text-[10px] leading-snug opacity-70">{workspace === 'zarechie' ? data.schedule?.detail : 'Расписание и матчевая логика Заречья не используются.'}</p>
+        </div>
+      </div>
+
+      <p className="mt-2 text-[10px] leading-snug text-slate-600">{data.decision?.detail} При генерации статус тренера остаётся сильнее автоматической оценки.</p>
+    </section>
+  );
+}
+
 export default function Home() {
   const [apiKey, setApiKey] = useState('coach-ui');
   const [keyPanelOpen, setKeyPanelOpen] = useState(false);
@@ -1819,6 +1916,9 @@ export default function Home() {
   const [templates, setTemplates] = useState([]);
   // Player contraindications
   const [restrictions, setRestrictions] = useState([]);
+  // Read-only pre-generation snapshot: the same signals that drive the AI prompt.
+  const [decisionData, setDecisionData] = useState(null);
+  const [decisionDataLoading, setDecisionDataLoading] = useState(false);
   const [oneRMSaveTimer, setOneRMSaveTimer] = useState(null);
 
   // Warmup → Gym integration
@@ -2126,6 +2226,30 @@ export default function Home() {
       .then(data => setRestrictions(Array.isArray(data.restrictions) ? data.restrictions : []))
       .catch(() => setRestrictions([]));
   }, [apiKey, playerId, workspace]);
+
+  // Refresh whenever the selected player, date, or workspace changes. This is
+  // deliberately separate from generation, so the coach can verify inputs first.
+  useEffect(() => {
+    if (!apiKey || !playerId || !date) {
+      setDecisionData(null);
+      setDecisionDataLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDecisionDataLoading(true);
+    fetch(`/api/players/decision-data?playerId=${encodeURIComponent(playerId)}&date=${encodeURIComponent(date)}&workspace=${encodeURIComponent(workspace)}`, {
+      headers: { 'x-api-key': apiKey },
+    })
+      .then(async response => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || 'Не удалось загрузить данные');
+        return body;
+      })
+      .then(body => { if (!cancelled) setDecisionData(body); })
+      .catch(() => { if (!cancelled) setDecisionData(null); })
+      .finally(() => { if (!cancelled) setDecisionDataLoading(false); });
+    return () => { cancelled = true; };
+  }, [apiKey, playerId, date, workspace]);
 
   // Fetch weekly volume when player changes
   useEffect(() => {
@@ -5226,6 +5350,13 @@ export default function Home() {
                 Вечерние данные за сегодня будут учтены для завтрашней тренировки.
               </p>
             )}
+
+            <DecisionDataPanel
+              data={decisionData}
+              loading={decisionDataLoading}
+              workspace={workspace}
+              coachRecovery={recoveryStatus}
+            />
 
             {/* Advanced data */}
             {playerId && (
