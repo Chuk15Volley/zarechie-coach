@@ -128,8 +128,10 @@ export default async function handler(req, res) {
     const morning = (snapshot.morning || []).find(record => record.date === targetDate) || null;
     const whoop = (snapshot.whoop || []).find(record => record.date === targetDate) || null;
     const neuro = latestNeuro(snapshot.neuro, targetDate);
-    const expectedEveningDate = targetDate > today ? today : targetDate;
-    const eveningFresh = !!evening && (evening.date === expectedEveningDate || evening.date === targetDate);
+    // The evening questionnaire describes readiness for the next training day.
+    // A program built in the morning must therefore use last night's answer.
+    const expectedEveningDate = shiftDate(targetDate, -1);
+    const eveningFresh = !!evening && evening.date === expectedEveningDate;
     const zones = zoneSummary(evening);
     const restrictions = parseJSON(rawRestrictions, []);
     const activeInjuries = (snapshot.injuryLog || [])
