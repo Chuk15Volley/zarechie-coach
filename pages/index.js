@@ -47,6 +47,7 @@ import {
 import { findExerciseUrl } from '../lib/exerciseBank';
 import { calcWeight } from '../lib/loadCalc';
 import { RESTRICTIONS, hasRestriction } from '../lib/exerciseRestrictions';
+import { exerciseTonnage, isPairableFreeWeightExercise, loadUnitsForExercise } from '../lib/tonnage';
 
 // Camp date anchors (сборы 2026).
 const CAMP_START = '2026-07-13';
@@ -1304,6 +1305,12 @@ function parseKgFromNote(note) {
   return pure ? parseFloat(pure[1].replace(',', '.')) : null;
 }
 
+function targetSetReps(value) {
+  const multiple = String(value || '').match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+  if (multiple) return parseInt(multiple[1], 10) * parseInt(multiple[2], 10);
+  return parseInt(value, 10) || 0;
+}
+
 function ExerciseCard({
   apiKey,
   code,
@@ -1311,6 +1318,7 @@ function ExerciseCard({
   targetSets,
   weightNote,
   weightKg,
+  loadUnits,
   tempo,
   autoReg,
   alternatives,
@@ -1335,6 +1343,7 @@ function ExerciseCard({
   onAddSet,
   onChangeWeight,
   onChangeWeightKg,
+  onChangeLoadUnits,
   onChangeTempo,
   onChangeAutoReg,
   onChangeCue,
@@ -1525,11 +1534,11 @@ function ExerciseCard({
         </div>
 
         {/* Structured weight input */}
-        <div className="flex items-center gap-2 print:hidden">
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
           <div className="flex items-center rounded-lg border border-white/[0.08] bg-white/[0.04] pr-2.5 transition-all focus-within:border-accent/50 focus-within:bg-accent/[0.05]">
             <input
               type="number"
-              step="2.5"
+              step="2"
               min="0"
               value={weightKg ?? ''}
               onChange={e => {
@@ -1540,14 +1549,25 @@ function ExerciseCard({
               placeholder="—"
               className="w-16 bg-transparent px-2.5 py-1.5 text-right text-[16px] font-bold text-slate-100 outline-none tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
-            <span className="text-[12px] font-medium text-slate-500">кг</span>
+            <span className="text-[12px] font-medium text-slate-500">{isPairableFreeWeightExercise(name) ? 'кг/снаряд' : 'кг'}</span>
           </div>
+          {isPairableFreeWeightExercise(name) && (
+            <select
+              value={loadUnitsForExercise({ name, loadUnits })}
+              onChange={e => onChangeLoadUnits?.(Number(e.target.value))}
+              title="Количество гантелей или гирь для расчёта тоннажа"
+              className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-[11px] font-semibold text-slate-400 outline-none transition focus:border-accent/50"
+            >
+              <option value={1}>1 снаряд</option>
+              <option value={2}>2 снаряда</option>
+            </select>
+          )}
           {onActualKgChange && (
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-medium text-emerald-400/60">факт</span>
               <input
                 type="number"
-                step="2.5"
+                step="2"
                 min="0"
                 value={actualKg ?? ''}
                 onChange={e => {
@@ -1555,7 +1575,7 @@ function ExerciseCard({
                   const v = raw === '' ? null : parseFloat(raw);
                   onActualKgChange(isNaN(v) ? null : v);
                 }}
-                placeholder="факт кг"
+                placeholder={isPairableFreeWeightExercise(name) ? 'факт кг/снаряд' : 'факт кг'}
                 className="w-20 bg-transparent text-[11px] text-emerald-400/70 border-b border-white/[0.07] outline-none focus:border-emerald-400/50"
               />
               {onActualRpeChange && (
@@ -1582,7 +1602,7 @@ function ExerciseCard({
         </div>
         {/* Print fallback */}
         {weightKg != null && (
-          <div className="hidden text-[14px] font-medium text-slate-300 print:block">{weightKg} кг</div>
+          <div className="hidden text-[14px] font-medium text-slate-300 print:block">{weightKg} кг{loadUnitsForExercise({ name, loadUnits }) === 2 ? ' на снаряд × 2' : ''}</div>
         )}
 
         {/* Progression hint */}
@@ -1965,7 +1985,7 @@ export default function Home() {
           ...b,
           exercises: [
             ...(b.exercises || []),
-            { name: name.trim(), code: '', targetSets: ['8', '8', '8'], weightNote: '', weightKg: null, tempo: '', autoReg: '', cue: '' },
+            { name: name.trim(), code: '', targetSets: ['8', '8', '8'], weightNote: '', weightKg: null, loadUnits: 1, tempo: '', autoReg: '', cue: '' },
           ],
         };
       });
@@ -2460,7 +2480,7 @@ export default function Home() {
       (b.exercises || []).forEach(ex => {
         sets += (ex.targetSets || []).length;
         const kg = ex.weightKg != null ? ex.weightKg : parseKgFromNote(ex.weightNote || '');
-        if (kg > 0) (ex.targetSets || []).forEach(s => { kgTotal += (parseInt(s) || 0) * kg; });
+        if (kg > 0) (ex.targetSets || []).forEach(s => { kgTotal += exerciseTonnage(ex, targetSetReps(s), kg); });
       });
     });
     const exCount = (session.blocks || []).reduce((s, b) => s + (b.exercises || []).length, 0);
@@ -3207,12 +3227,14 @@ export default function Home() {
         (b.exercises || []).map(ex => ({
           block: b.label,
           name: ex.name,
-          plannedKg: parseFloat(ex.weightKg) || 0,
+          plannedKg: parseFloat(ex.weightKg ?? parseKgFromNote(ex.weightNote)) || 0,
           actualKg: parseFloat(ex.actualKg) || 0,
+          loadUnits: loadUnitsForExercise(ex),
           actualRpe: ex.actualRpe ?? null,
           pain: !!b.pain,
           sets: (ex.targetSets || []).length || parseInt(ex.sets, 10) || 3,
           reps: parseInt((ex.targetSets || [])[0], 10) || parseInt(ex.reps, 10) || 8,
+          totalReps: (ex.targetSets || []).reduce((total, set) => total + targetSetReps(set), 0) || ((parseInt(ex.sets, 10) || 3) * (parseInt(ex.reps, 10) || 8)),
           completed: (parseFloat(ex.actualKg) || 0) > 0,
         }))
       );
@@ -3223,7 +3245,7 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
-      const plannedTonnage = exercises.reduce((s, e) => s + e.plannedKg * e.sets * e.reps, 0);
+      const plannedTonnage = exercises.reduce((s, e) => s + e.plannedKg * e.loadUnits * e.totalReps, 0);
       setCompliance({ percent: data.compliance, actualTonnage: data.actualTonnage, plannedTonnage: Math.round(plannedTonnage) });
       const names = exercises.map(e => e.name).filter(Boolean);
       if (names.length) {
@@ -6177,6 +6199,7 @@ export default function Home() {
                           targetSets={ex.targetSets || []}
                           weightNote={ex.weightNote || ''}
                           weightKg={ex.weightKg != null ? ex.weightKg : parseKgFromNote(ex.weightNote)}
+                          loadUnits={loadUnitsForExercise(ex)}
                           tempo={ex.tempo || ''}
                           autoReg={ex.autoReg || ''}
                           alternatives={ex.alternatives || []}
@@ -6204,6 +6227,7 @@ export default function Home() {
                             weightKg: v,
                             weightNote: v != null ? `${v} кг` : (ex.weightNote || ''),
                           })}
+                          onChangeLoadUnits={v => updateExercise(bi, ei, { loadUnits: v })}
                           onChangeTempo={v => updateExercise(bi, ei, { tempo: v })}
                           onChangeAutoReg={v => updateExercise(bi, ei, { autoReg: v })}
                           onChangeCue={v => updateExercise(bi, ei, { cue: v })}

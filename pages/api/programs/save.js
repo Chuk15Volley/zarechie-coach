@@ -9,11 +9,18 @@ import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { normExName } from '../players/progression';
 import { sessionKey, sessionsKey, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey } from '../../../lib/workspacePrefix';
+import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 
 function formatKg(value) {
   const n = parseFloat(value);
   if (!Number.isFinite(n) || n <= 0) return '';
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
+}
+
+function targetSetReps(value) {
+  const multiple = String(value || '').match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+  if (multiple) return parseInt(multiple[1], 10) * parseInt(multiple[2], 10);
+  return parseInt(value, 10) || 0;
 }
 
 function normalizeSavedWeights(session) {
@@ -23,9 +30,10 @@ function normalizeSavedWeights(session) {
     blocks: session.blocks.map(block => ({
       ...block,
       exercises: (block.exercises || []).map(ex => {
-        const kg = formatKg(ex.weightKg);
-        if (!kg || String(ex.weightNote || '').trim()) return ex;
-        return { ...ex, weightNote: `${kg} кг` };
+        const kg = formatKg(weightKgFromExercise(ex));
+        const normalized = { ...ex, ...(kg ? { weightKg: parseFloat(kg) } : {}), loadUnits: loadUnitsForExercise(ex) };
+        if (!kg || String(ex.weightNote || '').trim()) return normalized;
+        return { ...normalized, weightNote: `${kg} кг` };
       }),
     })),
   };
@@ -62,22 +70,24 @@ export default async function handler(req, res) {
   const exweightCmds = [];
   for (const block of normalizedSession.blocks || []) {
     for (const ex of block.exercises || []) {
-      const kg = parseFloat(ex.weightKg);
+      const kg = weightKgFromExercise(ex);
       if (!kg || kg <= 0 || !ex.name) continue;
       const norm = normExName(ex.name);
-      exweightCmds.push(['HSET', exweightKey(workspace, playerId, norm), 'kg', String(kg), 'date', date]);
+      exweightCmds.push(['HSET', exweightKey(workspace, playerId, norm), 'kg', String(kg), 'date', date, 'loadUnits', String(loadUnitsForExercise(ex))]);
       exweightCmds.push(['HSET', exhistKey(workspace, playerId, norm), date, String(kg)]);
     }
   }
 
-  // Calculate session tonnage = Σ(weightKg × reps × sets)
+  // Weight is per implement; loadUnits is one or two DB/KB.
   let totalTonnage = 0;
   for (const block of normalizedSession.blocks || []) {
     for (const ex of block.exercises || []) {
-      const kg = parseFloat(ex.weightKg) || 0;
-      const sets = (ex.targetSets || []).length || parseInt(ex.sets, 10) || 3;
-      const reps = parseInt((ex.targetSets || [])[0], 10) || parseInt(ex.reps, 10) || 8;
-      if (kg > 0) totalTonnage += kg * sets * reps;
+      const kg = weightKgFromExercise(ex);
+      const targetSets = Array.isArray(ex.targetSets) ? ex.targetSets : [];
+      const totalReps = targetSets.length
+        ? targetSets.reduce((total, set) => total + targetSetReps(set), 0)
+        : (parseInt(ex.sets, 10) || 3) * (parseInt(ex.reps, 10) || 8);
+      if (kg > 0) totalTonnage += kg * loadUnitsForExercise(ex) * totalReps;
     }
   }
   const tonnageCmds = [];

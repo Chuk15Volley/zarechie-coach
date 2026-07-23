@@ -98,6 +98,7 @@ export default async function handler(req, res) {
       blockRpe: record.blockRpe ? parseFloat(record.blockRpe) : null,
       source: record.source || 'planned',
       date: record.date || null,
+      loadUnits: record.loadUnits === '2' || record.loadUnits === 2 ? 2 : 1,
       suggestedKg: suggestKg(kg, rpe, pain, name),
       decision: progressionDecision(kg, rpe, pain, name),
     };

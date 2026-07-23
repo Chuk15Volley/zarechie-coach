@@ -4,6 +4,7 @@
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
+import { exerciseTonnage, weightKgFromExercise } from '../../../lib/tonnage';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
@@ -31,7 +32,7 @@ export default async function handler(req, res) {
       const exercises = [];
       for (const block of blocks) {
         for (const ex of block.exercises || []) {
-          const kg = parseFloat(ex.weightKg) || 0;
+          const kg = weightKgFromExercise(ex);
           const sets = ex.targetSets || ex.sets || [];
           let totalReps = 0;
           for (const s of sets) {
@@ -39,7 +40,7 @@ export default async function handler(req, res) {
             if (m) { totalReps += parseInt(m[1]) * parseInt(m[2]); continue; }
             const n = parseInt(s); if (!isNaN(n)) totalReps += n;
           }
-          if (kg > 0) tonnage += kg * totalReps;
+          if (kg > 0) tonnage += exerciseTonnage(ex, totalReps, kg);
           if (ex.name) exercises.push({ name: ex.name, kg, blockCode: block.code || '' });
         }
       }

@@ -13,6 +13,7 @@ import { validateSession } from '../../../lib/sessionValidator';
 import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseMemory';
 import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlaybook';
 import { pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
+import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 
 const TRAINING_TYPE_LABELS = {
   anterior_chain: 'Передняя цепь',
@@ -164,7 +165,16 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
     },
     weightNote: {
       type: 'string',
-      description: 'Нагрузка на профессиональном языке S&C: %1ПМ с точными кг, RPE-цель. Если есть история — прогрессия: "83% 1ПМ = 108 кг (↑ с 104 кг)". Без объяснений — только цифры и цель.',
+      description: 'Нагрузка на профессиональном языке S&C: %1ПМ с точными кг, RPE-цель. Для DB/KB число всегда означает ОДИН снаряд. Если есть история — прогрессия: "83% 1ПМ = 108 кг (↑ с 104 кг)". Без объяснений — только цифры и цель.',
+    },
+    weightKg: {
+      type: 'number',
+      description: 'Числовой рабочий вес. Для DB/KB это строго вес ОДНОЙ гантели или гири; не указывай суммарный вес пары. Не заполняй для веса тела или RPE-only.',
+    },
+    loadUnits: {
+      type: 'integer',
+      enum: [1, 2],
+      description: 'Число одинаковых гантелей/гирь в упражнении для тоннажа. 1: Goblet Squat, Single-Arm DB Row, Suitcase Carry, KB Swing Two-Hand. 2: DB Bench Press, DB Incline Press, Double KB Front Squat. Для всех остальных снарядов ставь 1.',
     },
     tempo: {
       type: 'string',
@@ -184,7 +194,7 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
       description: 'Короткое описание для игрока на русском языке. ВСЕГДА начинай с описания темпа. Потом 1 профессиональная S&C-подсказка: конкретный угол сустава, паттерн движения или точка активации. Без "потому что", без "старайся", без воды. Примеры: "Темп: опускаемся 5 секунд медленно вниз, вверх максимально резко. Колено над вторым пальцем.", "Темп: пауза в напряжении 5 секунд, вверх максимально резко. Таз нейтрален."',
     },
   };
-  const exerciseRequired = ['code', 'name', 'targetSets', 'tempo', 'alternatives', 'cue'];
+  const exerciseRequired = ['code', 'name', 'targetSets', 'tempo', 'alternatives', 'cue', 'loadUnits'];
 
   if (includeImgPrompt) {
     exerciseProps.img_prompt = {
@@ -341,6 +351,8 @@ export function normalizeExerciseLanguage(session, focus = '') {
         const cue = conciseCue(ex.cue, nextTempo || ex.tempo);
         return {
           ...ex,
+          weightKg: weightKgFromExercise(ex) || null,
+          loadUnits: loadUnitsForExercise(ex),
           tempo: nextTempo || ex.tempo || '',
           cue: `${lead} ${cue}`.trim(),
         };
@@ -829,6 +841,7 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
   • Если истории нет — НЕ выдумывай точные кг; пиши "вес указать вручную, цель RPE 6-7/7-8" по фазе.
   • Правило на будущее: если RPE блока/упражнения ≤6 и нет боли → +2.5-5% в следующей аналогичной тренировке; RPE ≥9 или боль → снизить/заменить упражнение в следующей тренировке.
   • В зале шаг гантелей — 2 кг. Для DB/Dumbbell-упражнений округляй рабочий вес и прогрессию по шагу 2 кг.
+  • weightKg и число кг в weightNote для DB/KB всегда означают вес ОДНОЙ гантели или гири. Отдельно укажи loadUnits: 1 для одного снаряда, 2 для пары. Пример: DB Bench Press: weightKg 24, weightNote "24 кг на гантель, RPE 7", loadUnits 2. Никогда не записывай суммарный вес двух гантелей как рабочий вес.
 
 Оборудование и стиль:
   Основной выбор: trap-bar, DB, KB, TRX, cable, landmine, sled, medball, box, bands, mini bands, свободные веса.

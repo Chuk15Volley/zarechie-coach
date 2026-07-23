@@ -82,8 +82,10 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
 • ЗАПРЕЩЕНО навсегда: ${BANNED}
 • ЯЗЫК: поле name — профессиональный английский S&C ("Bulgarian Split Squat", "Trap Bar Deadlift", "Box Jump (Bilateral)"). Поле cue — короткое описание для игрока на русском языке: СНАЧАЛА описание темпа, ПОТОМ одна профессиональная подсказка S&C. Если tempo="5-0-X-0", начни cue так: "Темп: опускаемся 5 секунд медленно вниз, вверх максимально резко." Если tempo="0-5сек-X-0", начни cue так: "Темп: пауза в напряжении 5 секунд, вверх максимально резко." Поле autoReg — один критерий остановки, РУССКИЙ язык ("Скорость падает → стоп.", "RPE 9 → снизь 5%.").
 
+Рабочий вес DB/KB всегда означает вес ОДНОЙ гантели/гири. Добавь loadUnits: 1 для одного снаряда, 2 для пары.
+
 ОТВЕТ — только JSON, без markdown, без пояснений:
-{"code":"${exercise.code}","name":"...","tempo":"${exercise.tempo || ''}","targetSets":${JSON.stringify(exercise.targetSets || ['3x8'])},"weightNote":"${exercise.weightNote || ''}","cue":"...","autoReg":"${exercise.autoReg || ''}"}`;
+{"code":"${exercise.code}","name":"...","tempo":"${exercise.tempo || ''}","targetSets":${JSON.stringify(exercise.targetSets || ['3x8'])},"weightNote":"${exercise.weightNote || ''}","weightKg":null,"loadUnits":1,"cue":"...","autoReg":"${exercise.autoReg || ''}"}`;
 
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(503).json({ error: 'OPENAI_API_KEY не настроен' });

@@ -6,7 +6,8 @@
 import { redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { normExName } from '../players/progression';
-import { pfx, exweightKey, exhistKey } from '../../../lib/workspacePrefix';
+import { pfx, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey } from '../../../lib/workspacePrefix';
+import { loadUnitsForExercise } from '../../../lib/tonnage';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
@@ -25,16 +26,15 @@ export default async function handler(req, res) {
   // and reached at least 80% of planned weight.
   let planned = 0;
   let hit = 0;
-  // Actual tonnage = Σ(actualKg × sets × reps), sets/reps default 3/8.
+  // actualKg is per implement; loadUnits accounts for a DB/KB pair.
   let actualTonnage = 0;
 
   for (const ex of exercises) {
     const plannedKg = parseFloat(ex.plannedKg) || 0;
     const actualKg = parseFloat(ex.actualKg) || 0;
-    const sets = parseInt(ex.sets, 10) || 3;
-    const reps = parseInt(ex.reps, 10) || 8;
+    const totalReps = parseInt(ex.totalReps, 10) || (parseInt(ex.sets, 10) || 3) * (parseInt(ex.reps, 10) || 8);
 
-    if (actualKg > 0) actualTonnage += actualKg * sets * reps;
+    if (actualKg > 0) actualTonnage += actualKg * loadUnitsForExercise(ex) * totalReps;
 
     if (plannedKg > 0) {
       planned += 1;
@@ -71,6 +71,7 @@ export default async function handler(req, res) {
       exweightKey(workspace, playerId, norm),
       'kg', String(actualKg),
       'date', date,
+      'loadUnits', String(loadUnitsForExercise(ex)),
       'rpe', rpe,
       'pain', pain,
       'block', block,
@@ -81,6 +82,8 @@ export default async function handler(req, res) {
   }
   if (actualTonnage > 0) {
     cmds.push(['SET', `${p}:gym_tonnage_actual:${playerId}:${date}`, String(actualTonnage)]);
+    cmds.push(['SET', gymTonnageKey(workspace, playerId, date), String(actualTonnage)]);
+    cmds.push(['ZADD', gymTonnageDatesKey(workspace, playerId), parseInt(String(date).replace(/-/g, ''), 10), date]);
   }
 
   try {

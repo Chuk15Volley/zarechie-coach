@@ -1,11 +1,12 @@
 // pages/api/players/team-tonnage.js
 // GET ?days=7 → tonnage per player per day for the last N days.
-// Tonnage = sets × reps × weightKg (loaded exercises only).
+// Tonnage = sets × reps × weight per implement × number of implements.
 // Returns { dates, players: [{ id, name, position, byDay: { date: kg } }] }
 
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { rosterKey, sessionKey } from '../../../lib/workspacePrefix';
+import { exerciseTonnage, weightKgFromExercise } from '../../../lib/tonnage';
 
 // Parse a single set string → total reps for that set entry.
 // Handles "3x8" → 24, "8" → 8, "4x5" → 20.
@@ -18,10 +19,10 @@ function parseReps(s) {
 }
 
 function calcExTonnage(ex) {
-  const kg = parseFloat(ex.weightKg);
+  const kg = weightKgFromExercise(ex);
   if (!kg || kg <= 0) return 0;
   const reps = (ex.targetSets || []).reduce((sum, s) => sum + parseReps(s), 0);
-  return reps * kg;
+  return exerciseTonnage(ex, reps, kg);
 }
 
 function windowDates(days) {

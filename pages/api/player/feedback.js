@@ -8,6 +8,7 @@ import { normExName } from '../players/progression';
 import { updateExerciseMemory, linkPainToExercises } from '../../../lib/exerciseMemory';
 import { resolveShareToken } from '../../../lib/shareToken';
 import { exweightKey, feedbackKey, pfx, sessionKey } from '../../../lib/workspacePrefix';
+import { loadUnitsForExercise } from '../../../lib/tonnage';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -70,7 +71,7 @@ export default async function handler(req, res) {
           const kg = loggedWeights.length ? Math.max(...loggedWeights) : parseFloat(ex.weightKg);
           if (!kg || kg <= 0 || !ex.name) continue;
           const exerciseKey = exweightKey(workspace, playerId, normExName(ex.name));
-          rpeUpdateCmds.push(['HSET', exerciseKey, 'kg', String(kg), 'date', String(date), 'rpe', String(rpeNum), 'source', loggedWeights.length ? 'player_log' : 'planned_feedback']);
+          rpeUpdateCmds.push(['HSET', exerciseKey, 'kg', String(kg), 'date', String(date), 'rpe', String(rpeNum), 'loadUnits', String(loadUnitsForExercise(ex)), 'source', loggedWeights.length ? 'player_log' : 'planned_feedback']);
         }
       }
     } catch (_) {}

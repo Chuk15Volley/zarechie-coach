@@ -8,6 +8,7 @@ import { redis } from '../../lib/redis';
 import { findExerciseUrl } from '../../lib/exerciseBank';
 import { resolveShareToken } from '../../lib/shareToken';
 import { pfx, playerPhotoKey, sessionKey, sessionsKey } from '../../lib/workspacePrefix';
+import { loadUnitsForExercise } from '../../lib/tonnage';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -126,12 +127,16 @@ function parseKgFromNote(note) {
 
 function plannedWeightLabel(ex) {
   const kg = formatKgValue(ex?.weightKg) || formatKgValue(parseKgFromNote(ex?.weightNote));
-  if (kg) return `${kg} кг`;
+  if (kg) return `${kg} кг${loadUnitsForExercise(ex) === 2 ? ' на снаряд × 2' : ''}`;
   return String(ex?.weightNote || '').trim();
 }
 
+function plannedWeightValue(ex) {
+  return formatKgValue(ex?.weightKg) || formatKgValue(parseKgFromNote(ex?.weightNote));
+}
+
 // ── Set button — tappable, turns green when done, shows weight input ──────────
-function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedWeight }) {
+function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedWeight, plannedWeightValue }) {
   return (
     <button
       type="button"
@@ -160,7 +165,7 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedW
           value={weight || ''}
           onChange={e => onWeightChange(e.target.value)}
           onClick={e => e.stopPropagation()}
-          placeholder={plannedWeight ? plannedWeight.replace(/\s*кг$/i, '') : 'кг'}
+          placeholder={plannedWeightValue || 'кг'}
           className="mt-1.5 w-full rounded-lg border border-emerald-500/20 bg-black/20 px-1 py-0.5 text-center text-[10px] text-emerald-200 placeholder-emerald-800 outline-none focus:border-emerald-500/40"
           maxLength={6}
         />
@@ -271,7 +276,7 @@ function ExerciseMedia({ name, token }) {
 // ── Single exercise card ──────────────────────────────────────────────────────
 function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) {
   const plannedWeight = plannedWeightLabel(ex);
-  const plannedSetWeight = /^\d/.test(plannedWeight) ? plannedWeight : '';
+  const plannedSetWeight = plannedWeightValue(ex);
   const weightNote = String(ex.weightNote || '').trim();
   const showWeightNote = weightNote && weightNote !== plannedWeight && !weightNote.includes(plannedWeight);
 
@@ -315,7 +320,8 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
               onToggle={() => onToggle(key)}
               weight={weights?.[key] || ''}
               onWeightChange={val => onWeightChange(key, val)}
-              plannedWeight={plannedSetWeight}
+              plannedWeight={plannedSetWeight ? plannedWeight : ''}
+              plannedWeightValue={plannedSetWeight}
             />
           );
         })}
