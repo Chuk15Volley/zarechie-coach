@@ -2051,6 +2051,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     const lines = ['ОЦЕНКИ ТРЕНИРОВОК ОТ ИГРОКА (последние):'];
     for (const fb of rawFeedbacks) {
       let line = `• ${fb.date}: RPE ${fb.rpe}/10`;
+      if (fb.fatigue != null) line += ` · общая усталость ${fb.fatigue}/5`;
       if (fb.feel) line += ` — ${FEEL_LABELS[fb.feel] || fb.feel}`;
       if (fb.note) line += ` — "${fb.note}"`;
       lines.push(line);
@@ -2059,6 +2060,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     if (last.rpe >= 9) lines.push('→ Последняя тренировка очень тяжёлая: снизь объём на 15–20%, не прогрессируй нагрузку.');
     else if (last.rpe <= 5) lines.push('→ Последняя тренировка лёгкая: можно увеличить интенсивность или объём.');
     else if (last.rpe >= 7 && last.feel === 'very_hard') lines.push('→ Игрок отметил "Очень тяжело": будь консервативен с нагрузкой сегодня.');
+    if (Number(last.fatigue) >= 4) lines.push('→ Общая усталость после последней тренировки 4–5/5: объём снизь на 15–20%, не прогрессируй нагрузку и проверь восстановление.');
     feedbackContext = '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' + lines.join('\n') + '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
   }
 

@@ -3942,12 +3942,12 @@ export default function Home() {
                           </span>
                         )}
                         {!batchRow && fb && (
-                          <span className={`rounded px-1 py-0.5 text-[9px] font-black ${
+                          <span title={`RPE ${fb.rpe}/10 · общая усталость ${fb.fatigue ?? '—'}/5`} className={`rounded px-1 py-0.5 text-[9px] font-black ${
                             fb.rpe >= 9 ? 'bg-red-500/20 text-red-400' :
                             fb.rpe >= 7 ? 'bg-amber-500/20 text-amber-400' :
                             'bg-emerald-500/20 text-emerald-400'
                           }`}>
-                            {fb.rpe}
+                            {fb.rpe}{fb.fatigue != null ? ` · ${fb.fatigue}` : ''}
                           </span>
                         )}
                         {!batchRow && st && !batchRunning && (
@@ -4086,12 +4086,12 @@ export default function Home() {
                       <span title="Тренировка сохранена на эту дату" className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.7)]" />
                     )}
                     {playerFeedbacks[p.id] && (
-                      <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-black leading-none ${
+                      <span title={`RPE ${playerFeedbacks[p.id].rpe}/10 · общая усталость ${playerFeedbacks[p.id].fatigue ?? '—'}/5`} className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-black leading-none ${
                         playerFeedbacks[p.id].rpe >= 9 ? 'bg-red-500/20 text-red-400' :
                         playerFeedbacks[p.id].rpe >= 7 ? 'bg-amber-500/20 text-amber-400' :
                         'bg-emerald-500/20 text-emerald-400'
                       }`}>
-                        RPE {playerFeedbacks[p.id].rpe}
+                        RPE {playerFeedbacks[p.id].rpe}{playerFeedbacks[p.id].fatigue != null ? ` · уст. ${playerFeedbacks[p.id].fatigue}` : ''}
                       </span>
                     )}
                   </div>

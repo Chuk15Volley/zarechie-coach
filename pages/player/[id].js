@@ -348,22 +348,24 @@ const FEEL_OPTIONS = [
   { value: 'very_hard', emoji: '🤕', label: 'Очень тяжело' },
 ];
 
-function FeedbackForm({ token, sessionDate }) {
+function FeedbackForm({ token, sessionDate, done, weights }) {
   const [rpe, setRpe] = useState(null);
+  const [fatigue, setFatigue] = useState(null);
   const [feel, setFeel] = useState(null);
   const [note, setNote] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
 
   async function submit() {
-    if (!rpe || sending) return;
+    if (!rpe || !fatigue || sending) return;
     setSending(true);
     try {
-      await fetch('/api/player/feedback', {
+      const response = await fetch('/api/player/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, date: sessionDate, rpe, feel, note }),
+        body: JSON.stringify({ token, date: sessionDate, rpe, fatigue, feel, note, done, weights }),
       });
+      if (!response.ok) throw new Error('Feedback failed');
       setSubmitted(true);
     } catch (_) {}
     setSending(false);
@@ -411,6 +413,29 @@ function FeedbackForm({ token, sessionDate }) {
           </div>
         </div>
 
+        {/* Overall fatigue */}
+        <div>
+          <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+            Общая усталость после тренировки (1–5)
+          </div>
+          <div className="grid grid-cols-5 gap-1.5">
+            {[1,2,3,4,5].map(n => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setFatigue(n)}
+                className={`rounded-xl border py-2.5 text-[13px] font-black transition-all active:scale-95 ${
+                  fatigue === n
+                    ? n >= 4 ? 'border-amber-400/60 bg-amber-400/15 text-amber-300' : 'border-[#4ade80]/50 bg-[#4ade80]/[0.12] text-[#4ade80]'
+                    : 'border-white/[0.10] bg-white/[0.04] text-slate-400'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Feel */}
         <div>
           <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
@@ -450,7 +475,7 @@ function FeedbackForm({ token, sessionDate }) {
         <button
           type="button"
           onClick={submit}
-          disabled={!rpe || sending}
+          disabled={!rpe || !fatigue || sending}
           className="w-full rounded-xl bg-[#4ade80] py-3 text-[13px] font-black text-[#060a0e] transition disabled:opacity-40 active:scale-[0.98]"
         >
           {sending ? 'Отправка...' : 'Отправить тренеру'}
@@ -821,7 +846,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
 
             {/* Completion banner + feedback */}
             {totalSets > 0 && doneCount === totalSets && (
-              <FeedbackForm token={token} sessionDate={sessionDate} />
+              <FeedbackForm token={token} sessionDate={sessionDate} done={done} weights={weights} />
             )}
           </div>
         )}
