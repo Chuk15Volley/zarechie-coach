@@ -32,6 +32,7 @@ import {
   ChevronUp,
   BookOpen,
   ArrowRight,
+  ArrowUpRight,
   Menu,
   Plus,
   Info,
@@ -1161,7 +1162,7 @@ function ExerciseVideoPanel({ name, apiKey }) {
 
   return (
     <div className="print:hidden">
-      <div className="mx-3.5 mt-1 mb-2 overflow-hidden rounded-2xl border border-white/[0.07] bg-[#05090f] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="mx-3 mt-1.5 overflow-hidden rounded-xl border border-white/[0.08] bg-[#05090f] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         {videoId ? (
           <a
             href={watchUrl}
@@ -1184,8 +1185,8 @@ function ExerciseVideoPanel({ name, apiKey }) {
                 </svg>
               </span>
             </span>
-            <span className="absolute bottom-2 left-2 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white">
-              Открыть в YouTube
+            <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold text-white">
+              Смотреть технику
             </span>
           </a>
         ) : (
@@ -1237,18 +1238,14 @@ function ExerciseVideoPanel({ name, apiKey }) {
         </div>
       )}
 
-      {/* Bottom bar: inline video */}
-      <div className="flex items-center gap-2 px-3.5 pb-2">
+      {/* Video controls stay compact: preview is the primary action. */}
+      <div className="flex items-center justify-end gap-1 px-3 pb-2">
         {videoUrl ? (
-          <div className="flex items-center gap-0.5">
-            <span className={`flex items-center gap-1.5 rounded-l-lg px-2.5 py-1.5 text-[11px] font-semibold ${isManual ? 'bg-accent/[0.18] text-accent' : 'bg-accent/[0.10] text-accent/80'}`}>
-              {YT_ICON}
-              Видео{isManual ? ' ★' : ''}
-            </span>
+          <div className="flex items-center gap-1">
             <button
               onClick={openEditVideo}
-              title="Изменить ссылку"
-              className={`rounded-r-lg px-2 py-1.5 transition ${isManual ? 'bg-accent/[0.18] text-accent/60 hover:bg-accent/[0.28]' : 'bg-accent/[0.10] text-accent/40 hover:bg-accent/[0.18] hover:text-accent/70'}`}
+              title={isManual ? 'Изменить своё видео' : 'Указать своё видео'}
+              className={`grid h-7 w-7 place-items-center rounded-md transition ${isManual ? 'bg-accent/[0.16] text-accent hover:bg-accent/[0.26]' : 'bg-white/[0.045] text-slate-500 hover:bg-white/[0.08] hover:text-slate-300'}`}
             >
               {PENCIL_ICON}
             </button>
@@ -1256,19 +1253,19 @@ function ExerciseVideoPanel({ name, apiKey }) {
               href={watchUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="ml-1 rounded-lg bg-white/[0.05] px-2 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:bg-white/[0.09] hover:text-slate-300"
+              className="grid h-7 w-7 place-items-center rounded-md bg-white/[0.045] text-slate-500 transition hover:bg-white/[0.08] hover:text-slate-300"
               title="Открыть YouTube в новой вкладке"
             >
-              ↗
+              <ArrowUpRight size={13} />
             </a>
           </div>
         ) : (
           <button
             onClick={openEditVideo}
-            className="flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:bg-white/[0.1] hover:text-slate-300"
+            title="Добавить YouTube-видео"
+            className="grid h-7 w-7 place-items-center rounded-md bg-white/[0.045] text-slate-500 transition hover:bg-white/[0.1] hover:text-slate-300"
           >
             {YT_ICON}
-            Добавить видео
           </button>
         )}
       </div>
@@ -1408,9 +1405,9 @@ function ExerciseCard({
   }
 
   return (
-    <div className={`group overflow-hidden rounded-2xl border border-white/[0.07] bg-gradient-to-b from-white/[0.04] to-white/[0.015] backdrop-blur-sm transition-all duration-300 hover:border-white/[0.14] hover:from-white/[0.06] hover:to-white/[0.025] hover:shadow-[0_8px_32px_rgba(0,0,0,0.4)] print:break-inside-avoid print:border-slate-300 print:bg-white ${hasConflict ? 'ring-1 ring-rose-500/30' : ''}`}>
+    <div className={`group h-fit overflow-hidden rounded-xl border border-white/[0.09] bg-[#101a1d] shadow-[0_10px_28px_rgba(0,0,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.16] hover:bg-[#132024] hover:shadow-[0_14px_34px_rgba(0,0,0,0.3)] print:break-inside-avoid print:border-slate-300 print:bg-white ${hasConflict ? 'ring-1 ring-rose-500/30' : ''}`}>
       {/* Header */}
-      <div className={`bg-gradient-to-r ${bc.headerFrom} to-transparent px-3.5 pt-2.5 pb-2 print:bg-slate-100`}>
+      <div className={`bg-gradient-to-r ${bc.headerFrom} to-transparent px-3 pt-2.5 pb-2 print:bg-slate-100`}>
         {/* Row 1: badges + regenerate button */}
         <div className="flex items-center gap-1.5">
           <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-black tracking-wide ${bc.codeBg} print:bg-slate-200 print:text-slate-700`}>
@@ -1482,7 +1479,7 @@ function ExerciseCard({
           value={name}
           onChange={onChangeName}
           minRows={1}
-          className="mt-1.5 w-full resize-none bg-transparent text-[15px] font-semibold tracking-tight leading-snug text-white outline-none placeholder:text-slate-500 print:text-slate-900"
+          className="mt-1.5 w-full resize-none bg-transparent text-[16px] font-bold leading-snug text-white outline-none placeholder:text-slate-500 print:text-slate-900"
         />
         {hasConflict && (
           <div className="mt-1 flex flex-wrap items-center gap-2 print:hidden">
@@ -1508,7 +1505,7 @@ function ExerciseCard({
       <ExerciseVideoPanel name={name} apiKey={apiKey} />
 
       {/* Sets & notes */}
-      <div className="space-y-2.5 p-4">
+      <div className="space-y-2.5 p-3">
         <div className="flex flex-wrap gap-1.5">
           {targetSets.map((s, i) => (
             <div
@@ -1673,9 +1670,9 @@ function ExerciseCard({
         )}
 
         {Array.isArray(alternatives) && alternatives.length > 0 && (
-          <div className="rounded-lg border border-white/[0.06] bg-white/[0.025] px-2.5 py-2 print:hidden">
-            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">Альтернативы</div>
-            <div className="flex flex-wrap gap-1.5">
+          <details className="rounded-lg border border-white/[0.06] bg-white/[0.025] px-2.5 py-2 print:hidden">
+            <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-wider text-slate-500 marker:text-slate-600">Альтернативы ({alternatives.length})</summary>
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {alternatives.slice(0, 3).map((alt, i) => (
                 <button
                   key={`${alt}-${i}`}
@@ -1687,7 +1684,7 @@ function ExerciseCard({
                 </button>
               ))}
             </div>
-          </div>
+          </details>
         )}
 
         <AutoResizeTextarea
@@ -5906,7 +5903,7 @@ export default function Home() {
 
           {/* ── Session result ── */}
           {session && meta && (
-            <div className="mt-6 animate-fade-in rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 shadow-[0_4px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-6 print:border-none print:bg-white print:p-0 print:shadow-none">
+            <div className="mt-6 animate-fade-in rounded-xl border border-white/[0.09] bg-[#0c171b]/90 p-5 shadow-[0_4px_32px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:p-6 print:border-none print:bg-white print:p-0 print:shadow-none">
 
               {/* Result toolbar */}
               <div className="mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden">
@@ -5995,8 +5992,8 @@ export default function Home() {
               )}
 
               {generationQuality.length > 0 && (
-                <div className="mb-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 print:hidden">
-                  <div className="mb-2 flex items-center justify-between gap-2">
+              <details className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 print:hidden">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 size={12} className="text-emerald-400" />
                       <span className="text-[10px] font-black uppercase tracking-[0.20em] text-slate-500">Качество генерации</span>
@@ -6004,8 +6001,8 @@ export default function Home() {
                     <span className="text-[10px] font-bold text-slate-600">
                       {generationQuality.filter(i => i.ok).length}/{generationQuality.length}
                     </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
+                  </summary>
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
                     {generationQuality.map(item => (
                       <div
                         key={item.label}
@@ -6017,18 +6014,18 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
-                </div>
+                </details>
               )}
 
               {/* Volume stats bar */}
               {volumeStats && volumeStats.sessions > 0 && (
-                <div className="mb-4 rounded-2xl border border-white/[0.05] bg-white/[0.02] px-4 py-3 print:hidden">
+                <div className="mb-4 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-2.5 print:hidden">
                   <div className="mb-2.5 flex items-center gap-2">
                     <BarChart2 size={10} className="text-slate-600" />
                     <span className="text-[9px] font-black uppercase tracking-[0.20em] text-slate-600">Объём за 7д</span>
                     <span className="ml-auto text-[9px] text-slate-700">{volumeStats.sessions} сессий</span>
                   </div>
-                  <div className="flex items-end gap-2.5">
+                  <div className="flex items-end gap-3">
                     {['A', 'B', 'C', 'D', 'E'].map(label => {
                       const val = volumeStats.byBlock[label];
                       if (!val) return null;
@@ -6038,7 +6035,7 @@ export default function Home() {
                       return (
                         <div key={label} className="flex flex-1 flex-col items-center gap-1.5">
                           <span className="text-[10px] font-bold text-slate-400 tabular-nums">{val}</span>
-                          <div className="relative h-14 w-full max-w-[28px] overflow-hidden rounded-md bg-white/[0.04]">
+                          <div className="relative h-8 w-full max-w-[34px] overflow-hidden rounded-md bg-white/[0.04]">
                             <div className={`absolute inset-x-0 bottom-0 rounded-md ${bc.circle} transition-all duration-500`} style={{ height: `${pct}%` }} />
                           </div>
                           <span className="text-[10px] font-black text-slate-500">{label}</span>
@@ -6050,28 +6047,30 @@ export default function Home() {
               )}
 
               {/* Assessment */}
-              {session.assessment && (
-                <div className="mb-3 overflow-hidden rounded-2xl border border-accent/[0.12] bg-accent/[0.04] print:hidden">
+              {(session.assessment || session.periodization_note) && (
+                <div className="mb-5 grid gap-3 lg:grid-cols-2 print:hidden">
+                {session.assessment && (
+                <div className="overflow-hidden rounded-xl border border-accent/[0.16] bg-accent/[0.05]">
                   <div className="flex gap-0">
                     <div className="w-1 shrink-0 bg-accent/40" />
-                    <div className="px-4 py-4">
+                    <div className="px-4 py-3.5">
                       <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-accent/60">Оценка состояния</div>
-                      <p className="text-[14px] leading-relaxed text-slate-200">{session.assessment}</p>
+                      <p className="text-[13px] leading-relaxed text-slate-200">{session.assessment}</p>
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* Periodization note */}
-              {session.periodization_note && (
-                <div className="mb-5 overflow-hidden rounded-2xl border border-white/[0.05] bg-white/[0.015] print:hidden">
+                )}
+                {session.periodization_note && (
+                <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.02]">
                   <div className="flex gap-0">
                     <div className="w-1 shrink-0 bg-slate-600/50" />
-                    <div className="px-4 py-4">
+                    <div className="px-4 py-3.5">
                       <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-slate-600">Логика периодизации</div>
-                      <p className="text-[14px] leading-relaxed text-slate-500">{session.periodization_note}</p>
+                      <p className="text-[13px] leading-relaxed text-slate-400">{session.periodization_note}</p>
                     </div>
                   </div>
+                </div>
+                )}
                 </div>
               )}
 
@@ -6158,7 +6157,7 @@ export default function Home() {
               )}
 
               {/* Blocks — screen only */}
-              <div className="space-y-10 print:hidden">
+              <div className="space-y-8 print:hidden">
                 {(session.blocks || []).map((block, bi) => (
                   <div key={bi}>
                     {(() => {
@@ -6192,7 +6191,7 @@ export default function Home() {
                       );
                     })()}
                     {!collapsedBlocks.has(block.label) && (
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       {(block.exercises || []).map((ex, ei) => (
                         <ExerciseCard
                           key={ex.code || ei}
@@ -6310,7 +6309,7 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => { setAddExBlock(bi); setAddExQuery(''); }}
-                          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-white/[0.08] py-2.5 text-[12px] font-semibold text-slate-700 transition hover:border-accent/30 hover:text-accent print:hidden"
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.025] px-3 py-2 text-[12px] font-semibold text-slate-600 transition hover:border-accent/30 hover:bg-accent/[0.06] hover:text-accent print:hidden"
                         >
                           <Plus size={13} />
                           Добавить упражнение
