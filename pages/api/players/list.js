@@ -5,12 +5,34 @@ import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { extractPlayerPhoto, hydratePlayerPhotos } from '../../../lib/playerPhotos';
 import { rosterKey, sessionsKey } from '../../../lib/workspacePrefix';
+import { dashboardRedis, dashboardRedisPipeline, hasZarechieDashboardStore } from '../../../lib/zarechieDashboardStore';
 
 // Upstash REST may return already-parsed objects — parse defensively.
 function parseJSON(raw) {
   if (raw == null) return null;
   if (typeof raw === 'object') return raw;
   try { return JSON.parse(raw); } catch { return null; }
+}
+
+async function dashboardRosterRead(command, ...args) {
+  if (hasZarechieDashboardStore()) {
+    const current = await dashboardRedis(command, ...args).catch(() => null);
+    if (current != null && (!Array.isArray(current) || current.length)) return current;
+  }
+  return redis(command, ...args);
+}
+
+async function dashboardRosterPipeline(commands) {
+  if (hasZarechieDashboardStore()) {
+    const current = await dashboardRedisPipeline(commands).catch(() => null);
+    if (Array.isArray(current) && current.some(value => value != null)) {
+      const legacy = current.some(value => value == null)
+        ? await redisPipeline(commands).catch(() => [])
+        : [];
+      return current.map((value, index) => value ?? legacy[index] ?? null);
+    }
+  }
+  return redisPipeline(commands);
 }
 
 export default async function handler(req, res) {
@@ -53,15 +75,15 @@ export default async function handler(req, res) {
   }
 
   const [whoopIds, rosterIds] = await Promise.all([
-    redis('smembers', 'whoop:players'),
-    redis('smembers', 'roster:players'),
+    dashboardRosterRead('smembers', 'whoop:players'),
+    dashboardRosterRead('smembers', 'roster:players'),
   ]);
 
   const ids = Array.from(new Set([...(whoopIds || []), ...(rosterIds || [])]));
   if (!ids.length) return res.status(200).json({ players: [] });
 
   // One pipelined round-trip for both keys of every id, instead of 2*N requests.
-  const raws = await redisPipeline(
+  const raws = await dashboardRosterPipeline(
     ids.flatMap(id => [['get', `whoop:player:${id}`], ['get', `roster:player:${id}`]])
   );
   const players = ids
