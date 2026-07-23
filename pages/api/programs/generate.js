@@ -366,6 +366,12 @@ function onDay(arr, date) {
   return arr.find(r => r.date === date) || null;
 }
 
+function latestOnOrBefore(records, date) {
+  return [...(records || [])]
+    .filter(record => record?.date && record.date <= date)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')))[0] || null;
+}
+
 function fmt(field, value, suffix = '') {
   return `• ${field}: ${value != null ? value + suffix : 'нет данных'}`;
 }
@@ -397,12 +403,12 @@ function formatEveningZones(survey) {
   return zones.map(zone => `${zone.area}: ${zone.type === 'pain' ? 'боль' : 'крепатура'}${zone.level ? ` ${zone.level}/5` : ''}`).join('; ');
 }
 
-function eveningSafetyContext(surveys, targetDate) {
-  const latest = [...(surveys || [])].filter(record => record.date <= targetDate).pop() || null;
+function eveningSafetyContext(surveys, targetDate, latestAvailable = null) {
+  const latest = latestAvailable || latestOnOrBefore(surveys, targetDate);
   if (!latest) return '';
 
   const previousDate = shiftDateStr(targetDate, -1);
-  const isFreshForSession = latest.date === previousDate || latest.date === targetDate;
+  const isFreshForSession = latest.date === previousDate;
   const zones = eveningZoneDetails(latest);
   const painZones = zones.filter(zone => zone.type === 'pain');
   const sorenessZones = zones.filter(zone => zone.type === 'soreness');
@@ -426,11 +432,12 @@ function eveningSafetyContext(surveys, targetDate) {
 }
 
 function summarizeSnapshot(snap) {
-  const { player, whoop, surveys, morning, neuro, manual, periodDays, targetDate, injuryLog, annotations } = snap;
+  const { player, whoop, surveys, morning, neuro, manual, periodDays, targetDate, injuryLog, annotations, latestSurvey, latestMorning } = snap;
 
   const todayWhoop = onDay(whoop, targetDate);
   const todayMorning = onDay(morning, targetDate);
-  const lastSurvey = [...surveys].filter(d => d.date <= targetDate).pop() || null;
+  const selectedMorning = todayMorning || latestMorning || latestOnOrBefore(morning, targetDate);
+  const lastSurvey = latestSurvey || latestOnOrBefore(surveys, targetDate);
   const recentInjury = [...surveys].filter(d => d.date <= targetDate).reverse().find(d => d.hasInjury) || null;
 
   const trendRecovery = avg(whoop.map(d => d.recovery));
@@ -545,16 +552,18 @@ function summarizeSnapshot(snap) {
           fmt('Strain', todayWhoop.strain),
         ].join('\n')
       : '• WHOOP за этот день не записан — ниже только тренд.',
-    todayMorning
+    selectedMorning
       ? [
-          fmt('MWS (Morning Wellness Score)', todayMorning.mws, '%'),
-          fmt('Качество сна', todayMorning.sleep, '/5'),
-          fmt('Настроение утром', todayMorning.mood, '/5'),
-          fmt('Стресс вне зала', todayMorning.stress, '/5'),
-          fmt('Крепатура (DOMS)', todayMorning.doms, '/5'),
-          fmt('Готовность к тренировке (самооценка)', todayMorning.readiness, '/5'),
+          `• ${todayMorning ? 'Утренний чек-ин' : 'Последний утренний чек-ин'} (${selectedMorning.date}):`,
+          fmt('MWS (Morning Wellness Score)', selectedMorning.mws, '%'),
+          fmt('Качество сна', selectedMorning.sleep, '/5'),
+          fmt('Настроение утром', selectedMorning.mood, '/5'),
+          fmt('Стресс вне зала', selectedMorning.stress, '/5'),
+          fmt('Крепатура (DOMS)', selectedMorning.doms, '/5'),
+          fmt('Готовность к тренировке (самооценка)', selectedMorning.readiness, '/5'),
+          todayMorning ? null : '  → Чек-ин не за целевую дату: это последний доступный контекст, а не подтверждение текущей готовности.',
         ].join('\n')
-      : '• Утренний чек-ин за этот день не заполнен.',
+      : '• Утренних чек-инов до целевой даты нет.',
     lastSurvey
       ? [
           `• Последний вечерний опросник (${lastSurvey.date}):`,
@@ -1786,7 +1795,7 @@ export default async function handler(req, res) {
 // ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
 function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie' }) {
   let dataSummary = summarizeSnapshot(snapshot);
-  const freshEveningContext = eveningSafetyContext(snapshot.surveys, targetDate);
+  const freshEveningContext = eveningSafetyContext(snapshot.surveys, targetDate, snapshot.latestSurvey);
 
   // Coach manual recovery status (светофор тренера) — appended after biometric data.
   if (coachRecovery !== 'green') {
@@ -1880,8 +1889,10 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     : '';
 
   // Recompute Hooper Wellness Index from snapshot (summarizeSnapshot returns a string)
-  const _todayMorning = (snapshot.morning || []).find(d => d.date === targetDate) || null;
-  const _lastSurvey = [...(snapshot.surveys || [])].filter(d => d.date <= targetDate).pop() || null;
+  const _todayMorning = (snapshot.morning || []).find(d => d.date === targetDate)
+    || snapshot.latestMorning
+    || latestOnOrBefore(snapshot.morning, targetDate);
+  const _lastSurvey = snapshot.latestSurvey || latestOnOrBefore(snapshot.surveys, targetDate);
   const hooper = (() => {
     const sleep = _todayMorning?.sleep;
     const stress = _todayMorning?.stress;
