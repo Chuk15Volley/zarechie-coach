@@ -125,7 +125,12 @@ export default async function handler(req, res) {
     if (!snapshot) return res.status(404).json({ error: 'Player not found' });
 
     const evening = latestOnOrBefore(snapshot.surveys, targetDate);
-    const morning = (snapshot.morning || []).find(record => record.date === targetDate) || null;
+    const exactMorning = (snapshot.morning || []).find(record => record.date === targetDate) || null;
+    // A missed same-day check-in must not erase the most recent completed
+    // questionnaire. Its date remains explicit so the coach can judge recency.
+    const morning = exactMorning
+      || snapshot.latestMorning
+      || latestOnOrBefore(snapshot.morning, targetDate);
     const whoop = (snapshot.whoop || []).find(record => record.date === targetDate) || null;
     const neuro = latestNeuro(snapshot.neuro, targetDate);
     // The evening questionnaire describes readiness for the next training day.
@@ -161,6 +166,7 @@ export default async function handler(req, res) {
       } : { fresh: false, date: null, zones: [] },
       morning: morning ? {
         date: morning.date,
+        exact: !!exactMorning,
         readiness: number(morning.readiness),
         doms: number(morning.doms),
         mws: number(morning.mws),

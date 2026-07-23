@@ -1798,7 +1798,10 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
         <div className="min-w-0 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500"><Activity size={11} /> Утро и мониторинг</div>
           {data.morning ? (
-            <p className="mt-1 text-[12px] font-semibold text-slate-300">Готовность {data.morning.readiness ?? '—'}/5 · DOMS {data.morning.doms ?? '—'}/5</p>
+            <>
+              <p className="mt-1 text-[12px] font-semibold text-slate-300">Готовность {data.morning.readiness ?? '—'}/5 · DOMS {data.morning.doms ?? '—'}/5</p>
+              {!data.morning.exact && <p className="mt-0.5 text-[10px] text-amber-300/70">Последний чек-ин: {data.morning.date}</p>}
+            </>
           ) : (
             <p className="mt-1 text-[12px] font-semibold text-slate-400">{morningExpected ? 'Утренний чек-ин ожидается' : 'Утреннего чек-ина нет'}</p>
           )}
