@@ -141,23 +141,18 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedW
     <button
       type="button"
       onClick={onToggle}
-      className={`flex min-w-[58px] flex-col items-center rounded-2xl border px-3 py-2.5 transition-all duration-200 active:scale-95 ${
+      className={`flex h-[72px] w-full min-w-0 flex-col items-center justify-center rounded-xl border px-1.5 py-2 transition-all duration-200 active:scale-[0.97] ${
         done
-          ? 'border-emerald-500/50 bg-emerald-500/[0.18] shadow-[0_0_12px_rgba(52,211,153,0.15)]'
-          : 'border-white/[0.10] bg-white/[0.04]'
+          ? 'border-emerald-400/55 bg-emerald-500/[0.16] shadow-[0_0_16px_rgba(52,211,153,0.14)]'
+          : 'border-white/[0.10] bg-white/[0.035]'
       }`}
     >
-      <span className={`text-[10px] font-bold mb-0.5 ${done ? 'text-emerald-400' : 'text-slate-600'}`}>
+      <span className={`mb-0.5 text-[10px] font-bold ${done ? 'text-emerald-300' : 'text-slate-600'}`}>
         {done ? '✓' : label}
       </span>
-      <span className={`text-sm font-black leading-none ${done ? 'text-emerald-300' : 'text-slate-200'}`}>
+      <span className={`text-[15px] font-black leading-none ${done ? 'text-emerald-200' : 'text-slate-100'}`}>
         {value}
       </span>
-      {plannedWeight && (
-        <span className="mt-1 text-[9px] font-semibold leading-none text-slate-500">
-          план {plannedWeight}
-        </span>
-      )}
       {done && (
         <input
           type="text"
@@ -166,7 +161,8 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedW
           onChange={e => onWeightChange(e.target.value)}
           onClick={e => e.stopPropagation()}
           placeholder={plannedWeightValue || 'кг'}
-          className="mt-1.5 w-full rounded-lg border border-emerald-500/20 bg-black/20 px-1 py-0.5 text-center text-[10px] text-emerald-200 placeholder-emerald-800 outline-none focus:border-emerald-500/40"
+          aria-label={`Фактический вес, подход ${label}`}
+          className="mt-1.5 w-full rounded-md border border-emerald-400/20 bg-black/25 px-1 py-0.5 text-center text-[10px] text-emerald-100 placeholder-emerald-800 outline-none focus:border-emerald-400/50"
           maxLength={6}
         />
       )}
@@ -228,7 +224,7 @@ function ExerciseMedia({ name, token }) {
           href={watchUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="relative mt-2 block aspect-video w-full overflow-hidden rounded-xl border border-white/[0.08] bg-black text-left"
+          className="relative block aspect-video w-full overflow-hidden rounded-[18px] border border-white/[0.09] bg-black text-left shadow-[0_10px_24px_rgba(0,0,0,0.28)]"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -239,14 +235,14 @@ function ExerciseMedia({ name, token }) {
           />
           <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
           <span className="absolute inset-0 grid place-items-center">
-            <span className="grid h-14 w-14 place-items-center rounded-full bg-red-600 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="ml-1">
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-red-600 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5">
                 <path d="M8 5v14l11-7z" />
               </svg>
             </span>
           </span>
-          <span className="absolute bottom-2 left-2 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white">
-            Открыть в YouTube
+          <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold text-white">
+            Смотреть технику
           </span>
         </a>
       ) : videoUrl ? (
@@ -279,11 +275,13 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
   const plannedSetWeight = plannedWeightValue(ex);
   const weightNote = String(ex.weightNote || '').trim();
   const showWeightNote = weightNote && weightNote !== plannedWeight && !weightNote.includes(plannedWeight);
+  const setCount = (ex.targetSets || []).length;
+  const setGrid = setCount >= 4 ? 'grid-cols-4' : setCount === 3 ? 'grid-cols-3' : setCount === 2 ? 'grid-cols-2' : 'grid-cols-1';
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03]">
+    <div className="overflow-hidden rounded-[20px] border border-white/[0.1] bg-[#0d1921] shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
       {/* Header */}
-      <div className="flex items-center gap-2.5 bg-gradient-to-r from-[#4ade80]/[0.14] to-transparent px-4 py-3">
+      <div className="flex items-start gap-2.5 bg-gradient-to-r from-[#4ade80]/[0.15] to-transparent px-3.5 py-3">
         <span className="shrink-0 rounded-lg bg-[#4ade80]/20 px-2 py-1 text-[11px] font-black text-[#4ade80]">
           {ex.code}
         </span>
@@ -292,23 +290,23 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
             {ex.tempo}
           </span>
         )}
-        <span className="text-[15px] font-bold leading-snug text-white">{ex.name}</span>
+        <span className="min-w-0 pt-0.5 text-[17px] font-bold leading-snug text-white">{ex.name}</span>
       </div>
 
       {plannedWeight && (
-        <div className="border-b border-white/[0.05] bg-[#4ade80]/[0.06] px-4 py-2">
-          <div className="text-[11px] font-black uppercase tracking-[0.14em] text-[#4ade80]/55">Рабочий вес</div>
-          <div className="mt-0.5 text-[18px] font-black leading-none text-[#4ade80]">{plannedWeight}</div>
+        <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] bg-[#4ade80]/[0.065] px-3.5 py-2.5">
+          <div className="text-[10px] font-black uppercase tracking-[0.15em] text-[#4ade80]/60">Рабочий вес</div>
+          <div className="text-right text-[18px] font-black leading-none text-[#4ade80]">{plannedWeight}</div>
         </div>
       )}
 
       {/* Image + video */}
-      <div className="px-4 pt-2">
+      <div className="px-3.5 pt-3">
         <ExerciseMedia name={ex.name} token={token} />
       </div>
 
       {/* Sets row */}
-      <div className="flex flex-wrap gap-2 px-4 pt-3">
+      <div className={`grid ${setGrid} gap-2 px-3.5 pt-3`}>
         {(ex.targetSets || []).map((s, si) => {
           const key = `${bi}-${ei}-${si}`;
           return (
@@ -328,9 +326,9 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
       </div>
 
       {/* Details */}
-      <div className="space-y-2 px-4 pb-4 pt-3">
+      <div className="space-y-2.5 px-3.5 pb-3.5 pt-3">
         {showWeightNote && (
-          <div className="text-[14px] font-semibold text-slate-300">{weightNote}</div>
+          <div className="text-[14px] font-semibold text-slate-200">{weightNote}</div>
         )}
         {ex.autoReg && (
           <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2.5">
@@ -339,7 +337,7 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
           </div>
         )}
         {ex.cue && (
-          <p className="text-[13px] leading-snug text-slate-400">{ex.cue}</p>
+          <p className="text-[14px] leading-relaxed text-slate-400">{ex.cue}</p>
         )}
       </div>
     </div>
@@ -671,24 +669,24 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
 
         {/* ── Sticky header ── */}
         <div className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#07101a]/95 backdrop-blur-xl">
-          <div className="px-4 pt-3 pb-2">
+          <div className="px-4 pb-2 pt-3">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
                 {/* Player avatar */}
                 {playerPhoto ? (
-                  <img src={playerPhoto} alt="" className="h-9 w-9 shrink-0 rounded-xl object-cover border border-white/[0.1]" />
+                  <img src={playerPhoto} alt="" className="h-10 w-10 shrink-0 rounded-xl border border-white/[0.1] object-cover" />
                 ) : (
-                  <div className="h-9 w-9 shrink-0 flex items-center justify-center rounded-xl bg-[#4ade80]/20 text-[12px] font-black text-[#4ade80]">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80]/20 text-[12px] font-black text-[#4ade80]">
                     {initials(player?.name)}
                   </div>
                 )}
                 <div className="min-w-0">
-                  <div className="text-[9px] font-black uppercase tracking-[0.22em] text-[#4ade80]/60 mb-0.5">
+                  <div className="mb-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-[#4ade80]/60">
                     Korenchuk Performance System
                   </div>
-                  <div className="text-xl font-black leading-none text-white truncate">{player?.name || 'Игрок'}</div>
+                  <div className="truncate text-[22px] font-black leading-none text-white">{player?.name || 'Игрок'}</div>
                   {player?.position && (
-                    <div className="mt-0.5 text-[11px] text-slate-500">{player.position}</div>
+                    <div className="mt-1 text-[11px] text-slate-500">{player.position}</div>
                   )}
                 </div>
               </div>
@@ -710,7 +708,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
 
             {/* Progress bar — workout tab only */}
             {totalSets > 0 && activeTab === 'workout' && (
-              <div className="mt-3">
+              <div className="mt-2.5">
                 <div className="flex justify-between mb-1">
                   <span className="text-[10px] text-slate-600">Подходы</span>
                   <span className="text-[10px] font-semibold text-slate-400">{doneCount}/{totalSets} · {pct}%</span>
@@ -727,7 +725,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
 
           {/* Block nav — workout tab only */}
           {blocks.length > 0 && activeTab === 'workout' && (
-            <div className="flex gap-1.5 overflow-x-auto px-4 pb-3 no-scrollbar">
+            <div className="flex gap-2 overflow-x-auto px-4 pb-2.5 no-scrollbar">
               {blocks.map((block, bi) => {
                 const blockTotal = (block.exercises || []).reduce((s, ex) => s + (ex.targetSets?.length || 0), 0);
                 const blockDone = (block.exercises || []).reduce((s, ex, ei) =>
@@ -738,7 +736,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                     key={bi}
                     type="button"
                     onClick={() => scrollToBlock(bi)}
-                    className={`shrink-0 rounded-xl px-4 py-1.5 text-xs font-bold transition-all ${
+                    className={`grid h-10 w-12 shrink-0 place-items-center rounded-xl text-xs font-bold transition-all ${
                       blockComplete
                         ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
                         : activeBlock === bi
@@ -802,11 +800,11 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
 
         {/* ── Session content ── */}
         {!notFound && session && activeTab === 'workout' && (
-          <div className="px-4 pb-24 pt-4 space-y-6">
+          <div className="space-y-5 px-3.5 pb-20 pt-3.5">
 
             {/* Goal */}
             {dayGoal && (
-              <div className="rounded-2xl border border-[#4ade80]/20 bg-[#4ade80]/[0.05] px-4 py-3.5">
+              <div className="rounded-xl border border-[#4ade80]/20 bg-[#4ade80]/[0.05] px-3.5 py-3">
                 <div className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#4ade80]/50">
                   Цель тренировки
                 </div>
@@ -823,7 +821,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
               >
                 {/* Block header */}
                 <div className="mb-3 flex items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e]">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e] shadow-[0_4px_14px_rgba(74,222,128,0.18)]">
                     {block.label}
                   </span>
                   <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
@@ -832,7 +830,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                 </div>
 
                 {/* Exercises */}
-                <div className="space-y-3">
+                <div className="space-y-3.5">
                   {(block.exercises || []).map((ex, ei) => (
                     <ExCard
                       key={ei}
@@ -955,7 +953,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
         )}
 
         {/* ── Footer ── */}
-        <div className="fixed bottom-0 left-0 right-0 flex items-center justify-center py-3 bg-[#07101a]/80 backdrop-blur-xl border-t border-white/[0.05]">
+        <div className="fixed bottom-0 left-0 right-0 flex items-center justify-center border-t border-white/[0.05] bg-[#07101a]/95 py-2 backdrop-blur-xl">
           <span className="text-[10px] text-white/[0.15] font-medium tracking-[0.18em] uppercase">
             Korenchuk Performance System
           </span>
