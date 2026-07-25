@@ -99,7 +99,7 @@ function Sparkline({ values, width = 48, height = 20 }) {
 }
 
 // Custom calendar date-picker — auto-closes after selection, matches dark theme.
-function DatePicker({ value, onChange, maxDate, size = 'default', className = '' }) {
+function DatePicker({ value, onChange, maxDate, minDate, size = 'default', className = '' }) {
   const [open, setOpen] = useState(false);
   const [vy, setVy] = useState(() => value ? +value.slice(0, 4) : new Date().getFullYear());
   const [vm, setVm] = useState(() => value ? +value.slice(5, 7) - 1 : new Date().getMonth());
@@ -191,7 +191,7 @@ function DatePicker({ value, onChange, maxDate, size = 'default', className = ''
               const s = ds(cell.d);
               const sel = s === value;
               const tod = s === todaySt;
-              const dis = maxDate ? s > maxDate : false;
+              const dis = (maxDate && s > maxDate) || (minDate && s < minDate);
               return (
                 <button
                   key={i}
@@ -516,6 +516,11 @@ function addDaysToDate(dateStr, n) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+function rescheduleEarliestDate(fromDate) {
+  const dayAfterSource = addDaysToDate(fromDate, 1);
+  return dayAfterSource > todayISO() ? dayAfterSource : todayISO();
 }
 
 function getWeekFocuses(focus) {
@@ -1883,6 +1888,9 @@ export default function Home() {
   const [session, setSession] = useState(null);
   const [meta, setMeta] = useState(null);
   const [pendingSaved, setPendingSaved] = useState(null);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduling, setRescheduling] = useState(false);
   const [compliance, setCompliance] = useState(null); // null | { percent, actualTonnage, plannedTonnage }
   const [savingActual, setSavingActual] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2074,6 +2082,8 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('workspace', ws);
     setPlayerId('');
     setSession(null);
+    setRescheduleOpen(false);
+    setRescheduleDate('');
     setPlayers([]);
     setOneRM({});
     setRmHistory([]);
@@ -2653,6 +2663,8 @@ export default function Home() {
     setPlayerId(p.id);
     setSession(null);
     setMeta(null);
+    setRescheduleOpen(false);
+    setRescheduleDate('');
     setWeekPlan(null);
     setError('');
     setJustSaved(false);
@@ -3147,6 +3159,44 @@ export default function Home() {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRescheduleSession() {
+    const fromDate = pendingSaved?.date;
+    if (!fromDate || !rescheduleDate || !playerId) return;
+    setRescheduling(true);
+    try {
+      const res = await fetch('/api/programs/reschedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ playerId, fromDate, toDate: rescheduleDate, workspace }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Не удалось перенести тренировку');
+
+      const record = data.record;
+      setDate(rescheduleDate);
+      setPendingSaved(record);
+      setSession(record.session);
+      setMeta(prev => ({
+        ...(prev || {}),
+        player: record.player,
+        dataSummary: record.dataSummary,
+        dayGoal: record.dayGoal || '',
+        date: rescheduleDate,
+      }));
+      setCompliance(null);
+      setJustSaved(false);
+      setAutoSaved(false);
+      setRescheduleOpen(false);
+      setError('');
+      fetch(`/api/players/volume?playerId=${encodeURIComponent(playerId)}&days=7&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
+        .then(r => r.json()).then(setVolumeStats).catch(() => {});
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRescheduling(false);
     }
   }
 
@@ -5947,6 +5997,21 @@ export default function Home() {
                         <Copy size={14} />
                       </button>
                     )}
+                    {pendingSaved && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const minimum = rescheduleEarliestDate(pendingSaved.date);
+                          setRescheduleDate(current => current && current >= minimum ? current : minimum);
+                          setRescheduleOpen(open => !open);
+                        }}
+                        className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
+                        title="Перенести невыполненную тренировку"
+                      >
+                        <CalendarRange size={14} />
+                        Перенести
+                      </button>
+                    )}
                   </div>
                   {/* Primary save */}
                   {autoSaved && meta.sessionType === 'gym' ? (
@@ -5978,6 +6043,39 @@ export default function Home() {
                   )}
                 </div>
               </div>
+
+              {rescheduleOpen && pendingSaved && (
+                <div className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 print:hidden">
+                  <div className="flex items-start gap-2.5">
+                    <CalendarRange size={15} className="mt-0.5 shrink-0 text-amber-300" />
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-bold text-amber-200">Перенести тренировку</p>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-amber-100/60">
+                        Программа будет перенесена без изменения упражнений. Выполненную тренировку перенести нельзя.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <div className="min-w-[190px] flex-1">
+                      <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-amber-200/55">Новая дата</div>
+                      <DatePicker
+                        value={rescheduleDate}
+                        onChange={setRescheduleDate}
+                        minDate={rescheduleEarliestDate(pendingSaved.date)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRescheduleSession}
+                      disabled={rescheduling || !rescheduleDate}
+                      className="flex items-center gap-1.5 rounded-xl bg-amber-300 px-3.5 py-2.5 text-xs font-black text-[#181108] transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {rescheduling ? <Loader2 size={13} className="animate-spin" /> : <ArrowRight size={13} />}
+                      Перенести
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Plan vs Actual compliance summary */}
               {compliance && (
