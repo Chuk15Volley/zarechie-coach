@@ -9,7 +9,7 @@ import { sessionKey } from '../../../lib/workspacePrefix';
 import { normalizeExerciseLanguage } from './generate';
 
 const BANNED =
-  'Присед со штангой на спине (Back Squat) | Жим штанги лёжа (Bench Press barbell) | Nordic Curl | Ab Wheel Rollout / Ab Roller | Broad Jump | DB Floor Press | Incline Push-Up / наклонные отжимания | Band Wrist Stability | Jump Set Drill | KB Press / жим с гирями | Tricep Pushdown с резиновой петлёй / Band Tricep Pushdown';
+  'Nordic Hamstring / Nordic Curl | Barbell Back Squat | Barbell Front Squat | обычная штанговая тяга / Conventional Barbell Deadlift | Olympic lifts со штангой | Depth Jump | Heavy Good Morning | Barbell Overhead Press | Barbell Bench Press | Leg Press | Smith Machine | Leg Extension | Hamstring Curl | Incline Push-Up / наклонные отжимания | Ab Wheel Rollout / Ab Roller | Broad Jump | DB Floor Press | Band Wrist Stability | Jump Set Drill | KB Press / жим с гирями | Tricep Pushdown с резиновой петлёй / Band Tricep Pushdown';
 
 const OPENAI_MODEL = 'gpt-5.5';
 
@@ -44,6 +44,17 @@ function findFunctionCall(output, name) {
     if (Array.isArray(item.output)) stack.push(...item.output);
   }
   return null;
+}
+
+function isForbiddenExercise(name) {
+  const normalized = String(name || '').toLowerCase();
+  if (!normalized) return true;
+  if (/nordic|leg press|smith machine|leg extension|hamstring curl|incline push[ -]?up|ab wheel|ab roller|broad jump|db floor press|heavy good morning|barbell overhead press|barbell bench press|olympic lift/.test(normalized)) return true;
+  if (/\b(back squat|barbell back squat)\b/.test(normalized)) return true;
+  if (/\bfront squat\b/.test(normalized) && !/\b(kb|kettlebell)\b/.test(normalized)) return true;
+  if (/\b(conventional|barbell) deadlift\b/.test(normalized)) return true;
+  if (/\b(barbell )?(clean|snatch|jerk)\b/.test(normalized)) return true;
+  return false;
 }
 
 const REPLACE_EXERCISE_TOOL = {
@@ -161,50 +172,73 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
   if (!openaiKey) return res.status(503).json({ error: 'OPENAI_API_KEY не настроен' });
 
   try {
-    const r = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        instructions: 'Ты точно следуешь требованиям тренера. Возвращай результат только через вызов указанного инструмента.',
-        input: prompt,
-        max_output_tokens: 700,
-        store: false,
-        tools: [REPLACE_EXERCISE_TOOL],
-        tool_choice: { type: 'function', name: 'replace_exercise' },
-      }),
-    });
+    let newExercise = null;
+    let lastIssue = '';
 
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      console.error('Exercise replacement OpenAI error', r.status, err.error?.message || err);
-      return res.status(502).json({ error: 'Сервис генерации временно недоступен. Повторите замену через несколько секунд.' });
-    }
+    // A second, self-correcting attempt protects the program when the model offers
+    // an ambiguous name such as "Front Squat" that could imply forbidden equipment.
+    for (let attempt = 0; attempt < 2 && !newExercise; attempt += 1) {
+      const retryInstruction = lastIssue
+        ? ` Предыдущий вариант отклонён: ${lastIssue}. Выбери другой, однозначно разрешённый вариант.`
+        : '';
+      const r = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          instructions: `Ты точно следуешь требованиям тренера. Возвращай результат только через вызов указанного инструмента.${retryInstruction}`,
+          input: prompt,
+          max_output_tokens: 700,
+          store: false,
+          tools: [REPLACE_EXERCISE_TOOL],
+          tool_choice: { type: 'function', name: 'replace_exercise' },
+        }),
+      });
 
-    const msg = await r.json();
-    const functionCall = findFunctionCall(msg.output, 'replace_exercise');
-    let parsedExercise = parseFunctionArguments(functionCall?.arguments);
-
-    // Older OpenAI responses may still contain JSON text. Keep this fallback so a
-    // transient provider format change never makes the coach's control unusable.
-    if (!parsedExercise) {
-      const text = extractText(msg);
-      const match = text.match(/\{[\s\S]*\}/);
-      if (match) {
-        try { parsedExercise = JSON.parse(match[0]); } catch (_) {}
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        console.error('Exercise replacement OpenAI error', r.status, err.error?.message || err);
+        return res.status(502).json({ error: 'Сервис генерации временно недоступен. Повторите замену через несколько секунд.' });
       }
+
+      const msg = await r.json();
+      const functionCall = findFunctionCall(msg.output, 'replace_exercise');
+      let parsedExercise = parseFunctionArguments(functionCall?.arguments);
+
+      // Older OpenAI responses may still contain JSON text. Keep this fallback so a
+      // transient provider format change never makes the coach's control unusable.
+      if (!parsedExercise) {
+        const text = extractText(msg);
+        const match = text.match(/\{[\s\S]*\}/);
+        if (match) {
+          try { parsedExercise = JSON.parse(match[0]); } catch (_) {}
+        }
+      }
+      if (!parsedExercise || typeof parsedExercise !== 'object') {
+        lastIssue = 'сервис не вернул структуру упражнения';
+        console.error('Exercise replacement returned no usable tool result', { responseId: msg?.id });
+        continue;
+      }
+
+      const normalized = normalizeExerciseLanguage({ blocks: [{ exercises: [parsedExercise] }] }, '');
+      const candidate = normalized.blocks?.[0]?.exercises?.[0] || parsedExercise;
+      const candidateName = String(candidate?.name || '').trim();
+      if (!candidateName || candidateName.toLowerCase() === String(exercise.name || '').trim().toLowerCase()) {
+        lastIssue = 'нельзя возвращать исходное упражнение';
+        continue;
+      }
+      if (isForbiddenExercise(candidateName)) {
+        lastIssue = `упражнение "${candidateName}" запрещено или неоднозначно по оборудованию`;
+        continue;
+      }
+      newExercise = candidate;
     }
-    if (!parsedExercise || typeof parsedExercise !== 'object') {
-      console.error('Exercise replacement returned no usable tool result', { responseId: msg?.id });
-      return res.status(502).json({ error: 'Сервис не вернул корректную замену. Нажмите «Заменить» ещё раз.' });
-    }
-    const normalized = normalizeExerciseLanguage({ blocks: [{ exercises: [parsedExercise] }] }, '');
-    const newExercise = normalized.blocks?.[0]?.exercises?.[0] || parsedExercise;
-    if (!newExercise?.name || String(newExercise.name).trim().toLowerCase() === String(exercise.name || '').trim().toLowerCase()) {
-      return res.status(502).json({ error: 'Сервис вернул исходное упражнение. Нажмите «Заменить» ещё раз.' });
+
+    if (!newExercise) {
+      return res.status(502).json({ error: 'Не удалось подобрать безопасную замену. Нажмите «Заменить» ещё раз.' });
     }
     newExercise.code = exercise.code;
     newExercise.tempo = newExercise.tempo || exercise.tempo || '';
