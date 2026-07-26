@@ -133,7 +133,7 @@ export default async function handler(req, res) {
     .join(', ');
 
   const blockLabel = block.label || block.code || `Блок ${blockIndex + 1}`;
-  const dayGoal = record.dayGoal || session.dayGoal || '—';
+  const dayGoal = record?.dayGoal || session.dayGoal || '—';
 
   const prompt = `Ты — элитный тренер по силовой подготовке волейболистов. Замени одно упражнение в тренировочной программе на другой вариант.
 
