@@ -28,6 +28,72 @@ function extractText(data) {
   return chunks.join('').trim();
 }
 
+function parseFunctionArguments(args) {
+  if (!args) return null;
+  if (typeof args === 'object') return args;
+  try { return JSON.parse(args); } catch { return null; }
+}
+
+function findFunctionCall(output, name) {
+  const stack = Array.isArray(output) ? [...output] : [];
+  while (stack.length) {
+    const item = stack.shift();
+    if (!item || typeof item !== 'object') continue;
+    if (item.type === 'function_call' && item.name === name) return item;
+    if (Array.isArray(item.content)) stack.push(...item.content);
+    if (Array.isArray(item.output)) stack.push(...item.output);
+  }
+  return null;
+}
+
+const REPLACE_EXERCISE_TOOL = {
+  type: 'function',
+  name: 'replace_exercise',
+  description: 'Возвращает одну безопасную и профессиональную замену упражнения в волейбольной S&C программе.',
+  strict: false,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['name', 'targetSets', 'weightNote', 'weightKg', 'loadUnits', 'tempo', 'cue', 'autoReg'],
+    properties: {
+      name: {
+        type: 'string',
+        description: 'Название упражнения на профессиональном английском языке S&C.',
+      },
+      targetSets: {
+        type: 'array',
+        description: 'Повторения по каждому подходу, например ["5", "5", "5"].',
+        items: { type: 'string' },
+      },
+      weightNote: {
+        type: 'string',
+        description: 'Короткое назначение рабочего веса или веса тела на русском языке.',
+      },
+      weightKg: {
+        anyOf: [{ type: 'number' }, { type: 'null' }],
+        description: 'Рабочий вес. Для DB/KB это вес одного снаряда.',
+      },
+      loadUnits: {
+        type: 'integer',
+        enum: [1, 2],
+        description: 'Количество одинаковых гантелей или гирь: 1 или 2.',
+      },
+      tempo: {
+        type: 'string',
+        description: 'Сохрани исходный темп упражнения.',
+      },
+      cue: {
+        type: 'string',
+        description: 'Одна короткая техническая подсказка на русском языке, начиная с описания темпа.',
+      },
+      autoReg: {
+        type: 'string',
+        description: 'Один критерий снижения нагрузки или остановки на русском языке. Пустая строка, если не нужен.',
+      },
+    },
+  },
+};
+
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).end();
@@ -89,8 +155,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
 
 Сохрани targetSets, если замена не требует более безопасного объёма. Для DB/KB weightKg всегда означает вес ОДНОЙ гантели/гири; loadUnits: 1 для одного снаряда, 2 для пары. Для упражнения с внешним весом укажи практичный weightKg и weightNote. Для веса тела оставь weightKg=null и укажи понятный weightNote.
 
-ОТВЕТ — только JSON, без markdown, без пояснений:
-{"code":"${exercise.code}","name":"...","tempo":"${exercise.tempo || ''}","targetSets":${JSON.stringify(exercise.targetSets || ['3x8'])},"weightNote":"...","weightKg":null,"loadUnits":1,"cue":"...","autoReg":"..."}`;
+Верни замену только через инструмент replace_exercise. Не добавляй текстовый ответ.`;
 
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(503).json({ error: 'OPENAI_API_KEY не настроен' });
@@ -104,23 +169,38 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
       },
       body: JSON.stringify({
         model: OPENAI_MODEL,
+        instructions: 'Ты точно следуешь требованиям тренера. Возвращай результат только через вызов указанного инструмента.',
         input: prompt,
         max_output_tokens: 700,
         store: false,
+        tools: [REPLACE_EXERCISE_TOOL],
+        tool_choice: { type: 'function', name: 'replace_exercise' },
       }),
     });
 
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
-      return res.status(r.status).json({ error: err.error?.message || `OpenAI error ${r.status}` });
+      console.error('Exercise replacement OpenAI error', r.status, err.error?.message || err);
+      return res.status(502).json({ error: 'Сервис генерации временно недоступен. Повторите замену через несколько секунд.' });
     }
 
     const msg = await r.json();
-    const text = extractText(msg);
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return res.status(502).json({ error: 'Не удалось распознать ответ', raw: text });
+    const functionCall = findFunctionCall(msg.output, 'replace_exercise');
+    let parsedExercise = parseFunctionArguments(functionCall?.arguments);
 
-    const parsedExercise = JSON.parse(match[0]);
+    // Older OpenAI responses may still contain JSON text. Keep this fallback so a
+    // transient provider format change never makes the coach's control unusable.
+    if (!parsedExercise) {
+      const text = extractText(msg);
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { parsedExercise = JSON.parse(match[0]); } catch (_) {}
+      }
+    }
+    if (!parsedExercise || typeof parsedExercise !== 'object') {
+      console.error('Exercise replacement returned no usable tool result', { responseId: msg?.id });
+      return res.status(502).json({ error: 'Сервис не вернул корректную замену. Нажмите «Заменить» ещё раз.' });
+    }
     const normalized = normalizeExerciseLanguage({ blocks: [{ exercises: [parsedExercise] }] }, '');
     const newExercise = normalized.blocks?.[0]?.exercises?.[0] || parsedExercise;
     if (!newExercise?.name || String(newExercise.name).trim().toLowerCase() === String(exercise.name || '').trim().toLowerCase()) {
