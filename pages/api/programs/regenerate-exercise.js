@@ -1,6 +1,7 @@
 // pages/api/programs/regenerate-exercise.js
-// POST { playerId, date, blockIndex, exerciseIndex }
-// Replaces one exercise in the saved session with a fresh AI-generated alternative.
+// POST { playerId, date, blockIndex, exerciseIndex, session? }
+// Replaces one exercise with a fresh AI-generated alternative. A current unsaved
+// session may be supplied so the coach can use this control before first save.
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
@@ -31,21 +32,24 @@ export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { playerId, date, blockIndex, exerciseIndex, workspace = 'zarechie' } = req.body || {};
+  const { playerId, date, blockIndex, exerciseIndex, session: requestedSession, workspace = 'zarechie' } = req.body || {};
   if (!playerId || !date || blockIndex == null || exerciseIndex == null) {
     return res.status(400).json({ error: 'playerId, date, blockIndex, exerciseIndex required' });
   }
 
   // Load saved session
   const raw = await redis('get', sessionKey(workspace, playerId, date)).catch(() => null);
-  if (!raw) return res.status(404).json({ error: 'Программа не найдена' });
+  if (!raw && !requestedSession?.blocks) return res.status(404).json({ error: 'Программа не найдена' });
 
-  let record;
-  try { record = typeof raw === 'string' ? JSON.parse(raw) : raw; }
-  catch { return res.status(500).json({ error: 'Ошибка чтения сессии' }); }
+  let record = null;
+  if (raw) {
+    try { record = typeof raw === 'string' ? JSON.parse(raw) : raw; }
+    catch { return res.status(500).json({ error: 'Ошибка чтения сессии' }); }
+  }
 
-  // save.js wraps: { session: {...}, player, dataSummary, dayGoal, date, savedAt }
-  const session = record.session ?? record;
+  // Prefer the current coach-edited draft. If it has already been saved, the same
+  // edited session is persisted below after the replacement is ready.
+  const session = requestedSession?.blocks ? requestedSession : (record?.session ?? record);
 
   const block = session.blocks?.[blockIndex];
   if (!block) return res.status(400).json({ error: 'Блок не найден' });
@@ -77,15 +81,16 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
 
 ПРАВИЛА:
 • Новое упражнение должно быть из той же категории и вектора нагрузки (блок: ${blockLabel})
+• НЕЛЬЗЯ вернуть исходное упражнение "${exercise.name}" даже в другой записи названия
 • Сохрани: code="${exercise.code}", tempo="${exercise.tempo || ''}"
 • НЕ используй упражнения, уже стоящие в программе: ${others}
 • ЗАПРЕЩЕНО навсегда: ${BANNED}
 • ЯЗЫК: поле name — профессиональный английский S&C ("Bulgarian Split Squat", "Trap Bar Deadlift", "Box Jump (Bilateral)"). Поле cue — короткое описание для игрока на русском языке: СНАЧАЛА описание темпа, ПОТОМ одна профессиональная подсказка S&C. Если tempo="5-0-X-0", начни cue так: "Темп: опускаемся 5 секунд медленно вниз, вверх максимально резко." Если tempo="0-5сек-X-0", начни cue так: "Темп: пауза в напряжении 5 секунд, вверх максимально резко." Поле autoReg — один критерий остановки, РУССКИЙ язык ("Скорость падает → стоп.", "RPE 9 → снизь 5%.").
 
-Рабочий вес DB/KB всегда означает вес ОДНОЙ гантели/гири. Добавь loadUnits: 1 для одного снаряда, 2 для пары.
+Сохрани targetSets, если замена не требует более безопасного объёма. Для DB/KB weightKg всегда означает вес ОДНОЙ гантели/гири; loadUnits: 1 для одного снаряда, 2 для пары. Для упражнения с внешним весом укажи практичный weightKg и weightNote. Для веса тела оставь weightKg=null и укажи понятный weightNote.
 
 ОТВЕТ — только JSON, без markdown, без пояснений:
-{"code":"${exercise.code}","name":"...","tempo":"${exercise.tempo || ''}","targetSets":${JSON.stringify(exercise.targetSets || ['3x8'])},"weightNote":"${exercise.weightNote || ''}","weightKg":null,"loadUnits":1,"cue":"...","autoReg":"${exercise.autoReg || ''}"}`;
+{"code":"${exercise.code}","name":"...","tempo":"${exercise.tempo || ''}","targetSets":${JSON.stringify(exercise.targetSets || ['3x8'])},"weightNote":"...","weightKg":null,"loadUnits":1,"cue":"...","autoReg":"..."}`;
 
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(503).json({ error: 'OPENAI_API_KEY не настроен' });
@@ -118,11 +123,22 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
     const parsedExercise = JSON.parse(match[0]);
     const normalized = normalizeExerciseLanguage({ blocks: [{ exercises: [parsedExercise] }] }, '');
     const newExercise = normalized.blocks?.[0]?.exercises?.[0] || parsedExercise;
+    if (!newExercise?.name || String(newExercise.name).trim().toLowerCase() === String(exercise.name || '').trim().toLowerCase()) {
+      return res.status(502).json({ error: 'Сервис вернул исходное упражнение. Нажмите «Заменить» ещё раз.' });
+    }
+    newExercise.code = exercise.code;
+    newExercise.tempo = newExercise.tempo || exercise.tempo || '';
+    newExercise.targetSets = Array.isArray(newExercise.targetSets) && newExercise.targetSets.length
+      ? newExercise.targetSets
+      : (exercise.targetSets || []);
 
-    // Persist updated session — preserve the { session, player, ... } wrapper from save.js
+    // Persist only when a saved session exists. Draft programs are updated in the UI
+    // and will be stored by the normal Save command.
     session.blocks[blockIndex].exercises[exerciseIndex] = newExercise;
-    const toSave = record.session ? { ...record, session } : session;
-    await redis('set', sessionKey(workspace, playerId, date), JSON.stringify(toSave));
+    if (record) {
+      const toSave = record.session ? { ...record, session } : session;
+      await redis('set', sessionKey(workspace, playerId, date), JSON.stringify(toSave));
+    }
 
     return res.status(200).json({ exercise: newExercise });
   } catch (e) {

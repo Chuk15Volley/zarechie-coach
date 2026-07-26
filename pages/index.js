@@ -1352,6 +1352,7 @@ function ExerciseCard({
   onRegenerate,
 }) {
   const [regenerating, setRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState('');
   const [swapOpen, setSwapOpen] = useState(false);
   const [swapSearch, setSwapSearch] = useState('');
   const [swapLibrary, setSwapLibrary] = useState([]);
@@ -1386,7 +1387,14 @@ function ExerciseCard({
   async function handleRegenerate() {
     if (regenerating || !onRegenerate) return;
     setRegenerating(true);
-    try { await onRegenerate(); } finally { setRegenerating(false); }
+    setRegenerateError('');
+    try {
+      await onRegenerate();
+    } catch (error) {
+      setRegenerateError(error.message || 'Не удалось подобрать замену');
+    } finally {
+      setRegenerating(false);
+    }
   }
 
   async function openSwap() {
@@ -1438,12 +1446,19 @@ function ExerciseCard({
               onClick={handleRegenerate}
               disabled={regenerating}
               title="Перегенерировать упражнение"
-              className="shrink-0 rounded-md p-1 text-slate-600 opacity-0 transition-all hover:bg-white/[0.08] hover:text-slate-300 group-hover:opacity-100 disabled:cursor-not-allowed print:hidden"
+              className="flex shrink-0 items-center gap-1 rounded-md border border-white/[0.09] bg-white/[0.04] px-1.5 py-1 text-[10px] font-semibold text-slate-400 transition-all hover:border-accent/40 hover:bg-accent/[0.08] hover:text-accent disabled:cursor-not-allowed disabled:opacity-50 print:hidden"
             >
               {regenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              <span className="hidden lg:inline">Заменить</span>
             </button>
           )}
         </div>
+
+        {regenerateError && (
+          <p className="mt-2 rounded-lg border border-rose-400/20 bg-rose-500/[0.08] px-2 py-1.5 text-[10px] font-medium leading-snug text-rose-200 print:hidden">
+            {regenerateError}
+          </p>
+        )}
 
         {/* Swap panel */}
         {swapOpen && (
@@ -3347,10 +3362,19 @@ export default function Home() {
   }
 
   async function regenerateExercise(blockIdx, exIdx) {
+    const sessionDate = meta?.date || date;
+    if (!session || !sessionDate) throw new Error('Сначала откройте программу игрока');
     const res = await fetch('/api/programs/regenerate-exercise', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ playerId, date, blockIndex: blockIdx, exerciseIndex: exIdx, workspace }),
+      body: JSON.stringify({
+        playerId,
+        date: sessionDate,
+        blockIndex: blockIdx,
+        exerciseIndex: exIdx,
+        workspace,
+        session,
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
