@@ -621,7 +621,9 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js', { scope: '/player/' }).catch(() => {});
+      navigator.serviceWorker.register('/sw.js', { scope: '/player/' })
+        .then(registration => registration.update())
+        .catch(() => {});
     }
   }, []);
 
