@@ -4,9 +4,10 @@
 
 import { useState, useEffect, useRef, Component } from 'react';
 import Head from 'next/head';
-import { redis } from '../../lib/redis';
+import { redis, redisPipeline } from '../../lib/redis';
 import { findExerciseUrl } from '../../lib/exerciseBank';
 import { resolveShareToken } from '../../lib/shareToken';
+import { parseSavedSession, sessionDayGoal, sessionTrainingLabel } from '../../lib/sessionLabel';
 import { pfx, playerPhotoKey, sessionKey, sessionsKey } from '../../lib/workspacePrefix';
 import { loadUnitsForExercise } from '../../lib/tonnage';
 
@@ -57,7 +58,7 @@ export async function getServerSideProps({ params }) {
   // Resolve token → playerId + workspace (never expose playerId to the client)
   const resolved = await resolveShareToken(token);
   if (!resolved?.playerId) {
-    return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: true, sessionDates: [], playerPhoto: null, serverLog: null } };
+    return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: true, sessionDates: [], sessionHistory: [], playerPhoto: null, serverLog: null } };
   }
   const { playerId, workspace } = resolved;
 
@@ -69,25 +70,38 @@ export async function getServerSideProps({ params }) {
   let playerPhoto = storedPhoto || legacyPhoto || null;
   const sessionDates = [...(allDates || [])].reverse();
 
+  // One Redis round-trip provides labels for the whole history. Old records use
+  // their saved day goal; new records also carry the exact phase/training type.
+  const historyRaws = sessionDates.length
+    ? await redisPipeline(sessionDates.map(sessionDate => ['get', sessionKey(workspace, playerId, sessionDate)])).catch(() => [])
+    : [];
+  const historyRecords = new Map();
+  const sessionHistory = sessionDates.map((sessionDate, index) => {
+    const parsed = parseSavedSession(historyRaws[index]);
+    if (parsed.record) historyRecords.set(sessionDate, parsed.record);
+    return {
+      date: sessionDate,
+      label: sessionTrainingLabel(parsed.record),
+      dayGoal: sessionDayGoal(parsed.record),
+    };
+  });
+
   let record = null;
   const rawToday = await redis('get', sessionKey(workspace, playerId, date)).catch(() => null);
 
   if (rawToday) {
-    try { record = typeof rawToday === 'string' ? JSON.parse(rawToday) : rawToday; } catch (_) {}
+    record = parseSavedSession(rawToday).record;
   }
 
   if (!record) {
-    const dates = await redis('zrange', sessionsKey(workspace, playerId), -1, -1).catch(() => []);
-    if (dates?.length) {
-      const rawLast = await redis('get', sessionKey(workspace, playerId, dates[0])).catch(() => null);
-      if (rawLast) { try { record = typeof rawLast === 'string' ? JSON.parse(rawLast) : rawLast; } catch (_) {} }
-    }
+    record = sessionDates.map(sessionDate => historyRecords.get(sessionDate)).find(Boolean) || null;
   }
 
   if (!record) {
-    return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: false, sessionDates, playerPhoto: playerPhoto || null, serverLog: null } };
+    return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: false, sessionDates, sessionHistory, playerPhoto: playerPhoto || null, serverLog: null } };
   }
 
+  const activeSession = parseSavedSession(record).session;
   playerPhoto = playerPhoto || record.player?.photo || null;
 
   const resolvedDate = record.date || date;
@@ -97,13 +111,14 @@ export async function getServerSideProps({ params }) {
   return {
     props: {
       token,
-      session: record.session || null,
+      session: activeSession,
       player: record.player || null,
       sessionDate: resolvedDate,
       dayGoal: record.dayGoal || '',
       isToday: (record.date || '') === date,
       notFound: false,
       sessionDates,
+      sessionHistory,
       playerPhoto: playerPhoto || null,
       serverLog: serverLog || null,
     },
@@ -542,7 +557,7 @@ function InstallHint() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function PlayerPage({ token, session, player, sessionDate, dayGoal, isToday, notFound, sessionDates, playerPhoto, serverLog }) {
+export default function PlayerPage({ token, session, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog }) {
   // Seed from the server log (cross-device source of truth) when present.
   const [done, setDone] = useState(serverLog?.done || {});
   const [weights, setWeights] = useState(serverLog?.weights || {});
@@ -589,6 +604,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
   const [activeTab, setActiveTab] = useState('workout');
   const [selectedHistDate, setSelectedHistDate] = useState(null);
   const [histSession, setHistSession] = useState(null);
+  const [histMeta, setHistMeta] = useState(null);
   const [histLoading, setHistLoading] = useState(false);
 
   const blocks = Array.isArray(session?.blocks) ? session.blocks : [];
@@ -601,7 +617,11 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
     setSelectedHistDate(date);
     try {
       const r = await fetch(`/api/player/session-detail?token=${encodeURIComponent(token)}&date=${date}`);
-      if (r.ok) { const d = await r.json(); setHistSession(d.session || null); }
+      if (r.ok) {
+        const d = await r.json();
+        setHistSession(d.session || null);
+        setHistMeta({ label: d.label || 'Тренировка в зале', dayGoal: d.dayGoal || '' });
+      }
     } catch (_) {}
     setHistLoading(false);
   }
@@ -763,7 +783,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                 type="button"
                 onClick={() => {
                   setActiveTab(tab);
-                  if (tab === 'history') { setSelectedHistDate(null); setHistSession(null); }
+                  if (tab === 'history') { setSelectedHistDate(null); setHistSession(null); setHistMeta(null); }
                 }}
                 className={`rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all ${
                   activeTab === tab
@@ -863,16 +883,20 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
             {!selectedHistDate ? (
               <div className="space-y-2">
                 <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Все тренировки</p>
-                {sessionDates.map(date => (
+                {sessionHistory.map(item => (
                   <button
-                    key={date}
+                    key={item.date}
                     type="button"
-                    onClick={() => loadHistSession(date)}
+                    onClick={() => loadHistSession(item.date)}
                     className="w-full flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-left transition hover:bg-white/[0.05] active:scale-[0.98]"
                   >
                     <div className="flex-1">
-                      <div className="text-[13px] font-semibold text-slate-200">{formatDate(date)}</div>
-                      <div className="text-[11px] text-slate-600 mt-0.5">{date}</div>
+                      <div className="text-[13px] font-semibold text-slate-200">{formatDate(item.date)}</div>
+                      <div className="mt-1 text-[12px] font-bold text-[#4ade80]">{item.label}</div>
+                      {item.dayGoal && item.dayGoal !== item.label && (
+                        <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-500">Цель: {item.dayGoal}</div>
+                      )}
+                      <div className="mt-0.5 text-[10px] text-slate-700">{item.date}</div>
                     </div>
                     <span className="text-slate-600 text-lg">›</span>
                   </button>
@@ -886,16 +910,21 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
               <div>
                 <button
                   type="button"
-                  onClick={() => { setSelectedHistDate(null); setHistSession(null); }}
+                  onClick={() => { setSelectedHistDate(null); setHistSession(null); setHistMeta(null); }}
                   className="mb-4 flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-slate-300 transition"
                 >
                   ← Все тренировки
                 </button>
                 <div className="space-y-6">
-                  {(histSession.blocks?.[0]?.goal || histSession.goal || histSession.day_goal) && (
+                  <div className="rounded-2xl border border-[#4ade80]/20 bg-[#4ade80]/[0.05] px-4 py-3.5">
+                    <div className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#4ade80]/50">Вид тренировки</div>
+                    <div className="text-[16px] font-black text-[#4ade80]">{histMeta?.label || 'Тренировка в зале'}</div>
+                    <div className="mt-1 text-[11px] text-slate-500">{formatDate(selectedHistDate)}</div>
+                  </div>
+                  {(histMeta?.dayGoal || histSession.blocks?.[0]?.goal || histSession.goal || histSession.day_goal) && (
                     <div className="rounded-2xl border border-[#4ade80]/20 bg-[#4ade80]/[0.05] px-4 py-3.5">
                       <div className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#4ade80]/50">Цель тренировки</div>
-                      <div className="text-[14px] font-semibold text-slate-200">{histSession.blocks?.[0]?.goal || histSession.goal || histSession.day_goal}</div>
+                      <div className="text-[14px] font-semibold text-slate-200">{histMeta?.dayGoal || histSession.blocks?.[0]?.goal || histSession.goal || histSession.day_goal}</div>
                     </div>
                   )}
                   {(histSession.blocks || []).map((block, bi) => (

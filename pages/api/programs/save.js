@@ -47,7 +47,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { playerId, date, session, player, dataSummary, dayGoal, workspace = 'zarechie' } = req.body || {};
+  const { playerId, date, session, player, dataSummary, dayGoal, focus = '', trainingType = '', trainingLabel = '', workspace = 'zarechie' } = req.body || {};
   if (!playerId || !date || !session) {
     return res.status(400).json({ error: 'playerId, date and session are required' });
   }
@@ -59,6 +59,9 @@ export default async function handler(req, res) {
     player: player || null,
     dataSummary: dataSummary || '',
     dayGoal: dayGoal || '',
+    focus: focus || '',
+    trainingType: trainingType || '',
+    trainingLabel: trainingLabel || '',
     date,
     savedAt: new Date().toISOString(),
   };

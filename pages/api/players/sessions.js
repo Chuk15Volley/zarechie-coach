@@ -4,6 +4,7 @@
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
+import { sessionTrainingLabel } from '../../../lib/sessionLabel';
 import { exerciseTonnage, weightKgFromExercise } from '../../../lib/tonnage';
 
 export default async function handler(req, res) {
@@ -47,6 +48,7 @@ export default async function handler(req, res) {
       sessions.push({
         date,
         dayGoal: rec.dayGoal || '',
+        trainingLabel: sessionTrainingLabel(rec),
         tonnage: Math.round(tonnage),
         exerciseCount: exercises.length,
         blockCount: blocks.length,

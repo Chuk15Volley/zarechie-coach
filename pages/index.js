@@ -3118,7 +3118,7 @@ export default function Home() {
       const res = await fetch('/api/programs/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ playerId, date: item.date, session: item.session, player: item.player, dataSummary: '', dayGoal: item.label, workspace }),
+        body: JSON.stringify({ playerId, date: item.date, session: item.session, player: item.player, dataSummary: '', dayGoal: item.label, focus: item.focus, trainingType, trainingLabel: item.label, workspace }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
       setWeekPlan(prev => prev.map((p, i) => i === idx ? { ...p, saving: false, saved: true } : p));
@@ -3156,6 +3156,9 @@ export default function Home() {
           player: meta.player,
           dataSummary: meta.dataSummary,
           dayGoal: meta.dayGoal || '',
+          focus,
+          trainingType,
+          trainingLabel: meta.focusLabel || getFocusLabel(period, focus),
           workspace,
         }),
       });
@@ -5209,7 +5212,10 @@ export default function Home() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-[13px] font-semibold text-slate-200 capitalize">{label}</p>
-                            {s.dayGoal && <p className="mt-0.5 text-[11px] text-slate-500 truncate">{s.dayGoal}</p>}
+                            <p className="mt-0.5 truncate text-[11px] font-bold text-accent">{s.trainingLabel || 'Тренировка в зале'}</p>
+                            {s.dayGoal && s.dayGoal !== s.trainingLabel && (
+                              <p className="mt-0.5 truncate text-[10px] text-slate-500">Цель: {s.dayGoal}</p>
+                            )}
                           </div>
                           <div className="shrink-0 text-right mr-2">
                             <p className="text-[13px] font-bold text-slate-300">

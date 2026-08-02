@@ -126,7 +126,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const { playerId, date, dayGoal = '', workspace = 'zarechie', focus = '', userPrompt, sessionTool, autoSave = true } = record;
+  const { playerId, date, dayGoal = '', workspace = 'zarechie', focus = '', trainingType = '', userPrompt, sessionTool, autoSave = true } = record;
   if (!userPrompt || !sessionTool) {
     return res.status(500).json({ error: 'Неполные данные задачи генерации' });
   }
@@ -185,6 +185,8 @@ export default async function handler(req, res) {
       player,
       dataSummary,
       dayGoal: dayGoal || '',
+      focus: focus || '',
+      trainingType: trainingType || '',
       date,
       savedAt: new Date().toISOString(),
     };

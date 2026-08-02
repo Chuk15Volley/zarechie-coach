@@ -1,5 +1,6 @@
 import { redis } from '../../../lib/redis';
 import { resolveShareToken } from '../../../lib/shareToken';
+import { parseSavedSession, sessionDayGoal, sessionTrainingLabel } from '../../../lib/sessionLabel';
 import { sessionKey } from '../../../lib/workspacePrefix';
 
 export default async function handler(req, res) {
@@ -14,10 +15,12 @@ export default async function handler(req, res) {
   const raw = await redis('get', sessionKey(workspace, playerId, date)).catch(() => null);
   if (!raw) return res.status(404).json({ error: 'Not found' });
 
-  let session;
-  try { session = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_) {
-    return res.status(500).json({ error: 'Parse error' });
-  }
+  const parsed = parseSavedSession(raw);
+  if (!parsed.session) return res.status(500).json({ error: 'Parse error' });
 
-  res.status(200).json({ session });
+  res.status(200).json({
+    session: parsed.session,
+    label: sessionTrainingLabel(parsed.record),
+    dayGoal: sessionDayGoal(parsed.record),
+  });
 }

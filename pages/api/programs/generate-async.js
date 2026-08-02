@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: 'OPENAI_API_KEY не настроен в переменных среды Vercel' });
   }
 
-  const { playerId, dayGoal = '', workspace = 'zarechie', focus = '', autoSave = true } = req.body || {};
+  const { playerId, dayGoal = '', workspace = 'zarechie', focus = '', trainingType = '', autoSave = true } = req.body || {};
 
   // Build the exact same SYSTEM_PROMPT / userPrompt / tool as the synchronous generator.
   const inputs = await buildGenerationInputs(req.body || {});
@@ -40,6 +40,7 @@ export default async function handler(req, res) {
         dayGoal,
         workspace,
         focus,
+        trainingType,
         autoSave: autoSave !== false,
         userPrompt,
         dataSummary,
