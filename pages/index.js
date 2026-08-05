@@ -4514,7 +4514,7 @@ export default function Home() {
                       const circleBg = p.status === 'red' ? 'bg-rose-500/15 text-rose-400 ring-rose-500/40' : p.status === 'yellow' ? 'bg-amber-500/15 text-amber-400 ring-amber-500/40' : 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30';
                       const dot = p.status === 'red' ? '🔴' : p.status === 'yellow' ? '🟡' : '🟢';
                       const riskColor = p.riskScore == null ? 'text-slate-500' : p.riskScore >= 60 ? 'text-rose-400' : p.riskScore >= 30 ? 'text-amber-400' : 'text-emerald-400';
-                      const domainDot = (v) => v === 'red' ? 'bg-rose-500' : v === 'yellow' ? 'bg-amber-500' : 'bg-emerald-500/50';
+                      const domainDot = (v) => v === 'red' ? 'bg-rose-500' : v === 'yellow' ? 'bg-amber-500' : v === 'unknown' ? 'bg-slate-600' : 'bg-emerald-500/50';
                       return (
                         <button
                           key={p.id}
@@ -4542,6 +4542,9 @@ export default function Home() {
                                   )}
                                   {p.position && <div className="text-[11px] text-slate-600">{p.position}</div>}
                                   <div className="mt-0.5 text-[10px] text-slate-700">Recovery {p.recovery != null ? `${p.recovery}%` : '—'}</div>
+                                  <div className={`mt-0.5 text-[9px] font-semibold ${p.dataCompleteness < 50 ? 'text-amber-500/70' : 'text-slate-600'}`}>
+                                    Данные: {p.dataCompleteness ?? 0}%
+                                  </div>
                                 </div>
                                 {p.riskScore != null && (
                                   <div className="flex shrink-0 items-baseline gap-1 leading-none">

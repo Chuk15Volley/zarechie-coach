@@ -124,19 +124,26 @@ export default async function handler(req, res) {
       // ── Signal Confidence: 3-domain convergence ──────────────────────────────
       // Red requires convergence of 2+ independent domains (not one noisy sensor).
       // Domain: autonomic (WHOOP), neuromuscular (CMJ/LSI), subjective (survey).
-      const domainAutonomic =
+      const hasAutonomic = recovery != null || hrv != null;
+      const hasNeuromuscular = cmj != null || cmjDrop != null || lsi != null;
+      const hasSubjective = readiness != null || doms != null || mws != null;
+
+      const domainAutonomic = !hasAutonomic ? 'unknown'
+        :
         (recovery != null && recovery < 20) || (hrv != null && hrv < 40) ? 'red'
         : (recovery != null && recovery < 34) || (hrv != null && hrv < 50) ? 'red'
         : (recovery != null && recovery <= 66) ? 'yellow'
         : 'green';
 
-      const domainNeuro =
+      const domainNeuro = !hasNeuromuscular ? 'unknown'
+        :
         (cmjDrop != null && cmjDrop < -15) || (lsi != null && lsi < 75) ? 'red'
         : (cmjDrop != null && cmjDrop < -10) || (lsi != null && lsi < 80) ? 'red'
         : (cmjDrop != null && cmjDrop < -5) || (lsi != null && lsi < 85) ? 'yellow'
         : 'green';
 
-      const domainSubjective =
+      const domainSubjective = !hasSubjective ? 'unknown'
+        :
         (readiness != null && readiness === 1) || (doms != null && doms >= 5) ? 'red'
         : (readiness != null && readiness <= 2) ? 'red'
         : (readiness === 3) || (mws != null && mws < 60) ? 'yellow'
@@ -150,20 +157,23 @@ export default async function handler(req, res) {
         (cmjDrop != null && cmjDrop < -15) ||
         (readiness != null && readiness === 1);
 
-      let status = 'green';
-      if (redCount >= 2 || extremeRed) status = 'red';
-      else if (redCount === 1 || yellowCount >= 2) status = 'yellow';
-
-      const riskScore = computeRiskScore({ recovery, hrv, cmjDrop, lsi });
-
-      // #8: Data quality — which sources contributed data today
+      // Data quality is part of the readiness decision. Missing domains are
+      // unknown—not green—and a one-source snapshot stays yellow until at
+      // least two independent domains are available.
       const dataQuality = {
-        whoop: recovery != null || hrv != null,
-        survey: mws != null || readiness != null,
+        whoop: hasAutonomic,
+        survey: hasSubjective,
         neuro: cmj != null,
         lsi: lsi != null,
       };
       const dataCompleteness = Math.round(Object.values(dataQuality).filter(Boolean).length / 4 * 100);
+
+      let status = 'green';
+      if (redCount >= 2 || extremeRed) status = 'red';
+      else if (redCount === 1 || yellowCount >= 2) status = 'yellow';
+      else if (dataCompleteness < 50) status = 'yellow';
+
+      const riskScore = computeRiskScore({ recovery, hrv, cmjDrop, lsi });
 
       return {
         id: p.id,

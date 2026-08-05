@@ -1585,32 +1585,18 @@ export async function buildGenerationInputs(body) {
   if (!snapshot) return { error: 'Player not found', status: 404 };
 
   // Per-player exercise-response memory + LSI (jump symmetry) — appended to prompt.
-  const [exMemory, neuroDataRaw] = await Promise.all([
-    getExerciseMemory(String(playerId), workspace).catch(() => ({})),
-    workspace === 'zarechie' ? redis('get', 'neuro:data').catch(() => null) : Promise.resolve(null),
-  ]);
+  const exMemory = await getExerciseMemory(String(playerId), workspace).catch(() => ({}));
   const memoryText = formatMemoryForPrompt(exMemory);
-  // Extract LSI from workspace-safe neuro data. NK Performance data is already inside snapshot.neuro.
+  // playerData resolves the active workspace source (including the current
+  // Zarechie dashboard store), so LSI must come from that same snapshot.
   let lsi = null;
-  if (workspace === 'nkperf') {
-    const lsiArr = snapshot.neuro?.latest?.hist?.lsi || snapshot.neuro?.latest?.lsi;
-    if (Array.isArray(lsiArr) && lsiArr.length) {
-      const latest = [...lsiArr].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
-      const parsed = parseFloat(latest.lsi ?? latest.value);
-      if (!Number.isNaN(parsed)) lsi = parsed;
-    } else if (typeof lsiArr === 'number') {
-      lsi = lsiArr;
-    }
-  } else if (neuroDataRaw) {
-    try {
-      const neuroDB = typeof neuroDataRaw === 'string' ? JSON.parse(neuroDataRaw) : neuroDataRaw;
-      const lsiArr = neuroDB?.[String(playerId)]?.hist?.lsi;
-      if (Array.isArray(lsiArr) && lsiArr.length) {
-        const latest = [...lsiArr].sort((a, b) => b.date.localeCompare(a.date))[0];
-        const parsed = parseFloat(latest.lsi);
-        if (!Number.isNaN(parsed)) lsi = parsed;
-      }
-    } catch {}
+  const lsiArr = snapshot.neuro?.latest?.hist?.lsi || snapshot.neuro?.latest?.lsi;
+  if (Array.isArray(lsiArr) && lsiArr.length) {
+    const latest = [...lsiArr].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
+    const parsed = parseFloat(latest.lsi ?? latest.value);
+    if (!Number.isNaN(parsed)) lsi = parsed;
+  } else if (typeof lsiArr === 'number') {
+    lsi = lsiArr;
   }
 
   // #9: Auto-downgrade inseason_power → inseason_strength when CMJ is depressed

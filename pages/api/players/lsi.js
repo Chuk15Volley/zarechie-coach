@@ -7,6 +7,7 @@ import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { getNKNeuroData } from '../../../lib/nkperfClient';
 import { pfx, rosterKey } from '../../../lib/workspacePrefix';
+import { dashboardRedis, hasZarechieDashboardStore } from '../../../lib/zarechieDashboardStore';
 
 function parseJSON(raw) {
   if (raw == null) return null;
@@ -55,6 +56,14 @@ function extractLsiFromNeuroDB(neuroDB, ids) {
   return sorted; // newest first
 }
 
+async function getZarechieNeuroData() {
+  if (hasZarechieDashboardStore()) {
+    const current = await dashboardRedis('get', 'neuro:data').catch(() => null);
+    if (current != null) return parseJSON(current);
+  }
+  return parseJSON(await redis('get', 'neuro:data').catch(() => null));
+}
+
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -66,7 +75,7 @@ export default async function handler(req, res) {
     const ids = await sourceIds(playerId, workspace);
     const neuroDB = workspace === 'nkperf'
       ? await getNKNeuroData().catch(() => ({}))
-      : parseJSON(await redis('get', 'neuro:data').catch(() => null));
+      : await getZarechieNeuroData();
 
     let lsiHistory = null;
     if (neuroDB) {

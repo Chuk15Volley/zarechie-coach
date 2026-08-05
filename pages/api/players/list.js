@@ -141,9 +141,11 @@ export default async function handler(req, res) {
     lastSessionDate: Array.isArray(meta[i]) && meta[i].length ? meta[i][0] : null,
   }));
 
-  // Keep coach:roster in sync (used by readiness/schedule endpoints).
-  // Fire-and-forget — doesn't block the response.
-  redis('set', 'coach:roster', JSON.stringify(
+  // Keep coach:roster in sync (used by readiness/schedule/tonnage endpoints).
+  // Await the write: a serverless invocation may stop immediately after the
+  // response, which used to make newly added players disappear intermittently
+  // from team-wide screens.
+  await redis('set', 'coach:roster', JSON.stringify(
     deduped.map(p => ({ id: p.id, name: p.name, position: p.position, photo: p.photo || null }))
   )).catch(() => {});
 

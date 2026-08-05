@@ -75,7 +75,7 @@ function scheduleContext(events, targetDate) {
   return { level: 'green', label: 'Календарь без ближайшего матча', detail: 'Режим определяется фазой и состоянием игрока.' };
 }
 
-function decisionLevel({ evening, eveningFresh, morning, whoop, activeInjuries }) {
+function decisionLevel({ evening, eveningFresh, morning, whoop, neuro, activeInjuries }) {
   const zones = zoneSummary(evening);
   const strongestPain = Math.max(0, ...zones.filter(zone => zone.type === 'pain').map(zone => zone.level || 0));
   const unscoredPain = zones.some(zone => zone.type === 'pain' && zone.level == null);
@@ -99,6 +99,18 @@ function decisionLevel({ evening, eveningFresh, morning, whoop, activeInjuries }
   }
   if (number(evening?.soreness) >= 4 || number(evening?.legFatigue) >= 4 || number(evening?.shoulderLoad) >= 4) {
     return { level: 'yellow', label: 'Нужна коррекция', detail: 'Высокая локальная усталость или крепатура.' };
+  }
+  const availableDomains = [
+    number(whoop?.recovery) != null || number(whoop?.hrv) != null,
+    !!morning || !!evening,
+    number(neuro?.cmj) != null || number(neuro?.rsi) != null,
+  ].filter(Boolean).length;
+  if (availableDomains < 2) {
+    return {
+      level: 'yellow',
+      label: 'Данных пока мало',
+      detail: 'Есть данные только одного домена. До опроса и нейротеста не считать отсутствие показателей зелёным сигналом.',
+    };
   }
   return { level: 'green', label: 'Данные без красных флагов', detail: 'Тренерский статус и выбранная тема остаются решающими.' };
 }
@@ -145,6 +157,11 @@ export default async function handler(req, res) {
     const schedule = workspace === 'zarechie'
       ? scheduleContext(parseJSON(rawSchedule, []), targetDate)
       : null;
+    const dataQuality = {
+      whoop: number(whoop?.recovery) != null || number(whoop?.hrv) != null,
+      subjective: !!morning || !!evening,
+      neuro: number(neuro?.cmj) != null || number(neuro?.rsi) != null,
+    };
 
     return res.status(200).json({
       targetDate,
@@ -185,7 +202,9 @@ export default async function handler(req, res) {
       restrictions: Array.isArray(restrictions) ? restrictions : [],
       activeInjuries,
       schedule,
-      decision: decisionLevel({ evening, eveningFresh, morning, whoop, activeInjuries }),
+      dataQuality,
+      dataCompleteness: Math.round(Object.values(dataQuality).filter(Boolean).length / 3 * 100),
+      decision: decisionLevel({ evening, eveningFresh, morning, whoop, neuro, activeInjuries }),
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
