@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, Component } from 'react';
 import Head from 'next/head';
 import { redis, redisPipeline } from '../../lib/redis';
 import { findExerciseUrl } from '../../lib/exerciseBank';
+import { getPlayerInfo } from '../../lib/playerData';
 import { resolveShareToken } from '../../lib/shareToken';
 import { parseSavedSession, sessionDayGoal, sessionTrainingLabel } from '../../lib/sessionLabel';
 import { pfx, playerPhotoKey, sessionKey, sessionsKey } from '../../lib/workspacePrefix';
@@ -62,12 +63,20 @@ export async function getServerSideProps({ params }) {
   }
   const { playerId, workspace } = resolved;
 
-  const [allDates, storedPhoto, legacyPhoto] = await Promise.all([
+  const [allDates, storedPhoto, legacyPhoto, playerInfo] = await Promise.all([
     redis('zrange', sessionsKey(workspace, playerId), 0, -1).catch(() => []),
     redis('get', playerPhotoKey(workspace, playerId)).catch(() => null),
     workspace === 'zarechie' ? redis('get', `player:photo:${playerId}`).catch(() => null) : Promise.resolve(null),
+    getPlayerInfo(playerId, workspace).catch(() => null),
   ]);
-  let playerPhoto = storedPhoto || legacyPhoto || null;
+  // The public page must know who owns the link even before the coach saves
+  // that player's first session. Previously identity came only from
+  // record.player, which rendered new players as anonymous "Игрок".
+  const playerProfile = playerInfo ? {
+    name: playerInfo.name || '',
+    position: playerInfo.position || '',
+  } : null;
+  let playerPhoto = storedPhoto || legacyPhoto || playerInfo?.photo || null;
   const sessionDates = [...(allDates || [])].reverse();
 
   // One Redis round-trip provides labels for the whole history. Old records use
@@ -98,11 +107,16 @@ export async function getServerSideProps({ params }) {
   }
 
   if (!record) {
-    return { props: { token, session: null, player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: false, sessionDates, sessionHistory, playerPhoto: playerPhoto || null, serverLog: null } };
+    return { props: { token, session: null, player: playerProfile, sessionDate: null, dayGoal: '', isToday: false, notFound: false, sessionDates, sessionHistory, playerPhoto: playerPhoto || null, serverLog: null } };
   }
 
   const activeSession = parseSavedSession(record).session;
   playerPhoto = playerPhoto || record.player?.photo || null;
+  const recordPlayer = record.player || null;
+  const player = playerProfile || (recordPlayer ? {
+    name: recordPlayer.name || '',
+    position: recordPlayer.position || '',
+  } : null);
 
   const resolvedDate = record.date || date;
   const logRaw = await redis('get', `${pfx(workspace)}:log:${playerId}:${resolvedDate}`).catch(() => null);
@@ -112,7 +126,7 @@ export async function getServerSideProps({ params }) {
     props: {
       token,
       session: activeSession,
-      player: record.player || null,
+      player,
       sessionDate: resolvedDate,
       dayGoal: record.dayGoal || '',
       isToday: (record.date || '') === date,
@@ -713,13 +727,15 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                 </div>
               </div>
               <div className="text-right shrink-0">
-                {activeTab === 'workout' ? (
+                {activeTab === 'workout' && session ? (
                   <>
                     <div className={`text-[10px] font-bold uppercase tracking-wide ${isToday ? 'text-emerald-400' : 'text-amber-400'}`}>
                       {isToday ? '● Сегодня' : '● Последняя'}
                     </div>
                     <div className="text-[11px] text-slate-400 mt-0.5" suppressHydrationWarning>{formatDate(sessionDate)}</div>
                   </>
+                ) : activeTab === 'workout' ? (
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-amber-400">● Ожидает программу</div>
                 ) : selectedHistDate ? (
                   <div className="text-[10px] text-slate-500">{selectedHistDate}</div>
                 ) : (
