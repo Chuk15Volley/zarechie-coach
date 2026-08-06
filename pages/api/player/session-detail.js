@@ -2,6 +2,7 @@ import { redis } from '../../../lib/redis';
 import { resolveShareToken } from '../../../lib/shareToken';
 import { parseSavedSession, sessionDayGoal, sessionTrainingLabel } from '../../../lib/sessionLabel';
 import { sessionKey } from '../../../lib/workspacePrefix';
+import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 
 export default async function handler(req, res) {
   const { token, date } = req.query;
@@ -19,7 +20,7 @@ export default async function handler(req, res) {
   if (!parsed.session) return res.status(500).json({ error: 'Parse error' });
 
   res.status(200).json({
-    session: parsed.session,
+    session: sanitizeUnavailableEquipmentExercises(parsed.session),
     label: sessionTrainingLabel(parsed.record),
     dayGoal: sessionDayGoal(parsed.record),
   });

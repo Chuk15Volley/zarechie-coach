@@ -4,6 +4,7 @@
 
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { isAuthorized } from '../../../lib/auth';
+import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 
 const WARMUP_TOOL = {
   name: 'build_warmup',
@@ -285,7 +286,7 @@ ${notes ? `Комментарии тренера: ${notes}` : ''}
 
     const data = await response.json();
     const toolUse = findOpenAIFunctionCall(data.output, 'build_warmup');
-    const warmup = parseFunctionArguments(toolUse?.arguments);
+    const warmup = sanitizeUnavailableEquipmentExercises(parseFunctionArguments(toolUse?.arguments));
     if (!warmup) return res.status(502).json({ error: 'Модель не вернула структуру разминки' });
 
     return res.status(200).json({

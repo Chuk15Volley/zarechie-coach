@@ -10,6 +10,7 @@ import { getPlayerSnapshot } from '../../../lib/playerData';
 import { exhistKey, exweightKey, gymTonnageDatesKey, gymTonnageKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
 import { assessSessionQuality } from '../../../lib/sessionValidator';
 import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
+import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { OPENAI_SESSION_MODEL, SYSTEM_PROMPT, buildGenerationInputs, normalizeExerciseLanguage } from './generate';
 import { normExName } from '../players/progression';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
@@ -294,6 +295,7 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'Модель не вернула структурированную тренировку' });
     }
     session = normalizeExerciseLanguage(session, focus);
+    session = sanitizeUnavailableEquipmentExercises(session);
 
     let quality = assessSessionQuality(session, {
       ...qualityContext,
@@ -315,7 +317,14 @@ export default async function handler(req, res) {
       }
     }
 
-    quality = advisorySessionQuality(quality);
+    // Re-sanitize compatibility candidates from older deployments too.
+    session = sanitizeUnavailableEquipmentExercises(session);
+    quality = advisorySessionQuality(assessSessionQuality(session, {
+      ...qualityContext,
+      focus: qualityContext.focus || focus,
+      trainingType: qualityContext.trainingType || trainingType,
+      playerRestrictions,
+    }));
 
     const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 7, workspace).catch(() => null);
     const player = snapshot?.player || null;

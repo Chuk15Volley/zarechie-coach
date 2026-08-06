@@ -17,6 +17,7 @@ import {
   sessionKey,
 } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
+import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 
 function targetSetReps(value) {
   const multiple = String(value || '').match(/^(\d+)\s*[x×]\s*(\d+)$/i);
@@ -76,6 +77,7 @@ export default async function handler(req, res) {
   if (sessionRaw) {
     try {
       const rec = typeof sessionRaw === 'string' ? JSON.parse(sessionRaw) : sessionRaw;
+      if (rec?.session) rec.session = sanitizeUnavailableEquipmentExercises(rec.session);
       for (const [blockIndex, block] of (rec.session?.blocks || []).entries()) {
         for (const [exerciseIndex, ex] of (block.exercises || []).entries()) {
           if (ex.name) allExercises.push(ex);

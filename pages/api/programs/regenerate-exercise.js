@@ -9,10 +9,11 @@ import { sessionKey } from '../../../lib/workspacePrefix';
 import { normalizeExerciseLanguage } from './generate';
 import { assessSessionQuality } from '../../../lib/sessionValidator';
 import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
+import { isSledExercise, sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
 
 const BANNED =
-  'Nordic Hamstring / Nordic Curl | Barbell Back Squat | Barbell Front Squat | обычная штанговая тяга / Conventional Barbell Deadlift | Olympic lifts со штангой | Depth Jump | Heavy Good Morning | Barbell Overhead Press | Barbell Bench Press | Leg Press | Smith Machine | Leg Extension | Hamstring Curl | Incline Push-Up / наклонные отжимания | Ab Wheel Rollout / Ab Roller | Broad Jump | DB Floor Press | Band Wrist Stability | Jump Set Drill | KB Press / жим с гирями | Tricep Pushdown с резиновой петлёй / Band Tricep Pushdown';
+  'Sled Push / Sled Pull / Sled Drag / Prowler Push / любые упражнения с санями | Nordic Hamstring / Nordic Curl | Barbell Back Squat | Barbell Front Squat | обычная штанговая тяга / Conventional Barbell Deadlift | Olympic lifts со штангой | Depth Jump | Heavy Good Morning | Barbell Overhead Press | Barbell Bench Press | Leg Press | Smith Machine | Leg Extension | Hamstring Curl | Incline Push-Up / наклонные отжимания | Ab Wheel Rollout / Ab Roller | Broad Jump | DB Floor Press | Band Wrist Stability | Jump Set Drill | KB Press / жим с гирями | Tricep Pushdown с резиновой петлёй / Band Tricep Pushdown';
 
 const OPENAI_MODEL = 'gpt-5.6-terra';
 
@@ -52,6 +53,7 @@ function findFunctionCall(output, name) {
 function isForbiddenExercise(name) {
   const normalized = String(name || '').toLowerCase();
   if (!normalized) return true;
+  if (isSledExercise(name)) return true;
   if (/nordic|leg press|smith machine|leg extension|hamstring curl|incline push[ -]?up|ab wheel|ab roller|broad jump|db floor press|heavy good morning|barbell overhead press|barbell bench press|olympic lift/.test(normalized)) return true;
   if (/\b(back squat|barbell back squat)\b/.test(normalized)) return true;
   if (/\bfront squat\b/.test(normalized) && !/\b(kb|kettlebell)\b/.test(normalized)) return true;
@@ -251,7 +253,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
 
     // Persist only when a saved session exists. Draft programs are updated in the UI
     // and will be stored by the normal Save command.
-    const updatedSession = {
+    const updatedSession = sanitizeUnavailableEquipmentExercises({
       ...session,
       blocks: session.blocks.map((currentBlock, currentBlockIndex) => currentBlockIndex !== blockIndex
         ? currentBlock
@@ -259,7 +261,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
           ...currentBlock,
           exercises: currentBlock.exercises.map((currentExercise, currentExerciseIndex) => currentExerciseIndex === exerciseIndex ? newExercise : currentExercise),
         }),
-    };
+    });
     if (record) {
       const replacementQuality = advisorySessionQuality(assessSessionQuality(updatedSession, {
         focus: record.focus || '',

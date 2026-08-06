@@ -11,6 +11,7 @@ import { redis, redisPipeline } from '../../../lib/redis';
 import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
 import { assessSessionQuality } from '../../../lib/sessionValidator';
 import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
+import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseMemory';
 import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlaybook';
 import { developmentPlanKey, pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
@@ -135,7 +136,7 @@ const FOCUS_LABELS = {
   zvs_power_transfer: 'Межсезонье: Мощность и перенос — полные PAP-кластеры 80-87.5%, Resisted Approach Jump, позиционная работа; тейпер последняя неделя; RPE 8-9; JLU ≤500',
   // ── СЕЗОН ЗАРЕЧЬЕ 2025–2026 (сентябрь 2025 — апрель 2026) ───────────────
   inseason_strength:     'СЕЗОН · СИЛОВАЯ — 40-50 мин, без разминки (разминка уже сделана в игровом зале). 4 блока строго: 1) НИЗ ТЕЛА — преимущественно унилатерально, колено+таз-доминантно (Bulgarian Split Squat, Split Squat, выпады, Goblet Squat, Romanian Deadlift, SL RDL); 2) ВЕРХ ТЕЛА — жимы + подтягивания + тяги (DB Bench Press, Pull-up, Australian Pull-up, DB Row, Landmine Press); 3) АКЦЕНТ — профилактика / слабое звено по позиции; 4) КОР — антиротация / антиэкстензия / переноски (Pallof, Dead Bug, Suitcase Carry). ТОЛЬКО свободные веса, НИКАКИХ тренажёров. Не позже MD-3. Позиционные протоколы (Либеро/Связка/ОПП/MB/OH) применять как на сборах.',
-  inseason_power:        'СЕЗОН · МОЩНОСТНАЯ — 40-50 мин, гибрид-контраст: (1) безопасное скоростное движение DB/KB/trap-bar/medball/landmine/sled с максимальной скоростью концентрики; (2) низко- или среднеударная плиометрика по готовности (pogo, snap-down, box jump low, medball throw, plyo push-up). Не позже MD-3. Без медленной эксцентрики, без высокообъёмной плиометрики рядом с игрой, без обычной штанги.',
+  inseason_power:        'СЕЗОН · МОЩНОСТНАЯ — 40-50 мин, гибрид-контраст: (1) безопасное скоростное движение DB/KB/trap-bar/medball/landmine/band с максимальной скоростью концентрики; (2) низко- или среднеударная плиометрика по готовности (pogo, snap-down, box jump low, medball throw, plyo push-up). Не позже MD-3. Без медленной эксцентрики, без высокообъёмной плиометрики рядом с игрой, без обычной штанги.',
   inseason_prophylaxis:  'СЕЗОН · ПРОФИЛАКТИКА/ВОССТАНОВЛЕНИЕ — день MD+2 после игры (обычно понедельник) + pre-game MD-1. Слабые звенья волейболиста, мобильность, контроль движения, стабилизация суставов. БЕЗ тяжёлой штанги, БЕЗ высокоударной плиометрики. Pre-game MD-1: короткая нейромышечная активация + тонус, не утомлять.',
   inseason_accumulation: 'СЕЗОН · ФЕВРАЛЬ · БЛОК НАКОПЛЕНИЯ СИЛЫ — 60 мин (вместо обычных 40). Структура та же (4 блока), все блоки удлиняются пропорционально: больше сетов/упражнений. Интенсивность 80–87% 1ПМ с индивидуальной поправкой по состоянию (CMJ/RSI baseline + Recovery). Единственное окно сезона для реального набора силы перед мартовской конверсией. Волна 3:1 сохраняется. «Священные» упражнения обязательны.',
   inseason_conversion:   'СЕЗОН · МАРТ-АПРЕЛЬ · КОНВЕРСИЯ В МОЩНОСТЬ — перевод накопленной февральской силы в скоростно-силовые качества к плей-офф. Смещение акцента: больше баллистики и плиометрики, снижение медленной силовой работы, поддержание нейромышечной готовности. 40–50 мин.',
@@ -158,7 +159,7 @@ const MANUAL_FOCUS_LABELS = {
   camp_iso_posterior: 'СБОРЫ · ИЗОМЕТРИКА · Задняя цепь — ручной выбор тренера; пауза в напряжении 5 сек в угле 45° бедро → вверх максимально резко; метод не привязан к дню недели',
   camp_explosive:     'СБОРЫ · ВЗРЫВ / ПОТЕНЦИАЦИЯ — ручной выбор тренера; нагрузка 50-60% 1ПМ, максимальная скорость, объём -40-50%; без привязки к дню недели',
   inseason_strength:  'СЕЗОН · СИЛОВАЯ — ручной выбор тренера; 40-60 мин, развитие/поддержание силы, блоки под позицию игрока; день недели не меняет метод',
-  inseason_power:     'СЕЗОН · МОЩНОСТНАЯ — ручной выбор тренера; 30-45 мин, скорость DB/KB/trap-bar/medball/landmine/sled, плиометрика только по готовности CMJ/RSI/Recovery; день недели не меняет метод',
+  inseason_power:     'СЕЗОН · МОЩНОСТНАЯ — ручной выбор тренера; 30-45 мин, скорость DB/KB/trap-bar/medball/landmine/band, плиометрика только по готовности CMJ/RSI/Recovery; день недели не меняет метод',
   inseason_prophylaxis: 'СЕЗОН · ПРОФИЛАКТИКА/ВОССТАНОВЛЕНИЕ — ручной выбор тренера; слабые звенья, мобильность, контроль движения, стабилизация суставов; день недели не меняет метод',
   inseason_accumulation: 'СЕЗОН · БЛОК НАКОПЛЕНИЯ СИЛЫ — ручной выбор тренера; 60 мин, больше сетов/упражнений, 80-87% 1ПМ с поправкой по состоянию',
   inseason_conversion: 'СЕЗОН · КОНВЕРСИЯ В МОЩНОСТЬ — ручной выбор тренера; перевод силы в скоростно-силовые качества, меньше медленной силовой работы',
@@ -817,6 +818,7 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
 Оборудование Заречья:
   • Полный профессиональный набор доступен всей команде; не упрощай программу из-за предполагаемой нехватки инвентаря.
   • Одно и то же оборудование разрешено нескольким игрокам. Выбор упражнения определяется задачей, позицией, прогрессией и состоянием, а не искусственным запретом на очереди.
+  • САНЕЙ / SLED / PROWLER НЕТ. Любые Sled Push, Sled Pull, Sled Drag, Prowler Push и русские варианты запрещены. Для сопротивления используй резиновую петлю, cable или свободные веса.
 
 Позиционная дифференциация:
   • Центральные: приземление, голеностоп, колено, плечо, блок/первый темп.
@@ -856,12 +858,12 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
   • weightKg и число кг в weightNote для DB/KB всегда означают вес ОДНОЙ гантели или гири. Отдельно укажи loadUnits: 1 для одного снаряда, 2 для пары. Пример: DB Bench Press: weightKg 24, weightNote "24 кг на гантель, RPE 7", loadUnits 2. Никогда не записывай суммарный вес двух гантелей как рабочий вес.
 
 Оборудование и стиль:
-  Основной выбор: trap-bar, DB, KB, TRX, cable, landmine, sled, medball, box, bands, mini bands, свободные веса.
+  Основной выбор: trap-bar, DB, KB, TRX, cable, landmine, medball, box, bands, mini bands, свободные веса.
   Тренажёры НЕ использовать как основной силовой блок. Только редкое исключение для rehab/prehab.
   Любимые упражнения: Goblet Squat, Bulgarian Split Squat, Split Squat, Trap-bar Deadlift, RDL DB, SL RDL DB, DB Bench Press, DB Incline Press, Landmine Press, Half-kneeling Landmine Press, TRX Row, Cable Row, Pull-down, Copenhagen Plank, medball throws, pogo, bounds, lateral shuffle, resisted sprint, plyo push-up, box jump low, snap-down.
 
 Абсолютные запреты:
-  Nordic Hamstring/Nordic Curl, Barbell Back Squat, Barbell Front Squat, обычная Barbell Deadlift, Olympic lifts со штангой, Depth Jump при низкой готовности, Heavy Good Morning, Barbell Overhead Press, Leg Press, Smith Machine, Leg Extension, Hamstring Curl, Incline Push-Up / наклонные отжимания, работа до отказа.
+  Sled Push/Pull/Drag, Prowler Push и любые упражнения с санями; Nordic Hamstring/Nordic Curl, Barbell Back Squat, Barbell Front Squat, обычная Barbell Deadlift, Olympic lifts со штангой, Depth Jump при низкой готовности, Heavy Good Morning, Barbell Overhead Press, Leg Press, Smith Machine, Leg Extension, Hamstring Curl, Incline Push-Up / наклонные отжимания, работа до отказа.
   Разрешены deadlift-варианты: Trap-bar Deadlift, DB/KB Deadlift, DB/KB RDL, SL RDL DB/KB.
 
 Логика расписания Заречья:
@@ -912,11 +914,11 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ❌ ЗАПРЕЩЁННЫЕ УПРАЖНЕНИЯ НАВСЕГДА:
-  Присед со штангой на спине (Back Squat) | Жим штанги лёжа (Bench Press barbell) | Nordic Curl (любые вариации) | Ab Wheel Rollout / Ab Roller (любые вариации) | Broad Jump (горизонтальный прыжок — заменяй вертикальными: Tuck Jump / Weighted Jump Squat / CMJ) | DB Floor Press / жим гантелей лёжа на полу (заменяй жимом на скамье с полным ROM) | Incline Push-Up / наклонные отжимания (любые вариации — не использовать) | Band Wrist Stability / резиновая петля стабилизация запястья (любые вариации с петлёй на запястье) | Jump Set Drill / прыжок с имитацией передачи (любые вариации — запрещено для всех позиций) | KB Press / жим с гирями (все вариации жимовых движений с гирей стоя или лёжа — заменяй на DB Press на скамье или Landmine Press) | Tricep Pushdown с резиновой петлёй / Разгибание локтя с петлёй (любые вариации Tricep Band Pushdown — заменяй на Tricep Dip / Close-Grip Push-Up / Overhead DB Tricep Extension)
+  Sled Push / Sled Pull / Sled Drag / Prowler Push / любые упражнения с санями | Присед со штангой на спине (Back Squat) | Жим штанги лёжа (Bench Press barbell) | Nordic Curl (любые вариации) | Ab Wheel Rollout / Ab Roller (любые вариации) | Broad Jump (горизонтальный прыжок — заменяй вертикальными: Tuck Jump / Weighted Jump Squat / CMJ) | DB Floor Press / жим гантелей лёжа на полу (заменяй жимом на скамье с полным ROM) | Incline Push-Up / наклонные отжимания (любые вариации — не использовать) | Band Wrist Stability / резиновая петля стабилизация запястья (любые вариации с петлёй на запястье) | Jump Set Drill / прыжок с имитацией передачи (любые вариации — запрещено для всех позиций) | KB Press / жим с гирями (все вариации жимовых движений с гирей стоя или лёжа — заменяй на DB Press на скамье или Landmine Press) | Tricep Pushdown с резиновой петлёй / Разгибание локтя с петлёй (любые вариации Tricep Band Pushdown — заменяй на Tricep Dip / Close-Grip Push-Up / Overhead DB Tricep Extension)
 
 ✅ ОБОРУДОВАНИЕ:
-  Трэп-штанга | Гири (KB) | Гантели (DB) | Медболы | Слайдеры | Петли TRX | Cable | Landmine | Sled | Резиновые петли | Mini bands | Плиометрические ящики | Турник
-  НЕТ: обычная штанга как основной инструмент, тренажёры/машины как основной силовой блок
+  Трэп-штанга | Гири (KB) | Гантели (DB) | Медболы | Слайдеры | Петли TRX | Cable | Landmine | Резиновые петли | Mini bands | Плиометрические ящики | Турник
+  НЕТ: сани/Sled/Prowler, обычная штанга как основной инструмент, тренажёры/машины как основной силовой блок
 
 ✅ ПРОГРЕССИЯ + ОСМЫСЛЕННАЯ ВАРИАТИВНОСТЬ:
   • Главные упражнения A1/B1/C1 — якоря прогрессии. Сохраняй 1-2 подходящих якоря на 3-6 экспозиций, чтобы измерять рост веса, RPE, скорости и качества техники.
@@ -1809,10 +1811,9 @@ export default async function handler(req, res) {
 
     // Deterministic audit remains visible to the coach but never triggers a
     // second paid model call or discards a usable response.
-    let quality = assessSessionQuality(session, { ...qualityContext, playerRestrictions });
-    quality = advisorySessionQuality(quality);
-
     session = normalizeExerciseLanguage(session, focus);
+    session = sanitizeUnavailableEquipmentExercises(session);
+    const quality = advisorySessionQuality(assessSessionQuality(session, { ...qualityContext, playerRestrictions }));
 
     console.log('GEN blocks:', session.blocks?.length,
       'ex per block:', session.blocks?.map(b => b.exercises?.length),

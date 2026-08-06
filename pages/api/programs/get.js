@@ -5,6 +5,7 @@
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { sessionKey } from '../../../lib/workspacePrefix';
+import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
@@ -23,6 +24,7 @@ export default async function handler(req, res) {
     const raw = await redis('get', sessionKey(workspace, playerId, date));
     if (!raw) return res.status(200).json({ record: null });
     const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (record?.session) record.session = sanitizeUnavailableEquipmentExercises(record.session);
     return res.status(200).json({ record });
   } catch (e) {
     return res.status(500).json({ error: e.message });

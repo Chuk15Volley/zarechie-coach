@@ -6,6 +6,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { pfx } from '../../../lib/workspacePrefix';
 
 const FOCUS_LABELS = {
@@ -220,7 +221,7 @@ ${phaseGuidance}
 
     const data = await r.json();
     const toolCall = findOpenAIFunctionCall(data.output, 'build_team_warmup');
-    const plan = parseFunctionArguments(toolCall?.arguments);
+    const plan = sanitizeUnavailableEquipmentExercises(parseFunctionArguments(toolCall?.arguments));
     if (!plan) return res.status(502).json({ error: 'Модель не вернула структуру разминки' });
 
     // Ensure core fields are consistent with the request.

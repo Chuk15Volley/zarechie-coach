@@ -12,6 +12,7 @@ import { sessionKey, sessionsKey, exweightKey, exhistKey, gymTonnageKey, gymTonn
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import { assessSessionQuality } from '../../../lib/sessionValidator';
 import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
+import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
 
 function formatKg(value) {
@@ -55,7 +56,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'playerId, date and session are required' });
   }
 
-  const normalizedSession = normalizeSavedWeights(session);
+  const normalizedSession = sanitizeUnavailableEquipmentExercises(normalizeSavedWeights(session));
   const saveQuality = advisorySessionQuality(assessSessionQuality(normalizedSession, {
     focus,
     trainingType,

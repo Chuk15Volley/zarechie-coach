@@ -1638,6 +1638,7 @@ function ExerciseCard({
 }
 
 const CAMP_FORBIDDEN = [
+  { re: /\bsled\b|\bprowler\b|\bсан(?:и|ей|ями|ям|ях|ки|ок|кам|ками|ках)\b/i, label: 'Сани / Sled / Prowler — оборудования нет' },
   { re: /back squat|классический присед|присед.*со штанг.*спин/i, label: 'Классический присед (Back Squat)' },
   { re: /barbell bench press|bench press barbell|жим штанги лёжа/i, label: 'Жим штанги лёжа' },
   { re: /front squat|присед.*со штанг.*груд|фронтальн.*присед/i, label: 'Front Squat' },

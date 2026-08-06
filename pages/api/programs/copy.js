@@ -3,6 +3,7 @@ import { isAuthorized } from '../../../lib/auth';
 import { restrictionsKey, rosterKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
 import { assessSessionQuality } from '../../../lib/sessionValidator';
 import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
+import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
 
 function parseJSON(raw) {
@@ -61,6 +62,7 @@ export default async function handler(req, res) {
 
   const newRecord = {
     ...record,
+    session: sanitizeUnavailableEquipmentExercises(record.session),
     player: targetPlayer || record.player,
     savedAt: new Date().toISOString(),
   };
