@@ -146,7 +146,6 @@ export default async function handler(req, res) {
       performanceLatest: {
         rsi: kpis.rsi,
         cmj: kpis.cmj,
-        attackJump: kpis.attackJump,
         sprint10m: kpis.sprint10m,
       },
       acwrHistory,

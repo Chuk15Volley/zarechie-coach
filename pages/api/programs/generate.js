@@ -113,8 +113,8 @@ const FOCUS_LABELS = {
   zvs_strength_base:  'Межсезонье: Силовая база — двусторонние паттерны под нагрузкой, первые PAP-пары 75-80%; RPE 7-8; JLU ≤350',
   zvs_power_transfer: 'Межсезонье: Мощность и перенос — полные PAP-кластеры 80-87.5%, Resisted Approach Jump, позиционная работа; тейпер последняя неделя; RPE 8-9; JLU ≤500',
   // ── СЕЗОН ЗАРЕЧЬЕ 2025–2026 (сентябрь 2025 — апрель 2026) ───────────────
-  inseason_strength:     'СЕЗОН · СИЛОВАЯ — 40 мин, без разминки (разминка уже сделана в игровом зале). 4 блока строго: 1) НИЗ ТЕЛА — преимущественно унилатерально, колено+таз-доминантно (Bulgarian Split Squat, Split Squat, выпады, Goblet Squat, Romanian Deadlift, SL RDL); 2) ВЕРХ ТЕЛА — жимы + подтягивания + тяги (DB Bench Press, Pull-up, Australian Pull-up, DB Row, Landmine Press); 3) АКЦЕНТ — профилактика / слабое звено по позиции; 4) КОР — антиротация / антиэкстензия / переноски (Pallof, Dead Bug, Suitcase Carry). ТОЛЬКО свободные веса, НИКАКИХ тренажёров. Не позже MD-3. Позиционные протоколы (Либеро/Связка/ОПП/MB/OH) применять как на сборах.',
-  inseason_power:        'СЕЗОН · МОЩНОСТНАЯ — 40-45 мин, гибрид-контраст: (1) безопасное скоростное движение DB/KB/trap-bar/medball/landmine/sled с максимальной скоростью концентрики; (2) низко- или среднеударная плиометрика по готовности (pogo, snap-down, box jump low, medball throw, plyo push-up). Не позже MD-3. Без медленной эксцентрики, без высокообъёмной плиометрики рядом с игрой, без обычной штанги.',
+  inseason_strength:     'СЕЗОН · СИЛОВАЯ — 40-50 мин, без разминки (разминка уже сделана в игровом зале). 4 блока строго: 1) НИЗ ТЕЛА — преимущественно унилатерально, колено+таз-доминантно (Bulgarian Split Squat, Split Squat, выпады, Goblet Squat, Romanian Deadlift, SL RDL); 2) ВЕРХ ТЕЛА — жимы + подтягивания + тяги (DB Bench Press, Pull-up, Australian Pull-up, DB Row, Landmine Press); 3) АКЦЕНТ — профилактика / слабое звено по позиции; 4) КОР — антиротация / антиэкстензия / переноски (Pallof, Dead Bug, Suitcase Carry). ТОЛЬКО свободные веса, НИКАКИХ тренажёров. Не позже MD-3. Позиционные протоколы (Либеро/Связка/ОПП/MB/OH) применять как на сборах.',
+  inseason_power:        'СЕЗОН · МОЩНОСТНАЯ — 40-50 мин, гибрид-контраст: (1) безопасное скоростное движение DB/KB/trap-bar/medball/landmine/sled с максимальной скоростью концентрики; (2) низко- или среднеударная плиометрика по готовности (pogo, snap-down, box jump low, medball throw, plyo push-up). Не позже MD-3. Без медленной эксцентрики, без высокообъёмной плиометрики рядом с игрой, без обычной штанги.',
   inseason_prophylaxis:  'СЕЗОН · ПРОФИЛАКТИКА/ВОССТАНОВЛЕНИЕ — день MD+2 после игры (обычно понедельник) + pre-game MD-1. Слабые звенья волейболиста, мобильность, контроль движения, стабилизация суставов. БЕЗ тяжёлой штанги, БЕЗ высокоударной плиометрики. Pre-game MD-1: короткая нейромышечная активация + тонус, не утомлять.',
   inseason_accumulation: 'СЕЗОН · ФЕВРАЛЬ · БЛОК НАКОПЛЕНИЯ СИЛЫ — 60 мин (вместо обычных 40). Структура та же (4 блока), все блоки удлиняются пропорционально: больше сетов/упражнений. Интенсивность 80–87% 1ПМ с индивидуальной поправкой по состоянию (CMJ/RSI baseline + Recovery). Единственное окно сезона для реального набора силы перед мартовской конверсией. Волна 3:1 сохраняется. «Священные» упражнения обязательны.',
   inseason_conversion:   'СЕЗОН · МАРТ-АПРЕЛЬ · КОНВЕРСИЯ В МОЩНОСТЬ — перевод накопленной февральской силы в скоростно-силовые качества к плей-офф. Смещение акцента: больше баллистики и плиометрики, снижение медленной силовой работы, поддержание нейромышечной готовности. 40–50 мин.',
@@ -742,8 +742,8 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
 
 Периодизация по датам:
   • 13.07.2026-02.08.2026 — эксцентрика / тканевая подготовка, 3 тренировки в неделю: 1) Передняя цепь, 2) Задняя цепь, 3) Все тело. Длительность 60-75 мин. Эксцентрический темп 5 секунд вниз + вверх максимально резко применяется ТОЛЬКО в основных силовых упражнениях A1/B1/C1.
-  • 03.08.2026-16.08.2026 — изометрика + сила, 4 тренировки в неделю: 1) Передняя цепь, 2) Задняя цепь, 3) Передняя цепь, 4) Задняя цепь. Длительность 60-75 мин. Изометрия: пауза 5 секунд в напряжении + вверх максимально резко ТОЛЬКО в основных силовых A1/B1/C1.
-  • С 17.08.2026 — мощность / скорость / переход к сезону. Соревновательная логика: 40-45 мин, осторожно, адаптивно, минимум лишнего риска, акцент на мощность и взрывную силу. НЕ используй медленную 5-секундную эксцентрику/изометрику как метод сезона.
+  • 03.08.2026-16.08.2026 — изометрика + сила, 4 тренировки в неделю: 1) Передняя цепь, 2) Задняя цепь, 3) Передняя цепь, 4) Задняя цепь. Длительность 60-70 мин. Изометрия: пауза 5 секунд в напряжении + вверх максимально резко ТОЛЬКО в основных силовых A1/B1/C1.
+  • С 17.08.2026 — мощность / скорость / переход к сезону, 2-3 силовые тренировки в неделю по 40-50 мин. Соревновательная логика осторожная и адаптивная: минимум лишнего риска, акцент на мощность и взрывную силу. НЕ используй медленную 5-секундную эксцентрику/изометрику как метод сезона.
 
 Главные качества волейболиста:
   сила нижней части, мощность прыжка, скорость перемещений, торможение/приземление, плечевой пояс, стабилизация корпуса, профилактика колена/поясницы/голеностопа.
@@ -771,8 +771,9 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
   • Если тренер выбрал тяжёлую тему, но готовность/боль плохие: сохрани тему, но снизь нагрузку и замени рискованные упражнения.
 
 Размер сессии:
-  • Сборы 60-75 мин: 10-12 упражнений.
-  • Сезон 40-45 мин: 7-10 упражнений.
+  • Текущий изометрический период 60-70 мин: 10-12 упражнений.
+  • Сезон 40-50 мин: 7-10 упражнений, 2-3 силовые сессии в неделю.
+  • Прыжковая нагрузка доступна только общим количеством прыжков. Не выдумывай распределение по атаке/блоку/подаче; учитывай тип сессии, позицию и общий объём.
   • Recovery <33% или Recovery / Prehab: 5-7 упражнений.
 
 Структура результата:
@@ -1485,16 +1486,16 @@ FIELD name — ENGLISH ONLY (professional S&C terminology):
 // (generate-async.js) so both produce byte-identical prompts. Returns either
 // { error, status } on failure or { snapshot, userPrompt, dataSummary, targetDate, dayGoal }.
 export async function buildGenerationInputs(body) {
-  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie' } = body || {};
+  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie', planningMode = '' } = body || {};
   if (!playerId) return { error: 'playerId required', status: 400 };
   const wpfx = pfx(workspace);
 
   const today = todayISO();
   const targetDate = date || today;
-  const dayAfterTomorrow = new Date(today + 'T12:00:00');
-  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
-  if (targetDate >= dayAfterTomorrow.toISOString().slice(0, 10)) {
-    return { error: 'Дата не может быть позже завтрашнего дня', status: 400 };
+  const futureLimit = new Date(today + 'T12:00:00');
+  futureLimit.setDate(futureLimit.getDate() + (planningMode === 'week' ? 8 : 2));
+  if (targetDate >= futureLimit.toISOString().slice(0, 10)) {
+    return { error: planningMode === 'week' ? 'План недели ограничен семью днями' : 'Дата не может быть позже завтрашнего дня', status: 400 };
   }
 
   const prevDate = shiftDateStr(targetDate, -1);
@@ -1547,7 +1548,7 @@ export async function buildGenerationInputs(body) {
   let focusDowngradeNote = '';
   if (workspace === 'zarechie' && focus === 'inseason_power') {
     const kpis = performanceKpis(snapshot.neuro, targetDate);
-    const depressed = [kpis.rsi, kpis.cmj, kpis.attackJump, kpis.sprint10m]
+    const depressed = [kpis.rsi, kpis.cmj, kpis.sprint10m]
       .filter(metric => metric.value != null && !metric.stale && metric.performanceDeltaPercent != null && metric.performanceDeltaPercent <= -5);
     if (depressed.length >= 2) {
       const detail = depressed.map(metric => `${metric.label} ${metric.performanceDeltaPercent}% от baseline`).join(', ');

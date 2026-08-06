@@ -140,11 +140,10 @@ export default async function handler(req, res) {
     const whoop = (snapshot.whoop || []).find(record => record.date === targetDate) || null;
     const kpis = performanceKpis(snapshot.neuro, targetDate);
     const neuro = {
-      fresh: [kpis.rsi, kpis.cmj, kpis.attackJump, kpis.sprint10m]
+      fresh: [kpis.rsi, kpis.cmj, kpis.sprint10m]
         .some(metric => metric.value != null && !metric.stale),
       rsi: kpis.rsi,
       cmj: kpis.cmj,
-      attackJump: kpis.attackJump,
       sprint10m: kpis.sprint10m,
     };
     // The evening questionnaire describes readiness for the next training day.
@@ -200,7 +199,6 @@ export default async function handler(req, res) {
         fresh: neuro.fresh,
         cmj: neuro.cmj,
         rsi: neuro.rsi,
-        attackJump: neuro.attackJump,
         sprint10m: neuro.sprint10m,
       },
       restrictions: Array.isArray(restrictions) ? restrictions : [],

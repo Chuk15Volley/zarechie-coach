@@ -539,10 +539,14 @@ function getWeekFocuses(focus) {
     ];
   }
   if (focus.startsWith('camp_iso_')) {
+    const startsPosterior = focus === 'camp_iso_posterior';
+    const anterior = { focus: 'camp_iso_anterior', label: 'Передняя цепь' };
+    const posterior = { focus: 'camp_iso_posterior', label: 'Задняя цепь' };
     return [
-      { focus: 'camp_iso_anterior',  label: 'Передняя цепь' },
-      { focus: 'camp_iso_posterior', label: 'Задняя цепь' },
-      { focus: 'zvs_recovery',       label: 'Восстановление' },
+      startsPosterior ? posterior : anterior,
+      startsPosterior ? anterior : posterior,
+      startsPosterior ? posterior : anterior,
+      startsPosterior ? anterior : posterior,
     ];
   }
   if (focus === 'camp_explosive') {
@@ -647,8 +651,8 @@ const WARMUP_PHASE_MAP = { 1: 'Эксцентрика · нед. 1-3', 2: 'Из�
 
 const PHASES_BY_PERIOD = {
   inseason: [
-    { value: 'inseason_strength',     label: 'Силовая / поддержание', sub: '40-45 мин · RPE 6-7' },
-    { value: 'inseason_power',        label: 'Мощность / скорость',   sub: '40-45 мин · взрывная сила' },
+    { value: 'inseason_strength',     label: 'Силовая / поддержание', sub: '40-50 мин · RPE 6-7' },
+    { value: 'inseason_power',        label: 'Мощность / скорость',   sub: '40-50 мин · взрывная сила' },
     { value: 'inseason_prophylaxis',  label: 'Профилактика',          sub: 'Слабые звенья · суставы' },
     { value: 'inseason_deload',       label: 'Разгрузочная неделя',  sub: 'Каждые 4 недели' },
     { value: 'inseason_accumulation', label: 'Накопление · Февраль', sub: '60 мин · 80–87% 1ПМ' },
@@ -1750,7 +1754,6 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
   const neuroMetrics = [
     ['RSI', data.neuro?.rsi, ''],
     ['CMJ', data.neuro?.cmj, ' см'],
-    ['AJ', data.neuro?.attackJump, ' см'],
     ['10 м', data.neuro?.sprint10m, ' с'],
   ].filter(([, metric]) => metric?.value != null);
 
@@ -3018,7 +3021,8 @@ export default function Home() {
     setMeta(null);
     setError('');
     const focusList = getWeekFocuses(focus);
-    const dates = [date, addDaysToDate(date, 2), addDaysToDate(date, 4)];
+    const offsets = focusList.length === 4 ? [0, 2, 4, 6] : [0, 2, 4];
+    const dates = focusList.map((_, index) => addDaysToDate(date, offsets[index] ?? index * 2));
     try {
       const warmupSummary = todayWarmup ? summarizeWarmupForGym(todayWarmup) : '';
       // Generate days sequentially, accumulating used exercises so each new day avoids
@@ -3042,6 +3046,7 @@ export default function Home() {
             teamUsedExercises: usedExercises,
             coachRecovery: recoveryStatus,
             workspace,
+            planningMode: 'week',
           }),
         }).then(r => r.json());
 
@@ -4530,13 +4535,6 @@ export default function Home() {
                                 <span className="text-slate-600">RSI</span>
                                 <span className="font-bold text-slate-200 tabular-nums">{p.rsi}</span>
                                 {p.kpiFreshness?.rsi?.stale && <span className="text-[8px] text-amber-500/70">устар.</span>}
-                              </span>
-                            )}
-                            {p.attackJump != null && (
-                              <span className="flex items-center gap-1 text-slate-400">
-                                <span className="text-slate-600">AJ</span>
-                                <span className="font-bold text-slate-200 tabular-nums">{p.attackJump}</span>
-                                {p.kpiFreshness?.attackJump?.stale && <span className="text-[8px] text-amber-500/70">устар.</span>}
                               </span>
                             )}
                             {p.sprint10m != null && (
@@ -6547,7 +6545,7 @@ export default function Home() {
                 <Calendar size={14} className="text-accent" />
                 <h2 className="text-sm font-black tracking-tight text-white">План недели</h2>
                 <div className="h-px flex-1 bg-gradient-to-r from-white/[0.07] to-transparent" />
-                <span className="text-[10px] text-slate-600">3 тренировки · {weekPlan[0]?.date} → {weekPlan[2]?.date}</span>
+                <span className="text-[10px] text-slate-600">Сессий: {weekPlan.length} · {weekPlan[0]?.date} → {weekPlan[weekPlan.length - 1]?.date}</span>
               </div>
               {weekPlan.map((item, idx) => (
                 <div key={idx} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] backdrop-blur-xl">

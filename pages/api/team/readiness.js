@@ -109,11 +109,9 @@ export default async function handler(req, res) {
       const cmjDrop = kpis.cmj.performanceDeltaPercent;
       const rsi = kpis.rsi.value;
       const rsiDate = kpis.rsi.date;
-      const attackJump = kpis.attackJump.value;
-      const attackJumpDate = kpis.attackJump.date;
       const sprint10m = kpis.sprint10m.value;
       const sprint10mDate = kpis.sprint10m.date;
-      const freshKpis = [kpis.rsi, kpis.cmj, kpis.attackJump, kpis.sprint10m]
+      const freshKpis = [kpis.rsi, kpis.cmj, kpis.sprint10m]
         .filter(metric => metric.value != null && !metric.stale);
       const worstKpiChange = freshKpis
         .map(metric => metric.performanceDeltaPercent)
@@ -180,11 +178,10 @@ export default async function handler(req, res) {
         recovery, hrv, sleep_hours,
         mws, doms, readiness,
         cmj, cmjDate, cmjBaseline, cmjDrop, rsi, rsiDate,
-        attackJump, attackJumpDate, sprint10m, sprint10mDate,
+        sprint10m, sprint10mDate,
         kpiFreshness: {
           rsi: { ageDays: kpis.rsi.ageDays, stale: kpis.rsi.stale },
           cmj: { ageDays: kpis.cmj.ageDays, stale: kpis.cmj.stale },
-          attackJump: { ageDays: kpis.attackJump.ageDays, stale: kpis.attackJump.stale },
           sprint10m: { ageDays: kpis.sprint10m.ageDays, stale: kpis.sprint10m.stale },
         },
         lsi, lsiDate,
