@@ -526,30 +526,30 @@ function rescheduleEarliestDate(fromDate) {
 function getWeekFocuses(focus) {
   if (focus.startsWith('inseason_') || focus.startsWith('zvs_') || focus === 'inseason') {
     return [
-      { focus: 'inseason_strength',    label: 'Силовая · Вт' },
-      { focus: 'inseason_power',       label: 'Мощностная · Ср' },
-      { focus: 'inseason_prophylaxis', label: 'Профилактика · Пн' },
+      { focus: 'inseason_strength',    label: 'Силовая' },
+      { focus: 'inseason_power',       label: 'Мощностная' },
+      { focus: 'inseason_prophylaxis', label: 'Профилактика' },
     ];
   }
   if (focus.startsWith('camp_ecc_')) {
     return [
-      { focus: 'camp_ecc_anterior',  label: 'Пн — Передняя цепь' },
-      { focus: 'camp_ecc_posterior', label: 'Вт — Задняя цепь' },
-      { focus: 'camp_ecc_fullbody',  label: 'Пт — Всё тело' },
+      { focus: 'camp_ecc_anterior',  label: 'Передняя цепь' },
+      { focus: 'camp_ecc_posterior', label: 'Задняя цепь' },
+      { focus: 'camp_ecc_fullbody',  label: 'Всё тело' },
     ];
   }
   if (focus.startsWith('camp_iso_')) {
     return [
-      { focus: 'camp_iso_anterior',  label: 'Пн/Пт — Передняя цепь' },
-      { focus: 'camp_iso_posterior', label: 'Вт/Сб — Задняя цепь' },
+      { focus: 'camp_iso_anterior',  label: 'Передняя цепь' },
+      { focus: 'camp_iso_posterior', label: 'Задняя цепь' },
       { focus: 'zvs_recovery',       label: 'Восстановление' },
     ];
   }
   if (focus === 'camp_explosive') {
     return [
-      { focus: 'camp_explosive', label: 'Понедельник' },
-      { focus: 'camp_explosive', label: 'Вторник' },
-      { focus: 'camp_explosive', label: 'Пятница' },
+      { focus: 'camp_explosive', label: 'Сессия 1' },
+      { focus: 'camp_explosive', label: 'Сессия 2' },
+      { focus: 'camp_explosive', label: 'Сессия 3' },
     ];
   }
   if (focus.startsWith('pep_')) {
@@ -657,12 +657,12 @@ const PHASES_BY_PERIOD = {
     { value: 'inseason_md1_activation', label: 'Активация / мощность', sub: 'MD-1 / утро матча · 25-35 мин' },
   ],
   camp: [
-    { value: 'camp_ecc_anterior',  label: 'Эксцентрика · Передняя цепь',  sub: 'Понедельник / Нед.1-3' },
-    { value: 'camp_ecc_posterior', label: 'Эксцентрика · Задняя цепь',    sub: 'Вторник / Нед.1-3' },
-    { value: 'camp_ecc_fullbody',  label: 'Эксцентрика · Всё тело',       sub: 'Пятница / Нед.1-3' },
-    { value: 'camp_iso_anterior',  label: 'Изометрика · Передняя цепь',   sub: 'Пн+Пт / Нед.4-5' },
-    { value: 'camp_iso_posterior', label: 'Изометрика · Задняя цепь',     sub: 'Вт+Сб / Нед.4-5' },
-    { value: 'camp_explosive',     label: 'Взрыв / Потенциация',           sub: 'Неделя 6 · Тейпер' },
+    { value: 'camp_ecc_anterior',  label: 'Эксцентрика · Передняя цепь',  sub: 'Ручной выбор метода' },
+    { value: 'camp_ecc_posterior', label: 'Эксцентрика · Задняя цепь',    sub: 'Ручной выбор метода' },
+    { value: 'camp_ecc_fullbody',  label: 'Эксцентрика · Всё тело',       sub: 'Ручной выбор метода' },
+    { value: 'camp_iso_anterior',  label: 'Изометрика · Передняя цепь',   sub: 'Ручной выбор метода' },
+    { value: 'camp_iso_posterior', label: 'Изометрика · Задняя цепь',     sub: 'Ручной выбор метода' },
+    { value: 'camp_explosive',     label: 'Взрыв / Потенциация',           sub: 'Ручной выбор метода' },
   ],
   offseason: [
     { value: 'zvs_struct',         label: 'Структурная подготовка', sub: 'ЗВС Фаза 1' },
@@ -700,7 +700,7 @@ function defaultTrainingTypeForFocus(focusValue) {
   return 'anterior_chain';
 }
 
-const NK_PHASE_SUB = {
+const MANUAL_PHASE_SUB = {
   inseason_strength: 'Ручной выбор · силовая',
   inseason_power: 'Ручной выбор · мощность',
   inseason_prophylaxis: 'Ручной выбор · профилактика',
@@ -728,14 +728,7 @@ function phaseLabelForWorkspace(phase, workspace) {
 }
 
 function phaseSubForWorkspace(phase, workspace) {
-  return workspace === 'nkperf' ? (NK_PHASE_SUB[phase.value] || 'Ручной выбор') : phase.sub;
-}
-
-function getPeriodForFocus(focusValue) {
-  for (const [p, phases] of Object.entries(PHASES_BY_PERIOD)) {
-    if (phases.some(ph => ph.value === focusValue)) return p;
-  }
-  return 'inseason';
+  return MANUAL_PHASE_SUB[phase.value] || (workspace === 'nkperf' ? 'Ручной выбор' : phase.sub);
 }
 
 function getFocusLabel(period, focusValue) {
@@ -837,34 +830,6 @@ function shiftMonth(month, n) {
 function monthLabel(month) {
   const [y, m] = month.split('-').map(Number);
   return `${MONTH_NAMES[m - 1]} ${y}`;
-}
-
-function computeSuggestion(date, events) {
-  if (!date || !events.length) return null;
-  const evMap = {};
-  events.forEach(e => { evMap[e.date] = e.type; });
-
-  let daysSinceLast = null;
-  for (let i = 1; i <= 7; i++) {
-    if (evMap[addDaysToStr(date, -i)] === 'game') { daysSinceLast = i; break; }
-  }
-
-  let daysToNext = null;
-  for (let i = 1; i <= 21; i++) {
-    if (evMap[addDaysToStr(date, i)] === 'game') { daysToNext = i; break; }
-  }
-
-  const hasTravelSoon =
-    evMap[addDaysToStr(date, 1)] === 'travel' || evMap[addDaysToStr(date, 2)] === 'travel';
-
-  if (daysSinceLast === 1) return { focus: 'zvs_recovery', reason: 'День после игры' };
-  if (daysToNext === 1) return { focus: 'zvs_power_day', reason: 'Завтра игра' };
-  if (daysToNext === 2 && hasTravelSoon) return { focus: 'zvs_power_day', reason: 'Через 2 дня игра + завтра перелёт' };
-  if (daysToNext != null && daysToNext >= 2) {
-    const w = daysToNext === 2 ? 'дня' : 'дней';
-    return { focus: 'zvs_strength_day', reason: `${daysToNext} ${w} до следующей игры` };
-  }
-  return null;
 }
 
 const DAYS_RU = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
@@ -1869,8 +1834,6 @@ export default function Home() {
   const [genStage, setGenStage] = useState('');
   const genTimers = useRef([]);
 
-  const [autoFocusNote, setAutoFocusNote] = useState(null);
-
   // Main section navigation
   const [mainSection, setMainSection] = useState('workouts'); // 'workouts' | 'warmup'
 
@@ -2455,23 +2418,6 @@ export default function Home() {
     setPlannerLoading(false);
   }
 
-  // Auto-apply schedule suggestion when date changes
-  useEffect(() => {
-    if (workspace === 'nkperf') {
-      setAutoFocusNote(null);
-      return;
-    }
-    const sug = computeSuggestion(date, scheduleEvents);
-    if (!sug) { setAutoFocusNote(null); return; }
-    const p = getPeriodForFocus(sug.focus);
-    if (p) setPeriod(p);
-    setFocus(sug.focus);
-    setAutoFocusNote(sug.reason);
-    const t = setTimeout(() => setAutoFocusNote(null), 5000);
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, workspace, scheduleEvents]);
-
   const filteredPlayers = (positionFilter === 'all' ? players : players.filter(p => {
     const pos = (p.position || '').toLowerCase();
     if (positionFilter === 'diagonal') return pos.includes('диагон');
@@ -2557,7 +2503,7 @@ export default function Home() {
     return [
       { label: 'Фаза', ok: !!focus, detail: getFocusLabel(period, focus) },
       { label: 'Тип', ok: !!trainingType, detail: TRAINING_TYPE_LABELS[trainingType] || 'не выбран' },
-      { label: workspace === 'nkperf' ? 'NK ручной режим' : 'Расписание Заречья', ok: true, detail: workspace === 'nkperf' ? 'без календаря Заречья' : 'учитывается для MD-логики' },
+      { label: 'Ручной метод', ok: true, detail: workspace === 'zarechie' ? 'календарь меняет только нагрузку' : 'без календаря Заречья' },
       { label: 'Recovery', ok: recoveryStatus !== 'red' || exCount <= 8, detail: recoveryStatus === 'red' ? 'сниженный объем' : 'по готовности' },
       { label: 'Упражнения', ok: exCount >= targetMin && exCount <= targetMax, detail: `${exCount} / цель ${targetMin}-${targetMax}` },
       { label: 'Запреты', ok: methodViolations.length === 0, detail: methodViolations.length ? `${methodViolations.length} наруш.` : 'чисто' },
@@ -3445,11 +3391,6 @@ export default function Home() {
     setScheduleEvents(updated);
     saveScheduleToServer(updated);
   }
-
-  const suggestion = useMemo(
-    () => (workspace === 'nkperf' ? null : computeSuggestion(date, scheduleEvents)),
-    [date, scheduleEvents, workspace]
-  );
 
   return (
     <>
@@ -5660,34 +5601,6 @@ export default function Home() {
                 />
               </div>
             </div>
-
-              {autoFocusNote && (
-                <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2">
-                  <Check size={12} className="shrink-0 text-emerald-400" />
-                  <span className="text-[11px] text-emerald-300">Фокус применён автоматически: {autoFocusNote}</span>
-                </div>
-              )}
-
-              {/* Schedule suggestion */}
-              {suggestion && (
-                <div className="mt-2 animate-fade-in flex items-center justify-between gap-2 rounded-xl border border-accent/15 bg-accent/[0.04] px-3 py-2">
-                  <div className="min-w-0">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-accent/60">Расписание → </span>
-                    <span className="text-[11px] text-slate-400">{suggestion.reason}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const p = getPeriodForFocus(suggestion.focus);
-                      setPeriod(p);
-                      setFocus(suggestion.focus);
-                    }}
-                    className={`shrink-0 rounded-lg border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11px] font-bold text-accent transition hover:bg-accent/20 ${focusRing}`}
-                  >
-                    Применить
-                  </button>
-                </div>
-              )}
 
             <div className="mt-4">
               <SectionLabel icon={<MessageSquare size={11} />} text="Комментарии тренера" />
