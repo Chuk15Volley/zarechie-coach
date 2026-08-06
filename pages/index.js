@@ -2189,7 +2189,6 @@ export default function Home() {
     if (workspace === 'nkperf') {
       setScheduleEvents([]);
       setShowSchedule(false);
-      setAutoFocusNote(null);
       return;
     }
     fetch(`/api/schedule?workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
