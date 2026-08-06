@@ -1770,7 +1770,7 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
         </div>
       </div>
 
-      <p className="mt-2 text-[10px] leading-snug text-slate-600">{data.decision?.detail} При генерации статус тренера остаётся сильнее автоматической оценки.</p>
+      <p className="mt-2 text-[10px] leading-snug text-slate-600">{data.decision?.detail} При генерации применяется более осторожный из статуса тренера и автоматической оценки; выбранный метод тренировки сохраняется.</p>
     </section>
   );
 }

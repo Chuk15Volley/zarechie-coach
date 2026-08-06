@@ -17,6 +17,7 @@ import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage
 import { formatPerformanceKpisForPrompt, performanceKpis } from '../../../lib/performanceKpis.mjs';
 import { evaluateDevelopmentPlan, formatDevelopmentPlanForPrompt } from '../../../lib/developmentPlan.mjs';
 import { buildDosePrescription, formatDosePrescriptionForPrompt } from '../../../lib/sessionDose.mjs';
+import { readinessDecisionFromSnapshot, strictestRecoveryStatus } from '../../../lib/readinessDecision.mjs';
 import {
   isOutputTokenLimit,
   SESSION_GENERATION_MODEL,
@@ -1565,15 +1566,30 @@ export async function buildGenerationInputs(body) {
     ? formatPlaybookForPrompt(playbookData, snapshot.player?.position || '', effectiveFocus)
     : '';
 
+  const testsExpected = workspace === 'zarechie';
+  const readinessKpis = testsExpected ? performanceKpis(snapshot.neuro, targetDate) : null;
+  const readiness = readinessDecisionFromSnapshot(snapshot, targetDate, {
+    testsExpected,
+    neuroFresh: testsExpected && [readinessKpis.rsi, readinessKpis.cmj, readinessKpis.sprint10m]
+      .some(metric => metric.value != null && !metric.stale),
+  });
+  const effectiveRecovery = strictestRecoveryStatus(coachRecovery, readiness.decision.level);
+
   let { userPrompt, dataSummary } = buildUserPrompt({
     snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks,
     actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType, notes, warmupSummary, teamUsedExercises, coachRecovery, microcycleSlot,
     playbookText, workspace,
   });
-  const dosePrescription = buildDosePrescription({ focus: effectiveFocus, trainingType, coachRecovery });
+  const dosePrescription = buildDosePrescription({ focus: effectiveFocus, trainingType, coachRecovery: effectiveRecovery });
   const doseText = formatDosePrescriptionForPrompt(dosePrescription);
   userPrompt += doseText;
   dataSummary += doseText;
+  if (effectiveRecovery !== coachRecovery) {
+    const readinessNote = `\n⚠ АВТОМАТИЧЕСКАЯ КОРРЕКЦИЯ ДОЗЫ: ${readiness.decision.label}. ${readiness.decision.detail} `
+      + `Выбранная тренером цепь и метод сохраняются, но объём, длительность и RPE обязаны соответствовать статусу ${effectiveRecovery.toUpperCase()}.\n`;
+    userPrompt += readinessNote;
+    dataSummary += readinessNote;
+  }
   if (focusDowngradeNote) { userPrompt += focusDowngradeNote; dataSummary += focusDowngradeNote; }
 
   const matchLoadText = workspace === 'zarechie'
@@ -1632,6 +1648,7 @@ export async function buildGenerationInputs(body) {
       trainingType,
       recentSessionSummaries: sessionSummaries,
       dosePrescription,
+      effectiveRecovery,
     },
   };
 }

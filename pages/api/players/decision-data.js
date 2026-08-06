@@ -6,6 +6,11 @@ import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { redis } from '../../../lib/redis';
 import { restrictionsKey, scheduleKey } from '../../../lib/workspacePrefix';
 import { performanceKpis } from '../../../lib/performanceKpis.mjs';
+import {
+  readinessDecisionFromSnapshot,
+  readinessNumber as number,
+  readinessZones as zoneSummary,
+} from '../../../lib/readinessDecision.mjs';
 
 function shiftDate(date, amount) {
   const value = new Date(`${date}T12:00:00`);
@@ -17,29 +22,6 @@ function parseJSON(raw, fallback) {
   if (raw == null) return fallback;
   if (typeof raw === 'object') return raw;
   try { return JSON.parse(raw); } catch { return fallback; }
-}
-
-function number(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function latestOnOrBefore(records, date) {
-  return [...(records || [])]
-    .filter(record => record?.date && record.date <= date)
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || null;
-}
-
-function zoneSummary(survey) {
-  const zones = Object.entries(survey?.zoneDetails || {})
-    .map(([area, detail]) => ({
-      area,
-      type: detail?.type === 'pain' ? 'pain' : 'soreness',
-      level: number(detail?.level),
-    }))
-    .filter(zone => zone.area && zone.level != null && zone.level > 0);
-  if (zones.length) return zones;
-  return (survey?.painAreas || []).map(area => ({ area, type: 'pain', level: null }));
 }
 
 function scheduleContext(events, targetDate) {
@@ -69,48 +51,6 @@ function scheduleContext(events, targetDate) {
   return { level: 'green', label: 'Календарь без ближайшего матча', detail: 'Режим определяется фазой и состоянием игрока.' };
 }
 
-function decisionLevel({ evening, eveningFresh, morning, whoop, neuro, activeInjuries, testsExpected = true }) {
-  const zones = zoneSummary(evening);
-  const strongestPain = Math.max(0, ...zones.filter(zone => zone.type === 'pain').map(zone => zone.level || 0));
-  const unscoredPain = zones.some(zone => zone.type === 'pain' && zone.level == null);
-  if (activeInjuries.length || (eveningFresh && evening?.hasInjury) || (eveningFresh && strongestPain >= 3)) {
-    return { level: 'red', label: 'Нужна адаптация', detail: 'Есть свежая травма или выраженная боль.' };
-  }
-  if (evening?.hasInjury || strongestPain >= 3) {
-    return { level: 'yellow', label: 'Требует проверки', detail: 'В последней, но не свежей анкете есть боль или травма: проверь актуальность перед стартом.' };
-  }
-  if (eveningFresh && unscoredPain) {
-    return { level: 'yellow', label: 'Требует проверки', detail: 'В свежей анкете отмечена боль без уровня: уточни её перед стартом и не форсируй нагрузку на эту зону.' };
-  }
-  if (number(whoop?.recovery) != null && number(whoop.recovery) < 34) {
-    return { level: 'red', label: 'Только качество', detail: 'Recovery ниже 34%: снизить объём и риск.' };
-  }
-  if (number(morning?.readiness) != null && number(morning.readiness) <= 2) {
-    return { level: 'red', label: 'Только качество', detail: 'Игрок отметил низкую утреннюю готовность.' };
-  }
-  if (number(evening?.tomorrowReadiness) != null && number(evening.tomorrowReadiness) <= 2) {
-    return { level: 'yellow', label: 'Объём снижен', detail: 'Низкая готовность к следующему дню по вечерней анкете.' };
-  }
-  if (number(evening?.soreness) >= 4 || number(evening?.legFatigue) >= 4 || number(evening?.shoulderLoad) >= 4) {
-    return { level: 'yellow', label: 'Нужна коррекция', detail: 'Высокая локальная усталость или крепатура.' };
-  }
-  const availableDomains = [
-    number(whoop?.recovery) != null || number(whoop?.hrv) != null,
-    !!morning || !!evening,
-    testsExpected ? !!neuro?.fresh : null,
-  ].filter(Boolean).length;
-  if (availableDomains < 2) {
-    return {
-      level: 'yellow',
-      label: 'Данных пока мало',
-      detail: testsExpected
-        ? 'Есть данные только одного домена. До опроса и нейротеста не считать отсутствие показателей зелёным сигналом.'
-        : 'Для NK Performance нужны WHOOP и/или опрос. Тесты CMJ, RSI и 10 м не ожидаются.',
-    };
-  }
-  return { level: 'green', label: 'Данные без красных флагов', detail: 'Тренерский статус и выбранная тема остаются решающими.' };
-}
-
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -132,14 +72,6 @@ export default async function handler(req, res) {
     ]);
     if (!snapshot) return res.status(404).json({ error: 'Player not found' });
 
-    const evening = latestOnOrBefore(snapshot.surveys, targetDate);
-    const exactMorning = (snapshot.morning || []).find(record => record.date === targetDate) || null;
-    // A missed same-day check-in must not erase the most recent completed
-    // questionnaire. Its date remains explicit so the coach can judge recency.
-    const morning = exactMorning
-      || snapshot.latestMorning
-      || latestOnOrBefore(snapshot.morning, targetDate);
-    const whoop = (snapshot.whoop || []).find(record => record.date === targetDate) || null;
     const testsExpected = workspace === 'zarechie';
     const kpis = testsExpected ? performanceKpis(snapshot.neuro, targetDate) : null;
     const neuro = testsExpected ? {
@@ -149,15 +81,13 @@ export default async function handler(req, res) {
       cmj: kpis.cmj,
       sprint10m: kpis.sprint10m,
     } : null;
-    // The evening questionnaire describes readiness for the next training day.
-    // A program built in the morning must therefore use last night's answer.
-    const expectedEveningDate = shiftDate(targetDate, -1);
-    const eveningFresh = !!evening && evening.date === expectedEveningDate;
+    const readiness = readinessDecisionFromSnapshot(snapshot, targetDate, {
+      testsExpected,
+      neuroFresh: !!neuro?.fresh,
+    });
+    const { evening, exactMorning, morning, whoop, eveningFresh, activeInjuries } = readiness;
     const zones = zoneSummary(evening);
     const restrictions = parseJSON(rawRestrictions, []);
-    const activeInjuries = (snapshot.injuryLog || [])
-      .filter(record => record?.status === 'active' || record?.status === 'monitoring')
-      .map(record => ({ bodyPart: record.bodyPart || 'Не указано', severity: number(record.severity), painLevel: number(record.painLevel) }));
     const schedule = workspace === 'zarechie'
       ? scheduleContext(parseJSON(rawSchedule, []), targetDate)
       : null;
@@ -205,7 +135,7 @@ export default async function handler(req, res) {
       schedule,
       dataQuality,
       dataCompleteness: Math.round(Object.values(dataQuality).filter(Boolean).length / Object.keys(dataQuality).length * 100),
-      decision: decisionLevel({ evening, eveningFresh, morning, whoop, neuro, activeInjuries, testsExpected }),
+      decision: readiness.decision,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });

@@ -31,11 +31,24 @@ test('dose audit rejects excessive set volume even when exercise count looks nor
   const audit = auditDose(isoSession(5), buildDosePrescription({ focus: 'camp_iso_anterior' }));
   assert.equal(audit.checks.totalSets, false);
   assert.equal(audit.valid, false);
+  assert.equal(audit.safe, false);
 });
 
 test('red coach status deterministically reduces volume and RPE ceilings', () => {
   const normal = buildDosePrescription({ focus: 'camp_iso_anterior', coachRecovery: 'green' });
   const red = buildDosePrescription({ focus: 'camp_iso_anterior', coachRecovery: 'red' });
   assert.ok(red.totalSets.max < normal.totalSets.max);
+  assert.deepEqual(red.exercises, { min: 5, max: 7 });
+  assert.deepEqual(red.minutes, { min: 36, max: 50 });
   assert.equal(red.targetRpe.max, 6);
+});
+
+test('a modestly short but otherwise complete session is conservative, not unsafe', () => {
+  const session = isoSession();
+  for (const block of session.blocks) block.rest_note = '45 сек';
+  const audit = auditDose(session, buildDosePrescription({ focus: 'camp_iso_anterior' }));
+  assert.equal(audit.checks.duration, false);
+  assert.equal(audit.valid, false);
+  assert.equal(audit.safe, true);
+  assert.equal(audit.minimumViable, true);
 });
