@@ -7,8 +7,23 @@ import { redis, redisPipeline } from '../../../lib/redis';
 import { normExName } from '../players/progression';
 import { updateExerciseMemory, linkPainToExercises } from '../../../lib/exerciseMemory';
 import { resolveShareToken } from '../../../lib/shareToken';
-import { exweightKey, feedbackKey, pfx, sessionKey } from '../../../lib/workspacePrefix';
-import { loadUnitsForExercise } from '../../../lib/tonnage';
+import {
+  exhistKey,
+  exweightKey,
+  feedbackKey,
+  gymTonnageDatesKey,
+  gymTonnageKey,
+  pfx,
+  sessionKey,
+} from '../../../lib/workspacePrefix';
+import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
+
+function targetSetReps(value) {
+  const multiple = String(value || '').match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+  if (multiple) return parseInt(multiple[1], 10) * parseInt(multiple[2], 10);
+  const simple = String(value || '').trim().match(/^(\d+)$/);
+  return simple ? parseInt(simple[1], 10) : 0;
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -48,8 +63,12 @@ export default async function handler(req, res) {
     redis('get', sessionKey(workspace, playerId, date)).catch(() => null),
     redis('get', `${pfx(workspace)}:log:${playerId}:${date}`).catch(() => null),
   ]);
-  const rpeUpdateCmds = [];
+  const actualSessionCmds = [];
   const allExercises = [];
+  const actualExercises = [];
+  let actualTonnage = 0;
+  let plannedLoadedExercises = 0;
+  let completedLoadedExercises = 0;
   let log = null;
   try { log = logRaw ? (typeof logRaw === 'string' ? JSON.parse(logRaw) : logRaw) : null; } catch (_) {}
   const completedSets = submittedDone && typeof submittedDone === 'object' ? submittedDone : log?.done || {};
@@ -60,21 +79,91 @@ export default async function handler(req, res) {
       for (const [blockIndex, block] of (rec.session?.blocks || []).entries()) {
         for (const [exerciseIndex, ex] of (block.exercises || []).entries()) {
           if (ex.name) allExercises.push(ex);
-          const loggedWeights = (ex.targetSets || [])
-            .map((_, setIndex) => {
+          const targetSets = Array.isArray(ex.targetSets) ? ex.targetSets : [];
+          const setActuals = targetSets.map((target, setIndex) => {
               const setKey = `${blockIndex}-${exerciseIndex}-${setIndex}`;
-              return completedSets[setKey] ? parseFloat(actualWeights[setKey]) : NaN;
-            })
-            .filter(value => Number.isFinite(value) && value > 0);
-          // The player's completed-set weight is authoritative. Planned weight
-          // remains the fallback only when no actual weight was entered.
-          const kg = loggedWeights.length ? Math.max(...loggedWeights) : parseFloat(ex.weightKg);
+              const parsedWeight = String(actualWeights[setKey] ?? '').trim().replace(',', '.');
+              const kg = completedSets[setKey] ? parseFloat(parsedWeight) : 0;
+              return {
+                set: setIndex + 1,
+                target: String(target ?? ''),
+                reps: targetSetReps(target),
+                completed: !!completedSets[setKey],
+                kg: Number.isFinite(kg) && kg > 0 ? kg : 0,
+              };
+            });
+          const loggedWeights = setActuals.map(set => set.kg).filter(value => value > 0);
+          // Never turn a planned weight into a completed weight. Only a value
+          // explicitly logged by the player may drive progression history.
+          const kg = loggedWeights.length ? Math.max(...loggedWeights) : 0;
+          const plannedKg = weightKgFromExercise(ex);
+          const loadUnits = loadUnitsForExercise(ex);
+          const completedSetCount = setActuals.filter(set => set.completed).length;
+          const allSetsCompleted = targetSets.length > 0 && completedSetCount === targetSets.length;
+          const averageLoggedKg = loggedWeights.length
+            ? loggedWeights.reduce((sum, value) => sum + value, 0) / loggedWeights.length
+            : 0;
+
+          actualTonnage += setActuals.reduce(
+            (sum, set) => sum + (set.completed ? set.kg * loadUnits * set.reps : 0),
+            0
+          );
+          if (plannedKg > 0) {
+            plannedLoadedExercises += 1;
+            if (allSetsCompleted && averageLoggedKg >= plannedKg * 0.8) completedLoadedExercises += 1;
+          }
+          if (ex.name) {
+            actualExercises.push({
+              block: block.label || '',
+              name: ex.name,
+              plannedKg,
+              actualKg: loggedWeights.length ? Math.max(...loggedWeights) : 0,
+              setActuals,
+              completedSets: completedSetCount,
+              plannedSets: targetSets.length,
+              completed: allSetsCompleted,
+              loadUnits,
+              sessionRpe: rpeNum,
+            });
+          }
           if (!kg || kg <= 0 || !ex.name) continue;
           const exerciseKey = exweightKey(workspace, playerId, normExName(ex.name));
-          rpeUpdateCmds.push(['HSET', exerciseKey, 'kg', String(kg), 'date', String(date), 'rpe', String(rpeNum), 'loadUnits', String(loadUnitsForExercise(ex)), 'source', loggedWeights.length ? 'player_log' : 'planned_feedback']);
+          actualSessionCmds.push(['HSET', exerciseKey, 'kg', String(kg), 'date', String(date), 'rpe', String(rpeNum), 'loadUnits', String(loadUnits), 'source', loggedWeights.length ? 'player_log' : 'planned_feedback']);
+          if (loggedWeights.length) {
+            actualSessionCmds.push(['HSET', exhistKey(workspace, playerId, normExName(ex.name)), String(date), String(kg)]);
+          }
         }
       }
     } catch (_) {}
+  }
+
+  actualTonnage = Math.round(actualTonnage);
+  if (actualExercises.length) {
+    const compliance = plannedLoadedExercises > 0
+      ? Math.round((completedLoadedExercises / plannedLoadedExercises) * 100)
+      : 0;
+    const actualRecord = {
+      exercises: actualExercises,
+      blockFeedback: {},
+      sessionRpe: rpeNum,
+      fatigue: fatigueNum,
+      feel: feel || null,
+      note: record.note,
+      compliance,
+      actualTonnage,
+      source: 'player_feedback',
+      savedAt: record.submittedAt,
+    };
+    actualSessionCmds.push([
+      'SET',
+      `${pfx(workspace)}:session:actual:${playerId}:${date}`,
+      JSON.stringify(actualRecord),
+    ]);
+    if (actualTonnage > 0) {
+      actualSessionCmds.push(['SET', `${pfx(workspace)}:gym_tonnage_actual:${playerId}:${date}`, String(actualTonnage)]);
+      actualSessionCmds.push(['SET', gymTonnageKey(workspace, playerId, date), String(actualTonnage)]);
+      actualSessionCmds.push(['ZADD', gymTonnageDatesKey(workspace, playerId), parseInt(String(date).replace(/-/g, ''), 10), String(date)]);
+    }
   }
 
   // Per-player exercise-response memory (avg RPE / feel per exercise).
@@ -84,7 +173,7 @@ export default async function handler(req, res) {
 
   const cmds = [
     ['SET', key, JSON.stringify(record)],
-    ...rpeUpdateCmds,
+    ...actualSessionCmds,
   ];
   await redisPipeline(cmds).catch(() =>
     redis('set', key, JSON.stringify(record))

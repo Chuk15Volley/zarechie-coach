@@ -87,10 +87,12 @@ test('prompt exposes dates, baselines and missing KPI data', () => {
   ] }, '2026-08-06');
 
   assert.match(text, /RSI: 2.1/);
-  assert.match(text, /повторные вертикальные прыжки/);
+  assert.match(text, /5 повторных вертикальных прыжков с работой рук/);
+  assert.match(text, /первый прыжок исключается.*среднее следующих 4/);
   assert.match(text, /OVR JUMP.*после разминки/);
   assert.match(text, /с работой рук, 3 валидные попытки/);
-  assert.match(text, /электронные ворота, одна валидная попытка/);
+  assert.match(text, /электронные ворота, высокая стойка, носок в 50 см/);
+  assert.match(text, /одна валидная попытка/);
   assert.match(text, /последнее доступное значение каждого теста/);
   assert.doesNotMatch(text, /атакующ|attack jump/i);
 });

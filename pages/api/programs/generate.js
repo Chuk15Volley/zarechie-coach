@@ -82,16 +82,27 @@ async function getRecentActualSummaries(playerId, workspace = 'zarechie', limit 
     const raw = raws[i];
     const rec = parseJSONSafe(raw, null);
     if (!rec) return [];
+    const sessionLine = rec.sessionRpe
+      ? `RPE сессии ${rec.sessionRpe}/10${rec.fatigue ? `, усталость ${rec.fatigue}/5` : ''}`
+      : '';
     const blockLines = rec.blockFeedback && typeof rec.blockFeedback === 'object'
       ? Object.entries(rec.blockFeedback).map(([block, fb]) => `${block}: RPE ${fb.rpe ?? '—'}${fb.pain ? ', боль' : ''}`).join('; ')
       : '';
     const exLines = (rec.exercises || [])
       .filter(ex => Number(ex.actualKg) > 0)
       .slice(0, 10)
-      .map(ex => `${ex.block ? `${ex.block} ` : ''}${ex.name}: ${ex.actualKg} кг${ex.actualRpe ? `, RPE ${ex.actualRpe}` : ''}${ex.pain ? ', боль' : ''}`)
+      .map(ex => {
+        const setWeights = Array.isArray(ex.setActuals)
+          ? ex.setActuals.filter(set => set.completed && Number(set.kg) > 0).map(set => Number(set.kg))
+          : [];
+        const weightText = setWeights.length > 1
+          ? `${setWeights.join('/')} кг по подходам`
+          : `${ex.actualKg} кг`;
+        return `${ex.block ? `${ex.block} ` : ''}${ex.name}: ${weightText}${ex.actualRpe ? `, RPE ${ex.actualRpe}` : ''}${ex.pain ? ', боль' : ''}`;
+      })
       .join('; ');
-    if (!blockLines && !exLines) return [];
-    return [`${date}${blockLines ? ` | блоки: ${blockLines}` : ''}${exLines ? ` | упражнения: ${exLines}` : ''}`];
+    if (!sessionLine && !blockLines && !exLines) return [];
+    return [`${date}${sessionLine ? ` | ${sessionLine}` : ''}${blockLines ? ` | блоки: ${blockLines}` : ''}${exLines ? ` | упражнения: ${exLines}` : ''}`];
   });
 }
 
@@ -2031,7 +2042,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
       : 'ИСТОРИЯ ТРЕНИРОВОК: нет сохранённых сессий для этого игрока — составь первую тренировку без привязки к предыдущим.';
 
   const actualHistoryBlock = actualSummaries.length > 0
-    ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nФАКТИЧЕСКОЕ ВЫПОЛНЕНИЕ ПОСЛЕДНИХ СЕССИЙ (вес + RPE + боль):\n${actualSummaries.map(s => `• ${s}`).join('\n')}\n→ Используй именно фактический вес/RPE для weightNote. Если RPE <=6 и боли нет — можно +2.5-5% или +1 минимальный шаг. Для DB/Dumbbell шаг гантелей строго 2 кг. Если RPE >=9 или была боль — снизь вес или замени упражнение в следующей аналогичной тренировке.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
+    ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nФАКТИЧЕСКОЕ ВЫПОЛНЕНИЕ ПОСЛЕДНИХ СЕССИЙ (вес + RPE + боль):\n${actualSummaries.map(s => `• ${s}`).join('\n')}\n→ Игрок вносит фактический вес КАЖДОГО упражнения с отягощением. Эти значения — главный источник следующего weightNote; общий/блочный RPE определяет допустимость прогрессии. Если RPE <=6 и боли нет — можно +2.5-5% или +1 минимальный шаг. Для DB/Dumbbell шаг гантелей строго 2 кг. Если RPE 7-8 — удержи или прогрессируй минимально по слоту волны. Если RPE >=9 или была боль — снизь вес или замени упражнение в следующей аналогичной тренировке.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
     : '';
 
   const playbookContext = playbookText

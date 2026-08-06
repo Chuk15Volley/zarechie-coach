@@ -165,7 +165,7 @@ function plannedWeightValue(ex) {
 }
 
 // ── Set button — tappable, turns green when done, shows weight input ──────────
-function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedWeight, plannedWeightValue }) {
+function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedWeight, plannedWeightValue, requiresWeight }) {
   return (
     <button
       type="button"
@@ -182,7 +182,7 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedW
       <span className={`text-[15px] font-black leading-none ${done ? 'text-emerald-200' : 'text-slate-100'}`}>
         {value}
       </span>
-      {done && (
+      {done && requiresWeight && (
         <input
           type="text"
           inputMode="decimal"
@@ -349,6 +349,7 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
               onWeightChange={val => onWeightChange(key, val)}
               plannedWeight={plannedSetWeight ? plannedWeight : ''}
               plannedWeightValue={plannedSetWeight}
+              requiresWeight={!!plannedSetWeight}
             />
           );
         })}
@@ -381,16 +382,24 @@ const FEEL_OPTIONS = [
   { value: 'very_hard', emoji: '🤕', label: 'Очень тяжело' },
 ];
 
-function FeedbackForm({ token, sessionDate, done, weights }) {
+function FeedbackForm({ token, sessionDate, session, done, weights }) {
   const [rpe, setRpe] = useState(null);
   const [fatigue, setFatigue] = useState(null);
   const [feel, setFeel] = useState(null);
   const [note, setNote] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
+  const missingWeightCount = (session?.blocks || []).reduce((missing, block, bi) =>
+    missing + (block.exercises || []).reduce((exerciseMissing, ex, ei) => {
+      if (!plannedWeightValue(ex)) return exerciseMissing;
+      return exerciseMissing + (ex.targetSets || []).filter((_, si) => {
+        const key = `${bi}-${ei}-${si}`;
+        return done[key] && !formatKgValue(String(weights[key] || '').replace(',', '.'));
+      }).length;
+    }, 0), 0);
 
   async function submit() {
-    if (!rpe || !fatigue || sending) return;
+    if (!rpe || !fatigue || sending || missingWeightCount > 0) return;
     setSending(true);
     try {
       const response = await fetch('/api/player/feedback', {
@@ -505,10 +514,16 @@ function FeedbackForm({ token, sessionDate, done, weights }) {
           />
         </div>
 
+        {missingWeightCount > 0 && (
+          <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2.5 text-[12px] font-semibold text-amber-300">
+            Укажи фактический вес во всех выполненных подходах с отягощением: осталось {missingWeightCount}.
+          </div>
+        )}
+
         <button
           type="button"
           onClick={submit}
-          disabled={!rpe || !fatigue || sending}
+          disabled={!rpe || !fatigue || sending || missingWeightCount > 0}
           className="w-full rounded-xl bg-[#4ade80] py-3 text-[13px] font-black text-[#060a0e] transition disabled:opacity-40 active:scale-[0.98]"
         >
           {sending ? 'Отправка...' : 'Отправить тренеру'}
@@ -888,7 +903,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
 
             {/* Completion banner + feedback */}
             {totalSets > 0 && doneCount === totalSets && (
-              <FeedbackForm token={token} sessionDate={sessionDate} done={done} weights={weights} />
+              <FeedbackForm token={token} sessionDate={sessionDate} session={session} done={done} weights={weights} />
             )}
           </div>
         )}
