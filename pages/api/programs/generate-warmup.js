@@ -59,7 +59,7 @@ const WARMUP_TOOL = {
   },
 };
 
-const OPENAI_WARMUP_MODEL = 'gpt-5.6';
+const OPENAI_WARMUP_MODEL = 'gpt-5.6-terra';
 
 function warmupToolForOpenAI(tool) {
   return {

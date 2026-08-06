@@ -27,7 +27,7 @@ const PHASE_GUIDANCE = {
   3: 'Фаза 3 (Взрыв) — меньше статики, больше динамики и скорости. Активация взрывная. Скоростной блок — максимальная интенсивность',
 };
 
-const OPENAI_WARMUP_MODEL = 'gpt-5.6';
+const OPENAI_WARMUP_MODEL = 'gpt-5.6-terra';
 
 const TEAM_WARMUP_TOOL = {
   name: 'build_team_warmup',

@@ -31,7 +31,6 @@ WHOOP-метрики, опросники, утренние чек-ины, ней
 | `KV_REST_API_TOKEN` | токен Upstash Redis |
 | `TRAINER_API_KEY` | серверный ключ доступа тренера, если используется |
 | `OPENAI_API_KEY` | ключ OpenAI для генерации тренировок, разминок и AI-помощников |
-| `YOUTUBE_API_KEY` | ключ YouTube Data API для поиска видео упражнений |
 | `NK_PERF_URL` | URL интеграции NK Performance |
 | `NK_PERF_API_KEY` | ключ интеграции NK Performance |
 

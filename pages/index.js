@@ -988,23 +988,9 @@ function youtubeVideoId(url) {
   return null;
 }
 
-function ExerciseVideoLink({ name, apiKey }) {
+function ExerciseVideoLink({ name }) {
   const bankUrl = findExerciseUrl(name);
-  const [searchUrl, setSearchUrl] = useState(undefined);
-
-  useEffect(() => {
-    if (bankUrl || !name?.trim() || !apiKey) return;
-    let cancelled = false;
-    fetch(`/api/exercises/youtube-search?name=${encodeURIComponent(name)}`, {
-      headers: { 'x-api-key': apiKey },
-    })
-      .then(r => r.json())
-      .then(d => { if (!cancelled) setSearchUrl(d.url || null); })
-      .catch(() => { if (!cancelled) setSearchUrl(null); });
-    return () => { cancelled = true; };
-  }, [name, apiKey, bankUrl]);
-
-  const url = bankUrl || searchUrl;
+  const url = bankUrl;
   if (!url) return null;
 
   return (
@@ -1030,7 +1016,6 @@ const PENCIL_ICON = (
 function ExerciseVideoPanel({ name, apiKey }) {
   const bankUrl = findExerciseUrl(name);
   const [manualVideoUrl, setManualVideoUrl] = useState(undefined); // undefined = checking
-  const [autoVideoUrl, setAutoVideoUrl] = useState(undefined);
   const [editingVideo, setEditingVideo] = useState(false);
   const [videoInput, setVideoInput] = useState('');
   const [savingVideo, setSavingVideo] = useState(false);
@@ -1038,7 +1023,6 @@ function ExerciseVideoPanel({ name, apiKey }) {
 
   useEffect(() => {
     setManualVideoUrl(undefined);
-    setAutoVideoUrl(undefined);
     setEditingVideo(false);
     setVideoInput('');
     setSavingVideo(false);
@@ -1056,19 +1040,9 @@ function ExerciseVideoPanel({ name, apiKey }) {
     return () => { cancelled = true; };
   }, [name, apiKey]);
 
-  // Auto-search only when no manual override and no bank URL
-  useEffect(() => {
-    if (manualVideoUrl || bankUrl || !name?.trim() || !apiKey) return;
-    let cancelled = false;
-    fetch(`/api/exercises/youtube-search?name=${encodeURIComponent(name)}`, { headers: { 'x-api-key': apiKey } })
-      .then(r => r.json())
-      .then(d => { if (!cancelled) setAutoVideoUrl(d.url || null); })
-      .catch(() => { if (!cancelled) setAutoVideoUrl(null); });
-    return () => { cancelled = true; };
-  }, [name, apiKey, bankUrl, manualVideoUrl]);
-
-  // Priority: manual → bank → auto-search
-  const videoUrl = manualVideoUrl || bankUrl || autoVideoUrl;
+  // Priority: trainer's manual link → existing curated bank. New exercises
+  // deliberately stay without video until the trainer saves a chosen link.
+  const videoUrl = manualVideoUrl || bankUrl;
   const isManual = !!manualVideoUrl;
   const videoId = youtubeVideoId(videoUrl);
   const watchUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : videoUrl;
@@ -1089,7 +1063,6 @@ function ExerciseVideoPanel({ name, apiKey }) {
         throw new Error(data.error || `Ошибка сохранения ${res.status}`);
       }
       setManualVideoUrl(data.url);
-      setAutoVideoUrl(null);
       setVideoInput(data.url);
       setEditingVideo(false);
     } catch (e) {

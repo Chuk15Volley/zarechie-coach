@@ -35,7 +35,6 @@ Configured in `production`, `preview`, and `development`:
 - `NK_PERF_URL`
 - `NK_PERF_API_KEY`
 - `OPENAI_API_KEY`
-- `YOUTUBE_API_KEY`
 
 Do not commit secret values to GitHub.
 
@@ -60,4 +59,3 @@ Run these checks after env or deploy changes:
 - OpenAI API billing must stay funded for generation to work.
 - ChatGPT Plus/Pro does not fund OpenAI API usage.
 - Legacy APIs should not be deleted without a separate decision.
-

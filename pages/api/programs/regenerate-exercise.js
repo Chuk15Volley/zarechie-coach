@@ -13,7 +13,7 @@ import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
 const BANNED =
   'Nordic Hamstring / Nordic Curl | Barbell Back Squat | Barbell Front Squat | обычная штанговая тяга / Conventional Barbell Deadlift | Olympic lifts со штангой | Depth Jump | Heavy Good Morning | Barbell Overhead Press | Barbell Bench Press | Leg Press | Smith Machine | Leg Extension | Hamstring Curl | Incline Push-Up / наклонные отжимания | Ab Wheel Rollout / Ab Roller | Broad Jump | DB Floor Press | Band Wrist Stability | Jump Set Drill | KB Press / жим с гирями | Tricep Pushdown с резиновой петлёй / Band Tricep Pushdown';
 
-const OPENAI_MODEL = 'gpt-5.6';
+const OPENAI_MODEL = 'gpt-5.6-terra';
 
 function extractText(data) {
   if (data?.output_text) return data.output_text;

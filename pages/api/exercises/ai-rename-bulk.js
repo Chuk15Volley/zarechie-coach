@@ -6,7 +6,7 @@ import { getAllCards, normalize } from '../../../lib/exerciseLibrary';
 import { isAuthorized } from '../../../lib/auth';
 import { redis } from '../../../lib/redis';
 
-const OPENAI_MODEL = 'gpt-5.6';
+const OPENAI_MODEL = 'gpt-5.6-terra';
 
 function extractText(data) {
   if (data?.output_text) return data.output_text;

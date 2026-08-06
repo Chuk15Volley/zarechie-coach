@@ -154,23 +154,7 @@ function LibraryCard({ card, apiKey, onDelete, onRename, onCategoryChange }) {
   }
 
   const bankUrl = card.title?.trim() ? findExerciseUrl(card.title) : null;
-  const [ytSearchUrl, setYtSearchUrl] = useState(null);
-
-  useEffect(() => {
-    const base = card.video || card.autoVideo || bankUrl;
-    if (base || !card.title?.trim() || !apiKey) return;
-    let cancelled = false;
-    fetch(`/api/exercises/youtube-search?name=${encodeURIComponent(card.title)}`, {
-      headers: { 'x-api-key': apiKey },
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (!cancelled && data?.url && data.url !== 'none') setYtSearchUrl(data.url); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card.video, card.autoVideo, card.title, apiKey]);
-
-  const resolvedVideoUrl = card.video || card.autoVideo || bankUrl || ytSearchUrl || null;
+  const resolvedVideoUrl = card.video || card.autoVideo || bankUrl || null;
   const ytId = extractYtId(resolvedVideoUrl);
 
   const handleDelete = async () => {

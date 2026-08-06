@@ -17,7 +17,12 @@ import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage
 import { formatPerformanceKpisForPrompt, performanceKpis } from '../../../lib/performanceKpis.mjs';
 import { evaluateDevelopmentPlan, formatDevelopmentPlanForPrompt } from '../../../lib/developmentPlan.mjs';
 import { buildDosePrescription, formatDosePrescriptionForPrompt } from '../../../lib/sessionDose.mjs';
-import { isOutputTokenLimit, SESSION_OUTPUT_TOKENS, SESSION_RETRY_OUTPUT_TOKENS } from '../../../lib/sessionResponsePolicy.mjs';
+import {
+  isOutputTokenLimit,
+  SESSION_GENERATION_MODEL,
+  SESSION_OUTPUT_TOKENS,
+  SESSION_RETRY_OUTPUT_TOKENS,
+} from '../../../lib/sessionResponsePolicy.mjs';
 
 const TRAINING_TYPE_LABELS = {
   anterior_chain: 'Передняя цепь',
@@ -1631,7 +1636,7 @@ export async function buildGenerationInputs(body) {
   };
 }
 
-export const OPENAI_SESSION_MODEL = 'gpt-5.6';
+export const OPENAI_SESSION_MODEL = SESSION_GENERATION_MODEL;
 
 function sessionToolForOpenAI(tool) {
   return {

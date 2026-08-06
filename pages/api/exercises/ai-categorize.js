@@ -9,7 +9,7 @@ import { isAuthorized } from '../../../lib/auth';
 
 export const config = { maxDuration: 60 };
 
-const OPENAI_MODEL = 'gpt-5.6';
+const OPENAI_MODEL = 'gpt-5.6-terra';
 
 function extractText(data) {
   if (data?.output_text) return data.output_text;

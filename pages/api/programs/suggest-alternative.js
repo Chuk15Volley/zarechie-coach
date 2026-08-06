@@ -6,7 +6,7 @@
 import { isAuthorized } from '../../../lib/auth';
 import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
 
-const OPENAI_MODEL = 'gpt-5.6';
+const OPENAI_MODEL = 'gpt-5.6-terra';
 
 function extractText(data) {
   if (data?.output_text) return data.output_text;
