@@ -8,7 +8,8 @@ import { isAuthorized } from '../../../lib/auth';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { getPlayerSnapshot } from '../../../lib/playerData';
 import { exhistKey, exweightKey, gymTonnageDatesKey, gymTonnageKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
-import { assessSessionQuality, qualityCorrectionPrompt } from '../../../lib/sessionValidator';
+import { assessSessionQuality } from '../../../lib/sessionValidator';
+import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
 import { OPENAI_SESSION_MODEL, SYSTEM_PROMPT, buildGenerationInputs, normalizeExerciseLanguage } from './generate';
 import { normExName } from '../players/progression';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
@@ -301,31 +302,8 @@ export default async function handler(req, res) {
       playerRestrictions,
     });
 
-    // One targeted second pass turns the generator into a design -> audit ->
-    // correction loop. The better of the two versions is always retained.
-    if ((!quality.valid || quality.score < 85) && !record.correctionAttempted) {
-      const correctionPrompt = qualityCorrectionPrompt(userPrompt, session, quality);
-      const corrected = await createOpenAIBackgroundResponse(apiKey, correctionPrompt, sessionTool);
-      if (corrected.error) return res.status(corrected.status || 502).json({ error: corrected.error });
-      const correctionResponseId = corrected.response?.id;
-      if (!correctionResponseId) return res.status(502).json({ error: 'OpenAI не вернул response id для проверки качества' });
-
-      await redis('set', `coach:batch:${batchId}`, JSON.stringify({
-        ...record,
-        status: 'submitted',
-        correctionAttempted: true,
-        candidateSession: session,
-        candidateQuality: quality,
-        openaiResponseId: correctionResponseId,
-        openaiStatus: corrected.response.status || 'queued',
-        correctionStartedAt: new Date().toISOString(),
-        activePrompt: correctionPrompt,
-        tokenRetryCount: 0,
-      }), 'EX', 3600).catch(() => {});
-
-      return res.status(200).json({ status: 'pending', processing_status: 'quality_correction' });
-    }
-
+    // Compatibility for correction jobs queued by older deployments. New
+    // generations use one response; the deterministic audit is advisory.
     if (record.correctionAttempted && record.candidateSession && record.candidateQuality) {
       const candidateQuality = record.candidateQuality;
       const correctedIsBetter = (quality.valid && !candidateQuality.valid)
@@ -337,17 +315,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (!quality.valid || quality.score < 85) {
-      const failure = {
-        ...record,
-        status: 'failed',
-        error: 'Тренировка не прошла обязательный контроль дозировки и безопасности и не была сохранена.',
-        quality,
-        completedAt: new Date().toISOString(),
-      };
-      await redis('set', `coach:batch:${batchId}`, JSON.stringify(failure), 'EX', 3600).catch(() => {});
-      return res.status(422).json({ status: 'failed', error: failure.error, quality });
-    }
+    quality = advisorySessionQuality(quality);
 
     const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 7, workspace).catch(() => null);
     const player = snapshot?.player || null;
@@ -364,9 +332,18 @@ export default async function handler(req, res) {
       date,
       savedAt: new Date().toISOString(),
     };
+    let autoSaved = false;
+    let saveWarning = '';
     if (autoSave) {
-      await redisPipeline(autoSaveCommands(record2, workspace, playerId, date))
-        .catch(e => console.error('Redis save session failed:', e.message));
+      try {
+        await redisPipeline(autoSaveCommands(record2, workspace, playerId, date));
+        autoSaved = true;
+      } catch (error) {
+        // The generated result remains recoverable from the batch and is sent
+        // to the UI even if persistence has a temporary outage.
+        saveWarning = 'Тренировка создана, но автосохранение временно недоступно. Нажмите «Сохранить» ещё раз.';
+        console.error('Redis save session failed:', error.message);
+      }
     }
 
     await redis('set', `coach:batch:${batchId}`, JSON.stringify({
@@ -376,7 +353,8 @@ export default async function handler(req, res) {
       player,
       dataSummary,
       quality,
-      autoSaved: !!autoSave,
+      autoSaved,
+      saveWarning,
       completedAt: new Date().toISOString(),
     }), 'EX', 3600).catch(() => {});
 
@@ -387,7 +365,8 @@ export default async function handler(req, res) {
       dataSummary,
       date,
       dayGoal,
-      autoSaved: !!autoSave,
+      autoSaved,
+      saveWarning,
       quality,
     });
   } catch (e) {

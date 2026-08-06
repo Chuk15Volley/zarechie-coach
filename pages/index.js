@@ -3285,6 +3285,8 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
+      setError('');
+      if (data.quality) setMeta(prev => prev ? { ...prev, quality: data.quality } : prev);
       setJustSaved(true);
       setPendingSaved({
         session,

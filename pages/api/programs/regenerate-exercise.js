@@ -8,6 +8,7 @@ import { isAuthorized } from '../../../lib/auth';
 import { sessionKey } from '../../../lib/workspacePrefix';
 import { normalizeExerciseLanguage } from './generate';
 import { assessSessionQuality } from '../../../lib/sessionValidator';
+import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
 import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
 
 const BANNED =
@@ -260,14 +261,11 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
         }),
     };
     if (record) {
-      const replacementQuality = assessSessionQuality(updatedSession, {
+      const replacementQuality = advisorySessionQuality(assessSessionQuality(updatedSession, {
         focus: record.focus || '',
         trainingType: record.trainingType || '',
         dosePrescription: record.quality?.dose?.prescription || buildDosePrescription({ focus: record.focus, trainingType: record.trainingType }),
-      });
-      if (!replacementQuality.valid || replacementQuality.score < 85) {
-        return res.status(422).json({ error: 'Замена нарушает структуру или дозировку сессии и не сохранена.', quality: replacementQuality });
-      }
+      }));
       const toSave = record.session ? { ...record, session: updatedSession, quality: replacementQuality } : updatedSession;
       await redis('set', sessionKey(workspace, playerId, date), JSON.stringify(toSave));
     }

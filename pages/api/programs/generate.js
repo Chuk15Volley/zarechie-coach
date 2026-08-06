@@ -9,7 +9,8 @@ import { getRecentSessionSummaries } from '../../../lib/sessionHistory';
 import { isAuthorized } from '../../../lib/auth';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
-import { assessSessionQuality, qualityCorrectionPrompt } from '../../../lib/sessionValidator';
+import { assessSessionQuality } from '../../../lib/sessionValidator';
+import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
 import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseMemory';
 import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlaybook';
 import { developmentPlanKey, pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
@@ -1806,32 +1807,10 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'Модель не вернула структурированную тренировку' });
     }
 
-    // Deterministic professional quality gate. A low-scoring answer receives one
-    // targeted correction pass instead of being shown to the coach as-is.
+    // Deterministic audit remains visible to the coach but never triggers a
+    // second paid model call or discards a usable response.
     let quality = assessSessionQuality(session, { ...qualityContext, playerRestrictions });
-    if (!quality.valid || quality.score < 85) {
-      console.log('GEN quality gate failed, retrying:', quality.score, quality.improvements);
-      const fixPrompt = qualityCorrectionPrompt(userPrompt, session, quality);
-      const retry = await callOpenAIForSession(apiKey, fixPrompt);
-      if (retry.session) {
-        const retryQuality = assessSessionQuality(retry.session, { ...qualityContext, playerRestrictions });
-        if ((retryQuality.valid && !quality.valid)
-          || (retryQuality.valid === quality.valid && retryQuality.score > quality.score)
-          || (retryQuality.score === quality.score && retryQuality.valid)) {
-          session = retry.session;
-          quality = retryQuality;
-        }
-      }
-    }
-
-    if (!quality.valid || quality.score < 85) {
-      console.error('GEN hard quality gate rejected session:', quality.score, quality.improvements);
-      return res.status(422).json({
-        error: 'Тренировка не прошла обязательный контроль дозировки и безопасности. Она не сохранена. Повторите генерацию или скорректируйте исходные ограничения.',
-        quality,
-        validation: { valid: false, errors: quality.errors, warnings: quality.warnings },
-      });
-    }
+    quality = advisorySessionQuality(quality);
 
     session = normalizeExerciseLanguage(session, focus);
 

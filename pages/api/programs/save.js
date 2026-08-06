@@ -11,6 +11,7 @@ import { normExName } from '../players/progression';
 import { sessionKey, sessionsKey, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import { assessSessionQuality } from '../../../lib/sessionValidator';
+import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
 import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
 
 function formatKg(value) {
@@ -55,17 +56,11 @@ export default async function handler(req, res) {
   }
 
   const normalizedSession = normalizeSavedWeights(session);
-  const saveQuality = assessSessionQuality(normalizedSession, {
+  const saveQuality = advisorySessionQuality(assessSessionQuality(normalizedSession, {
     focus,
     trainingType,
     dosePrescription: quality?.dose?.prescription || buildDosePrescription({ focus, trainingType }),
-  });
-  if (!saveQuality.valid || saveQuality.score < 85) {
-    return res.status(422).json({
-      error: 'Сессия не прошла обязательную проверку безопасности, дозировки и времени и не сохранена.',
-      quality: saveQuality,
-    });
-  }
+  }));
 
   const record = {
     session: normalizedSession,
@@ -126,7 +121,7 @@ export default async function handler(req, res) {
       ...tonnageCmds,
     ];
     await redisPipeline(cmds);
-    return res.status(200).json({ status: 'ok' });
+    return res.status(200).json({ status: 'ok', quality: saveQuality });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
