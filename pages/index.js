@@ -2186,15 +2186,19 @@ export default function Home() {
 
   useEffect(() => {
     if (!apiKey) return;
+    let cancelled = false;
     if (workspace === 'nkperf') {
       setScheduleEvents([]);
       setShowSchedule(false);
-      return;
+      return () => { cancelled = true; };
     }
     fetch(`/api/schedule?workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
       .then(r => r.json())
-      .then(data => { if (Array.isArray(data.events)) setScheduleEvents(data.events); })
+      .then(data => {
+        if (!cancelled && Array.isArray(data.events)) setScheduleEvents(data.events);
+      })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [apiKey, workspace]);
 
   function switchWorkspace(ws) {
@@ -2205,18 +2209,32 @@ export default function Home() {
     setRescheduleOpen(false);
     setRescheduleDate('');
     setPlayers([]);
+    setPlayerFeedbacks({});
     setOneRM({});
     setRmHistory([]);
+    setPendingSaved(null);
+    setDecisionData(null);
+    setRestrictions([]);
+    setDevelopmentPlan(emptyDevelopmentPlan());
+    setVolumeStats(null);
+    setTrendsData(null);
+    setHistoryData(null);
+    setError('');
+    setJustSaved(false);
+    setAutoSaved(false);
   }
 
-  async function loadNKPlayers(forceSync = false) {
-    setPlayersError('');
+  async function loadNKPlayers(forceSync = false, shouldCommit = () => true) {
+    if (shouldCommit()) setPlayersError('');
     try {
       if (forceSync) {
         const sr = await fetch('/api/nkperf/sync', { method: 'POST', headers: { 'x-api-key': apiKey } });
         const sd = await sr.json().catch(() => ({}));
         if (!sr.ok) throw new Error(sd.error || `Ошибка NK Performance (${sr.status})`);
-        if (sr.ok && Array.isArray(sd.players)) { setPlayers(sd.players); return; }
+        if (sr.ok && Array.isArray(sd.players)) {
+          if (shouldCommit()) setPlayers(sd.players);
+          return;
+        }
       }
       const r = await fetch('/api/nkperf/sync', { headers: { 'x-api-key': apiKey } });
       const data = await r.json().catch(() => ({}));
@@ -2227,23 +2245,24 @@ export default function Home() {
         const sr2 = await fetch('/api/nkperf/sync', { method: 'POST', headers: { 'x-api-key': apiKey } });
         const sd2 = await sr2.json().catch(() => ({}));
         if (!sr2.ok) throw new Error(sd2.error || `Ошибка NK Performance (${sr2.status})`);
-        setPlayers(sd2.players || []);
+        if (shouldCommit()) setPlayers(sd2.players || []);
       } else {
-        setPlayers(list);
+        if (shouldCommit()) setPlayers(list);
       }
     } catch (err) {
-      setPlayersError(err.message);
+      if (shouldCommit()) setPlayersError(err.message);
     }
   }
 
   useEffect(() => {
     if (!apiKey) return;
+    let cancelled = false;
     localStorage.setItem('coachApiKey', apiKey);
     setPlayersError('');
 
     if (workspace === 'nkperf') {
-      loadNKPlayers(false);
-      return;
+      loadNKPlayers(false, () => !cancelled);
+      return () => { cancelled = true; };
     }
 
     fetch(`/api/players/list?workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } })
@@ -2251,6 +2270,7 @@ export default function Home() {
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(data.error || `Ошибка (${r.status})`);
         const list = data.players || [];
+        if (cancelled) return;
         setPlayers(list);
         // Load today's feedback for all players
         const today = todayISO();
@@ -2258,12 +2278,16 @@ export default function Home() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
           body: JSON.stringify({ playerIds: list.map(p => p.id), date: today, workspace }),
-        }).then(r2 => r2.json()).then(d => setPlayerFeedbacks(d.feedbacks || {})).catch(() => {});
+        }).then(r2 => r2.json()).then(d => {
+          if (!cancelled) setPlayerFeedbacks(d.feedbacks || {});
+        }).catch(() => {});
       })
       .catch(err => {
+        if (cancelled) return;
         setPlayers([]);
         setPlayersError(err.message);
       });
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, workspace]);
 

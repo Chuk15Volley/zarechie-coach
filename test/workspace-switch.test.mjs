@@ -14,7 +14,15 @@ test('NK Performance workspace switch does not call removed schedule suggestion 
   );
   assert.match(
     source,
-    /if \(workspace === 'nkperf'\) \{\s*setScheduleEvents\(\[\]\);\s*setShowSchedule\(false\);\s*return;/,
+    /if \(workspace === 'nkperf'\) \{\s*setScheduleEvents\(\[\]\);\s*setShowSchedule\(false\);\s*return \(\) => \{ cancelled = true; \};/,
     'NK Performance must still detach the Zarechie schedule without touching deleted state',
   );
+});
+
+test('workspace requests ignore stale responses after a team switch', async () => {
+  const source = await readFile(new URL('pages/index.js', ROOT), 'utf8');
+
+  assert.match(source, /loadNKPlayers\(false, \(\) => !cancelled\)/);
+  assert.match(source, /if \(cancelled\) return;\s*setPlayers\(list\);/);
+  assert.match(source, /if \(!cancelled && Array\.isArray\(data\.events\)\) setScheduleEvents/);
 });
