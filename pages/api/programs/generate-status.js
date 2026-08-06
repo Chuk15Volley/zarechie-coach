@@ -12,6 +12,12 @@ import { assessSessionQuality, qualityCorrectionPrompt } from '../../../lib/sess
 import { OPENAI_SESSION_MODEL, SYSTEM_PROMPT, normalizeExerciseLanguage } from './generate';
 import { normExName } from '../players/progression';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
+import {
+  isOutputTokenLimit,
+  SESSION_OUTPUT_TOKENS,
+  SESSION_RETRY_OUTPUT_TOKENS,
+  sessionResponseFailureMessage,
+} from '../../../lib/sessionResponsePolicy.mjs';
 
 export const config = { maxDuration: 60 };
 
@@ -78,7 +84,10 @@ function findOpenAIFunctionCall(output, name) {
   return null;
 }
 
-async function createOpenAIBackgroundResponse(apiKey, userPrompt, sessionTool) {
+async function createOpenAIBackgroundResponse(apiKey, userPrompt, sessionTool, {
+  maxOutputTokens = SESSION_OUTPUT_TOKENS,
+  reasoningEffort = 'medium',
+} = {}) {
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -89,9 +98,9 @@ async function createOpenAIBackgroundResponse(apiKey, userPrompt, sessionTool) {
       model: OPENAI_SESSION_MODEL,
       instructions: SYSTEM_PROMPT,
       input: userPrompt,
-      max_output_tokens: 6500,
+      max_output_tokens: maxOutputTokens,
       background: true,
-      reasoning: { effort: 'high' },
+      reasoning: { effort: reasoningEffort },
       text: { verbosity: 'low' },
       tools: [sessionToolForOpenAI(sessionTool)],
       tool_choice: { type: 'function', name: 'build_session' },
@@ -116,13 +125,6 @@ async function retrieveOpenAIResponse(apiKey, responseId) {
     return { error: err.error?.message || `OpenAI API error ${response.status}`, status: 502 };
   }
   return { response: await response.json() };
-}
-
-function responseFailureMessage(response) {
-  return response?.error?.message
-    || response?.incomplete_details?.reason
-    || response?.last_error?.message
-    || `OpenAI response ended with status ${response?.status || 'unknown'}`;
 }
 
 function parseSessionFromResponse(response) {
@@ -194,7 +196,8 @@ export default async function handler(req, res) {
     let openaiResponseId = record.openaiResponseId;
 
     if (!openaiResponseId) {
-      const created = await createOpenAIBackgroundResponse(apiKey, userPrompt, sessionTool);
+      const activePrompt = record.activePrompt || userPrompt;
+      const created = await createOpenAIBackgroundResponse(apiKey, activePrompt, sessionTool);
       if (created.error) return res.status(created.status || 502).json({ error: created.error });
       openaiResponse = created.response;
       openaiResponseId = openaiResponse?.id;
@@ -206,6 +209,8 @@ export default async function handler(req, res) {
         openaiResponseId,
         openaiStatus: openaiResponse.status || 'queued',
         submittedToOpenAIAt: new Date().toISOString(),
+        activePrompt,
+        tokenRetryCount: record.tokenRetryCount || 0,
       };
       await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', 3600).catch(() => {});
     } else {
@@ -225,7 +230,34 @@ export default async function handler(req, res) {
     }
 
     if (openaiResponse?.status !== 'completed') {
-      return res.status(502).json({ error: responseFailureMessage(openaiResponse) });
+      if (isOutputTokenLimit(openaiResponse) && Number(record.tokenRetryCount || 0) < 1) {
+        const activePrompt = record.activePrompt || userPrompt;
+        const retried = await createOpenAIBackgroundResponse(apiKey, activePrompt, sessionTool, {
+          maxOutputTokens: SESSION_RETRY_OUTPUT_TOKENS,
+          reasoningEffort: 'low',
+        });
+        if (retried.error) return res.status(retried.status || 502).json({ error: retried.error });
+        const retryResponseId = retried.response?.id;
+        if (!retryResponseId) return res.status(502).json({ error: 'Сервис не вернул идентификатор повторной генерации' });
+        await redis('set', `coach:batch:${batchId}`, JSON.stringify({
+          ...record,
+          status: 'submitted',
+          openaiResponseId: retryResponseId,
+          openaiStatus: retried.response.status || 'queued',
+          activePrompt,
+          tokenRetryCount: Number(record.tokenRetryCount || 0) + 1,
+          tokenRetryStartedAt: new Date().toISOString(),
+        }), 'EX', 3600).catch(() => {});
+        return res.status(200).json({ status: 'pending', processing_status: 'token_limit_retry' });
+      }
+      const failureMessage = sessionResponseFailureMessage(openaiResponse);
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify({
+        ...record,
+        status: 'failed',
+        error: failureMessage,
+        completedAt: new Date().toISOString(),
+      }), 'EX', 3600).catch(() => {});
+      return res.status(502).json({ status: 'failed', error: failureMessage });
     }
 
     let session = parseSessionFromResponse(openaiResponse);
@@ -259,6 +291,8 @@ export default async function handler(req, res) {
         openaiResponseId: correctionResponseId,
         openaiStatus: corrected.response.status || 'queued',
         correctionStartedAt: new Date().toISOString(),
+        activePrompt: correctionPrompt,
+        tokenRetryCount: 0,
       }), 'EX', 3600).catch(() => {});
 
       return res.status(200).json({ status: 'pending', processing_status: 'quality_correction' });

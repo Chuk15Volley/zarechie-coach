@@ -17,6 +17,7 @@ import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage
 import { formatPerformanceKpisForPrompt, performanceKpis } from '../../../lib/performanceKpis.mjs';
 import { evaluateDevelopmentPlan, formatDevelopmentPlanForPrompt } from '../../../lib/developmentPlan.mjs';
 import { buildDosePrescription, formatDosePrescriptionForPrompt } from '../../../lib/sessionDose.mjs';
+import { isOutputTokenLimit, SESSION_OUTPUT_TOKENS, SESSION_RETRY_OUTPUT_TOKENS } from '../../../lib/sessionResponsePolicy.mjs';
 
 const TRAINING_TYPE_LABELS = {
   anterior_chain: 'Передняя цепь',
@@ -1662,31 +1663,40 @@ function findOpenAIFunctionCall(output, name) {
 
 // Single OpenAI Responses API call → build_session function result. Returns arguments or null.
 async function callOpenAIForSession(apiKey, userPrompt) {
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: OPENAI_SESSION_MODEL,
-      instructions: SYSTEM_PROMPT,
-      input: userPrompt,
-      max_output_tokens: 6500,
-      store: false,
-      reasoning: { effort: 'medium' },
-      text: { verbosity: 'low' },
-      tools: [sessionToolForOpenAI(SESSION_TOOL)],
-      tool_choice: { type: 'function', name: 'build_session' },
-    }),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    return { error: err.error?.message || `API error ${response.status}`, status: 502 };
+  const attempts = [
+    { maxOutputTokens: SESSION_OUTPUT_TOKENS, reasoningEffort: 'medium' },
+    { maxOutputTokens: SESSION_RETRY_OUTPUT_TOKENS, reasoningEffort: 'low' },
+  ];
+  for (const attempt of attempts) {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: OPENAI_SESSION_MODEL,
+        instructions: SYSTEM_PROMPT,
+        input: userPrompt,
+        max_output_tokens: attempt.maxOutputTokens,
+        store: false,
+        reasoning: { effort: attempt.reasoningEffort },
+        text: { verbosity: 'low' },
+        tools: [sessionToolForOpenAI(SESSION_TOOL)],
+        tool_choice: { type: 'function', name: 'build_session' },
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      return { error: err.error?.message || `API error ${response.status}`, status: 502 };
+    }
+    const data = await response.json();
+    const functionCall = findOpenAIFunctionCall(data.output, 'build_session');
+    const session = parseFunctionArguments(functionCall?.arguments);
+    if (session) return { session };
+    if (!isOutputTokenLimit(data)) break;
   }
-  const data = await response.json();
-  const functionCall = findOpenAIFunctionCall(data.output, 'build_session');
-  return { session: parseFunctionArguments(functionCall?.arguments) };
+  return { error: 'Модель не завершила структуру тренировки даже после автоматического увеличения лимита. Повторите генерацию.', status: 502 };
 }
 
 export default async function handler(req, res) {
