@@ -85,15 +85,16 @@ export default async function handler(req, res) {
       testsExpected,
       neuroFresh: !!neuro?.fresh,
     });
-    const { evening, exactMorning, morning, whoop, eveningFresh, activeInjuries } = readiness;
+    const { evening, postMorning, exactMorning, morning, whoop, eveningFresh, postMorningFresh, activeInjuries } = readiness;
     const zones = zoneSummary(evening);
+    const postMorningZones = zoneSummary(postMorning);
     const restrictions = parseJSON(rawRestrictions, []);
     const schedule = workspace === 'zarechie'
       ? scheduleContext(parseJSON(rawSchedule, []), targetDate)
       : null;
     const dataQuality = {
       whoop: number(whoop?.recovery) != null || number(whoop?.hrv) != null,
-      subjective: !!morning || !!evening,
+      subjective: !!morning || !!postMorning || !!evening,
       ...(testsExpected ? { neuro: !!neuro?.fresh } : {}),
     };
 
@@ -114,6 +115,22 @@ export default async function handler(req, res) {
         hasInjury: !!evening.hasInjury,
         injuryAreas: evening.injuryAreas || [],
         zones,
+      } : { fresh: false, date: null, zones: [] },
+      postMorning: postMorning ? {
+        date: postMorning.date,
+        submittedAt: postMorning.submittedAt || null,
+        fresh: postMorningFresh,
+        duration: number(postMorning.totalDuration ?? postMorning.duration),
+        load: number(postMorning.totalLoad),
+        srpe: number(postMorning.srpe),
+        fatigue: number(postMorning.fatigue),
+        legFatigue: number(postMorning.legFatigue),
+        shoulderLoad: number(postMorning.shoulderLoad),
+        tomorrowReadiness: number(postMorning.tomorrowReadiness),
+        participation: postMorning.participation || null,
+        hasLoadConcern: !!postMorning.hasLoadConcern,
+        discomfortAreas: postMorning.discomfortAreas || [],
+        zones: postMorningZones,
       } : { fresh: false, date: null, zones: [] },
       morning: morning ? {
         date: morning.date,

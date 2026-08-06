@@ -1692,7 +1692,9 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
   if (!data) return null;
 
   const evening = data.evening || {};
+  const postMorning = data.postMorning || {};
   const zones = evening.zones || [];
+  const postMorningPainZones = (postMorning.zones || []).filter(zone => zone.type === 'pain');
   const painZones = zones.filter(zone => zone.type === 'pain');
   const sorenessZones = zones.filter(zone => zone.type === 'soreness');
   const activeInjuries = data.activeInjuries || [];
@@ -1749,12 +1751,17 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
           <p className="mt-0.5 text-[10px] text-slate-600">
             {data.whoop ? `WHOOP: Recovery ${data.whoop.recovery ?? '—'}% · сон ${data.whoop.sleepHours ?? '—'} ч` : morningExpected ? 'WHOOP будет добавлен утром' : 'WHOOP за дату отсутствует'}
           </p>
+          <p className={`mt-1 text-[10px] ${postMorning.hasLoadConcern || postMorningPainZones.length ? 'text-rose-300' : postMorning.date ? 'text-sky-300/80' : 'text-slate-600'}`}>
+            {postMorning.date
+              ? `После утра учтено: ${postMorning.date}${shortTime(postMorning.submittedAt) ? ` · ${shortTime(postMorning.submittedAt)}` : ''} · sRPE ${postMorning.srpe ?? '—'} · ${postMorning.duration ?? '—'} мин`
+              : 'Анкеты после утренней тренировки нет'}
+          </p>
         </div>
 
-        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${data.restrictions?.length || activeInjuries.length ? tone('red') : evening.hasInjury || painZones.length ? tone('yellow') : 'border-white/[0.08] bg-white/[0.02] text-slate-400'}`}>
+        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${data.restrictions?.length || activeInjuries.length || postMorning.hasLoadConcern ? tone('red') : evening.hasInjury || painZones.length || postMorningPainZones.length ? tone('yellow') : 'border-white/[0.08] bg-white/[0.02] text-slate-400'}`}>
           <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"><AlertTriangle size={11} /> Ограничения</div>
           <p className="mt-1 text-[12px] font-semibold">
-            {activeInjuries.length ? `Активная травма: ${activeInjuries[0].bodyPart}` : evening.hasInjury ? evening.fresh ? 'Свежая травма: Recovery / Prehab' : 'Травма отмечена в старой анкете' : data.restrictions?.length ? `${data.restrictions.length} активно` : 'Нет активных ограничений'}
+            {activeInjuries.length ? `Активная травма: ${activeInjuries[0].bodyPart}` : postMorning.hasLoadConcern ? `Проблема после утра: ${(postMorning.discomfortAreas || []).join(', ') || 'указана'}` : evening.hasInjury ? evening.fresh ? 'Свежая травма: Recovery / Prehab' : 'Травма отмечена в старой анкете' : postMorningPainZones.length ? `Боль после утра: ${postMorningPainZones.map(zone => zone.area).join(', ')}` : data.restrictions?.length ? `${data.restrictions.length} активно` : 'Нет активных ограничений'}
           </p>
           <p className="mt-0.5 text-[10px] opacity-70">
             {neuroMetrics.length

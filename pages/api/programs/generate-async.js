@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   // Build the exact same SYSTEM_PROMPT / userPrompt / tool as the synchronous generator.
   const inputs = await buildGenerationInputs(req.body || {});
   if (inputs.error) return res.status(inputs.status || 400).json({ error: inputs.error });
-  const { userPrompt, dataSummary, targetDate, playerRestrictions = [], qualityContext = {} } = inputs;
+  const { userPrompt, dataSummary, targetDate, playerRestrictions = [], qualityContext = {}, questionnaireContext = {} } = inputs;
 
   // Keep the full schema for the polled path.
   const sessionTool = buildSessionTool({ includeImgPrompt: true });
@@ -46,6 +46,11 @@ export default async function handler(req, res) {
         dataSummary,
         playerRestrictions,
         qualityContext,
+        questionnaireContext,
+        // The status endpoint rebuilds the prompt immediately before the first
+        // OpenAI request. This ensures questionnaires submitted during the
+        // short queue/polling gap are included without changing coach choices.
+        generationRequest: req.body || {},
         sessionTool,
         status: 'pending',
         submittedAt: new Date().toISOString(),

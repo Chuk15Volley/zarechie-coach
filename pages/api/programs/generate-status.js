@@ -9,7 +9,7 @@ import { redis, redisPipeline } from '../../../lib/redis';
 import { getPlayerSnapshot } from '../../../lib/playerData';
 import { exhistKey, exweightKey, gymTonnageDatesKey, gymTonnageKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
 import { assessSessionQuality, qualityCorrectionPrompt } from '../../../lib/sessionValidator';
-import { OPENAI_SESSION_MODEL, SYSTEM_PROMPT, normalizeExerciseLanguage } from './generate';
+import { OPENAI_SESSION_MODEL, SYSTEM_PROMPT, buildGenerationInputs, normalizeExerciseLanguage } from './generate';
 import { normExName } from '../players/progression';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import {
@@ -172,6 +172,34 @@ export default async function handler(req, res) {
       error: record.error || 'Тренировка не прошла обязательный контроль качества.',
       quality: record.quality || null,
     });
+  }
+
+  // A player can submit a questionnaire after the coach clicks Generate but
+  // before the background OpenAI request is actually created. Refresh the
+  // complete input exactly at that boundary so the model always receives the
+  // newest morning, post-morning and evening records available at generation.
+  if (!record.openaiResponseId && record.generationRequest && !record.inputsRefreshedAt) {
+    try {
+      const refreshed = await buildGenerationInputs(record.generationRequest);
+      if (refreshed.error) {
+        return res.status(refreshed.status || 400).json({ error: refreshed.error });
+      }
+      record = {
+        ...record,
+        date: refreshed.targetDate,
+        dayGoal: refreshed.dayGoal || record.dayGoal || '',
+        userPrompt: refreshed.userPrompt,
+        dataSummary: refreshed.dataSummary,
+        playerRestrictions: refreshed.playerRestrictions || [],
+        qualityContext: refreshed.qualityContext || {},
+        questionnaireContext: refreshed.questionnaireContext || {},
+        inputsRefreshedAt: new Date().toISOString(),
+      };
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', 3600);
+    } catch (error) {
+      // Do not spend tokens on a prompt whose health/load data could be stale.
+      return res.status(503).json({ error: `Не удалось обновить последние анкеты перед генерацией: ${error.message}` });
+    }
   }
 
   const {

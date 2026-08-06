@@ -463,20 +463,51 @@ function eveningSafetyContext(surveys, targetDate, latestAvailable = null) {
   return `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${lines.join('\n')}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
 }
 
+function postMorningSafetyContext(records, targetDate, latestAvailable = null) {
+  const latest = latestAvailable || latestOnOrBefore(records, targetDate);
+  if (!latest) return '';
+  const previousDate = shiftDateStr(targetDate, -1);
+  const fresh = latest.date === targetDate || latest.date === previousDate;
+  const zones = eveningZoneDetails(latest);
+  const blockText = (latest.blocks || []).map(block => {
+    const label = block.type === 'gym' ? 'зал' : block.type === 'volleyball' ? 'волейбол' : block.type;
+    return `${label}: ${block.duration ?? '—'} мин, sRPE ${block.srpe ?? '—'}${block.jumps != null ? `, ${block.jumps} прыжков` : ''}`;
+  }).join('; ');
+  const lines = [
+    `${fresh ? 'СВЕЖАЯ АНКЕТА ПОСЛЕ УТРЕННЕЙ ТРЕНИРОВКИ' : 'ПОСЛЕДНЯЯ АНКЕТА ПОСЛЕ УТРЕННЕЙ ТРЕНИРОВКИ'} (${latest.date})`,
+    `• Нагрузка: ${latest.totalDuration ?? latest.duration ?? '—'} мин | sRPE ${latest.srpe ?? '—'}/10 | общая нагрузка ${latest.totalLoad ?? '—'}`,
+    `• Усталость ${latest.fatigue ?? '—'}/5 | ноги ${latest.legFatigue ?? '—'}/5 | плечо ${latest.shoulderLoad ?? '—'}/5 | готовность ${latest.tomorrowReadiness ?? '—'}/5`,
+    blockText ? `• Блоки: ${blockText}` : null,
+    latest.participation && latest.participation !== 'full'
+      ? `• Участие: ${latest.participation}${latest.participationNote ? ` — ${latest.participationNote}` : ''}`
+      : null,
+    zones.length ? `• Зоны: ${zones.map(zone => `${zone.area}: ${zone.type === 'pain' ? 'боль' : 'крепатура'}${zone.level ? ` ${zone.level}/5` : ''}`).join('; ')}` : null,
+    latest.hasLoadConcern
+      ? `• ⛔ Игрок отметил проблему нагрузки: ${(latest.discomfortAreas || []).join(', ') || 'зона не указана'}, боль ${latest.pain_level ?? '—'}/10. ${latest.concernText || ''}`
+      : null,
+    fresh ? '→ Учитывай фактическую утреннюю нагрузку до назначения дополнительного объёма в этой программе.' : null,
+  ].filter(Boolean);
+  return `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${lines.join('\n')}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+}
+
 function summarizeSnapshot(snap, workspace = 'zarechie') {
-  const { player, whoop, surveys, morning, neuro, manual, periodDays, targetDate, injuryLog, annotations, latestSurvey, latestMorning } = snap;
+  const { player, whoop, surveys, morning, postMorningSurveys = [], neuro, manual, periodDays, targetDate, injuryLog, annotations, latestSurvey, latestMorning, latestPostMorning } = snap;
 
   const todayWhoop = onDay(whoop, targetDate);
   const todayMorning = onDay(morning, targetDate);
   const selectedMorning = todayMorning || latestMorning || latestOnOrBefore(morning, targetDate);
   const lastSurvey = latestSurvey || latestOnOrBefore(surveys, targetDate);
-  const recentInjury = [...surveys].filter(d => d.date <= targetDate).reverse().find(d => d.hasInjury) || null;
+  const lastPostMorning = latestPostMorning || latestOnOrBefore(postMorningSurveys, targetDate);
+  const allSessionSurveys = [...surveys, ...postMorningSurveys]
+    .filter(record => record.date <= targetDate)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.submittedAt || '').localeCompare(String(b.submittedAt || '')));
+  const recentInjury = [...allSessionSurveys].reverse().find(d => d.hasInjury || d.hasLoadConcern) || null;
 
   const trendRecovery = avg(whoop.map(d => d.recovery));
   const trendHrv = avg(whoop.map(d => d.hrv));
   const trendStrain = avg(whoop.map(d => d.strain));
-  const trendSrpe = avg(surveys.map(d => d.srpe));
-  const trendFatigue = avg(surveys.map(d => d.fatigue));
+  const trendSrpe = avg(allSessionSurveys.map(d => d.srpe));
+  const trendFatigue = avg(allSessionSurveys.map(d => d.fatigue));
   const trendMws = avg(morning.map(d => d.mws));
 
   // HRV Z-score vs individual baseline
@@ -538,20 +569,26 @@ function summarizeSnapshot(snap, workspace = 'zarechie') {
   const _dBefore = (date, n) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
 
   // ── Foster load signals: daily load = sRPE × duration.
-  const computeLoad = (surveyArr, manualObj) => {
+  const computeLoad = (surveyArr, postMorningArr, manualObj) => {
     const result = {};
     for (const s of surveyArr) {
       if (s.srpe != null) {
         // Prefer the duration the player reported in the evening survey;
         // fall back to manual coach input, then a 60-min default.
         const dur = s.duration ?? manualObj[s.date]?.duration ?? 60;
-        result[s.date] = s.srpe * dur;
+        result[s.date] = (result[s.date] || 0) + s.srpe * dur;
       }
+    }
+    for (const s of postMorningArr) {
+      const load = s.totalLoad == null ? null : Number(s.totalLoad);
+      const fallbackLoad = Number(s.srpe) * Number(s.totalDuration ?? s.duration);
+      const resolved = load != null && Number.isFinite(load) ? load : Number.isFinite(fallbackLoad) ? fallbackLoad : null;
+      if (resolved != null) result[s.date] = (result[s.date] || 0) + resolved;
     }
     return result;
   };
 
-  const loadMap = computeLoad(surveys, manual || {});
+  const loadMap = computeLoad(surveys, postMorningSurveys, manual || {});
 
   // Foster Monotony and Strain Index (last 7 days)
   const last7Loads = (() => {
@@ -607,8 +644,19 @@ function summarizeSnapshot(snap, workspace = 'zarechie') {
           formatEveningZones(lastSurvey) ? `  Зоны: ${formatEveningZones(lastSurvey)}` : null,
         ].filter(Boolean).join('\n')
       : '• Вечерних опросников в доступном окне нет.',
+    lastPostMorning
+      ? [
+          `• Последняя анкета после утренней тренировки (${lastPostMorning.date}):`,
+          `  sRPE ${lastPostMorning.srpe ?? '—'}/10, длительность ${lastPostMorning.totalDuration ?? lastPostMorning.duration ?? '—'} мин, нагрузка ${lastPostMorning.totalLoad ?? '—'}`,
+          `  Усталость ${lastPostMorning.fatigue ?? '—'}/5, ноги ${lastPostMorning.legFatigue ?? '—'}/5, плечо ${lastPostMorning.shoulderLoad ?? '—'}/5, готовность ${lastPostMorning.tomorrowReadiness ?? '—'}/5`,
+          lastPostMorning.participation && lastPostMorning.participation !== 'full'
+            ? `  Участие: ${lastPostMorning.participation}${lastPostMorning.participationNote ? ` — ${lastPostMorning.participationNote}` : ''}`
+            : null,
+          formatEveningZones(lastPostMorning) ? `  Зоны: ${formatEveningZones(lastPostMorning)}` : null,
+        ].filter(Boolean).join('\n')
+      : '• Анкет после утренней тренировки в доступном окне нет.',
     recentInjury
-      ? `• ⚠ Травма ${recentInjury.date}: область ${(recentInjury.injuryAreas || []).join(', ') || '—'}, боль ${recentInjury.pain_level}/10. ${recentInjury.injuryText || ''}`
+      ? `• ⚠ Риск из анкеты ${recentInjury.date}: область ${([...(recentInjury.injuryAreas || []), ...(recentInjury.discomfortAreas || [])]).join(', ') || '—'}, боль ${recentInjury.pain_level ?? recentInjury.zonePainLevel ?? '—'}/10. ${recentInjury.injuryText || recentInjury.concernText || ''}`
       : '• Активных травм не зафиксировано.',
     // Structured injury log from dashboard
     (() => {
@@ -1643,6 +1691,12 @@ export async function buildGenerationInputs(body) {
     targetDate,
     dayGoal,
     playerRestrictions: Array.isArray(restrictions) ? restrictions : [],
+    questionnaireContext: {
+      capturedAt: new Date().toISOString(),
+      morning: readiness.morning ? { date: readiness.morning.date, submittedAt: readiness.morning.submittedAt || null } : null,
+      postMorning: readiness.postMorning ? { date: readiness.postMorning.date, submittedAt: readiness.postMorning.submittedAt || null } : null,
+      evening: readiness.evening ? { date: readiness.evening.date, submittedAt: readiness.evening.submittedAt || null } : null,
+    },
     qualityContext: {
       focus: effectiveFocus,
       trainingType,
@@ -1803,6 +1857,7 @@ export default async function handler(req, res) {
 function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie', microcycleSlot = null }) {
   let dataSummary = summarizeSnapshot(snapshot, workspace);
   const freshEveningContext = eveningSafetyContext(snapshot.surveys, targetDate, snapshot.latestSurvey);
+  const freshPostMorningContext = postMorningSafetyContext(snapshot.postMorningSurveys, targetDate, snapshot.latestPostMorning);
 
   // Coach manual recovery status (светофор тренера) — appended after biometric data.
   if (coachRecovery !== 'green') {
@@ -2125,7 +2180,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     : '';
 
   const userPrompt = `${dataSummary}
-${freshEveningContext}${onermContext}${warmupContext}${manualWorkspaceContext}${nkTestExclusionContext}${trainingTypeContext}${isoWaveContext}${hrvTrendAlert}${hoopers7dAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
+${freshPostMorningContext}${freshEveningContext}${onermContext}${warmupContext}${manualWorkspaceContext}${nkTestExclusionContext}${trainingTypeContext}${isoWaveContext}${hrvTrendAlert}${hoopers7dAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${historyBlock}
 ${actualHistoryBlock}
