@@ -100,8 +100,8 @@ const FOCUS_LABELS = {
   camp_ecc_anterior:  'СБОРЫ · ЭКСЦЕНТРИКА · Передняя цепь — ручной метод; квадрицепс, жим, сгибатель бедра; темп 5-0-X-0; прогрессия: нед.1=3×75-78%, нед.2=4×80-83%, нед.3=4×83-87%',
   camp_ecc_posterior: 'СБОРЫ · ЭКСЦЕНТРИКА · Задняя цепь — ручной метод; бицепс бедра, ягодицы, верхняя тяга; темп 5-0-X-0; прогрессия: нед.1=3×75-78%, нед.2=4×80-83%, нед.3=4×83-87%',
   camp_ecc_fullbody:  'СБОРЫ · ЭКСЦЕНТРИКА · Всё тело — ручной метод; интеграция обеих цепей, высокое нейромышечное качество; темп 5-0-X-0; прогрессия: нед.1=3×75-78%, нед.2=4×80-83%, нед.3=4×83-87%',
-  camp_iso_anterior:  'СБОРЫ · ИЗОМЕТРИКА · Передняя цепь — ручной метод; пауза в напряжении 5 сек в угле 60-90° колено → вверх максимально резко; при JLU >200 плиометрику Блока A снизить 50%',
-  camp_iso_posterior: 'СБОРЫ · ИЗОМЕТРИКА · Задняя цепь — ручной метод; пауза в напряжении 5 сек в угле 45° бедро → вверх максимально резко; нагрузку адаптировать по JLU',
+  camp_iso_anterior:  'СБОРЫ · ИЗОМЕТРИКА · Передняя цепь — ручной метод; пауза в напряжении 5 сек в угле 60-90° колено → вверх максимально резко; дозировка по целевому RPE и фактической истории игрока',
+  camp_iso_posterior: 'СБОРЫ · ИЗОМЕТРИКА · Задняя цепь — ручной метод; пауза в напряжении 5 сек в угле 45° бедро → вверх максимально резко; дозировка по целевому RPE и фактической истории игрока',
   camp_explosive:     'СБОРЫ · ВЗРЫВ / ПОТЕНЦИАЦИЯ — НЕДЕЛЯ 6 тейпер; нагрузка 50-60% 1ПМ максимальная скорость; объём -40-50% от пиковых недель; 60 мин СТРОГО; ЗАПРЕЩЕНО: медленная эксцентрика и изо-удержания; цель — нейронная активация ЦНС перед первой игрой 26 августа',
   // ── СЕЗОН ЗВС ────────────────────────────────────────────────────────────
   zvs_strength_day:   'ЗВС Сезон: Силовой день (3+ дней до игры) — 55-65 мин, накопление, PAP-пары 80-85%, JLU ≤120; блоки B/D адаптированы под позицию',
@@ -666,7 +666,9 @@ function summarizeSnapshot(snap) {
       : null,
   ].filter(v => v != null);
 
-  // Jump load from manual coach input (attackers only — libero/setter will have no data)
+  // Total jump load from manual coach input. Until the team has enough real
+  // match observations, compare only with the player's own same-session-type
+  // history and never invent universal position thresholds.
   // Context: coach enters jumps from EVENING SESSION ONLY (training) or MATCH ONLY (on game day).
   // These are NOT combined totals — they represent one specific event per day.
   const manualData = manual || {};
@@ -685,41 +687,28 @@ function summarizeSnapshot(snap) {
   if (yesterdayJumps != null) {
     const sessionLabel = yesterdayWasMatch ? 'матч' : 'вечерняя тренировка';
     lines.push('', `Прыжковая нагрузка вчера (${prevDay}, ${sessionLabel}, данные тренера): ${yesterdayJumps} прыжков`);
-
-    const pos = (player.position || '').toLowerCase();
-    const isMB  = pos.includes('центр') || pos.includes('middle');
-    const isOPP = pos.includes('диагон');
-
-    if (yesterdayWasMatch) {
-      // Match jumps: ALL are near-maximal effort (attack, block, serve) → lower thresholds
-      // Research: pro players avg 54-90 match jumps; each = high CNS/tendon stress
-      if (yesterdayJumps >= 75) {
-        lines.push(`→ 🔴🔴 Тяжёлый матч (${yesterdayJumps} прыжков — все высокой интенсивности): A2 взрывной убрать полностью, только силовое A1, расширенный E-блок. Это день ПОСЛЕ матча — режим восстановления с силовым акцентом.`);
-      } else if (yesterdayJumps >= 55) {
-        lines.push(`→ 🔴 Матч (${yesterdayJumps} прыжков): плиометрику A2 снизить на 50%, только качественные прыжки, нет объёмной работы`);
-      } else if (yesterdayJumps >= 35) {
-        lines.push(`→ ⚠ Лёгкий матч / малое участие (${yesterdayJumps} прыжков): объём A2 -25%, E4 усиленный`);
-      } else {
-        lines.push(`→ Минимальная матчевая нагрузка (${yesterdayJumps} прыжков): нагрузка по плану`);
-      }
+    const comparable = Object.entries(manualData)
+      .map(([date, value]) => ({
+        date,
+        jumps: Number(value?.jumps),
+        isMatch: surveys.find(s => s.date === date)?.sessionType === 'match',
+      }))
+      .filter(item => item.date < prevDay && Number.isFinite(item.jumps) && item.jumps >= 0 && item.isMatch === yesterdayWasMatch)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-8);
+    if (comparable.length >= 3) {
+      const sorted = comparable.map(item => item.jumps).sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      const delta = median > 0 ? Math.round((yesterdayJumps - median) / median * 100) : null;
+      lines.push(`• Индивидуальный ориентир (${comparable.length} последних ${yesterdayWasMatch ? 'матчей' : 'тренировок'}): медиана ${Math.round(median)} прыжков${delta != null ? `; вчера ${delta >= 0 ? '+' : ''}${delta}%` : ''}`);
+      lines.push('→ Значение оценивай вместе с CMJ/RSI, WHOOP, опросом, болью и фактическим RPE. Один высокий общий счётчик не является автоматическим запретом на выбранный метод.');
     } else {
-      // Training jumps: mixed intensity (drills, technique) → position-specific thresholds
-      // Research: MB 80-110, OPP 60-90, OH 55-80 per training session (Sanders 2024)
-      const yellowThreshold = isMB ? 110 : isOPP ? 90 : 80;
-      const redThreshold    = isMB ? 160 : isOPP ? 130 : 110;
-      const critThreshold   = isMB ? 210 : isOPP ? 180 : 150;
-      if (yesterdayJumps >= critThreshold) {
-        lines.push(`→ 🔴🔴 Критическая тренировочная нагрузка (${yesterdayJumps} прыжков): A2 взрывной убрать, только A1 силовое, расширенный E-блок`);
-      } else if (yesterdayJumps >= redThreshold) {
-        lines.push(`→ 🔴 Высокая тренировочная нагрузка (${yesterdayJumps} прыжков): плиометрику A2 -50%, E4 усиленный`);
-      } else if (yesterdayJumps >= yellowThreshold) {
-        lines.push(`→ ⚠ Повышенная тренировочная нагрузка (${yesterdayJumps} прыжков): A2 объём -25%`);
-      } else {
-        lines.push(`→ Нагрузка в норме для позиции (порог: ${yellowThreshold})`);
-      }
+      lines.push(`• Персональный ${yesterdayWasMatch ? 'матчевый' : 'тренировочный'} baseline пока не сформирован (${comparable.length}/3 сопоставимых наблюдений).`);
+      lines.push('→ Используй число как контекст, но не применяй абсолютные или позиционные пороги до накопления реальных данных команды.');
     }
   } else {
-    lines.push('• Прыжковая нагрузка вчера: данных нет (либеро/связка или тренер не вносил — используй Recovery% как прокси)');
+    lines.push('• Прыжковая нагрузка вчера: данных нет — используй CMJ/RSI, WHOOP, опрос, боль и фактический RPE, не считай отсутствие данных зелёным сигналом');
   }
 
   const performance = formatPerformanceKpisForPrompt(neuro, targetDate);
@@ -932,41 +921,22 @@ Foster Monotony (монотонность нагрузки):
   RTR-дата: до этой даты не нагружать зону ни при каком состоянии.
 
 RSI нейромышечный тест:
-  RSI < 1.5 → снижена нейромышечная реактивность: приоритет качеству в A2 над объёмом, не форсируй взрывную нагрузку
+  Протокол — повторные вертикальные прыжки. Используй последний доступный результат и изменение относительно индивидуального baseline; универсальный абсолютный порог не применяй.
 
-Прыжковая нагрузка вчера (только нападающие — у либеро/связок данных нет):
-  ВАЖНО: данные = ТОЛЬКО одна сессия вчера: либо вечерняя тренировка, либо матч (не сумма).
-  Тип сессии указан рядом с цифрой — используй РАЗНЫЕ пороги:
-
-  МАТЧЕВЫЕ прыжки (все близки к максимальному усилию — атака, блок, подача):
-    ≥75 → тяжёлый матч: A2 взрывной убрать, A1 только, расширенный E-блок (режим восстановления с силовым акцентом)
-    55-74 → типичный матч: A2 -50%, качество важнее объёма
-    35-54 → малое участие в матче: A2 -25%, E4 усиленный
-    <35 → минимальная нагрузка: по плану
-
-  ТРЕНИРОВОЧНЫЕ прыжки (смешанная интенсивность, дрили, техника):
-    Центральный: норма <110, жёлтая >110, красная >160, критич. >210
-    Диагональный: норма <90, жёлтая >90, красная >130, критич. >180
-    Доигровщик:  норма <80, жёлтая >80, красная >110, критич. >150
-
-  Нет данных → используй Recovery% WHOOP как прокси
+Прыжковая нагрузка вчера:
+  Данные = общее количество за одну сессию: вечерняя тренировка или матч, не сумма и не разбивка по типам прыжков.
+  Сравнивай матч только с предыдущими матчами этого игрока, тренировку — только с тренировками.
+  До накопления минимум 3 сопоставимых наблюдений не используй абсолютные или позиционные пороги.
+  После накопления истории ориентируйся на персональную медиану и отклонение от неё, но корректируй нагрузку только при совпадении с другими доменами готовности.
 
 Травма (из опросника): исключить нагрузку на поражённую зону полностью, расширить E-блок
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-РАСПИСАНИЕ СБОРОВ (13 июля — 26 августа)
+КОНТЕКСТ СБОРОВ (13 июля — 26 августа)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Выходные дни: ВСЕГДА четверг и воскресенье
-Последовательность утра: Разминка (20 мин) → Зал → Волейбол (техника, без прыжков)
-
-Вечерние кондиции — ТОЛЬКО недели 1-3:
-  Понедельник вечер — ЛИНЕЙНАЯ СКОРОСТЬ: в утреннем зале защищай сгибатели бедра и квадрицепс
-  Вторник вечер — СМЕНА НАПРАВЛЕНИЯ (COD): в утреннем зале защищай колени, не доводи заднюю цепь до отказа
-  Суббота вечер — ВЫНОСЛИВОСТЬ: конфликта с залом нет (суббота без зала в нед.1-3)
-
-Вечерний тактический волейбол с прыжками — недели 4-5:
-  Все вечера (кроме чт/вс) → проверяй JLU из дашборда перед составлением
+Расписание площадки и порядок «зал/волейбол» меняются. Не предполагай фиксированные дни, выходные или содержание вечерней работы.
+Используй только фактический календарь, общий счётчик прыжков, свежие опросы, WHOOP, комментарий тренера и историю выполнения.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ФАЗА 1 — ЭКСЦЕНТРИКА (Недели 1-3 · ручной выбор метода · 70-75 мин)
@@ -1075,17 +1045,20 @@ PAP-интервал: 5-10 сек между A1 и A2
 
 Метод: пауза в напряжении 5 секунд в рабочем угле → вверх/выход максимально резко.
 Ключевые углы: колено 60-90° (сухожилие надколенника) | бедро 45° | плечо 90°
-Усилие удержания: 70-80% от максимального
+Усилие удержания: по целевому RPE текущей волны и фактической истории того же упражнения. 60-75% 1ПМ допустимы только как стартовый ориентир, если истории нет.
 Темп: "0-5сек-X-0"
 
-Прогрессия:
-  Неделя 4: 3 подхода · пауза 5 сек
-  Неделя 5: 4 подхода · пауза 5 сек или +1 подход
+Внутринедельная волна 4 сессий:
+  Сессия 1 — RPE 7, средний входящий объём
+  Сессия 2 — RPE 8, тяжёлый стимул
+  Сессия 3 — RPE 7-8, средне-тяжёлый стимул
+  Сессия 4 — RPE 6-7, объём -25-30%, закрепление без накопления усталости
+  Вес прогрессирует только по фактическому RPE/боли/качеству прошлого выполнения того же якоря.
 
 Метод выбирает тренер независимо от дня:
   ПЕРЕДНЯЯ ЦЕПЬ (изометрика) или ЗАДНЯЯ ЦЕПЬ (изометрика)
 
-⚠ Вечерний волейбол с прыжками: всегда проверяй JLU из дашборда, если >200 → плиометрика Блока A -50%
+⚠ Вечерний волейбол и его прыжковая нагрузка меняются: дозируй плиометрику по персональной истории общего количества прыжков и совпадению сигналов готовности, без универсального порога.
 
 ──────────────────────────────────
 ПЕРЕДНЯЯ ЦЕПЬ — ИЗОМЕТРИКА (ручной выбор, любой день)
@@ -1292,8 +1265,8 @@ PAP-интервал: 5-10 сек между A1 и A2
   Неделя 3: 3×4 @ 83-87% 1ПМ → PAP 10-15 сек → B2 взрывное 3×4 повт.
 
 🟡 ФАЗА 2 (Изометрика · Нед. 4-5) — B1: пауза в напряжении 5 сек, локоть 90° → жим максимально резко:
-  Неделя 4: 3×6 + ISO 5 сек @ 67-70% 1ПМ
-  Неделя 5: 4×5 + ISO 5 сек @ 72-75% 1ПМ
+  Подходы и вес определяет текущий слот волны 1/4–4/4 и фактический RPE прошлого выполнения.
+  Если истории нет: начни консервативно около 60-70% 1ПМ и откалибруй до целевого RPE, без отказа.
 
 🔴 ФАЗА 3 (Взрыв/Тейпер · Нед. 6) — B1 темп X-0-X-0 максимальная скорость:
   Неделя 6: 3×3-4 @ 60-65% 1ПМ → PAP 10-15 сек → B2 взрывное 3×4 повт.
@@ -1486,7 +1459,7 @@ FIELD name — ENGLISH ONLY (professional S&C terminology):
 // (generate-async.js) so both produce byte-identical prompts. Returns either
 // { error, status } on failure or { snapshot, userPrompt, dataSummary, targetDate, dayGoal }.
 export async function buildGenerationInputs(body) {
-  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie', planningMode = '' } = body || {};
+  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie', planningMode = '', microcycleSlot = null } = body || {};
   if (!playerId) return { error: 'playerId required', status: 400 };
   const wpfx = pfx(workspace);
 
@@ -1564,7 +1537,7 @@ export async function buildGenerationInputs(body) {
 
   let { userPrompt, dataSummary } = buildUserPrompt({
     snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks,
-    actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType, notes, warmupSummary, teamUsedExercises, coachRecovery,
+    actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType, notes, warmupSummary, teamUsedExercises, coachRecovery, microcycleSlot,
     playbookText, workspace,
   });
   if (focusDowngradeNote) { userPrompt += focusDowngradeNote; dataSummary += focusDowngradeNote; }
@@ -1745,7 +1718,7 @@ export default async function handler(req, res) {
 }
 
 // ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
-function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie' }) {
+function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie', microcycleSlot = null }) {
   let dataSummary = summarizeSnapshot(snapshot);
   const freshEveningContext = eveningSafetyContext(snapshot.surveys, targetDate, snapshot.latestSurvey);
 
@@ -1765,6 +1738,29 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
   const trainingTypeContext = trainingTypeLabel
     ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nРУЧНОЙ ТИП ТРЕНИРОВКИ ОТ ТРЕНЕРА: ${trainingTypeLabel}\n→ Это главный тематический акцент сессии. День недели и календарь НЕ могут заменить выбранный метод. Если готовность/боль/матч конфликтуют с типом, сохрани тему, но снизь нагрузку и замени рискованные упражнения.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
     : '';
+
+  let isoWaveContext = '';
+  if (String(focus).startsWith('camp_iso_')) {
+    const start = new Date(`${targetDate}T12:00:00Z`);
+    const day = start.getUTCDay() || 7;
+    start.setUTCDate(start.getUTCDate() - day + 1);
+    const weekStart = start.toISOString().slice(0, 10);
+    const historyCount = sessionSummaries.filter(summary => {
+      const date = String(summary).match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+      return date && date >= weekStart && date < targetDate;
+    }).length;
+    const parsedSlot = Number(microcycleSlot);
+    const slot = Number.isInteger(parsedSlot) && parsedSlot >= 1 && parsedSlot <= 4
+      ? parsedSlot
+      : historyCount % 4 + 1;
+    const wave = {
+      1: { name: 'входящий средний стимул', rpe: 'RPE 7', volume: '3 рабочих подхода основных якорей; без форсирования веса' },
+      2: { name: 'тяжёлый стимул', rpe: 'RPE 8', volume: '3-4 рабочих подхода; прогрессия только по фактическому RPE и без боли' },
+      3: { name: 'средне-тяжёлый стимул', rpe: 'RPE 7-8', volume: '3-4 рабочих подхода; качество взрывного выхода важнее добавления веса' },
+      4: { name: 'облегчённое закрепление', rpe: 'RPE 6-7', volume: 'объём основных блоков -25-30%, 2-3 рабочих подхода; паттерны и скорость сохранить' },
+    }[slot];
+    isoWaveContext = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nВОЛНА ИЗОМЕТРИЧЕСКОГО МИКРОЦИКЛА · СЕССИЯ ${slot}/4\n• Задача: ${wave.name}\n• Целевое усилие: ${wave.rpe}\n• Дозировка: ${wave.volume}\n• Вес выбирай по последнему фактическому весу и RPE того же якоря: RPE ≤6 без боли → небольшой шаг вверх; RPE 7-8 → удержать; RPE ≥9 или боль → регрессировать. Проценты 1ПМ — только стартовый ориентир при отсутствии истории.\n• Статус тренера, свежая боль и совпадение сигналов усталости могут снизить волну, но не повысить её.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  }
 
   // Compute schedule proximity context
   function shiftDate(d, n) {
@@ -2043,7 +2039,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     : '';
 
   const userPrompt = `${dataSummary}
-${freshEveningContext}${onermContext}${warmupContext}${manualWorkspaceContext}${trainingTypeContext}${hrvTrendAlert}${hoopers7dAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
+${freshEveningContext}${onermContext}${warmupContext}${manualWorkspaceContext}${trainingTypeContext}${isoWaveContext}${hrvTrendAlert}${hoopers7dAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${historyBlock}
 ${actualHistoryBlock}

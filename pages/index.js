@@ -35,7 +35,6 @@ import {
   ArrowUpRight,
   Menu,
   Plus,
-  Info,
   Plane,
   Swords,
   Coffee,
@@ -49,20 +48,6 @@ import { findExerciseUrl } from '../lib/exerciseBank';
 import { calcWeight } from '../lib/loadCalc';
 import { RESTRICTIONS, hasRestriction } from '../lib/exerciseRestrictions';
 import { exerciseTonnage, isPairableFreeWeightExercise, loadUnitsForExercise } from '../lib/tonnage';
-
-// Camp date anchors (сборы 2026).
-const CAMP_START = '2026-07-13';
-const CAMP_ECC_END = '2026-08-02'; // конец эксцентрической фазы
-
-// Evening-conditioning info for weeks 1-3 of camp (Mon/Tue/Sat).
-function campEveningNote(dateStr) {
-  if (!dateStr || dateStr < CAMP_START || dateStr > CAMP_ECC_END) return null;
-  const dow = new Date(`${dateStr}T00:00:00`).getDay(); // 0=Sun..6=Sat
-  if (dow === 1) return 'Вечер: линейная скорость · защищай квадрицепс и сгибатели';
-  if (dow === 2) return 'Вечер: COD · защищай колени';
-  if (dow === 6) return 'Вечер: выносливость · зала сегодня нет';
-  return null;
-}
 
 // Map a camp focus phase to a representative training week (for auto-weight %).
 function weekFromFocus(focus) {
@@ -3047,6 +3032,7 @@ export default function Home() {
             coachRecovery: recoveryStatus,
             workspace,
             planningMode: 'week',
+            microcycleSlot: i + 1,
           }),
         }).then(r => r.json());
 
@@ -6180,14 +6166,6 @@ export default function Home() {
                 <div className="mb-4 flex items-center gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/[0.06] px-4 py-2.5 print:hidden">
                   <AlertTriangle size={13} className="shrink-0 text-rose-400" />
                   <span className="text-[12px] font-bold text-rose-300">Только тонус · профилактика · без тяжёлого</span>
-                </div>
-              )}
-
-              {/* Camp evening-conditioning info (weeks 1-3) */}
-              {period === 'camp' && campEveningNote(date) && (
-                <div className="mb-4 flex items-center gap-2.5 rounded-2xl border border-slate-500/20 bg-slate-500/[0.05] px-4 py-2 print:hidden">
-                  <Info size={13} className="shrink-0 text-slate-400" />
-                  <span className="text-[12px] font-medium text-slate-400">{campEveningNote(date)}</span>
                 </div>
               )}
 
