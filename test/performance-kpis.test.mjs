@@ -81,6 +81,21 @@ test('does not leak a generic legacy CMJ history into the other KPIs', () => {
   assert.equal(result.sprint10m.value, null);
 });
 
+test('calibrates a within-player decision threshold after six repeated tests', () => {
+  const result = performanceKpis({ history: [
+    { date: '2026-07-01', cmj: 40.0 },
+    { date: '2026-07-08', cmj: 40.4 },
+    { date: '2026-07-15', cmj: 39.9 },
+    { date: '2026-07-22', cmj: 40.3 },
+    { date: '2026-07-29', cmj: 40.1 },
+    { date: '2026-08-05', cmj: 38.0 },
+  ] }, '2026-08-06');
+  assert.equal(result.cmj.calibrated, true);
+  assert.ok(result.cmj.typicalErrorPercent > 0);
+  assert.ok(result.cmj.decisionThresholdPercent >= 3);
+  assert.equal(result.cmj.meaningfulDecline, true);
+});
+
 test('prompt exposes dates, baselines and missing KPI data', () => {
   const { text } = formatPerformanceKpisForPrompt({ history: [
     { date: '2026-08-05', rsi: 2.1 },

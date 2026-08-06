@@ -19,28 +19,39 @@ function num(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-function computeRiskScore({ recovery, hrv, cmjDrop, lsi }) {
+function computeAttentionScore({ recovery, hrvZ, kpiDrop, lsi, readiness, doms }) {
   let score = 0;
   if (recovery != null) {
     if (recovery < 20) score += 35;
     else if (recovery < 34) score += 25;
     else if (recovery < 66) score += 12;
   }
-  if (hrv != null) {
-    if (hrv < 40) score += 15;
-    else if (hrv < 50) score += 10;
+  if (hrvZ != null) {
+    if (hrvZ <= -2) score += 20;
+    else if (hrvZ <= -1.5) score += 15;
+    else if (hrvZ <= -0.75) score += 8;
   }
-  if (cmjDrop != null) {
-    if (cmjDrop < -15) score += 30;
-    else if (cmjDrop < -10) score += 20;
-    else if (cmjDrop < -5) score += 10;
+  if (kpiDrop != null) {
+    if (kpiDrop < -15) score += 25;
+    else if (kpiDrop < -10) score += 18;
+    else if (kpiDrop < -5) score += 8;
   }
   if (lsi != null) {
     if (lsi < 75) score += 20;
     else if (lsi < 80) score += 15;
     else if (lsi < 85) score += 8;
   }
+  if (readiness != null && readiness <= 2) score += 15;
+  if (doms != null && doms >= 4) score += 10;
   return Math.min(100, Math.round(score));
+}
+
+function personalZ(current, prior) {
+  if (current == null || !Array.isArray(prior) || prior.length < 5) return null;
+  const mean = prior.reduce((sum, value) => sum + value, 0) / prior.length;
+  const variance = prior.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (prior.length - 1);
+  const sd = Math.sqrt(variance);
+  return sd > 0 ? Math.round(((current - mean) / sd) * 100) / 100 : null;
 }
 
 function parseJSON(raw) {
@@ -95,6 +106,12 @@ export default async function handler(req, res) {
       const kpis = performanceKpis(snapshot.neuro, date);
       const recovery = num(whoop.recovery);
       const hrv = num(whoop.hrv);
+      const hrvPrior = (snapshot.whoop || [])
+        .filter(item => item?.date && item.date < (whoop.date || date))
+        .map(item => num(item.hrv))
+        .filter(value => value != null)
+        .slice(-21);
+      const hrvZ = personalZ(hrv, hrvPrior);
       const sleep_hours = num(whoop.sleep_hours);
 
       const mws = num(survey.mws);
@@ -114,6 +131,7 @@ export default async function handler(req, res) {
       const freshKpis = [kpis.rsi, kpis.cmj, kpis.sprint10m]
         .filter(metric => metric.value != null && !metric.stale);
       const worstKpiChange = freshKpis
+        .filter(metric => metric.meaningfulDecline)
         .map(metric => metric.performanceDeltaPercent)
         .filter(value => value != null)
         .sort((a, b) => a - b)[0] ?? null;
@@ -127,9 +145,9 @@ export default async function handler(req, res) {
 
       const domainAutonomic = !hasAutonomic ? 'unknown'
         :
-        (recovery != null && recovery < 20) || (hrv != null && hrv < 40) ? 'red'
-        : (recovery != null && recovery < 34) || (hrv != null && hrv < 50) ? 'red'
-        : (recovery != null && recovery <= 66) ? 'yellow'
+        (recovery != null && recovery < 20) || (hrvZ != null && hrvZ <= -2) ? 'red'
+        : (recovery != null && recovery < 34) || (hrvZ != null && hrvZ <= -1.5) ? 'red'
+        : (recovery != null && recovery <= 66) || (hrvZ != null && hrvZ <= -0.75) ? 'yellow'
         : 'green';
 
       const domainNeuro = !hasNeuromuscular ? 'unknown'
@@ -168,14 +186,16 @@ export default async function handler(req, res) {
       else if (redCount === 1 || yellowCount >= 2) status = 'yellow';
       else if (dataCompleteness < 50) status = 'yellow';
 
-      const riskScore = computeRiskScore({ recovery, hrv, cmjDrop: worstKpiChange, lsi });
+      const attentionScore = dataCompleteness === 0
+        ? null
+        : computeAttentionScore({ recovery, hrvZ, kpiDrop: worstKpiChange, lsi, readiness, doms });
 
       return {
         id: p.id,
         name: p.name || '',
         position: p.position || '',
         photo: p.photo || null,
-        recovery, hrv, sleep_hours,
+        recovery, hrv, hrvZ, sleep_hours,
         mws, doms, readiness,
         cmj, cmjDate, cmjBaseline, cmjDrop, rsi, rsiDate,
         sprint10m, sprint10mDate,
@@ -185,7 +205,7 @@ export default async function handler(req, res) {
           sprint10m: { ageDays: kpis.sprint10m.ageDays, stale: kpis.sprint10m.stale },
         },
         lsi, lsiDate,
-        status, domains, riskScore, dataQuality, dataCompleteness,
+        status, domains, attentionScore, dataQuality, dataCompleteness,
       };
     });
 

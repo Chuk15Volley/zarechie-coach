@@ -5,11 +5,13 @@
 // Redis, and returns { status: 'done', session, player, dataSummary, date, dayGoal }.
 
 import { isAuthorized } from '../../../lib/auth';
-import { redis } from '../../../lib/redis';
+import { redis, redisPipeline } from '../../../lib/redis';
 import { getPlayerSnapshot } from '../../../lib/playerData';
-import { sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
+import { exhistKey, exweightKey, gymTonnageDatesKey, gymTonnageKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
 import { assessSessionQuality, qualityCorrectionPrompt } from '../../../lib/sessionValidator';
 import { OPENAI_SESSION_MODEL, SYSTEM_PROMPT, normalizeExerciseLanguage } from './generate';
+import { normExName } from '../players/progression';
+import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 
 export const config = { maxDuration: 60 };
 
@@ -27,6 +29,41 @@ function parseFunctionArguments(args) {
   if (!args) return null;
   if (typeof args === 'object') return args;
   try { return JSON.parse(args); } catch { return null; }
+}
+
+function targetSetReps(value) {
+  const multiple = String(value || '').match(/^(\d+)\s*[x×]\s*(\d+)/i);
+  if (multiple) return Number(multiple[1]) * Number(multiple[2]);
+  return parseInt(value, 10) || 0;
+}
+
+function autoSaveCommands(record, workspace, playerId, date) {
+  const score = parseInt(String(date).replace(/-/g, ''), 10);
+  const versionsKey = `${sessionKey(workspace, playerId, date)}:versions`;
+  const commands = [
+    ['SET', sessionKey(workspace, playerId, date), JSON.stringify(record)],
+    ['ZADD', sessionsKey(workspace, playerId), score, date],
+    ['LPUSH', versionsKey, JSON.stringify(record)],
+    ['LTRIM', versionsKey, '0', '9'],
+  ];
+  let tonnage = 0;
+  for (const block of record.session?.blocks || []) {
+    for (const exercise of block.exercises || []) {
+      const kg = weightKgFromExercise(exercise);
+      const reps = (exercise.targetSets || []).reduce((sum, target) => sum + targetSetReps(target), 0);
+      if (kg > 0) {
+        const norm = normExName(exercise.name);
+        commands.push(['HSET', exweightKey(workspace, playerId, norm), 'kg', String(kg), 'date', date, 'loadUnits', String(loadUnitsForExercise(exercise)), 'source', 'planned']);
+        commands.push(['HSET', exhistKey(workspace, playerId, norm), date, String(kg)]);
+        tonnage += kg * loadUnitsForExercise(exercise) * reps;
+      }
+    }
+  }
+  if (tonnage > 0) {
+    commands.push(['SET', gymTonnageKey(workspace, playerId, date), String(Math.round(tonnage))]);
+    commands.push(['ZADD', gymTonnageDatesKey(workspace, playerId), score, date]);
+  }
+  return commands;
 }
 
 function findOpenAIFunctionCall(output, name) {
@@ -127,6 +164,13 @@ export default async function handler(req, res) {
       quality: record.quality || null,
     });
   }
+  if (record.status === 'failed') {
+    return res.status(422).json({
+      status: 'failed',
+      error: record.error || 'Тренировка не прошла обязательный контроль качества.',
+      quality: record.quality || null,
+    });
+  }
 
   const {
     playerId,
@@ -222,12 +266,25 @@ export default async function handler(req, res) {
 
     if (record.correctionAttempted && record.candidateSession && record.candidateQuality) {
       const candidateQuality = record.candidateQuality;
-      const correctedIsBetter = quality.score > candidateQuality.score
+      const correctedIsBetter = (quality.valid && !candidateQuality.valid)
+        || (quality.valid === candidateQuality.valid && quality.score > candidateQuality.score)
         || (quality.score === candidateQuality.score && quality.valid && !candidateQuality.valid);
       if (!correctedIsBetter) {
         session = record.candidateSession;
         quality = candidateQuality;
       }
+    }
+
+    if (!quality.valid || quality.score < 85) {
+      const failure = {
+        ...record,
+        status: 'failed',
+        error: 'Тренировка не прошла обязательный контроль дозировки и безопасности и не была сохранена.',
+        quality,
+        completedAt: new Date().toISOString(),
+      };
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify(failure), 'EX', 3600).catch(() => {});
+      return res.status(422).json({ status: 'failed', error: failure.error, quality });
     }
 
     const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 7, workspace).catch(() => null);
@@ -246,11 +303,8 @@ export default async function handler(req, res) {
       savedAt: new Date().toISOString(),
     };
     if (autoSave) {
-      const dateScore = parseInt(String(date).replace(/-/g, ''), 10);
-      await Promise.all([
-        redis('set', sessionKey(workspace, playerId, date), JSON.stringify(record2)),
-        redis('zadd', sessionsKey(workspace, playerId), dateScore, date),
-      ]).catch(e => console.error('Redis save session failed:', e.message));
+      await redisPipeline(autoSaveCommands(record2, workspace, playerId, date))
+        .catch(e => console.error('Redis save session failed:', e.message));
     }
 
     await redis('set', `coach:batch:${batchId}`, JSON.stringify({

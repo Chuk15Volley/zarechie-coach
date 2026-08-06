@@ -10,6 +10,8 @@ import { isAuthorized } from '../../../lib/auth';
 import { normExName } from '../players/progression';
 import { sessionKey, sessionsKey, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
+import { assessSessionQuality } from '../../../lib/sessionValidator';
+import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
 
 function formatKg(value) {
   const n = parseFloat(value);
@@ -53,6 +55,17 @@ export default async function handler(req, res) {
   }
 
   const normalizedSession = normalizeSavedWeights(session);
+  const saveQuality = assessSessionQuality(normalizedSession, {
+    focus,
+    trainingType,
+    dosePrescription: quality?.dose?.prescription || buildDosePrescription({ focus, trainingType }),
+  });
+  if (!saveQuality.valid || saveQuality.score < 85) {
+    return res.status(422).json({
+      error: 'Сессия не прошла обязательную проверку безопасности, дозировки и времени и не сохранена.',
+      quality: saveQuality,
+    });
+  }
 
   const record = {
     session: normalizedSession,
@@ -62,7 +75,7 @@ export default async function handler(req, res) {
     focus: focus || '',
     trainingType: trainingType || '',
     trainingLabel: trainingLabel || '',
-    quality: quality || null,
+    quality: saveQuality,
     date,
     savedAt: new Date().toISOString(),
   };

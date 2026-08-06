@@ -1,6 +1,6 @@
 // pages/api/players/trends.js
 // GET ?playerId=X&days=28
-// → { cmjHistory, acwrHistory, gymAcwrHistory, tsbHistory }
+// → descriptive recent:longer load trends. Ratios are context, never injury-risk predictions.
 //
 // CMJ: read neuro:history:{playerId} (JSON array), return the last 10 measurements.
 // ACWR: read survey:{playerId}:{date} over a 28+28-day window, build a daily sRPE-load
@@ -129,17 +129,6 @@ export default async function handler(req, res) {
         .map(r => ({ date: r.date, acwr: r.acwr, tonnage: r.load }));
     }
 
-    // ── Combined ACWR (volleyball sRPE + gym tonnage) ──────────────────────────
-    // Fold gym tonnage into the sRPE load as arbitrary units (1000kg ≈ 80 AU).
-    const combinedLoadMap = { ...loadMap };
-    for (const [d, tonnage] of Object.entries(tonnageMap)) {
-      combinedLoadMap[d] = (combinedLoadMap[d] || 0) + tonnage * 0.08;
-    }
-    const firstCombinedDate = Object.keys(combinedLoadMap).sort()[0] || null;
-    const combinedAcwrHistory = calcEWMAAcwr(combinedLoadMap, firstCombinedDate, targetDate)
-      .filter(r => r.date >= cutoffDay)
-      .map(r => ({ date: r.date, acwr: r.acwr, load: r.load }));
-
     return res.status(200).json({
       cmjHistory,
       performanceHistory,
@@ -150,8 +139,8 @@ export default async function handler(req, res) {
       },
       acwrHistory,
       gymAcwrHistory,
-      combinedAcwrHistory,
       tsbHistory,
+      loadTrendNote: 'Соотношения показывают только динамику недавней и более длительной нагрузки. Они не являются вероятностью травмы и не используются изолированно для назначения тренировки.',
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });

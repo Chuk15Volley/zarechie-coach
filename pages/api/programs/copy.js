@@ -1,6 +1,14 @@
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
-import { rosterKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
+import { restrictionsKey, rosterKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
+import { assessSessionQuality } from '../../../lib/sessionValidator';
+import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
+
+function parseJSON(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'object') return raw;
+  try { return JSON.parse(raw); } catch (_) { return null; }
+}
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
@@ -18,10 +26,11 @@ export default async function handler(req, res) {
   }
 
   // Look up target player info so the copy has correct player metadata
-  const [rawWhoop, rawRoster, rawWorkspaceRoster] = await Promise.all([
+  const [rawWhoop, rawRoster, rawWorkspaceRoster, rawRestrictions] = await Promise.all([
     redis('get', `whoop:player:${toPlayerId}`).catch(() => null),
     redis('get', `roster:player:${toPlayerId}`).catch(() => null),
     redis('get', rosterKey(workspace)).catch(() => null),
+    redis('get', restrictionsKey(workspace, toPlayerId)).catch(() => null),
   ]);
   const rawPlayer = rawWhoop || rawRoster;
   let targetPlayer = null;
@@ -54,6 +63,18 @@ export default async function handler(req, res) {
     player: targetPlayer || record.player,
     savedAt: new Date().toISOString(),
   };
+  const restrictions = parseJSON(rawRestrictions);
+  const copyQuality = assessSessionQuality(newRecord.session, {
+    focus: newRecord.focus || '',
+    trainingType: newRecord.trainingType || '',
+    playerRestrictions: Array.isArray(restrictions) ? restrictions : [],
+    dosePrescription: newRecord.quality?.dose?.prescription || buildDosePrescription({ focus: newRecord.focus, trainingType: newRecord.trainingType }),
+  });
+  if (!copyQuality.valid || copyQuality.score < 85) {
+    return res.status(422).json({ error: 'Копия нарушает ограничения игрока или не проходит контроль дозировки. Она не сохранена.', quality: copyQuality });
+  }
+  newRecord.quality = copyQuality;
+  newRecord.copiedFromPlayerId = String(fromPlayerId);
 
   const dateScore = parseInt(date.replace(/-/g, ''), 10);
   await Promise.all([

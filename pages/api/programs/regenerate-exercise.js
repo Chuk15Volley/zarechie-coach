@@ -7,6 +7,8 @@ import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { sessionKey } from '../../../lib/workspacePrefix';
 import { normalizeExerciseLanguage } from './generate';
+import { assessSessionQuality } from '../../../lib/sessionValidator';
+import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
 
 const BANNED =
   'Nordic Hamstring / Nordic Curl | Barbell Back Squat | Barbell Front Squat | обычная штанговая тяга / Conventional Barbell Deadlift | Olympic lifts со штангой | Depth Jump | Heavy Good Morning | Barbell Overhead Press | Barbell Bench Press | Leg Press | Smith Machine | Leg Extension | Hamstring Curl | Incline Push-Up / наклонные отжимания | Ab Wheel Rollout / Ab Roller | Broad Jump | DB Floor Press | Band Wrist Stability | Jump Set Drill | KB Press / жим с гирями | Tricep Pushdown с резиновой петлёй / Band Tricep Pushdown';
@@ -248,9 +250,25 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
 
     // Persist only when a saved session exists. Draft programs are updated in the UI
     // and will be stored by the normal Save command.
-    session.blocks[blockIndex].exercises[exerciseIndex] = newExercise;
+    const updatedSession = {
+      ...session,
+      blocks: session.blocks.map((currentBlock, currentBlockIndex) => currentBlockIndex !== blockIndex
+        ? currentBlock
+        : {
+          ...currentBlock,
+          exercises: currentBlock.exercises.map((currentExercise, currentExerciseIndex) => currentExerciseIndex === exerciseIndex ? newExercise : currentExercise),
+        }),
+    };
     if (record) {
-      const toSave = record.session ? { ...record, session } : session;
+      const replacementQuality = assessSessionQuality(updatedSession, {
+        focus: record.focus || '',
+        trainingType: record.trainingType || '',
+        dosePrescription: record.quality?.dose?.prescription || buildDosePrescription({ focus: record.focus, trainingType: record.trainingType }),
+      });
+      if (!replacementQuality.valid || replacementQuality.score < 85) {
+        return res.status(422).json({ error: 'Замена нарушает структуру или дозировку сессии и не сохранена.', quality: replacementQuality });
+      }
+      const toSave = record.session ? { ...record, session: updatedSession, quality: replacementQuality } : updatedSession;
       await redis('set', sessionKey(workspace, playerId, date), JSON.stringify(toSave));
     }
 

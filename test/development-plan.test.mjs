@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  evaluateDevelopmentPlan,
   formatDevelopmentPlanForPrompt,
   normalizeDevelopmentPlan,
 } from '../lib/developmentPlan.mjs';
@@ -44,4 +45,30 @@ test('expired development cycle requires review before adding goal-driven volume
 
   assert.match(text, /наступил срок пересмотра/);
   assert.match(text, /не добавляй новый целевой объём/);
+});
+
+test('four-week review reports adherence, meaningful change and target achievement', () => {
+  const reviewed = evaluateDevelopmentPlan({
+    cycleStart: '2026-07-01',
+    goals: [{ id: 'cmj', title: 'Увеличить CMJ', metric: 'cmj', baselineValue: 40, targetValue: 42, unit: ' см' }],
+  }, {
+    targetDate: '2026-08-01',
+    plannedSessions: 12,
+    actualSessions: 11,
+    metrics: { cmj: { value: 42.4, date: '2026-07-31', decisionThresholdPercent: 3 } },
+  });
+  assert.equal(reviewed.review.due, true);
+  assert.equal(reviewed.review.adherencePercent, 92);
+  assert.equal(reviewed.goals[0].achieved, true);
+  assert.equal(reviewed.goals[0].meaningful, true);
+  assert.equal(reviewed.goals[0].reviewStatus, 'achieved');
+});
+
+test('sprint goal correctly treats a lower time as improvement', () => {
+  const reviewed = evaluateDevelopmentPlan({
+    cycleStart: '2026-07-01',
+    goals: [{ title: 'Улучшить 10 м', metric: 'sprint10m', baselineValue: 1.9, targetValue: 1.82 }],
+  }, { targetDate: '2026-08-01', metrics: { sprint10m: { value: 1.81, decisionThresholdPercent: 3 } } });
+  assert.equal(reviewed.goals[0].achieved, true);
+  assert.ok(reviewed.goals[0].performanceDeltaPercent > 0);
 });

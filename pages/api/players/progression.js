@@ -6,15 +6,18 @@
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { exweightKey } from '../../../lib/workspacePrefix';
+import { canonicalExerciseId, legacyExerciseId } from '../../../lib/exerciseIdentity.mjs';
 
-// Stable short key derived from exercise name.
+// Legacy key kept only for read compatibility with existing history.
+export function legacyNormExName(name) {
+  return legacyExerciseId(name);
+}
+
+// V2 deliberately preserves equipment and execution variants. Previously
+// parentheticals were removed, merging (DB), (BW), band and other materially
+// different progressions into one history.
 export function normExName(name) {
-  return (name || '')
-    .toLowerCase()
-    .replace(/\([^)]*\)/g, '')       // drop parentheticals: (DB), (Band)
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
+  return canonicalExerciseId(name);
 }
 
 function isDumbbellExercise(name) {
@@ -27,6 +30,10 @@ function incrementStepFor(name) {
 
 function roundToStep(value, step = 2.5) {
   return Math.max(Math.round(value / step) * step, step);
+}
+
+function hasHashData(raw) {
+  return Array.isArray(raw) ? raw.length > 0 : !!raw && typeof raw === 'object' && Object.keys(raw).length > 0;
 }
 
 // Suggest next weight based on previous actual weight + RPE + pain.
@@ -65,16 +72,20 @@ export default async function handler(req, res) {
 
   // Deduplicate names to avoid redundant Redis calls.
   const unique = [...new Set(names.filter(Boolean))];
-  const keys = unique.map(n => normExName(n));
+  const keyPairs = unique.map(n => [normExName(n), legacyNormExName(n)]);
 
   // Batch-fetch all exercise weight records.
   const results = await redisPipeline(
-    keys.map(k => ['HGETALL', exweightKey(workspace, playerId, k)])
+    keyPairs.flatMap(([current, legacy]) => [
+      ['HGETALL', exweightKey(workspace, playerId, current)],
+      ['HGETALL', exweightKey(workspace, playerId, legacy)],
+    ])
   ).catch(() => []);
 
   const progression = {};
   unique.forEach((name, i) => {
-    const raw = results[i];
+    const currentRaw = results[i * 2];
+    const raw = hasHashData(currentRaw) ? currentRaw : results[i * 2 + 1];
     if (!raw) return;
 
     // Upstash returns HGETALL as flat array or object.

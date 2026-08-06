@@ -321,7 +321,7 @@ function RMChart({ history, fields }) {
   );
 }
 
-// Load + neuro trend charts: CMJ history (with baseline) and rolling ACWR.
+// Load + neuro trend charts. Recent:longer ratios are descriptive, not injury-risk scores.
 function TrendCharts({ data, showNeuro = true }) {
   const cmj = (data?.cmjHistory || []).filter(p => p.cmj != null);
   const acwr = (data?.acwrHistory || []).filter(p => p.acwr != null);
@@ -377,26 +377,20 @@ function TrendCharts({ data, showNeuro = true }) {
     const lo = 0, hi = Math.max(1.8, ...vals) + 0.1;
     const xFn = i => PAD.left + (i / (n - 1)) * cW;
     const yFn = v => PAD.top + cH - ((v - lo) / (hi - lo || 1)) * cH;
-    const zoneColor = v => v > 1.5 ? '#fb7185' : v >= 1.3 ? '#fbbf24' : v >= 0.8 ? '#34d399' : '#64748b';
+    const zoneColor = () => '#67e8f9';
     let d = '';
     acwr.forEach((p, i) => { d += i === 0 ? `M${xFn(i)},${yFn(p.acwr)}` : ` L${xFn(i)},${yFn(p.acwr)}`; });
     const last = vals[n - 1];
     return (
       <div className="rounded-2xl border border-white/[0.06] bg-black/20 p-3">
-        <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-700">ACWR · нагрузка</p>
+        <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-700">Недавняя / длительная нагрузка · sRPE</p>
         <svg width={W} height={H} className="w-full" viewBox={`0 0 ${W} ${H}`}>
-          {[1.3, 1.5].map(t => (
-            <g key={t}>
-              <line x1={PAD.left} y1={yFn(t)} x2={W - PAD.right} y2={yFn(t)} stroke={t === 1.5 ? 'rgba(251,113,133,0.3)' : 'rgba(251,191,36,0.3)'} strokeWidth="1" strokeDasharray="2,3" />
-              <text x={PAD.left - 3} y={yFn(t) + 3} textAnchor="end" fill="rgba(255,255,255,0.25)" fontSize="7">{t}</text>
-            </g>
-          ))}
           <path d={d} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           {acwr.map((p, i) => <circle key={i} cx={xFn(i)} cy={yFn(p.acwr)} r="2.2" fill={zoneColor(p.acwr)} />)}
         </svg>
         <p className="mt-1 text-[10px] text-slate-500">
           Сейчас: <span className="font-bold" style={{ color: zoneColor(last) }}>{last.toFixed(2)}</span>
-          {' '}{last > 1.5 ? '· пик риска' : last >= 1.3 ? '· повышенная' : last >= 0.8 ? '· оптимально' : '· недогрузка'}
+          {' '}· описательная динамика, не прогноз травмы
         </p>
       </div>
     );
@@ -413,26 +407,20 @@ function TrendCharts({ data, showNeuro = true }) {
     const lo = 0, hi = Math.max(1.8, ...vals) + 0.1;
     const xFn = i => PAD.left + (i / (n - 1)) * cW;
     const yFn = v => PAD.top + cH - ((v - lo) / (hi - lo || 1)) * cH;
-    const zoneColor = v => v > 1.5 ? '#fb7185' : v >= 1.3 ? '#fbbf24' : v >= 0.8 ? '#34d399' : '#64748b';
+    const zoneColor = () => '#a78bfa';
     let d = '';
     gymAcwr.forEach((p, i) => { d += i === 0 ? `M${xFn(i)},${yFn(p.acwr)}` : ` L${xFn(i)},${yFn(p.acwr)}`; });
     const last = vals[n - 1];
     return (
       <div className="rounded-2xl border border-white/[0.06] bg-black/20 p-3">
-        <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-700">Gym-ACWR · тоннаж</p>
+        <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-700">Недавний / длительный тоннаж зала</p>
         <svg width={W} height={H} className="w-full" viewBox={`0 0 ${W} ${H}`}>
-          {[1.3, 1.5].map(t => (
-            <g key={t}>
-              <line x1={PAD.left} y1={yFn(t)} x2={W - PAD.right} y2={yFn(t)} stroke={t === 1.5 ? 'rgba(251,113,133,0.3)' : 'rgba(251,191,36,0.3)'} strokeWidth="1" strokeDasharray="2,3" />
-              <text x={PAD.left - 3} y={yFn(t) + 3} textAnchor="end" fill="rgba(255,255,255,0.25)" fontSize="7">{t}</text>
-            </g>
-          ))}
           <path d={d} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           {gymAcwr.map((p, i) => <circle key={i} cx={xFn(i)} cy={yFn(p.acwr)} r="2.2" fill={zoneColor(p.acwr)} />)}
         </svg>
         <p className="mt-1 text-[10px] text-slate-500">
           Тоннаж зала: <span className="font-bold" style={{ color: zoneColor(last) }}>{last.toFixed(2)}</span>
-          {' '}{last > 1.5 ? '· пик риска' : last >= 1.3 ? '· повышенная' : last >= 0.8 ? '· оптимально' : '· недогрузка'}
+          {' '}· только контекст изменения объёма
         </p>
       </div>
     );
@@ -1819,6 +1807,17 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
   const cycleStart = plan?.cycleStart || todayISO();
   const reviewDate = addDaysToStr(cycleStart, 28);
   const reviewDue = todayISO() >= reviewDate;
+  const metricOptions = [
+    { value: 'manual', label: 'Ручная оценка' },
+    { value: 'rsi', label: 'RSI' },
+    { value: 'cmj', label: 'CMJ, см' },
+    { value: 'sprint10m', label: '10 м, сек' },
+  ];
+  const reviewLabels = {
+    achieved: 'цель достигнута', improved_not_target: 'есть значимый прогресс',
+    within_noise: 'изменение в пределах погрешности', regressed: 'результат снизился',
+    insufficient_data: 'недостаточно данных', manual_review: 'нужно решение тренера', in_progress: 'цикл продолжается',
+  };
 
   function updateGoal(index, patch) {
     onChange({
@@ -1831,7 +1830,7 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
     if (goals.length >= 3) return;
     onChange({
       ...plan,
-      goals: [...goals, { id: `goal-${Date.now()}`, title: '', criterion: '' }],
+      goals: [...goals, { id: `goal-${Date.now()}`, title: '', criterion: '', metric: 'manual', baselineValue: null, targetValue: null }],
     });
   }
 
@@ -1881,6 +1880,33 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
                 placeholder="Например: увеличить силу задней цепи"
                 className="w-full rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[12px] text-slate-200 outline-none placeholder:text-slate-700 focus:border-accent/30"
               />
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <select
+                  value={goal.metric || 'manual'}
+                  onChange={event => updateGoal(index, { metric: event.target.value, baselineValue: null, baselineDate: null, targetValue: null })}
+                  className="rounded-lg border border-white/[0.07] bg-[#101a1d] px-3 py-2 text-[11px] text-slate-300 outline-none focus:border-accent/30"
+                >
+                  {metricOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+                {goal.metric && goal.metric !== 'manual' ? (
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={goal.targetValue ?? ''}
+                    onChange={event => updateGoal(index, { targetValue: event.target.value })}
+                    placeholder="Целевое значение"
+                    className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[11px] text-slate-300 outline-none placeholder:text-slate-700 focus:border-accent/30"
+                  />
+                ) : <div className="rounded-lg border border-white/[0.05] px-3 py-2 text-[10px] text-slate-700">оценит тренер</div>}
+              </div>
+              {goal.metric && goal.metric !== 'manual' && goal.baselineValue != null && (
+                <div className="mt-2 rounded-lg border border-accent/10 bg-accent/[0.03] px-3 py-2 text-[10px] text-slate-500">
+                  Baseline: <span className="font-bold text-slate-300">{goal.baselineValue}{goal.unit || ''}</span>
+                  {goal.currentValue != null && <> · Сейчас: <span className="font-bold text-slate-300">{goal.currentValue}{goal.unit || ''}</span></>}
+                  {goal.performanceDeltaPercent != null && <> · Результативность: <span className={goal.performanceDeltaPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{goal.performanceDeltaPercent > 0 ? '+' : ''}{goal.performanceDeltaPercent}%</span></>}
+                  <div className="mt-0.5">{reviewLabels[goal.reviewStatus] || goal.reviewStatus}</div>
+                </div>
+              )}
               <input
                 value={goal.criterion || ''}
                 onChange={event => updateGoal(index, { criterion: event.target.value })}
@@ -1891,6 +1917,39 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
             </div>
           ))}
         </div>
+
+        {plan?.review && (
+          <div className={`mt-3 rounded-xl border px-3 py-2.5 ${plan.review.due ? 'border-amber-500/20 bg-amber-500/[0.04]' : 'border-white/[0.06] bg-black/10'}`}>
+            <div className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-600">Контроль цикла</div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              Выполнено {plan.review.actualSessions}/{plan.review.plannedSessions} тренировок
+              {plan.review.adherencePercent != null ? ` · приверженность ${plan.review.adherencePercent}%` : ''}
+              {plan.review.measurableGoals ? ` · достигнуто ${plan.review.achievedGoals}/${plan.review.measurableGoals} измеримых целей` : ''}
+            </div>
+            {plan.review.due && <div className="mt-1 text-[10px] font-semibold text-amber-400">Цикл завершён: подтвердите продолжение, смену дозы/метода или новую цель.</div>}
+            {plan.review.due && (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <select
+                  value={plan.reviewDecision || 'pending'}
+                  onChange={event => onChange({ ...plan, reviewDecision: event.target.value })}
+                  className="rounded-lg border border-white/[0.08] bg-[#101a1d] px-3 py-2 text-[11px] text-slate-300 outline-none focus:border-accent/30"
+                >
+                  <option value="pending">Решение не принято</option>
+                  <option value="continue">Продолжить метод</option>
+                  <option value="adjust">Изменить дозу или метод</option>
+                  <option value="complete">Закрыть цель</option>
+                </select>
+                <input
+                  value={plan.reviewNote || ''}
+                  onChange={event => onChange({ ...plan, reviewNote: event.target.value })}
+                  maxLength={300}
+                  placeholder="Решение и причина"
+                  className="rounded-lg border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-[11px] text-slate-300 outline-none placeholder:text-slate-700 focus:border-accent/30"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {goals.length < 3 && (
@@ -2970,8 +3029,13 @@ export default function Home() {
           headers: { 'x-api-key': apiKey },
         });
         statusData = await statusRes.json();
-        if (!statusRes.ok) throw new Error(statusData.error || 'Ошибка проверки статуса');
-      } catch (_) {
+        if (!statusRes.ok) {
+          const terminalError = new Error(statusData.error || 'Ошибка проверки статуса');
+          terminalError.terminal = true;
+          throw terminalError;
+        }
+      } catch (pollError) {
+        if (pollError?.terminal) throw pollError;
         // Transient network blip during polling — keep trying until the attempt cap.
         continue;
       }
@@ -3096,8 +3160,13 @@ export default function Home() {
           headers: { 'x-api-key': apiKey },
         });
         statusData = await statusRes.json();
-        if (!statusRes.ok) throw new Error(statusData.error || 'Ошибка проверки статуса');
+        if (!statusRes.ok) {
+          const terminalError = new Error(statusData.error || 'Ошибка проверки статуса');
+          terminalError.terminal = true;
+          throw terminalError;
+        }
       } catch (pollErr) {
+        if (pollErr?.terminal) throw pollErr;
         // Transient network blip during polling — keep trying until the attempt cap.
         continue;
       }
@@ -3134,7 +3203,7 @@ export default function Home() {
       const results = [];
       for (let i = 0; i < focusList.length; i++) {
         const f = focusList[i];
-        const data = await fetch('/api/programs/generate', {
+        const response = await fetch('/api/programs/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
           body: JSON.stringify({
@@ -3152,7 +3221,9 @@ export default function Home() {
             planningMode: 'week',
             microcycleSlot: i + 1,
           }),
-        }).then(r => r.json());
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `Тренировка ${i + 1} не прошла контроль качества`);
 
         // Collect this day's exercises so subsequent days don't repeat them.
         const dayExercises = (data.session?.blocks || []).flatMap(b => (b.exercises || []).map(e => e.name).filter(Boolean));
@@ -4242,16 +4313,15 @@ export default function Home() {
               </div>
             )}
             {leftTab === 'players' && filteredPlayers.map(p => (
-              <button
+              <div
                 key={p.id}
-                type="button"
-                onClick={() => selectPlayer(p)}
                 className={`group w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-150 ${
                   playerId === p.id
                     ? 'bg-accent/[0.08] text-white ring-1 ring-inset ring-accent/20'
                     : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
                 }`}
               >
+                <button type="button" onClick={() => selectPlayer(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                 <div className="relative shrink-0 h-8 w-8">
                   {p.photo ? (
                     <img src={p.photo} alt="" className="h-8 w-8 rounded-xl object-cover object-top" />
@@ -4291,6 +4361,7 @@ export default function Home() {
                     )}
                   </div>
                 </div>
+                </button>
                 <button
                   type="button"
                   onClick={async e => {
@@ -4315,7 +4386,7 @@ export default function Home() {
                     ? <Check size={11} className="text-emerald-400 opacity-100" />
                     : <Link2 size={11} className="text-slate-500" />}
                 </button>
-              </button>
+              </div>
             ))}
           </div>
           )} {/* end workouts player list */}
@@ -4595,13 +4666,13 @@ export default function Home() {
                     .sort((a, b) => {
                       const order = { red: 0, yellow: 1, green: 2 };
                       const statusDiff = (order[a.status] ?? 3) - (order[b.status] ?? 3);
-                      return statusDiff !== 0 ? statusDiff : (b.riskScore ?? 0) - (a.riskScore ?? 0);
+                      return statusDiff !== 0 ? statusDiff : (b.attentionScore ?? 0) - (a.attentionScore ?? 0);
                     })
                     .map(p => {
                       const ring = p.status === 'red' ? 'border-rose-500/40' : p.status === 'yellow' ? 'border-amber-500/40' : 'border-emerald-500/30';
                       const circleBg = p.status === 'red' ? 'bg-rose-500/15 text-rose-400 ring-rose-500/40' : p.status === 'yellow' ? 'bg-amber-500/15 text-amber-400 ring-amber-500/40' : 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30';
                       const dot = p.status === 'red' ? '🔴' : p.status === 'yellow' ? '🟡' : '🟢';
-                      const riskColor = p.riskScore == null ? 'text-slate-500' : p.riskScore >= 60 ? 'text-rose-400' : p.riskScore >= 30 ? 'text-amber-400' : 'text-emerald-400';
+                      const attentionColor = p.attentionScore == null ? 'text-slate-500' : p.attentionScore >= 60 ? 'text-rose-400' : p.attentionScore >= 30 ? 'text-amber-400' : 'text-emerald-400';
                       const domainDot = (v) => v === 'red' ? 'bg-rose-500' : v === 'yellow' ? 'bg-amber-500' : v === 'unknown' ? 'bg-slate-600' : 'bg-emerald-500/50';
                       return (
                         <button
@@ -4634,10 +4705,10 @@ export default function Home() {
                                     Данные: {p.dataCompleteness ?? 0}%
                                   </div>
                                 </div>
-                                {p.riskScore != null && (
+                                {p.attentionScore != null && (
                                   <div className="flex shrink-0 items-baseline gap-1 leading-none">
-                                    <span className={`text-[16px] font-black tabular-nums ${riskColor}`}>{p.riskScore}</span>
-                                    <span className="text-[9px] text-slate-600">риск</span>
+                                    <span className={`text-[16px] font-black tabular-nums ${attentionColor}`}>{p.attentionScore}</span>
+                                    <span className="text-[9px] text-slate-600">внимание</span>
                                   </div>
                                 )}
                               </div>

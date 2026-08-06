@@ -15,7 +15,8 @@ import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlayb
 import { developmentPlanKey, pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import { formatPerformanceKpisForPrompt, performanceKpis } from '../../../lib/performanceKpis.mjs';
-import { formatDevelopmentPlanForPrompt } from '../../../lib/developmentPlan.mjs';
+import { evaluateDevelopmentPlan, formatDevelopmentPlanForPrompt } from '../../../lib/developmentPlan.mjs';
+import { buildDosePrescription, formatDosePrescriptionForPrompt } from '../../../lib/sessionDose.mjs';
 
 const TRAINING_TYPE_LABELS = {
   anterior_chain: 'Передняя цепь',
@@ -1545,7 +1546,7 @@ export async function buildGenerationInputs(body) {
   if (workspace === 'zarechie' && focus === 'inseason_power') {
     const kpis = performanceKpis(snapshot.neuro, targetDate);
     const depressed = [kpis.rsi, kpis.cmj, kpis.sprint10m]
-      .filter(metric => metric.value != null && !metric.stale && metric.performanceDeltaPercent != null && metric.performanceDeltaPercent <= -5);
+      .filter(metric => metric.value != null && !metric.stale && metric.meaningfulDecline);
     if (depressed.length >= 2) {
       const detail = depressed.map(metric => `${metric.label} ${metric.performanceDeltaPercent}% от baseline`).join(', ');
       focusDowngradeNote = `\n⚠ КОРРЕКЦИЯ ДОЗЫ МОЩНОСТИ: два свежих индивидуальных KPI снижены (${detail}). Сохрани выбранный метод inseason_power, но сократи плиометрику/спринт на 30-50%, оставь только высококачественные повторения, останови блок при падении техники или скорости.\n`;
@@ -1563,6 +1564,10 @@ export async function buildGenerationInputs(body) {
     actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType, notes, warmupSummary, teamUsedExercises, coachRecovery, microcycleSlot,
     playbookText, workspace,
   });
+  const dosePrescription = buildDosePrescription({ focus: effectiveFocus, trainingType, coachRecovery });
+  const doseText = formatDosePrescriptionForPrompt(dosePrescription);
+  userPrompt += doseText;
+  dataSummary += doseText;
   if (focusDowngradeNote) { userPrompt += focusDowngradeNote; dataSummary += focusDowngradeNote; }
 
   const matchLoadText = workspace === 'zarechie'
@@ -1580,7 +1585,10 @@ export async function buildGenerationInputs(body) {
   const restrictionsText = restrictionsToPrompt(Array.isArray(restrictions) ? restrictions : []);
   if (restrictionsText) userPrompt += restrictionsText;
 
-  const developmentPlan = rawDevelopmentPlan ? parseJSONSafe(rawDevelopmentPlan, null) : null;
+  const rawPlan = rawDevelopmentPlan ? parseJSONSafe(rawDevelopmentPlan, null) : null;
+  const developmentPlan = rawPlan
+    ? evaluateDevelopmentPlan(rawPlan, { metrics: performanceKpis(snapshot.neuro, targetDate), targetDate })
+    : null;
   const developmentPlanText = formatDevelopmentPlanForPrompt(developmentPlan, targetDate);
   if (developmentPlanText) {
     dataSummary += developmentPlanText;
@@ -1617,6 +1625,7 @@ export async function buildGenerationInputs(body) {
       focus: effectiveFocus,
       trainingType,
       recentSessionSummaries: sessionSummaries,
+      dosePrescription,
     },
   };
 }
@@ -1720,11 +1729,22 @@ export default async function handler(req, res) {
       const retry = await callOpenAIForSession(apiKey, fixPrompt);
       if (retry.session) {
         const retryQuality = assessSessionQuality(retry.session, { ...qualityContext, playerRestrictions });
-        if (retryQuality.score > quality.score || (retryQuality.score === quality.score && retryQuality.valid)) {
+        if ((retryQuality.valid && !quality.valid)
+          || (retryQuality.valid === quality.valid && retryQuality.score > quality.score)
+          || (retryQuality.score === quality.score && retryQuality.valid)) {
           session = retry.session;
           quality = retryQuality;
         }
       }
+    }
+
+    if (!quality.valid || quality.score < 85) {
+      console.error('GEN hard quality gate rejected session:', quality.score, quality.improvements);
+      return res.status(422).json({
+        error: 'Тренировка не прошла обязательный контроль дозировки и безопасности. Она не сохранена. Повторите генерацию или скорректируйте исходные ограничения.',
+        quality,
+        validation: { valid: false, errors: quality.errors, warnings: quality.warnings },
+      });
     }
 
     session = normalizeExerciseLanguage(session, focus);

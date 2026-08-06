@@ -5,7 +5,7 @@
 
 import { redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
-import { normExName } from './progression';
+import { legacyNormExName, normExName } from './progression';
 import { exhistKey } from '../../../lib/workspacePrefix';
 
 export default async function handler(req, res) {
@@ -17,13 +17,19 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'playerId and names[] required' });
 
   const unique = [...new Set(names.filter(Boolean))];
-  const results = await redisPipeline(
-    unique.map(n => ['HGETALL', exhistKey(workspace, playerId, normExName(n))])
-  ).catch(() => []);
+  const results = await redisPipeline(unique.flatMap(n => [
+    ['HGETALL', exhistKey(workspace, playerId, normExName(n))],
+    ['HGETALL', exhistKey(workspace, playerId, legacyNormExName(n))],
+  ])).catch(() => []);
 
   const histories = {};
   unique.forEach((name, i) => {
-    const raw = results[i];
+    const currentRaw = results[i * 2];
+    const legacyRaw = results[i * 2 + 1];
+    const currentHasData = Array.isArray(currentRaw)
+      ? currentRaw.length > 0
+      : !!currentRaw && typeof currentRaw === 'object' && Object.keys(currentRaw).length > 0;
+    const raw = currentHasData ? currentRaw : legacyRaw;
     if (!raw) return;
 
     let record = {};
