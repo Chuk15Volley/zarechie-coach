@@ -14,6 +14,7 @@ import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseM
 import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlaybook';
 import { pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
+import { formatPerformanceKpisForPrompt, performanceKpis } from '../../../lib/performanceKpis.mjs';
 
 const TRAINING_TYPE_LABELS = {
   anterior_chain: 'Передняя цепь',
@@ -721,69 +722,8 @@ function summarizeSnapshot(snap) {
     lines.push('• Прыжковая нагрузка вчера: данных нет (либеро/связка или тренер не вносил — используй Recovery% как прокси)');
   }
 
-  if (neuro && (neuro.latest || neuro.history?.length)) {
-    const neuroLines = ['', 'Нейромышечное тестирование:'];
-    const latest = neuro.latest || {};
-    const history = neuro.history || [];
-
-    const NEURO_LABELS = {
-      rsi:         { label: 'RSI', unit: '', thresh: v => v < 1.5 ? '⚠ низкий' : v >= 2.5 ? '✅ высокий' : '✅' },
-      cmj:         { label: 'CMJ', unit: ' см', thresh: null },
-      sprint:      { label: 'Спринт 10м', unit: ' сек', thresh: null },
-      agility:     { label: 'Agility (5-10-5)', unit: ' сек', thresh: null },
-      contact_time:{ label: 'Время контакта', unit: ' мс', thresh: v => v > 280 ? '⚠ высокое (снижение реактивности)' : v < 200 ? '✅ низкое' : '' },
-      sprint:      { label: 'Спринт 10м', unit: ' сек', thresh: null },
-      agility:     { label: 'Agility (5-10-5)', unit: ' сек', thresh: null },
-    };
-
-    // Latest snapshot
-    let hasData = false;
-    for (const [key, cfg] of Object.entries(NEURO_LABELS)) {
-      if (latest[key] != null) {
-        const t = cfg.thresh ? cfg.thresh(latest[key]) : '';
-        neuroLines.push(`• ${cfg.label}: ${latest[key]}${cfg.unit}${t ? ' — ' + t : ''}`);
-        hasData = true;
-      }
-    }
-    // Any extra fields from latest
-    Object.entries(latest).filter(([k]) => !NEURO_LABELS[k]).forEach(([k,v]) => {
-      if (v != null) { neuroLines.push(`• ${k}: ${v}`); hasData = true; }
-    });
-
-    // CMJ trend from history
-    if (history.length >= 2) {
-      const cmjHistory = history.filter(e => e.cmj != null).slice(0, 4); // newest first
-      if (cmjHistory.length >= 2) {
-        const newest = cmjHistory[0].cmj;
-        const prev   = cmjHistory[1].cmj;
-        const drop   = Math.round((prev - newest) / prev * 100);
-        const rsiNewest = cmjHistory[0].rsi;
-        const ctNewest  = cmjHistory[0].contact_time;
-        const ctPrev    = cmjHistory[1].contact_time;
-        neuroLines.push(`• CMJ-тренд: ${prev} → ${newest} см (${drop > 0 ? '−' + drop : '+' + Math.abs(drop)}% от пред. замера ${cmjHistory[1].date})`);
-        if (drop >= 10) {
-          neuroLines.push('  → 🔴 Падение CMJ ≥10%: нейромышечная усталость — снизь взрывной объём A2/B2');
-        }
-        if (rsiNewest != null && rsiNewest < 1.5) {
-          neuroLines.push('  → ⚠ RSI < 1.5: реактивность снижена — приоритет качеству прыжка над объёмом');
-        }
-        if (ctNewest != null && ctPrev != null && ctNewest > ctPrev * 1.1) {
-          neuroLines.push('  → ⚠ Время контакта выросло ≥10%: снижение реактивной жёсткости — приоритет силовой работе над плиометрикой');
-        }
-      }
-      // Sprint/agility trend
-      const sprintHistory = history.filter(e => e.sprint != null).slice(0, 3);
-      if (sprintHistory.length >= 2 && sprintHistory[0].sprint > sprintHistory[1].sprint * 1.05) {
-        neuroLines.push('• Спринт 10м замедлился ≥5% → нейромышечная усталость: снизь скоростную работу');
-      }
-    } else if (latest.rsi != null && latest.rsi < 1.5) {
-      neuroLines.push('→ ⚠ RSI < 1.5: нейромышечная реактивность снижена — приоритет качеству в A2 над объёмом');
-    }
-
-    if (hasData || history.length) {
-      lines.push(...neuroLines.filter(Boolean));
-    }
-  }
+  const performance = formatPerformanceKpisForPrompt(neuro, targetDate);
+  lines.push('', performance.text);
 
   return lines.join('\n');
 }
@@ -807,6 +747,10 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
 
 Главные качества волейболиста:
   сила нижней части, мощность прыжка, скорость перемещений, торможение/приземление, плечевой пояс, стабилизация корпуса, профилактика колена/поясницы/голеностопа.
+
+Оборудование Заречья:
+  • Полный профессиональный набор доступен всей команде; не упрощай программу из-за предполагаемой нехватки инвентаря.
+  • Одно и то же оборудование разрешено нескольким игрокам. Выбор упражнения определяется задачей, позицией, прогрессией и состоянием, а не искусственным запретом на очереди.
 
 Позиционная дифференциация:
   • Центральные: приземление, голеностоп, колено, плечо, блок/первый темп.
@@ -1596,22 +1540,18 @@ export async function buildGenerationInputs(body) {
     lsi = lsiArr;
   }
 
-  // #9: Auto-downgrade inseason_power → inseason_strength when CMJ is depressed
+  // #9: A single noisy or stale test must never silently replace the coach's
+  // selected method. Keep the requested focus and prescribe a conservative
+  // power dose only when the latest individual KPI trend is depressed.
   let effectiveFocus = focus;
   let focusDowngradeNote = '';
-  if (workspace === 'zarechie' && focus === 'inseason_power' && snapshot.neuro?.history?.length) {
-    const sortedHist = [...snapshot.neuro.history]
-      .filter(e => e.date && e.cmj != null)
-      .sort((a, b) => b.date.localeCompare(a.date));
-    const todayCmj = Number(sortedHist.find(e => e.date === targetDate)?.cmj ?? NaN);
-    const priorCmjs = sortedHist.filter(e => e.date !== targetDate).slice(0, 5).map(e => Number(e.cmj));
-    if (!isNaN(todayCmj) && priorCmjs.length >= 2) {
-      const baseline = priorCmjs.reduce((s, v) => s + v, 0) / priorCmjs.length;
-      const drop = ((todayCmj - baseline) / baseline) * 100;
-      if (drop < -5) {
-        effectiveFocus = 'inseason_strength';
-        focusDowngradeNote = `\n⚠ AUTO-DOWNGRADE: запрошен inseason_power, но CMJ сегодня ${todayCmj.toFixed(1)} см (${Math.round(drop)}% от baseline ${Math.round(baseline)} см). Нейромышечная готовность снижена — тренировка переведена в СИЛОВОЙ режим. Исключи плиометрику и скоростные движения.\n`;
-      }
+  if (workspace === 'zarechie' && focus === 'inseason_power') {
+    const kpis = performanceKpis(snapshot.neuro, targetDate);
+    const depressed = [kpis.rsi, kpis.cmj, kpis.attackJump, kpis.sprint10m]
+      .filter(metric => metric.value != null && !metric.stale && metric.performanceDeltaPercent != null && metric.performanceDeltaPercent <= -5);
+    if (depressed.length >= 2) {
+      const detail = depressed.map(metric => `${metric.label} ${metric.performanceDeltaPercent}% от baseline`).join(', ');
+      focusDowngradeNote = `\n⚠ КОРРЕКЦИЯ ДОЗЫ МОЩНОСТИ: два свежих индивидуальных KPI снижены (${detail}). Сохрани выбранный метод inseason_power, но сократи плиометрику/спринт на 30-50%, оставь только высококачественные повторения, останови блок при падении техники или скорости.\n`;
     }
   }
 
@@ -2080,11 +2020,11 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
   if (Array.isArray(teamUsedExercises) && teamUsedExercises.length > 0) {
     const counts = {};
     teamUsedExercises.forEach(name => { counts[name] = (counts[name] || 0) + 1; });
-    const lines = ['УЖЕ НАЗНАЧЕНО ДРУГИМ ИГРОКАМ КОМАНДЫ СЕГОДНЯ (не дублируй оборудование и паттерны):'];
+    const lines = ['УЖЕ НАЗНАЧЕНО ДРУГИМ ИГРОКАМ КОМАНДЫ СЕГОДНЯ (контекст для разумной индивидуализации):'];
     Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .forEach(([name, n]) => lines.push(`• ${name}: ${n} ${n === 1 ? 'игрок' : n < 5 ? 'игрока' : 'игроков'}`));
-    lines.push('→ Выбирай ДРУГИЕ вариации того же паттерна из библиотеки. Избегай очередей к одному оборудованию (ящик, TRX, трэп-штанга, гири).');
+    lines.push('→ Оборудования достаточно: повторять инвентарь и нужные основные якоря разрешено. Не меняй лучшее упражнение только ради различия. Ротируй прежде всего аксессуары и только когда это сохраняет позиционную задачу, безопасность и измеримую прогрессию игрока.');
     teamExercisesContext = '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' + lines.join('\n') + '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
   }
 

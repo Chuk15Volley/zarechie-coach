@@ -5,6 +5,7 @@ import { isAuthorized } from '../../../lib/auth';
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { redis } from '../../../lib/redis';
 import { restrictionsKey, scheduleKey } from '../../../lib/workspacePrefix';
+import { performanceKpis } from '../../../lib/performanceKpis.mjs';
 
 function shiftDate(date, amount) {
   const value = new Date(`${date}T12:00:00`);
@@ -39,13 +40,6 @@ function zoneSummary(survey) {
     .filter(zone => zone.area && zone.level != null && zone.level > 0);
   if (zones.length) return zones;
   return (survey?.painAreas || []).map(area => ({ area, type: 'pain', level: null }));
-}
-
-function latestNeuro(neuro, date) {
-  const history = (neuro?.history || [])
-    .filter(entry => entry?.date && entry.date <= date)
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  return history[0] || neuro?.latest || null;
 }
 
 function scheduleContext(events, targetDate) {
@@ -103,7 +97,7 @@ function decisionLevel({ evening, eveningFresh, morning, whoop, neuro, activeInj
   const availableDomains = [
     number(whoop?.recovery) != null || number(whoop?.hrv) != null,
     !!morning || !!evening,
-    number(neuro?.cmj) != null || number(neuro?.rsi) != null,
+    !!neuro?.fresh,
   ].filter(Boolean).length;
   if (availableDomains < 2) {
     return {
@@ -144,7 +138,15 @@ export default async function handler(req, res) {
       || snapshot.latestMorning
       || latestOnOrBefore(snapshot.morning, targetDate);
     const whoop = (snapshot.whoop || []).find(record => record.date === targetDate) || null;
-    const neuro = latestNeuro(snapshot.neuro, targetDate);
+    const kpis = performanceKpis(snapshot.neuro, targetDate);
+    const neuro = {
+      fresh: [kpis.rsi, kpis.cmj, kpis.attackJump, kpis.sprint10m]
+        .some(metric => metric.value != null && !metric.stale),
+      rsi: kpis.rsi,
+      cmj: kpis.cmj,
+      attackJump: kpis.attackJump,
+      sprint10m: kpis.sprint10m,
+    };
     // The evening questionnaire describes readiness for the next training day.
     // A program built in the morning must therefore use last night's answer.
     const expectedEveningDate = shiftDate(targetDate, -1);
@@ -160,7 +162,7 @@ export default async function handler(req, res) {
     const dataQuality = {
       whoop: number(whoop?.recovery) != null || number(whoop?.hrv) != null,
       subjective: !!morning || !!evening,
-      neuro: number(neuro?.cmj) != null || number(neuro?.rsi) != null,
+      neuro: neuro.fresh,
     };
 
     return res.status(200).json({
@@ -194,11 +196,13 @@ export default async function handler(req, res) {
         hrv: number(whoop.hrv),
         sleepHours: number(whoop.sleep_hours),
       } : null,
-      neuro: neuro ? {
-        date: neuro.date || null,
-        cmj: number(neuro.cmj),
-        rsi: number(neuro.rsi),
-      } : null,
+      neuro: {
+        fresh: neuro.fresh,
+        cmj: neuro.cmj,
+        rsi: neuro.rsi,
+        attackJump: neuro.attackJump,
+        sprint10m: neuro.sprint10m,
+      },
       restrictions: Array.isArray(restrictions) ? restrictions : [],
       activeInjuries,
       schedule,

@@ -375,7 +375,7 @@ function TrendCharts({ data }) {
           {cmj.map((p, i) => <circle key={i} cx={xFn(i)} cy={yFn(p.cmj)} r="2.5" fill={lineColor} />)}
         </svg>
         <p className="mt-1 text-[10px] text-slate-500">
-          CMJ сегодня: <span className="font-bold text-slate-300">{last.toFixed(1)} см</span>{' '}
+          Последний CMJ ({cmj[n - 1].date.slice(5).replace('-', '/')}): <span className="font-bold text-slate-300">{last.toFixed(1)} см</span>{' '}
           (<span className={drop >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{drop >= 0 ? '+' : ''}{drop}%</span> от baseline {baseline.toFixed(1)})
         </p>
       </div>
@@ -1747,6 +1747,12 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
     ? 'red'
     : manualLevel === 'yellow' || data.decision?.level === 'yellow' ? 'yellow' : 'green';
   const morningExpected = data.targetDate > data.today;
+  const neuroMetrics = [
+    ['RSI', data.neuro?.rsi, ''],
+    ['CMJ', data.neuro?.cmj, ' см'],
+    ['AJ', data.neuro?.attackJump, ' см'],
+    ['10 м', data.neuro?.sprint10m, ' с'],
+  ].filter(([, metric]) => metric?.value != null);
 
   return (
     <section className="mt-4 border-t border-white/[0.07] pt-3" aria-live="polite">
@@ -1798,7 +1804,9 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
             {activeInjuries.length ? `Активная травма: ${activeInjuries[0].bodyPart}` : evening.hasInjury ? evening.fresh ? 'Свежая травма: Recovery / Prehab' : 'Травма отмечена в старой анкете' : data.restrictions?.length ? `${data.restrictions.length} активно` : 'Нет активных ограничений'}
           </p>
           <p className="mt-0.5 text-[10px] opacity-70">
-            {data.neuro?.cmj != null || data.neuro?.rsi != null ? `Нейро: CMJ ${data.neuro.cmj ?? '—'} · RSI ${data.neuro.rsi ?? '—'}` : 'Нейротест: нет актуальных данных'}
+            {neuroMetrics.length
+              ? `KPI: ${neuroMetrics.map(([label, metric, unit]) => `${label} ${metric.value}${unit}${metric.date ? ` (${metric.date.slice(5)})` : ''}${metric.stale ? ' · устар.' : ''}`).join(' · ')}`
+              : 'Нейротест: данных нет'}
           </p>
         </div>
 
@@ -4515,7 +4523,29 @@ export default function Home() {
                                   {p.cmjDrop < 0 ? '↓' : '↑'}{p.cmjDrop > 0 ? '+' : ''}{p.cmjDrop}%
                                 </span>
                               )}
+                              {p.kpiFreshness?.cmj?.stale && <span className="text-[8px] text-amber-500/70">устар.</span>}
                             </span>
+                            {p.rsi != null && (
+                              <span className="flex items-center gap-1 text-slate-400">
+                                <span className="text-slate-600">RSI</span>
+                                <span className="font-bold text-slate-200 tabular-nums">{p.rsi}</span>
+                                {p.kpiFreshness?.rsi?.stale && <span className="text-[8px] text-amber-500/70">устар.</span>}
+                              </span>
+                            )}
+                            {p.attackJump != null && (
+                              <span className="flex items-center gap-1 text-slate-400">
+                                <span className="text-slate-600">AJ</span>
+                                <span className="font-bold text-slate-200 tabular-nums">{p.attackJump}</span>
+                                {p.kpiFreshness?.attackJump?.stale && <span className="text-[8px] text-amber-500/70">устар.</span>}
+                              </span>
+                            )}
+                            {p.sprint10m != null && (
+                              <span className="flex items-center gap-1 text-slate-400">
+                                <span className="text-slate-600">10 м</span>
+                                <span className="font-bold text-slate-200 tabular-nums">{p.sprint10m}с</span>
+                                {p.kpiFreshness?.sprint10m?.stale && <span className="text-[8px] text-amber-500/70">устар.</span>}
+                              </span>
+                            )}
                             {/* LSI symmetry */}
                             {p.lsi != null && (
                               <span className="flex items-center gap-1 text-slate-400">

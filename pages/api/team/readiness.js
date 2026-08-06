@@ -11,6 +11,7 @@ import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { getPlayerSnapshot } from '../../../lib/playerData';
 import { rosterKey } from '../../../lib/workspacePrefix';
+import { performanceKpis } from '../../../lib/performanceKpis.mjs';
 
 function num(v) {
   if (v == null || v === '') return null;
@@ -90,8 +91,8 @@ export default async function handler(req, res) {
       const snapshot = snapshots[idx] || {};
       const whoop = latestByDate(snapshot.whoop);
       const survey = latestByDate(snapshot.morning);
-      const neuroHist = Array.isArray(snapshot.neuro?.history) ? snapshot.neuro.history : [];
       const { lsi, lsiDate } = latestLsiFromNeuro(snapshot.neuro);
+      const kpis = performanceKpis(snapshot.neuro, date);
       const recovery = num(whoop.recovery);
       const hrv = num(whoop.hrv);
       const sleep_hours = num(whoop.sleep_hours);
@@ -100,32 +101,30 @@ export default async function handler(req, res) {
       const doms = num(survey.doms);
       const readiness = num(survey.readiness);
 
-      // CMJ today: prefer the dated history entry, fall back to neuro snapshot.
-      const todayEntry = neuroHist.find(e => e && e.date === date);
-      const snap = snapshot.neuro?.latest || {};
-      const cmj = num(todayEntry?.cmj) ?? num(snap.cmj);
-      const rsi = num(todayEntry?.rsi) ?? num(snap.rsi);
-
-      // #10: EWMA baseline for CMJ — slowly adapting reference (λ=0.15, ~6-session half-life).
-      // Walk history oldest→newest (excluding today), compute running EWMA.
-      const priorHist = neuroHist
-        .filter(e => e && e.date !== date && num(e.cmj) != null)
-        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-      let ewmaCmj = null;
-      for (const e of priorHist) {
-        const v = num(e.cmj);
-        ewmaCmj = ewmaCmj == null ? v : 0.15 * v + 0.85 * ewmaCmj;
-      }
-      const cmjBaseline = ewmaCmj != null ? Math.round(ewmaCmj * 10) / 10 : null;
-      const cmjDrop = (cmj != null && cmjBaseline)
-        ? Math.round(((cmj - cmjBaseline) / cmjBaseline) * 1000) / 10
-        : null;
+      // Each KPI is resolved independently. A CMJ from last week must not be
+      // discarded just because today's record contains RSI only.
+      const cmj = kpis.cmj.value;
+      const cmjDate = kpis.cmj.date;
+      const cmjBaseline = kpis.cmj.baseline;
+      const cmjDrop = kpis.cmj.performanceDeltaPercent;
+      const rsi = kpis.rsi.value;
+      const rsiDate = kpis.rsi.date;
+      const attackJump = kpis.attackJump.value;
+      const attackJumpDate = kpis.attackJump.date;
+      const sprint10m = kpis.sprint10m.value;
+      const sprint10mDate = kpis.sprint10m.date;
+      const freshKpis = [kpis.rsi, kpis.cmj, kpis.attackJump, kpis.sprint10m]
+        .filter(metric => metric.value != null && !metric.stale);
+      const worstKpiChange = freshKpis
+        .map(metric => metric.performanceDeltaPercent)
+        .filter(value => value != null)
+        .sort((a, b) => a - b)[0] ?? null;
 
       // ── Signal Confidence: 3-domain convergence ──────────────────────────────
       // Red requires convergence of 2+ independent domains (not one noisy sensor).
       // Domain: autonomic (WHOOP), neuromuscular (CMJ/LSI), subjective (survey).
       const hasAutonomic = recovery != null || hrv != null;
-      const hasNeuromuscular = cmj != null || cmjDrop != null || lsi != null;
+      const hasNeuromuscular = freshKpis.length > 0 || lsi != null;
       const hasSubjective = readiness != null || doms != null || mws != null;
 
       const domainAutonomic = !hasAutonomic ? 'unknown'
@@ -137,9 +136,8 @@ export default async function handler(req, res) {
 
       const domainNeuro = !hasNeuromuscular ? 'unknown'
         :
-        (cmjDrop != null && cmjDrop < -15) || (lsi != null && lsi < 75) ? 'red'
-        : (cmjDrop != null && cmjDrop < -10) || (lsi != null && lsi < 80) ? 'red'
-        : (cmjDrop != null && cmjDrop < -5) || (lsi != null && lsi < 85) ? 'yellow'
+        (worstKpiChange != null && worstKpiChange < -10) || (lsi != null && lsi < 75) ? 'red'
+        : (worstKpiChange != null && worstKpiChange < -5) || (lsi != null && lsi < 85) ? 'yellow'
         : 'green';
 
       const domainSubjective = !hasSubjective ? 'unknown'
@@ -154,7 +152,6 @@ export default async function handler(req, res) {
       const yellowCount = Object.values(domains).filter(d => d === 'yellow').length;
       const extremeRed =
         (recovery != null && recovery < 20) ||
-        (cmjDrop != null && cmjDrop < -15) ||
         (readiness != null && readiness === 1);
 
       // Data quality is part of the readiness decision. Missing domains are
@@ -163,7 +160,7 @@ export default async function handler(req, res) {
       const dataQuality = {
         whoop: hasAutonomic,
         survey: hasSubjective,
-        neuro: cmj != null,
+        neuro: freshKpis.length > 0,
         lsi: lsi != null,
       };
       const dataCompleteness = Math.round(Object.values(dataQuality).filter(Boolean).length / 4 * 100);
@@ -173,7 +170,7 @@ export default async function handler(req, res) {
       else if (redCount === 1 || yellowCount >= 2) status = 'yellow';
       else if (dataCompleteness < 50) status = 'yellow';
 
-      const riskScore = computeRiskScore({ recovery, hrv, cmjDrop, lsi });
+      const riskScore = computeRiskScore({ recovery, hrv, cmjDrop: worstKpiChange, lsi });
 
       return {
         id: p.id,
@@ -182,7 +179,15 @@ export default async function handler(req, res) {
         photo: p.photo || null,
         recovery, hrv, sleep_hours,
         mws, doms, readiness,
-        cmj, cmjBaseline, cmjDrop, rsi, lsi, lsiDate,
+        cmj, cmjDate, cmjBaseline, cmjDrop, rsi, rsiDate,
+        attackJump, attackJumpDate, sprint10m, sprint10mDate,
+        kpiFreshness: {
+          rsi: { ageDays: kpis.rsi.ageDays, stale: kpis.rsi.stale },
+          cmj: { ageDays: kpis.cmj.ageDays, stale: kpis.cmj.stale },
+          attackJump: { ageDays: kpis.attackJump.ageDays, stale: kpis.attackJump.stale },
+          sprint10m: { ageDays: kpis.sprint10m.ageDays, stale: kpis.sprint10m.stale },
+        },
+        lsi, lsiDate,
         status, domains, riskScore, dataQuality, dataCompleteness,
       };
     });

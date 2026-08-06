@@ -12,6 +12,7 @@ import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { getPlayerSnapshot } from '../../../lib/playerData';
 import { gymTonnageDatesKey, gymTonnageKey } from '../../../lib/workspacePrefix';
+import { performanceKpis } from '../../../lib/performanceKpis.mjs';
 
 function isoDaysBefore(date, n) {
   const d = new Date(date + 'T12:00:00');
@@ -71,11 +72,23 @@ export default async function handler(req, res) {
     const snapshot = await getPlayerSnapshot(playerId, totalWindow, targetDate, totalWindow, workspace).catch(() => null);
 
     // ── CMJ history ──────────────────────────────────────────────────────────
-    const neuroHistory = Array.isArray(snapshot?.neuro?.history) ? snapshot.neuro.history : [];
-    const cmjHistory = neuroHistory
-      .filter(e => e && e.date && (e.cmj != null || e.rsi != null))
-      .map(e => ({ date: e.date, cmj: e.cmj != null ? Number(e.cmj) : null, rsi: e.rsi != null ? Number(e.rsi) : null }))
+    const kpis = performanceKpis(snapshot?.neuro, targetDate);
+    const performanceByDate = new Map();
+    for (const [key, metric] of Object.entries(kpis)) {
+      if (!metric?.history) continue;
+      for (const point of metric.history) {
+        if (!point.date) continue;
+        performanceByDate.set(point.date, {
+          ...(performanceByDate.get(point.date) || { date: point.date }),
+          [key]: point.value,
+        });
+      }
+    }
+    const performanceHistory = [...performanceByDate.values()]
       .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-20);
+    const cmjHistory = performanceHistory
+      .filter(point => point.cmj != null || point.rsi != null)
       .slice(-10);
 
     // ── sRPE load map (for ACWR + TSB) ─────────────────────────────────────────
@@ -127,7 +140,20 @@ export default async function handler(req, res) {
       .filter(r => r.date >= cutoffDay)
       .map(r => ({ date: r.date, acwr: r.acwr, load: r.load }));
 
-    return res.status(200).json({ cmjHistory, acwrHistory, gymAcwrHistory, combinedAcwrHistory, tsbHistory });
+    return res.status(200).json({
+      cmjHistory,
+      performanceHistory,
+      performanceLatest: {
+        rsi: kpis.rsi,
+        cmj: kpis.cmj,
+        attackJump: kpis.attackJump,
+        sprint10m: kpis.sprint10m,
+      },
+      acwrHistory,
+      gymAcwrHistory,
+      combinedAcwrHistory,
+      tsbHistory,
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
