@@ -69,7 +69,7 @@ function scheduleContext(events, targetDate) {
   return { level: 'green', label: 'Календарь без ближайшего матча', detail: 'Режим определяется фазой и состоянием игрока.' };
 }
 
-function decisionLevel({ evening, eveningFresh, morning, whoop, neuro, activeInjuries }) {
+function decisionLevel({ evening, eveningFresh, morning, whoop, neuro, activeInjuries, testsExpected = true }) {
   const zones = zoneSummary(evening);
   const strongestPain = Math.max(0, ...zones.filter(zone => zone.type === 'pain').map(zone => zone.level || 0));
   const unscoredPain = zones.some(zone => zone.type === 'pain' && zone.level == null);
@@ -97,13 +97,15 @@ function decisionLevel({ evening, eveningFresh, morning, whoop, neuro, activeInj
   const availableDomains = [
     number(whoop?.recovery) != null || number(whoop?.hrv) != null,
     !!morning || !!evening,
-    !!neuro?.fresh,
+    testsExpected ? !!neuro?.fresh : null,
   ].filter(Boolean).length;
   if (availableDomains < 2) {
     return {
       level: 'yellow',
       label: 'Данных пока мало',
-      detail: 'Есть данные только одного домена. До опроса и нейротеста не считать отсутствие показателей зелёным сигналом.',
+      detail: testsExpected
+        ? 'Есть данные только одного домена. До опроса и нейротеста не считать отсутствие показателей зелёным сигналом.'
+        : 'Для NK Performance нужны WHOOP и/или опрос. Тесты CMJ, RSI и 10 м не ожидаются.',
     };
   }
   return { level: 'green', label: 'Данные без красных флагов', detail: 'Тренерский статус и выбранная тема остаются решающими.' };
@@ -138,14 +140,15 @@ export default async function handler(req, res) {
       || snapshot.latestMorning
       || latestOnOrBefore(snapshot.morning, targetDate);
     const whoop = (snapshot.whoop || []).find(record => record.date === targetDate) || null;
-    const kpis = performanceKpis(snapshot.neuro, targetDate);
-    const neuro = {
+    const testsExpected = workspace === 'zarechie';
+    const kpis = testsExpected ? performanceKpis(snapshot.neuro, targetDate) : null;
+    const neuro = testsExpected ? {
       fresh: [kpis.rsi, kpis.cmj, kpis.sprint10m]
         .some(metric => metric.value != null && !metric.stale),
       rsi: kpis.rsi,
       cmj: kpis.cmj,
       sprint10m: kpis.sprint10m,
-    };
+    } : null;
     // The evening questionnaire describes readiness for the next training day.
     // A program built in the morning must therefore use last night's answer.
     const expectedEveningDate = shiftDate(targetDate, -1);
@@ -161,7 +164,7 @@ export default async function handler(req, res) {
     const dataQuality = {
       whoop: number(whoop?.recovery) != null || number(whoop?.hrv) != null,
       subjective: !!morning || !!evening,
-      neuro: neuro.fresh,
+      ...(testsExpected ? { neuro: !!neuro?.fresh } : {}),
     };
 
     return res.status(200).json({
@@ -195,18 +198,14 @@ export default async function handler(req, res) {
         hrv: number(whoop.hrv),
         sleepHours: number(whoop.sleep_hours),
       } : null,
-      neuro: {
-        fresh: neuro.fresh,
-        cmj: neuro.cmj,
-        rsi: neuro.rsi,
-        sprint10m: neuro.sprint10m,
-      },
+      neuro,
+      testsExpected,
       restrictions: Array.isArray(restrictions) ? restrictions : [],
       activeInjuries,
       schedule,
       dataQuality,
-      dataCompleteness: Math.round(Object.values(dataQuality).filter(Boolean).length / 3 * 100),
-      decision: decisionLevel({ evening, eveningFresh, morning, whoop, neuro, activeInjuries }),
+      dataCompleteness: Math.round(Object.values(dataQuality).filter(Boolean).length / Object.keys(dataQuality).length * 100),
+      decision: decisionLevel({ evening, eveningFresh, morning, whoop, neuro, activeInjuries, testsExpected }),
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });

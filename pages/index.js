@@ -322,12 +322,12 @@ function RMChart({ history, fields }) {
 }
 
 // Load + neuro trend charts: CMJ history (with baseline) and rolling ACWR.
-function TrendCharts({ data }) {
+function TrendCharts({ data, showNeuro = true }) {
   const cmj = (data?.cmjHistory || []).filter(p => p.cmj != null);
   const acwr = (data?.acwrHistory || []).filter(p => p.acwr != null);
 
   // ── CMJ chart ──────────────────────────────────────────────────────────────
-  const cmjChart = (() => {
+  const cmjChart = showNeuro ? (() => {
     if (cmj.length < 2) return null;
     const W = 320, H = 100, PAD = { top: 10, right: 12, bottom: 18, left: 28 };
     const cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
@@ -365,7 +365,7 @@ function TrendCharts({ data }) {
         </p>
       </div>
     );
-  })();
+  })() : null;
 
   // ── ACWR chart ───────────────────────────────────────────────────────────
   const acwrChart = (() => {
@@ -732,6 +732,10 @@ function addDaysToStr(dateStr, n) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+function emptyDevelopmentPlan(start = todayISO()) {
+  return { cycleStart: start, reviewDate: addDaysToStr(start, 28), goals: [] };
 }
 
 function getMondayOf(dateStr) {
@@ -1794,7 +1798,7 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
           <p className="mt-0.5 text-[10px] opacity-70">
             {neuroMetrics.length
               ? `KPI: ${neuroMetrics.map(([label, metric, unit]) => `${label} ${metric.value}${unit}${metric.date ? ` (${metric.date.slice(5)})` : ''}${metric.stale ? ' · устар.' : ''}`).join(' · ')}`
-              : 'Нейротест: данных нет'}
+              : workspace === 'zarechie' ? 'Нейротест: данных нет' : 'Тесты CMJ/RSI/10 м не используются'}
           </p>
         </div>
 
@@ -1807,6 +1811,105 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
 
       <p className="mt-2 text-[10px] leading-snug text-slate-600">{data.decision?.detail} При генерации статус тренера остаётся сильнее автоматической оценки.</p>
     </section>
+  );
+}
+
+function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
+  const goals = Array.isArray(plan?.goals) ? plan.goals : [];
+  const cycleStart = plan?.cycleStart || todayISO();
+  const reviewDate = addDaysToStr(cycleStart, 28);
+  const reviewDue = todayISO() >= reviewDate;
+
+  function updateGoal(index, patch) {
+    onChange({
+      ...plan,
+      goals: goals.map((goal, goalIndex) => goalIndex === index ? { ...goal, ...patch } : goal),
+    });
+  }
+
+  function addGoal() {
+    if (goals.length >= 3) return;
+    onChange({
+      ...plan,
+      goals: [...goals, { id: `goal-${Date.now()}`, title: '', criterion: '' }],
+    });
+  }
+
+  return (
+    <details className="mb-4 rounded-2xl border border-accent/15 bg-accent/[0.035] print:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3">
+        <Target size={12} className="text-accent" />
+        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">План развития</span>
+        <span className={`ml-auto text-[10px] font-semibold ${reviewDue ? 'text-amber-400' : 'text-slate-600'}`}>
+          {reviewDue ? 'нужен пересмотр' : `${goals.filter(goal => goal.title?.trim()).length}/3 цели · 4 недели`}
+        </span>
+      </summary>
+      <div className="border-t border-white/[0.05] px-4 pb-4 pt-3">
+        <div className="mb-3 grid gap-2 sm:grid-cols-2">
+          <div>
+            <div className="mb-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-600">Начало цикла</div>
+            <DatePicker
+              value={cycleStart}
+              onChange={value => onChange({ ...plan, cycleStart: value, reviewDate: addDaysToStr(value, 28) })}
+              size="sm"
+            />
+          </div>
+          <div className="rounded-xl border border-white/[0.07] bg-black/15 px-3 py-2">
+            <div className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-600">Пересмотр</div>
+            <div className="mt-1 text-[12px] font-bold text-slate-300">{reviewDate}</div>
+            <div className="text-[9px] text-slate-600">автоматически через 28 дней</div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {goals.map((goal, index) => (
+            <div key={goal.id || index} className="rounded-xl border border-white/[0.07] bg-black/15 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="grid h-5 w-5 place-items-center rounded-md bg-accent/15 text-[10px] font-black text-accent">{index + 1}</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600">Цель развития</span>
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...plan, goals: goals.filter((_, goalIndex) => goalIndex !== index) })}
+                  className="ml-auto text-slate-700 transition hover:text-rose-400"
+                  aria-label="Удалить цель"
+                ><X size={13} /></button>
+              </div>
+              <input
+                value={goal.title || ''}
+                onChange={event => updateGoal(index, { title: event.target.value })}
+                maxLength={120}
+                placeholder="Например: увеличить силу задней цепи"
+                className="w-full rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[12px] text-slate-200 outline-none placeholder:text-slate-700 focus:border-accent/30"
+              />
+              <input
+                value={goal.criterion || ''}
+                onChange={event => updateGoal(index, { criterion: event.target.value })}
+                maxLength={200}
+                placeholder="Критерий: что должно измениться за 4 недели"
+                className="mt-2 w-full rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[11px] text-slate-300 outline-none placeholder:text-slate-700 focus:border-accent/30"
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {goals.length < 3 && (
+            <button type="button" onClick={addGoal} className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] px-3 py-2 text-[11px] font-semibold text-slate-500 transition hover:text-slate-300">
+              <Plus size={12} /> Добавить цель
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="ml-auto flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-[11px] font-black text-[#07101a] transition disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+            {saved ? 'Сохранено' : 'Сохранить план'}
+          </button>
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -1918,6 +2021,10 @@ export default function Home() {
   const [templates, setTemplates] = useState([]);
   // Player contraindications
   const [restrictions, setRestrictions] = useState([]);
+  // Four-week individual development plan (maximum three measurable goals).
+  const [developmentPlan, setDevelopmentPlan] = useState(() => emptyDevelopmentPlan());
+  const [developmentPlanSaving, setDevelopmentPlanSaving] = useState(false);
+  const [developmentPlanSaved, setDevelopmentPlanSaved] = useState(false);
   // Read-only pre-generation snapshot: the same signals that drive the AI prompt.
   const [decisionData, setDecisionData] = useState(null);
   const [decisionDataLoading, setDecisionDataLoading] = useState(false);
@@ -2147,12 +2254,12 @@ export default function Home() {
   useEffect(() => {
     setTrendsData(null);
     setTrendsOpen(false);
-  }, [playerId]);
+  }, [playerId, workspace]);
 
   // Load stored LSI (jump limb-symmetry index) for the selected player
   useEffect(() => {
     setLsiValue('');
-    if (!apiKey || !playerId) return;
+    if (!apiKey || !playerId || workspace !== 'zarechie') return;
     fetch(`/api/players/lsi?playerId=${encodeURIComponent(playerId)}&workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } })
       .then(r => r.json())
       .then(d => { if (d && d.lsi != null) setLsiValue(String(d.lsi)); })
@@ -2161,7 +2268,7 @@ export default function Home() {
 
   // Persist LSI to Redis (debounced on blur/change via the handler below)
   const saveLSI = useCallback((val) => {
-    if (!apiKey || !playerId) return;
+    if (!apiKey || !playerId || workspace !== 'zarechie') return;
     fetch('/api/players/lsi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
@@ -2229,6 +2336,17 @@ export default function Home() {
       .then(r => r.json())
       .then(data => setRestrictions(Array.isArray(data.restrictions) ? data.restrictions : []))
       .catch(() => setRestrictions([]));
+  }, [apiKey, playerId, workspace]);
+
+  useEffect(() => {
+    setDevelopmentPlanSaved(false);
+    if (!apiKey || !playerId) { setDevelopmentPlan(emptyDevelopmentPlan()); return; }
+    let cancelled = false;
+    fetch(`/api/players/development-plan?playerId=${encodeURIComponent(playerId)}&workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } })
+      .then(response => response.json())
+      .then(data => { if (!cancelled) setDevelopmentPlan(data.plan || emptyDevelopmentPlan()); })
+      .catch(() => { if (!cancelled) setDevelopmentPlan(emptyDevelopmentPlan()); });
+    return () => { cancelled = true; };
   }, [apiKey, playerId, workspace]);
 
   // Refresh whenever the selected player, date, or workspace changes. This is
@@ -3297,6 +3415,28 @@ export default function Home() {
         body: JSON.stringify({ playerId, restrictions: next, workspace }),
       });
     } catch (_) {}
+  }
+
+  async function saveDevelopmentPlan() {
+    if (!playerId || developmentPlanSaving) return;
+    setDevelopmentPlanSaving(true);
+    setDevelopmentPlanSaved(false);
+    try {
+      const response = await fetch('/api/players/development-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ playerId, workspace, plan: developmentPlan }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Не удалось сохранить план');
+      setDevelopmentPlan(data.plan || developmentPlan);
+      setDevelopmentPlanSaved(true);
+      setTimeout(() => setDevelopmentPlanSaved(false), 2500);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDevelopmentPlanSaving(false);
+    }
   }
 
   function updateExercise(blockIdx, exIdx, patch) {
@@ -5080,6 +5220,16 @@ export default function Home() {
             </details>
           )}
 
+          {playerId && selectedPlayer && workspaceTab === 'program' && (
+            <DevelopmentPlanPanel
+              plan={developmentPlan}
+              onChange={next => { setDevelopmentPlan(next); setDevelopmentPlanSaved(false); }}
+              onSave={saveDevelopmentPlan}
+              saving={developmentPlanSaving}
+              saved={developmentPlanSaved}
+            />
+          )}
+
           {/* ── История тренировок ── */}
           {workspaceTab === 'history' && playerId && selectedPlayer && (
             <div className="print:hidden">
@@ -5432,7 +5582,7 @@ export default function Home() {
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-[12px] font-semibold text-slate-500 transition hover:text-slate-300">
                   <SlidersHorizontal size={13} className="text-slate-600" />
                   Дополнительные данные
-                  <span className="ml-auto text-[10px] text-slate-700">1ПМ · нагрузка · LSI</span>
+                  <span className="ml-auto text-[10px] text-slate-700">{workspace === 'zarechie' ? '1ПМ · нагрузка · LSI' : '1ПМ · нагрузка'}</span>
                 </summary>
               <div className="border-t border-white/[0.05] p-3">
                 <button
@@ -5496,7 +5646,7 @@ export default function Home() {
                   }`}
                 >
                   <TrendingUp size={12} className={trendsOpen ? 'text-accent' : 'text-slate-600'} />
-                  <span>Нагрузка и нейро</span>
+                  <span>{workspace === 'zarechie' ? 'Нагрузка и нейро' : 'Нагрузка'}</span>
                   <ChevronDown size={12} className={`ml-auto shrink-0 transition-transform duration-200 ${trendsOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {trendsOpen && (
@@ -5506,10 +5656,10 @@ export default function Home() {
                         <Loader2 size={14} className="mr-2 animate-spin" /> Загрузка...
                       </div>
                     ) : (
-                      <TrendCharts data={trendsData} />
+                      <TrendCharts data={trendsData} showNeuro={workspace === 'zarechie'} />
                     )}
                     {/* LSI — jump limb-symmetry index (manual entry) */}
-                    <div className="mt-3 flex items-center gap-2 rounded-2xl border border-white/[0.06] bg-black/20 px-3 py-2.5">
+                    {workspace === 'zarechie' && <div className="mt-3 flex items-center gap-2 rounded-2xl border border-white/[0.06] bg-black/20 px-3 py-2.5">
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-700">LSI</span>
                       <span className="text-[10px] text-slate-600">симметрия прыжка L/R</span>
                       <input
@@ -5524,7 +5674,7 @@ export default function Home() {
                       {lsiValue !== '' && Number(lsiValue) < 85 && (
                         <span className="text-[9px] font-semibold text-rose-400">⚠ {lsiValue}%</span>
                       )}
-                    </div>
+                    </div>}
                   </div>
                 )}
               </div>

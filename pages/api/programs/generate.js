@@ -12,9 +12,10 @@ import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
 import { assessSessionQuality, qualityCorrectionPrompt } from '../../../lib/sessionValidator';
 import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseMemory';
 import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlaybook';
-import { pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
+import { developmentPlanKey, pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import { formatPerformanceKpisForPrompt, performanceKpis } from '../../../lib/performanceKpis.mjs';
+import { formatDevelopmentPlanForPrompt } from '../../../lib/developmentPlan.mjs';
 
 const TRAINING_TYPE_LABELS = {
   anterior_chain: 'Передняя цепь',
@@ -454,7 +455,7 @@ function eveningSafetyContext(surveys, targetDate, latestAvailable = null) {
   return `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${lines.join('\n')}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
 }
 
-function summarizeSnapshot(snap) {
+function summarizeSnapshot(snap, workspace = 'zarechie') {
   const { player, whoop, surveys, morning, neuro, manual, periodDays, targetDate, injuryLog, annotations, latestSurvey, latestMorning } = snap;
 
   const todayWhoop = onDay(whoop, targetDate);
@@ -713,17 +714,25 @@ function summarizeSnapshot(snap) {
       const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
       const delta = median > 0 ? Math.round((yesterdayJumps - median) / median * 100) : null;
       lines.push(`• Индивидуальный ориентир (${comparable.length} последних ${yesterdayWasMatch ? 'матчей' : 'тренировок'}): медиана ${Math.round(median)} прыжков${delta != null ? `; вчера ${delta >= 0 ? '+' : ''}${delta}%` : ''}`);
-      lines.push('→ Значение оценивай вместе с CMJ/RSI, WHOOP, опросом, болью и фактическим RPE. Один высокий общий счётчик не является автоматическим запретом на выбранный метод.');
+      lines.push(workspace === 'zarechie'
+        ? '→ Значение оценивай вместе с CMJ/RSI, WHOOP, опросом, болью и фактическим RPE. Один высокий общий счётчик не является автоматическим запретом на выбранный метод.'
+        : '→ Значение оценивай вместе с WHOOP, опросом, болью и фактическим RPE. Тесты CMJ/RSI/10 м в NK Performance не проводятся и не учитываются.');
     } else {
       lines.push(`• Персональный ${yesterdayWasMatch ? 'матчевый' : 'тренировочный'} baseline пока не сформирован (${comparable.length}/3 сопоставимых наблюдений).`);
       lines.push('→ Используй число как контекст, но не применяй абсолютные или позиционные пороги до накопления реальных данных команды.');
     }
   } else {
-    lines.push('• Прыжковая нагрузка вчера: данных нет — используй CMJ/RSI, WHOOP, опрос, боль и фактический RPE, не считай отсутствие данных зелёным сигналом');
+    lines.push(workspace === 'zarechie'
+      ? '• Прыжковая нагрузка вчера: данных нет — используй CMJ/RSI, WHOOP, опрос, боль и фактический RPE, не считай отсутствие данных зелёным сигналом'
+      : '• Прыжковая нагрузка вчера: данных нет. Для NK Performance ориентируйся на WHOOP, опрос, боль и фактический RPE.');
   }
 
-  const performance = formatPerformanceKpisForPrompt(neuro, targetDate);
-  lines.push('', performance.text);
+  if (workspace === 'zarechie') {
+    const performance = formatPerformanceKpisForPrompt(neuro, targetDate);
+    lines.push('', performance.text);
+  } else {
+    lines.push('', '• NK Performance: CMJ, RSI, 10 м и LSI не проводятся — не используй тестовые данные, пороги или предположения о них.');
+  }
 
   return lines.join('\n');
 }
@@ -1483,7 +1492,7 @@ export async function buildGenerationInputs(body) {
   }
 
   const prevDate = shiftDateStr(targetDate, -1);
-  const [snapshot, sessionSummaries, actualSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev] = await Promise.all([
+  const [snapshot, sessionSummaries, actualSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, Number(days) || 7, workspace),
     getRecentSessionSummaries(String(playerId), 6, workspace).catch(() => []),
     getRecentActualSummaries(String(playerId), workspace, 5).catch(() => []),
@@ -1506,6 +1515,7 @@ export async function buildGenerationInputs(body) {
     redis('get', `${wpfx}:restrictions:${String(playerId)}`).catch(() => null),
     workspace === 'zarechie' ? redis('get', matchLoadKey(workspace, targetDate)).catch(() => null) : Promise.resolve(null),
     workspace === 'zarechie' ? redis('get', matchLoadKey(workspace, prevDate)).catch(() => null) : Promise.resolve(null),
+    redis('get', developmentPlanKey(workspace, String(playerId))).catch(() => null),
   ]);
 
   if (!snapshot) return { error: 'Player not found', status: 404 };
@@ -1516,7 +1526,9 @@ export async function buildGenerationInputs(body) {
   // playerData resolves the active workspace source (including the current
   // Zarechie dashboard store), so LSI must come from that same snapshot.
   let lsi = null;
-  const lsiArr = snapshot.neuro?.latest?.hist?.lsi || snapshot.neuro?.latest?.lsi;
+  const lsiArr = workspace === 'zarechie'
+    ? snapshot.neuro?.latest?.hist?.lsi || snapshot.neuro?.latest?.lsi
+    : null;
   if (Array.isArray(lsiArr) && lsiArr.length) {
     const latest = [...lsiArr].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
     const parsed = parseFloat(latest.lsi ?? latest.value);
@@ -1567,6 +1579,13 @@ export async function buildGenerationInputs(body) {
     : [];
   const restrictionsText = restrictionsToPrompt(Array.isArray(restrictions) ? restrictions : []);
   if (restrictionsText) userPrompt += restrictionsText;
+
+  const developmentPlan = rawDevelopmentPlan ? parseJSONSafe(rawDevelopmentPlan, null) : null;
+  const developmentPlanText = formatDevelopmentPlanForPrompt(developmentPlan, targetDate);
+  if (developmentPlanText) {
+    dataSummary += developmentPlanText;
+    userPrompt += developmentPlanText;
+  }
 
   // Individual exercise-response memory
   if (memoryText) {
@@ -1730,7 +1749,7 @@ export default async function handler(req, res) {
 
 // ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
 function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie', microcycleSlot = null }) {
-  let dataSummary = summarizeSnapshot(snapshot);
+  let dataSummary = summarizeSnapshot(snapshot, workspace);
   const freshEveningContext = eveningSafetyContext(snapshot.surveys, targetDate, snapshot.latestSurvey);
 
   // Coach manual recovery status (светофор тренера) — appended after biometric data.
@@ -1828,6 +1847,10 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
   const manualWorkspaceContext = workspace === 'nkperf'
     ? '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNK PERFORMANCE · РУЧНОЙ РЕЖИМ ПЛАНИРОВАНИЯ:\n• НЕ используй расписание, матчи, перелёты, день недели, match load или MD-логику Заречья.\n• Тренер сам выбрал цикл и вид тренировки через focus/trainingType.\n• Генерируй программу только по выбранной методике, ручному статусу тренера, состоянию игрока, истории веса/RPE, ограничениям, 1ПМ и комментариям тренера.\n• Если WHOOP/опросы/нейро отсутствуют — не блокируй генерацию: работай в coach/manual mode и будь консервативен.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
     : '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nЗАРЕЧЬЕ · РУЧНОЙ ВЫБОР МЕТОДА:\n• focus и trainingType выбраны тренером вручную и обязательны для этой сессии.\n• НЕ определяй метод по дню недели и НЕ заменяй выбранный метод из-за календаря.\n• Матчи, перелёты, WHOOP, опросы и нейро меняют только дозировку, риск и варианты упражнений внутри выбранного метода.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+
+  const nkTestExclusionContext = workspace === 'nkperf'
+    ? '\n⛔ NK PERFORMANCE: CMJ, RSI, 10 м и LSI не проводятся. Не учитывай любые тестовые значения, не считай их отсутствие дефицитом данных и не проси провести тест.\n'
+    : '';
 
   // 1RM context
   const oneRM = raw1RM ? (() => { try { return typeof raw1RM === 'string' ? JSON.parse(raw1RM) : raw1RM; } catch(_) { return null; } })() : null;
@@ -2050,7 +2073,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     : '';
 
   const userPrompt = `${dataSummary}
-${freshEveningContext}${onermContext}${warmupContext}${manualWorkspaceContext}${trainingTypeContext}${isoWaveContext}${hrvTrendAlert}${hoopers7dAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
+${freshEveningContext}${onermContext}${warmupContext}${manualWorkspaceContext}${nkTestExclusionContext}${trainingTypeContext}${isoWaveContext}${hrvTrendAlert}${hoopers7dAlert}${monotonyAlert}${injuryLogContext}${annotationsContext}${deloadAlert}${feedbackContext}${teamExercisesContext}${playbookContext}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${historyBlock}
 ${actualHistoryBlock}
