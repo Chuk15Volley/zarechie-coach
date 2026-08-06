@@ -2,14 +2,14 @@
 // POST { playerId, date, dayGoal, focus, notes, days=7 } → AI-generated gym session for one
 // specific day. The model receives: player bio-metrics for the target date, a trend window,
 // AND a compact history of the player's last 10 saved sessions — enabling real periodization
-// logic (load distribution, movement pattern rotation, DUP, no same-vector repetition).
+// logic (load distribution, anchor progression, systematic variation and autoregulation).
 
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { getRecentSessionSummaries } from '../../../lib/sessionHistory';
 import { isAuthorized } from '../../../lib/auth';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
-import { validateSession } from '../../../lib/sessionValidator';
+import { assessSessionQuality, qualityCorrectionPrompt } from '../../../lib/sessionValidator';
 import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseMemory';
 import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlaybook';
 import { pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
@@ -907,10 +907,11 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
   Трэп-штанга | Гири (KB) | Гантели (DB) | Медболы | Слайдеры | Петли TRX | Cable | Landmine | Sled | Резиновые петли | Mini bands | Плиометрические ящики | Турник
   НЕТ: обычная штанга как основной инструмент, тренажёры/машины как основной силовой блок
 
-✅ РАЗНООБРАЗИЕ ОБЯЗАТЕЛЬНО:
-  Никогда не повторять одно упражнение в рамках одной недели (7 дней)
-  Варьировать оборудование, хват, исходное положение, вектор нагрузки
-  Каждая сессия должна отличаться от предыдущей — игроки не должны угадывать следующее упражнение
+✅ ПРОГРЕССИЯ + ОСМЫСЛЕННАЯ ВАРИАТИВНОСТЬ:
+  • Главные упражнения A1/B1/C1 — якоря прогрессии. Сохраняй 1-2 подходящих якоря на 3-6 экспозиций, чтобы измерять рост веса, RPE, скорости и качества техники.
+  • Не заменяй главный паттерн ради новизны. Замена нужна при боли, плохой переносимости, плато, смене фазы или прямом указании тренера.
+  • Аксессуары D/E и второстепенные A2/B2/C2 ротируй чаще: меняй оборудование, хват, стойку, плоскость и вектор, но не повторяй один аксессуар в соседних 48-72 ч без методической причины.
+  • Разнообразие — это управляемая смена стимула внутри плана, а не случайный набор упражнений. Игрок должен видеть прогрессию в основных движениях и получать свежий, позиционно релевантный вспомогательный стимул.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 АДАПТАЦИЯ ПО СОСТОЯНИЮ ИГРОКА (из дашборда)
@@ -1661,10 +1662,22 @@ export async function buildGenerationInputs(body) {
     userPrompt += lsiLine;
   }
 
-  return { snapshot, userPrompt, dataSummary, targetDate, dayGoal, playerRestrictions: Array.isArray(restrictions) ? restrictions : [] };
+  return {
+    snapshot,
+    userPrompt,
+    dataSummary,
+    targetDate,
+    dayGoal,
+    playerRestrictions: Array.isArray(restrictions) ? restrictions : [],
+    qualityContext: {
+      focus: effectiveFocus,
+      trainingType,
+      recentSessionSummaries: sessionSummaries,
+    },
+  };
 }
 
-const OPENAI_SESSION_MODEL = 'gpt-5.5';
+export const OPENAI_SESSION_MODEL = 'gpt-5.6';
 
 function sessionToolForOpenAI(tool) {
   return {
@@ -1708,6 +1721,8 @@ async function callOpenAIForSession(apiKey, userPrompt) {
       input: userPrompt,
       max_output_tokens: 6500,
       store: false,
+      reasoning: { effort: 'medium' },
+      text: { verbosity: 'low' },
       tools: [sessionToolForOpenAI(SESSION_TOOL)],
       tool_choice: { type: 'function', name: 'build_session' },
     }),
@@ -1741,7 +1756,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e.message || 'Ошибка подготовки данных' });
   }
   if (inputs.error) return res.status(inputs.status || 400).json({ error: inputs.error });
-  const { snapshot, userPrompt, dataSummary, targetDate, playerRestrictions = [] } = inputs;
+  const { snapshot, userPrompt, dataSummary, targetDate, playerRestrictions = [], qualityContext = {} } = inputs;
   const { dayGoal: bodyDayGoal = '', focus = '' } = req.body || {};
 
   try {
@@ -1752,18 +1767,18 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'Модель не вернула структурированную тренировку' });
     }
 
-    // Post-validation: check the AI honoured hard rules.
-    let validation = validateSession(session, playerRestrictions);
-    if (!validation.valid) {
-      console.log('GEN validation failed, retrying:', validation.errors);
-      const fixPrompt = `${userPrompt}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n⚠ Твой предыдущий ответ нарушил следующие правила:\n${validation.errors.join('\n')}\n\nИсправь сессию, строго соблюдая все запреты и ограничения игрока. Верни ТОЛЬКО исправленную тренировку через build_session.`;
+    // Deterministic professional quality gate. A low-scoring answer receives one
+    // targeted correction pass instead of being shown to the coach as-is.
+    let quality = assessSessionQuality(session, { ...qualityContext, playerRestrictions });
+    if (!quality.valid || quality.score < 85) {
+      console.log('GEN quality gate failed, retrying:', quality.score, quality.improvements);
+      const fixPrompt = qualityCorrectionPrompt(userPrompt, session, quality);
       const retry = await callOpenAIForSession(apiKey, fixPrompt);
       if (retry.session) {
-        const retryValidation = validateSession(retry.session, playerRestrictions);
-        // Accept the retry if it's valid; otherwise keep whichever has fewer errors.
-        if (retryValidation.valid || retryValidation.errors.length < validation.errors.length) {
+        const retryQuality = assessSessionQuality(retry.session, { ...qualityContext, playerRestrictions });
+        if (retryQuality.score > quality.score || (retryQuality.score === quality.score && retryQuality.valid)) {
           session = retry.session;
-          validation = retryValidation;
+          quality = retryQuality;
         }
       }
     }
@@ -1772,7 +1787,7 @@ export default async function handler(req, res) {
 
     console.log('GEN blocks:', session.blocks?.length,
       'ex per block:', session.blocks?.map(b => b.exercises?.length),
-      'valid:', validation.valid);
+      'quality:', quality.score);
 
     return res.status(200).json({
       session,
@@ -1780,7 +1795,8 @@ export default async function handler(req, res) {
       dataSummary,
       date: targetDate,
       dayGoal: bodyDayGoal,
-      validation: { valid: validation.valid, errors: validation.errors, warnings: validation.warnings },
+      validation: { valid: quality.valid, errors: quality.errors, warnings: quality.warnings },
+      quality,
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -2074,7 +2090,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
 
   const historyBlock =
     sessionSummaries.length > 0
-      ? `ИСТОРИЯ ПОСЛЕДНИХ ${sessionSummaries.length} СОХРАНЁННЫХ ТРЕНИРОВОК ИГРОКА:\n${sessionSummaries.join('\n\n')}\n\nНА ОСНОВЕ ИСТОРИИ — перед составлением определи:\n1. Какие векторы/паттерны получили нагрузку в последние 48–72 ч — избегай их или делай лёгкую работу в том же паттерне.\n2. Какой характер нагрузки преобладал в последних сессиях (силовой, объёмный, взрывной) — выбери другой для сегодняшней.\n3. Какие конкретные упражнения повторялись недавно — смени вариацию из библиотеки движений.\n4. Логика DUP: куда по волне нагрузки должна идти сегодняшняя сессия.\n5. Прогрессия: если есть weightNote по упражнению — применяй правило прогрессии.`
+      ? `ИСТОРИЯ ПОСЛЕДНИХ ${sessionSummaries.length} СОХРАНЁННЫХ ТРЕНИРОВОК ИГРОКА:\n${sessionSummaries.join('\n\n')}\n\nНА ОСНОВЕ ИСТОРИИ — перед составлением определи:\n1. Какие векторы/паттерны получили нагрузку в последние 48–72 ч — дозируй их с учётом восстановления.\n2. Какие A1/B1/C1 подходят как измеримые якоря текущего метода — сохрани 1-2 из них и прогрессируй вес, RPE, скорость или технику.\n3. Какие аксессуары и второстепенные варианты повторялись в последних двух сессиях — ротируй их, сохраняя нужный паттерн и позиционную задачу.\n4. Не меняй вручную выбранный метод тренера из-за истории; история определяет дозировку и конкретную реализацию метода.\n5. Если есть фактический weightNote/вес/RPE — явно применяй правило прогрессии или объяснимого удержания/регрессии.`
       : 'ИСТОРИЯ ТРЕНИРОВОК: нет сохранённых сессий для этого игрока — составь первую тренировку без привязки к предыдущим.';
 
   const actualHistoryBlock = actualSummaries.length > 0

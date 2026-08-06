@@ -8,11 +8,10 @@ import { isAuthorized } from '../../../lib/auth';
 import { redis } from '../../../lib/redis';
 import { getPlayerSnapshot } from '../../../lib/playerData';
 import { sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
-import { SYSTEM_PROMPT, normalizeExerciseLanguage } from './generate';
+import { assessSessionQuality, qualityCorrectionPrompt } from '../../../lib/sessionValidator';
+import { OPENAI_SESSION_MODEL, SYSTEM_PROMPT, normalizeExerciseLanguage } from './generate';
 
 export const config = { maxDuration: 60 };
-
-const OPENAI_SESSION_MODEL = 'gpt-5.5';
 
 function sessionToolForOpenAI(tool) {
   return {
@@ -55,6 +54,8 @@ async function createOpenAIBackgroundResponse(apiKey, userPrompt, sessionTool) {
       input: userPrompt,
       max_output_tokens: 6500,
       background: true,
+      reasoning: { effort: 'high' },
+      text: { verbosity: 'low' },
       tools: [sessionToolForOpenAI(sessionTool)],
       tool_choice: { type: 'function', name: 'build_session' },
     }),
@@ -123,10 +124,23 @@ export default async function handler(req, res) {
       date: record.date,
       dayGoal: record.dayGoal || '',
       autoSaved: !!record.autoSaved,
+      quality: record.quality || null,
     });
   }
 
-  const { playerId, date, dayGoal = '', workspace = 'zarechie', focus = '', trainingType = '', userPrompt, sessionTool, autoSave = true } = record;
+  const {
+    playerId,
+    date,
+    dayGoal = '',
+    workspace = 'zarechie',
+    focus = '',
+    trainingType = '',
+    userPrompt,
+    sessionTool,
+    autoSave = true,
+    playerRestrictions = [],
+    qualityContext = {},
+  } = record;
   if (!userPrompt || !sessionTool) {
     return res.status(500).json({ error: 'Неполные данные задачи генерации' });
   }
@@ -176,6 +190,46 @@ export default async function handler(req, res) {
     }
     session = normalizeExerciseLanguage(session, focus);
 
+    let quality = assessSessionQuality(session, {
+      ...qualityContext,
+      focus: qualityContext.focus || focus,
+      trainingType: qualityContext.trainingType || trainingType,
+      playerRestrictions,
+    });
+
+    // One targeted second pass turns the generator into a design -> audit ->
+    // correction loop. The better of the two versions is always retained.
+    if ((!quality.valid || quality.score < 85) && !record.correctionAttempted) {
+      const correctionPrompt = qualityCorrectionPrompt(userPrompt, session, quality);
+      const corrected = await createOpenAIBackgroundResponse(apiKey, correctionPrompt, sessionTool);
+      if (corrected.error) return res.status(corrected.status || 502).json({ error: corrected.error });
+      const correctionResponseId = corrected.response?.id;
+      if (!correctionResponseId) return res.status(502).json({ error: 'OpenAI не вернул response id для проверки качества' });
+
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify({
+        ...record,
+        status: 'submitted',
+        correctionAttempted: true,
+        candidateSession: session,
+        candidateQuality: quality,
+        openaiResponseId: correctionResponseId,
+        openaiStatus: corrected.response.status || 'queued',
+        correctionStartedAt: new Date().toISOString(),
+      }), 'EX', 3600).catch(() => {});
+
+      return res.status(200).json({ status: 'pending', processing_status: 'quality_correction' });
+    }
+
+    if (record.correctionAttempted && record.candidateSession && record.candidateQuality) {
+      const candidateQuality = record.candidateQuality;
+      const correctedIsBetter = quality.score > candidateQuality.score
+        || (quality.score === candidateQuality.score && quality.valid && !candidateQuality.valid);
+      if (!correctedIsBetter) {
+        session = record.candidateSession;
+        quality = candidateQuality;
+      }
+    }
+
     const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 7, workspace).catch(() => null);
     const player = snapshot?.player || null;
     const dataSummary = record.dataSummary || '';
@@ -187,6 +241,7 @@ export default async function handler(req, res) {
       dayGoal: dayGoal || '',
       focus: focus || '',
       trainingType: trainingType || '',
+      quality,
       date,
       savedAt: new Date().toISOString(),
     };
@@ -204,6 +259,7 @@ export default async function handler(req, res) {
       session,
       player,
       dataSummary,
+      quality,
       autoSaved: !!autoSave,
       completedAt: new Date().toISOString(),
     }), 'EX', 3600).catch(() => {});
@@ -216,6 +272,7 @@ export default async function handler(req, res) {
       date,
       dayGoal,
       autoSaved: !!autoSave,
+      quality,
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });

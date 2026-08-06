@@ -11,7 +11,7 @@ import { setVideo } from '../../../lib/exerciseLibrary';
 
 export const config = { maxDuration: 10 };
 
-const OPENAI_MODEL = 'gpt-5.5';
+const OPENAI_MODEL = 'gpt-5.6';
 
 function slugify(name) {
   return name.toLowerCase().trim().replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-+|-+$/g, '');

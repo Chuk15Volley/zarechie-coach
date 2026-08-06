@@ -1696,7 +1696,7 @@ const CAMP_FORBIDDEN = [
   { re: /leg press|жим ногами/i, label: 'Leg Press' },
   { re: /smith machine|машин[ае].*смита/i, label: 'Smith Machine' },
   { re: /leg extension|разгибание ног/i, label: 'Leg Extension' },
-  { re: /hamstring curl|сгибание ног/i, label: 'Hamstring Curl' },
+  { re: /(?:seated|lying|machine) hamstring curl|сгибание ног.*тренаж/i, label: 'Hamstring Curl в тренажёре' },
   { re: /ab wheel|ab roller|ролик.*пресс|rollout/i, label: 'Ab Wheel Rollout' },
   { re: /broad jump|прыжок в длину/i, label: 'Broad Jump (заменять вертикальными)' },
   { re: /floor press|жим.*пол[уе]|жим на полу/i, label: 'DB Floor Press' },
@@ -2501,6 +2501,11 @@ export default function Home() {
       return ex.weightKg != null || note.includes('rpe') || note.includes('вручную') || note.includes('вес тела') || !/^[ABC]1\b/i.test(ex.code || '');
     });
     return [
+      ...(meta.quality ? [{
+        label: 'Проф. оценка',
+        ok: meta.quality.score >= 85,
+        detail: `${meta.quality.score}/100 · ${meta.quality.grade || 'проверено'}`,
+      }] : []),
       { label: 'Фаза', ok: !!focus, detail: getFocusLabel(period, focus) },
       { label: 'Тип', ok: !!trainingType, detail: TRAINING_TYPE_LABELS[trainingType] || 'не выбран' },
       { label: 'Ручной метод', ok: true, detail: workspace === 'zarechie' ? 'календарь меняет только нагрузку' : 'без календаря Заречья' },
@@ -2984,7 +2989,7 @@ export default function Home() {
       }
       if (statusData.status === 'done') {
         setSession(statusData.session);
-        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel, sessionType: 'gym' });
+        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel, sessionType: 'gym', quality: statusData.quality || null });
         setShowSummary(false);
         setAutoSaved(!!statusData.autoSaved);
         stopGenProgress(true);
@@ -3084,6 +3089,7 @@ export default function Home() {
       player: pendingSaved.player,
       dataSummary: pendingSaved.dataSummary,
       date: pendingSaved.date,
+      quality: pendingSaved.quality || null,
     });
     setError('');
   }
@@ -3105,6 +3111,7 @@ export default function Home() {
           focus,
           trainingType,
           trainingLabel: meta.focusLabel || getFocusLabel(period, focus),
+          quality: meta.quality || null,
           workspace,
         }),
       });
@@ -3116,6 +3123,7 @@ export default function Home() {
         player: meta.player,
         dataSummary: meta.dataSummary,
         date: meta.date,
+        quality: meta.quality || null,
         savedAt: new Date().toISOString(),
       });
       setTimeout(() => setJustSaved(false), 2500);

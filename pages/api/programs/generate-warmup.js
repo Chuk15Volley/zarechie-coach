@@ -59,7 +59,7 @@ const WARMUP_TOOL = {
   },
 };
 
-const OPENAI_WARMUP_MODEL = 'gpt-5.5';
+const OPENAI_WARMUP_MODEL = 'gpt-5.6';
 
 function warmupToolForOpenAI(tool) {
   return {
