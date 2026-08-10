@@ -988,24 +988,6 @@ function youtubeVideoId(url) {
   return null;
 }
 
-function ExerciseVideoLink({ name }) {
-  const bankUrl = findExerciseUrl(name);
-  const url = bankUrl;
-  if (!url) return null;
-
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-1.5 rounded-lg bg-red-600/[0.15] px-3 py-1.5 text-[11px] font-semibold text-red-400 transition hover:bg-red-600/[0.25] hover:text-red-300"
-    >
-      {YT_ICON}
-      Видео
-    </a>
-  );
-}
-
 const PENCIL_ICON = (
   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -4626,9 +4608,9 @@ export default function Home() {
                                   <span className="text-[12px] font-bold text-white/70">{ex.reps}</span>
                                 </div>
                                 {ex.note && <p className="mt-1 text-[11px] leading-snug text-white/40">{ex.note}</p>}
-                                <div className="mt-2">
-                                  <ExerciseVideoLink name={ex.nameEn || ex.name} apiKey={apiKey} />
-                                </div>
+                                {/* The warmup uses the same video panel as a gym session.
+                                    Russian `name` is the library key; `nameEn` is only a coaching subtitle. */}
+                                <ExerciseVideoPanel name={ex.name} apiKey={apiKey} />
                               </li>
                             ))}
                           </ul>

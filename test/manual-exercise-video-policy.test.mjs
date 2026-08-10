@@ -19,3 +19,10 @@ test('manual YouTube saving remains available to the coach', async () => {
   assert.match(source, /\/api\/exercises\/manual-video/);
   assert.match(source, /Добавить YouTube-видео/);
 });
+
+test('warmup exercises use the same YouTube video panel as gym exercises', async () => {
+  const source = await readFile(new URL('pages/index.js', ROOT), 'utf8');
+
+  assert.match(source, /<ExerciseVideoPanel name=\{ex\.name\} apiKey=\{apiKey\} \/>/);
+  assert.doesNotMatch(source, /<ExerciseVideoLink/);
+});
