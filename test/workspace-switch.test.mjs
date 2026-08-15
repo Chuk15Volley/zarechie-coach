@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const ROOT = new URL('../', import.meta.url);
 
-test('NK Performance workspace switch clears the team schedule without removed state', async () => {
+test('workspace switch keeps team schedule disabled without removed state', async () => {
   const source = await readFile(new URL('pages/index.js', ROOT), 'utf8');
 
   assert.doesNotMatch(

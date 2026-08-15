@@ -4,9 +4,9 @@
 
 The game-day generator is accepted against five positional profiles and the full set of readiness modes. These are control examples, not fixed templates: the generator remains free to select another approved combination when history and readiness support it.
 
-The same match-day methodology is active in both isolated workspaces: Zarechie-Odintsovo and NK Performance. Zarechie-Odintsovo resolves match day from its team calendar. NK Performance is deliberately not linked to a team calendar because athletes may compete on different dates: the coach manually selects `Игровой день · силовой праймер` for the specific athlete and date. Each workspace retains its own roster, monitoring history, match load and saved sessions. NK Performance does not require CMJ/RSI/10 m inputs; its readiness decision uses the available WHOOP, questionnaires, injury status and training history without weakening the match-day safety limits.
+The same match-day methodology is active in both isolated workspaces: Zarechie-Odintsovo and NK Performance. Neither workspace is linked to a team calendar for session-type selection because athletes may compete on different dates: the coach manually selects `Игровой день · силовой праймер` for the specific athlete and date. Each workspace retains its own roster, monitoring history, match load and saved sessions. NK Performance does not require CMJ/RSI/10 m inputs; its readiness decision uses the available WHOOP, questionnaires, injury status and training history without weakening the match-day safety limits.
 
-For NK Performance, consecutive match-day dose is inferred only from that athlete's manually reviewed and saved match-day primers on the preceding one or two dates. Other training types remain fully manual and are never changed by a shared calendar.
+For both workspaces, consecutive match-day dose is inferred only from that athlete's manually reviewed and saved match-day primers on the preceding one or two dates. Other training types remain fully manual and are never changed by a shared calendar.
 
 Every normal control primer has exactly three pairs:
 

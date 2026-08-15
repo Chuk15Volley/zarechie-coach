@@ -253,7 +253,7 @@ export default async function handler(req, res) {
 
   const dataSummary = summarizeSnapshot(snapshot);
   let seasonDecision = null;
-  if (workspace === 'nkperf' && isManualMatchDayFocus(focus)) {
+  if (isManualMatchDayFocus(focus)) {
     seasonDecision = resolveManualMatchDaySession({ targetDate });
   } else if (usesSeasonCalendar(workspace) && isInSeasonFocus(focus)) {
     const rawSchedule = await redis('get', scheduleKey(workspace)).catch(() => null);
