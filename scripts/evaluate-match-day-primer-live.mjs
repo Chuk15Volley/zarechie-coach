@@ -50,7 +50,7 @@ function readiness(date, overrides = {}) {
 }
 
 const targetDate = '2026-09-12';
-const scenarios = [
+export const MATCH_DAY_LIVE_SCENARIOS = [
   {
     id: 'setter-full',
     position: 'Связующая',
@@ -203,57 +203,66 @@ async function generate(apiKey, prompt) {
   return typeof call.arguments === 'string' ? JSON.parse(call.arguments) : call.arguments;
 }
 
+export async function evaluateMatchDayPrimerScenario(apiKey, scenarioId) {
+  if (!apiKey) throw new Error('OPENAI_API_KEY не найден');
+  const scenario = MATCH_DAY_LIVE_SCENARIOS.find(item => item.id === scenarioId);
+  if (!scenario) throw new Error(`Неизвестный сценарий: ${scenarioId}`);
+  const seasonDecision = resolveSeasonSession({
+    events: scenario.events,
+    targetDate,
+    requestedFocus: 'inseason_strength',
+    requestedTrainingType: 'full_body',
+  });
+  const primer = buildMatchDayPrimerContext({
+    targetDate,
+    seasonDecision,
+    readiness: scenario.readiness,
+    position: scenario.position,
+    recoveryStatus: scenario.recoveryStatus,
+  });
+  const decisionWithPrimer = { ...seasonDecision, primer };
+  const dose = buildDosePrescription({
+    focus: seasonDecision.focus,
+    trainingType: seasonDecision.trainingType,
+    seasonContext: decisionWithPrimer,
+    matchDayPrimer: primer,
+  });
+  const prompt = `Создай одну контрольную тренировку.\n` +
+    `Игрок: ${scenario.position}; история весов не передана — не выдумывай кг, назначь ручной подбор до RPE 6.\n` +
+    `${formatMatchDayPrimerForPrompt(primer)}${formatDosePrescriptionForPrompt(dose)}`;
+  const session = await generate(apiKey, prompt);
+  const quality = advisorySessionQuality(assessSessionQuality(session, {
+    focus: seasonDecision.focus,
+    trainingType: seasonDecision.trainingType,
+    seasonDecision: decisionWithPrimer,
+    dosePrescription: dose,
+  }));
+  return {
+    scenario: scenario.id,
+    position: scenario.position,
+    mode: primer.mode,
+    score: quality.score,
+    blocking: quality.blocking,
+    valid: quality.valid,
+    issues: quality.improvements,
+    exercises: session.blocks?.flatMap(block => block.exercises?.map(exercise => exercise.name) || []) || [],
+  };
+}
+
 async function main() {
   const apiKey = localApiKey();
-  if (!apiKey) throw new Error('OPENAI_API_KEY не найден');
   const results = [];
-  for (const scenario of scenarios) {
-    const seasonDecision = resolveSeasonSession({
-      events: scenario.events,
-      targetDate,
-      requestedFocus: 'inseason_strength',
-      requestedTrainingType: 'full_body',
-    });
-    const primer = buildMatchDayPrimerContext({
-      targetDate,
-      seasonDecision,
-      readiness: scenario.readiness,
-      position: scenario.position,
-      recoveryStatus: scenario.recoveryStatus,
-    });
-    const decisionWithPrimer = { ...seasonDecision, primer };
-    const dose = buildDosePrescription({
-      focus: seasonDecision.focus,
-      trainingType: seasonDecision.trainingType,
-      seasonContext: decisionWithPrimer,
-      matchDayPrimer: primer,
-    });
-    const prompt = `Создай одну контрольную тренировку.\n` +
-      `Игрок: ${scenario.position}; история весов не передана — не выдумывай кг, назначь ручной подбор до RPE 6.\n` +
-      `${formatMatchDayPrimerForPrompt(primer)}${formatDosePrescriptionForPrompt(dose)}`;
-    const session = await generate(apiKey, prompt);
-    const quality = advisorySessionQuality(assessSessionQuality(session, {
-      focus: seasonDecision.focus,
-      trainingType: seasonDecision.trainingType,
-      seasonDecision: decisionWithPrimer,
-      dosePrescription: dose,
-    }));
-    results.push({
-      scenario: scenario.id,
-      position: scenario.position,
-      mode: primer.mode,
-      score: quality.score,
-      blocking: quality.blocking,
-      valid: quality.valid,
-      issues: quality.improvements,
-      exercises: session.blocks?.flatMap(block => block.exercises?.map(exercise => exercise.name) || []) || [],
-    });
+  for (const scenario of MATCH_DAY_LIVE_SCENARIOS) {
+    results.push(await evaluateMatchDayPrimerScenario(apiKey, scenario.id));
   }
   process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
   if (results.some(result => result.blocking || !result.valid)) process.exitCode = 1;
 }
 
-main().catch(error => {
-  process.stderr.write(`Match-day primer live evaluation failed: ${error.message}\n`);
-  process.exitCode = 1;
-});
+const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) {
+  main().catch(error => {
+    process.stderr.write(`Match-day primer live evaluation failed: ${error.message}\n`);
+    process.exitCode = 1;
+  });
+}
