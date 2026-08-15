@@ -194,6 +194,29 @@ test('full match-day primer passes exact structure, dose and approved-library ga
   assert.equal(quality.valid, true, quality.improvements.join('; '));
 });
 
+test('unilateral jump targets count both sides and block excessive contacts', () => {
+  const session = fullPrimerSession();
+  session.blocks[0].exercises[1].name = 'Lateral Bound';
+  session.blocks[0].exercises[1].targetSets = ['3/side', '3/side'];
+  const seasonDecision = decision();
+  const primer = buildMatchDayPrimerContext({
+    targetDate: '2026-08-20', seasonDecision, readiness: readiness(), position: 'Связующая', recoveryStatus: 'green',
+  });
+  const decisionWithPrimer = { ...seasonDecision, primer };
+  const dose = buildDosePrescription({ seasonContext: decisionWithPrimer, matchDayPrimer: primer });
+  const quality = assessSessionQuality(session, {
+    seasonDecision: decisionWithPrimer,
+    dosePrescription: dose,
+    focus: seasonDecision.focus,
+    trainingType: seasonDecision.trainingType,
+  });
+  assert.equal(quality.dose.actual.jumpContacts, 12);
+  assert.equal(quality.valid, false);
+  const safetyCheck = quality.checks.find(check => check.id === 'season_safety');
+  assert.equal(safetyCheck?.ok, false);
+  assert.match(safetyCheck?.detail || '', /12 контактов/i);
+});
+
 test('an exercise outside the match-day library is a blocking safety error', () => {
   const session = fullPrimerSession();
   session.blocks[0].exercises[0].name = 'Barbell Back Squat';
