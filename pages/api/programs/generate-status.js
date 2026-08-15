@@ -348,7 +348,8 @@ export default async function handler(req, res) {
     };
     let autoSaved = false;
     let saveWarning = '';
-    if (autoSave && !quality.blocking && !quality.medicalReviewRequired) {
+    const manualSaveRequired = quality.seasonDecision?.primer?.manualSaveRequired === true;
+    if (autoSave && !quality.blocking && !quality.medicalReviewRequired && !manualSaveRequired) {
       try {
         await redisPipeline(autoSaveCommands(record2, workspace, playerId, date));
         autoSaved = true;
@@ -358,8 +359,10 @@ export default async function handler(req, res) {
         saveWarning = 'Тренировка создана, но автосохранение временно недоступно. Нажмите «Сохранить» ещё раз.';
         console.error('Redis save session failed:', error.message);
       }
-    } else if (autoSave && (quality.blocking || quality.medicalReviewRequired)) {
-      saveWarning = quality.blocking
+    } else if (autoSave && (quality.blocking || quality.medicalReviewRequired || manualSaveRequired)) {
+      saveWarning = manualSaveRequired
+        ? 'Игровой праймер не автосохранён: откройте игрока, визуально проверьте программу и сохраните вручную.'
+        : quality.blocking
         ? quality.reviewMessage || 'Тренировка не автосохранена: нарушен лимит безопасности.'
         : quality.medicalReviewReason;
     }

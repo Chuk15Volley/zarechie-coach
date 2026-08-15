@@ -1,5 +1,6 @@
 // pages/api/player/feedback.js
-// POST { token, date, rpe, fatigue, feel, note } → saves player workout feedback to Redis.
+// POST regular: { token, date, rpe, fatigue, feel, note }.
+// POST match-day primer: { token, date, rpe, primerFeedback: { speed, legs, shoulder } }.
 // Auth: share token (validates player without exposing playerId).
 // Also updates per-exercise weight records with RPE for auto-progression.
 
@@ -28,9 +29,9 @@ function targetSetReps(value) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
-  const { token, date, rpe, fatigue, feel, note, doms, soreness, painAreas = [], done: submittedDone, weights: submittedWeights } = req.body || {};
-  if (!token || !date || rpe == null || fatigue == null) {
-    return res.status(400).json({ error: 'token, date, rpe, fatigue required' });
+  const { token, date, rpe, fatigue, feel, note, doms, soreness, painAreas = [], done: submittedDone, weights: submittedWeights, primerFeedback } = req.body || {};
+  if (!token || !date || rpe == null) {
+    return res.status(400).json({ error: 'token, date and rpe required' });
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return res.status(400).json({ error: 'invalid date' });
 
@@ -39,24 +40,9 @@ export default async function handler(req, res) {
   const { playerId, workspace } = resolved;
 
   const rpeNum = Number(rpe);
-  const fatigueNum = Number(fatigue);
   if (!Number.isInteger(rpeNum) || rpeNum < 1 || rpeNum > 10) {
     return res.status(400).json({ error: 'rpe must be 1-10' });
   }
-  if (!Number.isInteger(fatigueNum) || fatigueNum < 1 || fatigueNum > 5) {
-    return res.status(400).json({ error: 'fatigue must be 1-5' });
-  }
-
-  const key = feedbackKey(workspace, playerId, date);
-  const previousRaw = await redis('get', key).catch(() => null);
-  const record = {
-    date: String(date),
-    rpe: rpeNum,
-    fatigue: fatigueNum,
-    feel: feel || null,
-    note: (note || '').trim().slice(0, 300),
-    submittedAt: new Date().toISOString(),
-  };
 
   // Load the session for this date to find which exercises had weight data.
   // Add RPE to each exercise's progression record so suggestKg can use it next time.
@@ -64,6 +50,33 @@ export default async function handler(req, res) {
     redis('get', sessionKey(workspace, playerId, date)).catch(() => null),
     redis('get', `${pfx(workspace)}:log:${playerId}:${date}`).catch(() => null),
   ]);
+  let sessionRecord = null;
+  try { sessionRecord = sessionRaw ? (typeof sessionRaw === 'string' ? JSON.parse(sessionRaw) : sessionRaw) : null; } catch (_) {}
+  const isMatchDayPrimer = sessionRecord?.quality?.seasonDecision?.key === 'match_day';
+  const fatigueNum = fatigue == null ? null : Number(fatigue);
+  if (!isMatchDayPrimer && (!Number.isInteger(fatigueNum) || fatigueNum < 1 || fatigueNum > 5)) {
+    return res.status(400).json({ error: 'fatigue must be 1-5' });
+  }
+  const normalizedPrimerFeedback = isMatchDayPrimer ? {
+    speed: Number(primerFeedback?.speed),
+    legs: Number(primerFeedback?.legs),
+    shoulder: Number(primerFeedback?.shoulder),
+  } : null;
+  if (isMatchDayPrimer && Object.values(normalizedPrimerFeedback).some(value => !Number.isInteger(value) || value < 1 || value > 5)) {
+    return res.status(400).json({ error: 'primerFeedback speed, legs and shoulder must be 1-5' });
+  }
+
+  const key = feedbackKey(workspace, playerId, date);
+  const previousRaw = await redis('get', key).catch(() => null);
+  const record = {
+    date: String(date),
+    rpe: rpeNum,
+    fatigue: isMatchDayPrimer ? null : fatigueNum,
+    feel: isMatchDayPrimer ? null : (feel || null),
+    note: isMatchDayPrimer ? '' : (note || '').trim().slice(0, 300),
+    primerFeedback: normalizedPrimerFeedback,
+    submittedAt: new Date().toISOString(),
+  };
   const actualSessionCmds = [];
   const allExercises = [];
   const actualExercises = [];
@@ -74,9 +87,9 @@ export default async function handler(req, res) {
   try { log = logRaw ? (typeof logRaw === 'string' ? JSON.parse(logRaw) : logRaw) : null; } catch (_) {}
   const completedSets = submittedDone && typeof submittedDone === 'object' ? submittedDone : log?.done || {};
   const actualWeights = submittedWeights && typeof submittedWeights === 'object' ? submittedWeights : log?.weights || {};
-  if (sessionRaw) {
+  if (sessionRecord) {
     try {
-      const rec = typeof sessionRaw === 'string' ? JSON.parse(sessionRaw) : sessionRaw;
+      const rec = sessionRecord;
       if (rec?.session) rec.session = sanitizeUnavailableEquipmentExercises(rec.session);
       for (const [blockIndex, block] of (rec.session?.blocks || []).entries()) {
         for (const [exerciseIndex, ex] of (block.exercises || []).entries()) {
@@ -148,8 +161,9 @@ export default async function handler(req, res) {
       exercises: actualExercises,
       blockFeedback: {},
       sessionRpe: rpeNum,
-      fatigue: fatigueNum,
-      feel: feel || null,
+      fatigue: isMatchDayPrimer ? null : fatigueNum,
+      feel: isMatchDayPrimer ? null : (feel || null),
+      primerFeedback: normalizedPrimerFeedback,
       note: record.note,
       compliance,
       actualTonnage,

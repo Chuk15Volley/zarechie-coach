@@ -2119,6 +2119,9 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
+  const matchDayManualReview = workspace === 'zarechie'
+    && isInSeasonFocus(focus)
+    && scheduleEvents.some(event => event.date === date && event.type === 'game');
   const [nkSyncing, setNkSyncing] = useState(false);
 
   useEffect(() => {
@@ -3054,6 +3057,10 @@ export default function Home() {
   }
 
   async function runBatchGeneration() {
+    if (matchDayManualReview) {
+      setError('В игровой день праймер генерируется индивидуально: откройте игрока, проверьте программу и сохраните вручную. Командное автосохранение отключено.');
+      return;
+    }
     const selected = players.filter(p => batchSelectedIds.has(p.id));
     if (!selected.length) return;
     setBatchResults(selected.map(p => ({ playerId: p.id, name: p.name, position: p.position, status: 'queued' })));
@@ -4207,12 +4214,12 @@ export default function Home() {
                           </span>
                         )}
                         {!batchRow && fb && (
-                          <span title={`RPE ${fb.rpe}/10 · общая усталость ${fb.fatigue ?? '—'}/5`} className={`rounded px-1 py-0.5 text-[9px] font-black ${
+                          <span title={fb.primerFeedback ? `RPE ${fb.rpe}/10 · скорость ${fb.primerFeedback.speed}/5 · ноги ${fb.primerFeedback.legs}/5 · плечо ${fb.primerFeedback.shoulder}/5` : `RPE ${fb.rpe}/10 · общая усталость ${fb.fatigue ?? '—'}/5`} className={`rounded px-1 py-0.5 text-[9px] font-black ${
                             fb.rpe >= 9 ? 'bg-red-500/20 text-red-400' :
                             fb.rpe >= 7 ? 'bg-amber-500/20 text-amber-400' :
                             'bg-emerald-500/20 text-emerald-400'
                           }`}>
-                            {fb.rpe}{fb.fatigue != null ? ` · ${fb.fatigue}` : ''}
+                            {fb.rpe}{fb.primerFeedback ? ` · ⚡${fb.primerFeedback.speed} · Н${fb.primerFeedback.legs} · П${fb.primerFeedback.shoulder}` : fb.fatigue != null ? ` · ${fb.fatigue}` : ''}
                           </span>
                         )}
                         {!batchRow && st && !batchRunning && (
@@ -4235,11 +4242,11 @@ export default function Home() {
                         await runBatchGeneration();
                         loadTeamStatus();
                       }}
-                      disabled={!apiKey}
+                      disabled={!apiKey || matchDayManualReview}
                       className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-accent/90 py-2.5 text-[12px] font-bold text-[#060a0e] transition hover:bg-accent disabled:opacity-30"
                     >
                       <Zap size={12} strokeWidth={2.5} />
-                      Сгенерировать для {batchSelectedIds.size} {batchSelectedIds.size === 1 ? 'игрока' : batchSelectedIds.size < 5 ? 'игроков' : 'игроков'}
+                      {matchDayManualReview ? 'Игровой день: проверка по одной' : `Сгенерировать для ${batchSelectedIds.size} ${batchSelectedIds.size === 1 ? 'игрока' : 'игроков'}`}
                     </button>
                   </div>
                 )}
@@ -4350,12 +4357,12 @@ export default function Home() {
                       <span title="Тренировка сохранена на эту дату" className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.7)]" />
                     )}
                     {playerFeedbacks[p.id] && (
-                      <span title={`RPE ${playerFeedbacks[p.id].rpe}/10 · общая усталость ${playerFeedbacks[p.id].fatigue ?? '—'}/5`} className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-black leading-none ${
+                      <span title={playerFeedbacks[p.id].primerFeedback ? `RPE ${playerFeedbacks[p.id].rpe}/10 · скорость ${playerFeedbacks[p.id].primerFeedback.speed}/5 · ноги ${playerFeedbacks[p.id].primerFeedback.legs}/5 · плечо ${playerFeedbacks[p.id].primerFeedback.shoulder}/5` : `RPE ${playerFeedbacks[p.id].rpe}/10 · общая усталость ${playerFeedbacks[p.id].fatigue ?? '—'}/5`} className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-black leading-none ${
                         playerFeedbacks[p.id].rpe >= 9 ? 'bg-red-500/20 text-red-400' :
                         playerFeedbacks[p.id].rpe >= 7 ? 'bg-amber-500/20 text-amber-400' :
                         'bg-emerald-500/20 text-emerald-400'
                       }`}>
-                        RPE {playerFeedbacks[p.id].rpe}{playerFeedbacks[p.id].fatigue != null ? ` · уст. ${playerFeedbacks[p.id].fatigue}` : ''}
+                        RPE {playerFeedbacks[p.id].rpe}{playerFeedbacks[p.id].primerFeedback ? ` · ⚡${playerFeedbacks[p.id].primerFeedback.speed} · Н${playerFeedbacks[p.id].primerFeedback.legs} · П${playerFeedbacks[p.id].primerFeedback.shoulder}` : playerFeedbacks[p.id].fatigue != null ? ` · уст. ${playerFeedbacks[p.id].fatigue}` : ''}
                       </span>
                     )}
                   </div>

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test"
+    "test": "node --test",
+    "test:match-day-live": "node scripts/evaluate-match-day-primer-live.mjs"
   },
   "dependencies": {
     "@vercel/blob": "^2.5.0",

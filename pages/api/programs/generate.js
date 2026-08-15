@@ -21,6 +21,7 @@ import { evaluateDevelopmentPlan, formatDevelopmentPlanForPrompt } from '../../.
 import { buildDosePrescription, formatDosePrescriptionForPrompt } from '../../../lib/sessionDose.mjs';
 import { readinessDecisionFromSnapshot, strictestRecoveryStatus } from '../../../lib/readinessDecision.mjs';
 import { IN_SEASON_SYSTEM_PROMPT } from '../../../lib/inSeasonPrompt.mjs';
+import { buildMatchDayPrimerContext, formatMatchDayPrimerForPrompt, matchDayAutomaticRecoveryStatus } from '../../../lib/matchDayPrimer.mjs';
 import {
   formatSeasonDecisionForPrompt,
   isInSeasonFocus,
@@ -100,7 +101,7 @@ async function getRecentActualSummaries(playerId, workspace = 'zarechie', limit 
     const rec = parseJSONSafe(raw, null);
     if (!rec) return [];
     const sessionLine = rec.sessionRpe
-      ? `RPE сессии ${rec.sessionRpe}/10${rec.fatigue ? `, усталость ${rec.fatigue}/5` : ''}`
+      ? `RPE сессии ${rec.sessionRpe}/10${rec.fatigue ? `, усталость ${rec.fatigue}/5` : ''}${rec.primerFeedback ? `, праймер: скорость ${rec.primerFeedback.speed}/5, ноги ${rec.primerFeedback.legs}/5, плечо ${rec.primerFeedback.shoulder}/5` : ''}`
       : '';
     const blockLines = rec.blockFeedback && typeof rec.blockFeedback === 'object'
       ? Object.entries(rec.blockFeedback).map(([block, fb]) => `${block}: RPE ${fb.rpe ?? '—'}${fb.pain ? ', боль' : ''}`).join('; ')
@@ -188,7 +189,9 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
     name: { type: 'string', description: 'Exercise name in professional S&C English — the exact terminology used by elite strength coaches. Use standard nomenclature: modifier + equipment + movement pattern + bilateral/unilateral qualifier. Examples: "Trap Bar Romanian Deadlift", "Goblet Squat (KB)", "Bulgarian Split Squat", "Single-Leg Hip Thrust (DB)", "Copenhagen Adductor Plank", "Pallof Press (Band)", "Dead Bug", "Bird-Dog", "Slider Hamstring Curl", "Box Jump (Bilateral)", "Countermovement Jump (CMJ)", "Plyo Push-Up", "Inverted Row (TRX)", "Landmine Press", "DB Incline Press", "KB Swing (Two-Hand)", "MB Rotational Throw", "Turkish Get-Up (KB)", "Spanish Squat ISO (Band)", "SL Eccentric Step-Down", "Y-T-W (Band)", "Band Pull-Apart", "Face Pull (Band)", "RKC Plank", "Hollow Body Hold", "Suitcase Carry (DB)". Never use Russian transliterations. Never invent non-standard names.' },
     targetSets: {
       type: 'array',
-      description: 'Целевые повторения по подходам, например ["5","5","5"] или ["8","8","8","8"]. 3–5 элементов.',
+      description: 'Целевые повторения по каждому подходу, например ["5","5","5"]. Количество элементов задаёт детерминированный бюджет: для игрового праймера 1–2, для обычной сессии обычно 3–5.',
+      minItems: 1,
+      maxItems: 5,
       items: { type: 'string' },
     },
     weightNote: {
@@ -257,7 +260,7 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
               label: { type: 'string', description: 'Буква блока: A, B, C, D, E' },
               rest_note: {
                 type: 'string',
-                description: 'Протокол отдыха. PAP-тройка (A/B/C): "10-15 сек X1→X2 (PAP), 90 сек X2→X3, 2-3 мин после тройки". PAP-пара (A): "10-15 сек A1→A2, 3 мин после пары". Прямые подходы: "2-3 мин". Профилактика (E): "30-45 сек между упражнениями".',
+                description: 'Протокол отдыха. В игровом праймере: "15–30 сек X1→X2, полное восстановление между кругами". В обычной PAP-паре: "10-15 сек A1→A2, 3 мин после пары". Прямые подходы: "2-3 мин".',
               },
               exercises: {
                 type: 'array',
@@ -1616,7 +1619,7 @@ export async function buildGenerationInputs(body) {
       : /power|conversion|taper|md1/.test(requestedSeasonFocus) ? 'activation_power'
         : 'full_body'
   );
-  const seasonDecision = workspace === 'zarechie' && isInSeasonFocus(focus)
+  let seasonDecision = workspace === 'zarechie' && isInSeasonFocus(focus)
     ? resolveSeasonSession({
       events: Array.isArray(scheduleEvents) ? scheduleEvents : [],
       targetDate,
@@ -1647,14 +1650,28 @@ export async function buildGenerationInputs(body) {
     ? formatPlaybookForPrompt(playbookData, snapshot.player?.position || '', effectiveFocus)
     : '';
 
-  const testsExpected = workspace === 'zarechie';
-  const readinessKpis = testsExpected ? performanceKpis(snapshot.neuro, targetDate) : null;
+  // Match-day methodology deliberately has no day-of CMJ/RSImod test. Weekly
+  // KPI history remains visible in the prompt, but its absence today must not
+  // downgrade an otherwise complete morning/evening readiness snapshot.
+  const testsExpected = workspace === 'zarechie' && seasonDecision?.key !== 'match_day';
+  const readinessKpis = workspace === 'zarechie' ? performanceKpis(snapshot.neuro, targetDate) : null;
   const readiness = readinessDecisionFromSnapshot(snapshot, targetDate, {
     testsExpected,
     neuroFresh: testsExpected && [readinessKpis.rsi, readinessKpis.cmj, readinessKpis.sprint10m]
       .some(metric => metric.value != null && !metric.stale),
   });
-  const effectiveRecovery = strictestRecoveryStatus(coachRecovery, readiness.decision.level);
+  // On match day, local pain changes the affected chain inside the primer
+  // policy; it does not silently cancel loading of every healthy region.
+  const automaticDoseRecovery = matchDayAutomaticRecoveryStatus(readiness.decision, seasonDecision?.key === 'match_day');
+  const effectiveRecovery = strictestRecoveryStatus(coachRecovery, automaticDoseRecovery);
+  const matchDayPrimer = buildMatchDayPrimerContext({
+    targetDate,
+    seasonDecision,
+    readiness,
+    position: snapshot.player?.position || '',
+    recoveryStatus: effectiveRecovery,
+  });
+  if (matchDayPrimer) seasonDecision = { ...seasonDecision, primer: matchDayPrimer };
   const freshQuestionnaires = [
     readiness.eveningFresh ? readiness.evening : null,
     readiness.postMorningFresh ? readiness.postMorning : null,
@@ -1678,11 +1695,17 @@ export async function buildGenerationInputs(body) {
     userPrompt += seasonDecisionText;
     dataSummary += seasonDecisionText;
   }
+  const matchDayPrimerText = formatMatchDayPrimerForPrompt(matchDayPrimer);
+  if (matchDayPrimerText) {
+    userPrompt += matchDayPrimerText;
+    dataSummary += matchDayPrimerText;
+  }
   const dosePrescription = buildDosePrescription({
     focus: effectiveFocus,
     trainingType: effectiveTrainingType,
     coachRecovery: effectiveRecovery,
     seasonContext: seasonDecision,
+    matchDayPrimer,
   });
   const doseText = formatDosePrescriptionForPrompt(dosePrescription);
   userPrompt += doseText;
@@ -1911,7 +1934,9 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
       : '[WHOOP нет — ориентируйся на этот статус]';
     dataSummary += `\n• ⚑ Статус от тренера (ручная оценка): ${statusLine} ${context}`;
   }
-  const focusLabel = focusLabelForWorkspace(focus, workspace);
+  const focusLabel = seasonDecision?.key === 'match_day'
+    ? 'ИГРОВОЙ ДЕНЬ · ИНДИВИДУАЛЬНЫЙ FULL-BODY СИЛОВОЙ ПРАЙМЕР — три коротких контрастных комплекса, рабочие подходы RPE 6, session RPE 3–4'
+    : focusLabelForWorkspace(focus, workspace);
   const trainingTypeLabel = TRAINING_TYPE_LABELS[trainingType] || '';
   const manualTrainingTypeContext = trainingTypeLabel
     ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nРУЧНОЙ ТИП ТРЕНИРОВКИ ОТ ТРЕНЕРА: ${trainingTypeLabel}\n→ Это главный тематический акцент сессии. День недели и календарь НЕ могут заменить выбранный метод. Если готовность/боль/матч конфликтуют с типом, сохрани тему, но снизь нагрузку и замени рискованные упражнения.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
@@ -2193,6 +2218,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
       let line = `• ${fb.date}: RPE ${fb.rpe}/10`;
       if (fb.fatigue != null) line += ` · общая усталость ${fb.fatigue}/5`;
       if (fb.feel) line += ` — ${FEEL_LABELS[fb.feel] || fb.feel}`;
+      if (fb.primerFeedback) line += ` · праймер: скорость ${fb.primerFeedback.speed}/5, ноги ${fb.primerFeedback.legs}/5, плечо ${fb.primerFeedback.shoulder}/5`;
       if (fb.note) line += ` — "${fb.note}"`;
       lines.push(line);
     }
@@ -2201,6 +2227,9 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     else if (last.rpe <= 5) lines.push('→ Последняя тренировка лёгкая: можно увеличить интенсивность или объём.');
     else if (last.rpe >= 7 && last.feel === 'very_hard') lines.push('→ Игрок отметил "Очень тяжело": будь консервативен с нагрузкой сегодня.');
     if (Number(last.fatigue) >= 4) lines.push('→ Общая усталость после последней тренировки 4–5/5: объём снизь на 15–20%, не прогрессируй нагрузку и проверь восстановление.');
+    if (last.primerFeedback && [last.primerFeedback.speed, last.primerFeedback.legs, last.primerFeedback.shoulder].some(value => Number(value) <= 2)) {
+      lines.push('→ Последний игровой праймер дал низкую оценку скорости/ног/плеча: не прогрессируй его вес, выбери более лёгкий исторически знакомый вариант.');
+    }
     feedbackContext = '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' + lines.join('\n') + '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
   }
 
