@@ -49,6 +49,7 @@ import { calcWeight } from '../lib/loadCalc';
 import { RESTRICTIONS, hasRestriction } from '../lib/exerciseRestrictions';
 import { exerciseTonnage, isPairableFreeWeightExercise, loadUnitsForExercise } from '../lib/tonnage';
 import { buildSeasonMicrocycle, isInSeasonFocus } from '../lib/seasonPolicy.mjs';
+import { usesSeasonCalendar } from '../lib/workspacePolicy.mjs';
 
 // Map a camp focus phase to a representative training week (for auto-weight %).
 function weekFromFocus(focus) {
@@ -1765,10 +1766,10 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
           </p>
         </div>
 
-        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${workspace === 'zarechie' ? tone(data.schedule?.level) : 'border-accent/20 bg-accent/[0.05] text-accent/90'}`}>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"><CalendarDays size={11} /> {workspace === 'zarechie' ? 'Клубный режим' : 'Режим NK Performance'}</div>
-          <p className="mt-1 text-[12px] font-semibold">{workspace === 'zarechie' ? data.schedule?.label : 'Ручной выбор тренера'}</p>
-          <p className="mt-0.5 text-[10px] leading-snug opacity-70">{workspace === 'zarechie' ? data.schedule?.detail : 'Расписание и матчевая логика Заречья не используются.'}</p>
+        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${tone(data.schedule?.level || 'green')}`}>
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"><CalendarDays size={11} /> {workspace === 'zarechie' ? 'Календарь Заречья' : 'Календарь NK Performance'}</div>
+          <p className="mt-1 text-[12px] font-semibold">{data.schedule?.label || 'Календарь без ближайшего матча'}</p>
+          <p className="mt-0.5 text-[10px] leading-snug opacity-70">{data.schedule?.detail || 'Режим определяется фазой и состоянием игрока.'}</p>
         </div>
       </div>
 
@@ -2119,7 +2120,7 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
-  const matchDayManualReview = workspace === 'zarechie'
+  const matchDayManualReview = usesSeasonCalendar(workspace)
     && isInSeasonFocus(focus)
     && scheduleEvents.some(event => event.date === date && event.type === 'game');
   const [nkSyncing, setNkSyncing] = useState(false);
@@ -2183,11 +2184,6 @@ export default function Home() {
   useEffect(() => {
     if (!apiKey) return;
     let cancelled = false;
-    if (workspace === 'nkperf') {
-      setScheduleEvents([]);
-      setShowSchedule(false);
-      return () => { cancelled = true; };
-    }
     fetch(`/api/schedule?workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
       .then(r => r.json())
       .then(data => {
@@ -2689,7 +2685,7 @@ export default function Home() {
       }] : []),
       { label: 'Фаза', ok: !!qualityFocus, detail: getFocusLabel(period, qualityFocus) },
       { label: 'Тип', ok: !!qualityTrainingType, detail: TRAINING_TYPE_LABELS[qualityTrainingType] || 'не выбран' },
-      { label: 'Метод', ok: true, detail: workspace === 'zarechie' ? 'сверен с матчевым календарём' : 'ручной режим без календаря' },
+      { label: 'Метод', ok: true, detail: isInSeasonFocus(qualityFocus) ? 'сверен с матчевым календарём' : 'ручной выбор тренера' },
       { label: 'Recovery', ok: recoveryStatus !== 'red' || exCount <= 8, detail: recoveryStatus === 'red' ? 'сниженный объем' : 'по готовности' },
       { label: 'Упражнения', ok: exCount >= targetMin && exCount <= targetMax, detail: `${exCount} / цель ${targetMin}-${targetMax}` },
       { label: 'Запреты', ok: methodViolations.length === 0, detail: methodViolations.length ? `${methodViolations.length} наруш.` : 'чисто' },
@@ -5527,7 +5523,7 @@ export default function Home() {
           )}
 
           {/* ── Schedule panel ── */}
-          {workspaceTab === 'program' && keyConnected && playerId && workspace !== 'nkperf' && period !== 'camp' && (
+          {workspaceTab === 'program' && keyConnected && playerId && usesSeasonCalendar(workspace) && period !== 'camp' && (
             <div className="mb-5 print:hidden">
               <button
                 type="button"

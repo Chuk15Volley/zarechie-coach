@@ -15,6 +15,7 @@ import {
   sessionKey,
   sessionsKey,
 } from '../../../lib/workspacePrefix';
+import { usesSeasonCalendar } from '../../../lib/workspacePolicy.mjs';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import { resolveSeasonSession } from '../../../lib/seasonPolicy.mjs';
 
@@ -65,8 +66,8 @@ export default async function handler(req, res) {
       redis('get', playerLogKey),
       redis('get', gymTonnageKey(workspace, playerId, fromDate)),
       redis('lrange', sourceVersionsKey, 0, -1),
-      workspace === 'zarechie' ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
-      workspace === 'zarechie' ? redis('get', `${prefix}:match_load:${previousDate(toDate)}`).catch(() => null) : Promise.resolve(null),
+      usesSeasonCalendar(workspace) ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
+      usesSeasonCalendar(workspace) ? redis('get', `${prefix}:match_load:${previousDate(toDate)}`).catch(() => null) : Promise.resolve(null),
     ]);
 
     const source = parseRecord(sourceRaw);
@@ -75,7 +76,7 @@ export default async function handler(req, res) {
     if (feedbackRaw || actualRaw || hasPlayerProgress(playerLogRaw)) {
       return res.status(409).json({ error: 'Тренировка уже отмечена как выполненная и не может быть перенесена' });
     }
-    if (workspace === 'zarechie') {
+    if (usesSeasonCalendar(workspace)) {
       const events = parseRecord(rawSchedule) || [];
       const previousLoads = parseRecord(rawPreviousMatchLoad) || {};
       const targetDecision = resolveSeasonSession({
