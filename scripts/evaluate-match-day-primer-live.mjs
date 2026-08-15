@@ -113,15 +113,15 @@ const exerciseSchema = {
   additionalProperties: false,
   required: ['code', 'name', 'targetSets', 'weightNote', 'tempo', 'autoReg', 'alternatives', 'cue', 'loadUnits'],
   properties: {
-    code: { type: 'string' },
-    name: { type: 'string' },
-    targetSets: { type: 'array', items: { type: 'string' } },
-    weightNote: { type: 'string' },
+    code: { type: 'string', description: 'Точный код A1/A2, B1/B2 или C1/C2.' },
+    name: { type: 'string', minLength: 1, description: 'Точное English-название из утверждённой match-day библиотеки.' },
+    targetSets: { type: 'array', minItems: 1, maxItems: 2, description: 'Непустой массив: один элемент на каждый подход.', items: { type: 'string', minLength: 1 } },
+    weightNote: { type: 'string', minLength: 1, description: 'Для A1/B1/C1 без истории: "ручной подбор до RPE 6". Для баллистики: лёгкий мяч/вес тела и максимальная скорость.' },
     weightKg: { type: 'number' },
-    tempo: { type: 'string' },
-    autoReg: { type: 'string' },
+    tempo: { type: 'string', minLength: 1 },
+    autoReg: { type: 'string', minLength: 1, description: 'Один критерий стопа/снижения нагрузки.' },
     alternatives: { type: 'array', items: { type: 'string' } },
-    cue: { type: 'string' },
+    cue: { type: 'string', minLength: 1, description: 'Краткая русская подсказка, начинается с темпа.' },
     loadUnits: { type: 'integer', enum: [1, 2] },
   },
 };
@@ -148,7 +148,7 @@ const tool = {
           required: ['label', 'rest_note', 'exercises'],
           properties: {
             label: { type: 'string', description: 'Только одна буква: A, B или C. Порядок блоков строго A, B, C.' },
-            rest_note: { type: 'string' },
+            rest_note: { type: 'string', minLength: 1 },
             exercises: { type: 'array', minItems: 2, maxItems: 2, items: exerciseSchema },
           },
         },
@@ -232,6 +232,7 @@ export async function evaluateMatchDayPrimerScenario(apiKey, scenarioId) {
   const prompt = `Создай одну контрольную тренировку.\n` +
     `Игрок: ${scenario.position}; история весов не передана — не выдумывай кг, назначь ручной подбор до RPE 6.\n` +
     `Верни ровно три блока с label строго "A", "B", "C" и кодами упражнений A1/A2, B1/B2, C1/C2.\n` +
+    `${['minimal', 'modified'].includes(primer.mode) ? 'В этом режиме каждое упражнение имеет ровно один элемент targetSets; alternatives везде [].\n' : ''}` +
     `${formatMatchDayPrimerForPrompt(primer)}${formatDosePrescriptionForPrompt(dose)}`;
   const session = await generate(apiKey, prompt);
   const quality = advisorySessionQuality(assessSessionQuality(session, {

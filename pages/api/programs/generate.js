@@ -190,6 +190,8 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
     targetSets: {
       type: 'array',
       description: 'Целевые повторения по каждому подходу, например ["5","5","5"]. Количество элементов задаёт детерминированный бюджет: для игрового праймера 1–2, для обычной сессии обычно 3–5.',
+      minItems: 1,
+      maxItems: 5,
       items: { type: 'string' },
     },
     weightNote: {
