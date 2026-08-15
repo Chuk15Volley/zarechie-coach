@@ -5,7 +5,7 @@
 // logic (load distribution, anchor progression, systematic variation and autoregulation).
 
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
-import { getRecentSessionSummaries } from '../../../lib/sessionHistory';
+import { countPreviousConsecutiveMatchDaySessions, getRecentSessionSummaries } from '../../../lib/sessionHistory';
 import { isAuthorized } from '../../../lib/auth';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
@@ -15,7 +15,7 @@ import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRes
 import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseMemory';
 import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlaybook';
 import { developmentPlanKey, pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
-import { expectsPerformanceTests, usesSeasonCalendar, workspaceDisplayName } from '../../../lib/workspacePolicy.mjs';
+import { expectsPerformanceTests, usesMatchLoad, usesSeasonCalendar, workspaceDisplayName } from '../../../lib/workspacePolicy.mjs';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import { formatPerformanceKpisForPrompt, performanceKpis } from '../../../lib/performanceKpis.mjs';
 import { evaluateDevelopmentPlan, formatDevelopmentPlanForPrompt } from '../../../lib/developmentPlan.mjs';
@@ -26,6 +26,8 @@ import { buildMatchDayPrimerContext, formatMatchDayPrimerForPrompt, matchDayAuto
 import {
   formatSeasonDecisionForPrompt,
   isInSeasonFocus,
+  isManualMatchDayFocus,
+  resolveManualMatchDaySession,
   resolveSeasonSession,
 } from '../../../lib/seasonPolicy.mjs';
 import {
@@ -82,7 +84,7 @@ function formatMatchLoadForPrompt(playerId, targetDate, rawToday, rawPrev) {
   pushLoad(`Игровая нагрузка сегодня (${targetDate})`, today);
   pushLoad(`Игровая нагрузка вчера (${prevDate})`, prev);
   if (!lines.length) {
-    return '\n• Игровая нагрузка после последнего матча: не отмечена — если рядом матч Заречья, действуй консервативно для всех игроков.';
+    return '\n• Игровая нагрузка после последнего матча: не отмечена — в игровом или послематчевом режиме действуй консервативно.';
   }
   lines.push('→ Если вчера была высокая/средняя игровая нагрузка: приоритет восстановлению, профилактике, снижению прыжков и осевой нагрузки. Если низкая/не играла: можно дать более полноценную работу с учетом расписания и готовности.');
   lines.push('→ Если статус "Не в заявке / травма": не считать игрока свежим автоматически; использовать только безопасную работу с учетом причины/ограничений.');
@@ -151,6 +153,7 @@ const FOCUS_LABELS = {
   inseason_deload:       'СЕЗОН · DELOAD-НЕДЕЛЯ — 1 сессия на неделю. Содержание: укрепление слабых мест волейболиста + стабилизация + контроль движения. БЕЗ тяжёлой штанги, БЕЗ высокоударной плиометрики с приземлением. Запускается по завершении 3 нагрузочных недель ИЛИ при устойчивом падении CMJ/RSI ниже индивидуального baseline (досрочный индивидуальный deload).',
   inseason_md1_activation: 'СЕЗОН · АКТИВАЦИЯ MD-1 (день до игры) — 15-20 мин СТРОГО. Цель: нейромышечная потенциация БЕЗ накопления усталости. Структура: (1) CNS-праймер: 2-3 взрывных прыжка или спринт 10м × 2 — разбудить ЦНС; (2) 1 движение на технику со штангой 40-50% 1ПМ × 3 повт. × 2 сета — только паттерн без нагрузки; (3) позиционная активация по специализации (2-3 упр., бандажи/резина); (4) завершить: 2-3 мин дыхательная активация. ЗАПРЕЩЕНО: тяжёлые подходы, объёмная плиометрика, любая работа до отказа, эксцентрика. Ощущение после: лёгкость, активность, нет усталости.',
   inseason_taper:        'СЕЗОН · ТЕЙПЕР К ПИКУ — 10-дневный тейпер перед каждым из трёх пиков (Суперкубок декабрь / Кубок России январь / плей-офф апрель). ТОЛЬКО мощностная активация: 1–2 движения, минимальный объём, высокая скорость + поддержание тонуса. БЕЗ набора объёма, БЕЗ тяжёлой развивающей штанги, БЕЗ развивающей плиометрики. Цель: снять утомление + сохранить нейромышечную готовность к пику.',
+  inseason_match_day_primer: 'ИГРОВОЙ ДЕНЬ · СИЛОВОЙ ПРАЙМЕР — индивидуальная full-body потенциация, 20–25 минут основной работы, RPE 6/10, без накопления усталости и только с ручным сохранением тренером.',
   // ── БАЗОВЫЕ ──────────────────────────────────────────────────────────────
   preseason:       'предсезонная подготовка — база силы и объёма',
   inseason:        'игровой период — поддержание формы, минимизация утомления',
@@ -174,6 +177,7 @@ const MANUAL_FOCUS_LABELS = {
   inseason_deload:    'СЕЗОН · DELOAD — ручной выбор тренера; объём -40-50%, паттерны сохранены, профилактика не сокращается',
   inseason_md1_activation: 'СЕЗОН · АКТИВАЦИЯ / ТОНУС — ручной выбор тренера; 15-20 мин, нейромышечная потенциация без накопления усталости',
   inseason_taper:     'СЕЗОН · ТЕЙПЕР — ручной выбор тренера; минимальный объём, высокая скорость, поддержание тонуса',
+  inseason_match_day_primer: 'ИГРОВОЙ ДЕНЬ · СИЛОВОЙ ПРАЙМЕР — ручной выбор тренера для конкретного игрока и даты; full-body, 20–25 минут, RPE 6/10, без накопления усталости',
 };
 
 function focusLabelForWorkspace(focus, workspace) {
@@ -1544,7 +1548,7 @@ FIELD name — ENGLISH ONLY (professional S&C terminology):
 Заполни структуру через инструмент build_session.`;
 
 export function systemPromptForGeneration(focus = '', workspace = 'zarechie') {
-  return usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
+  return isInSeasonFocus(focus)
     ? IN_SEASON_SYSTEM_PROMPT
     : SYSTEM_PROMPT;
 }
@@ -1567,7 +1571,8 @@ export async function buildGenerationInputs(body) {
   }
 
   const prevDate = shiftDateStr(targetDate, -1);
-  const [snapshot, sessionSummaries, actualSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan] = await Promise.all([
+  const manualMatchDayRequested = workspace === 'nkperf' && isManualMatchDayFocus(focus);
+  const [snapshot, sessionSummaries, actualSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan, previousManualMatchDays] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, Number(days) || 7, workspace),
     getRecentSessionSummaries(String(playerId), 6, workspace).catch(() => []),
     getRecentActualSummaries(String(playerId), workspace, 5).catch(() => []),
@@ -1588,9 +1593,12 @@ export async function buildGenerationInputs(body) {
       });
     })(),
     redis('get', `${wpfx}:restrictions:${String(playerId)}`).catch(() => null),
-    usesSeasonCalendar(workspace) ? redis('get', matchLoadKey(workspace, targetDate)).catch(() => null) : Promise.resolve(null),
-    usesSeasonCalendar(workspace) ? redis('get', matchLoadKey(workspace, prevDate)).catch(() => null) : Promise.resolve(null),
+    usesMatchLoad(workspace) ? redis('get', matchLoadKey(workspace, targetDate)).catch(() => null) : Promise.resolve(null),
+    usesMatchLoad(workspace) ? redis('get', matchLoadKey(workspace, prevDate)).catch(() => null) : Promise.resolve(null),
     redis('get', developmentPlanKey(workspace, String(playerId))).catch(() => null),
+    manualMatchDayRequested
+      ? countPreviousConsecutiveMatchDaySessions(String(playerId), targetDate, workspace)
+      : Promise.resolve(0),
   ]);
 
   if (!snapshot) return { error: 'Player not found', status: 404 };
@@ -1620,15 +1628,17 @@ export async function buildGenerationInputs(body) {
       : /power|conversion|taper|md1/.test(requestedSeasonFocus) ? 'activation_power'
         : 'full_body'
   );
-  let seasonDecision = usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
-    ? resolveSeasonSession({
+  let seasonDecision = manualMatchDayRequested
+    ? resolveManualMatchDaySession({ targetDate, consecutiveGameDay: previousManualMatchDays + 1 })
+    : usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
+      ? resolveSeasonSession({
       events: Array.isArray(scheduleEvents) ? scheduleEvents : [],
       targetDate,
       requestedFocus: requestedSeasonFocus,
       requestedTrainingType: requestedSeasonTrainingType,
       previousMatchLoad: previousMatchLoads?.[String(playerId)] || null,
-    })
-    : null;
+      })
+      : null;
 
   // Calendar safety can determine the in-season session type. Readiness and
   // KPI signals may reduce its dose but cannot silently raise or replace it.
@@ -1719,7 +1729,7 @@ export async function buildGenerationInputs(body) {
   }
   if (focusDowngradeNote) { userPrompt += focusDowngradeNote; dataSummary += focusDowngradeNote; }
 
-  const matchLoadText = usesSeasonCalendar(workspace)
+  const matchLoadText = usesMatchLoad(workspace)
     ? formatMatchLoadForPrompt(String(playerId), targetDate, rawMatchLoadToday, rawMatchLoadPrev)
     : '';
   if (matchLoadText) {
@@ -1943,7 +1953,9 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nРУЧНОЙ ТИП ТРЕНИРОВКИ ОТ ТРЕНЕРА: ${trainingTypeLabel}\n→ Это главный тематический акцент сессии. День недели и календарь НЕ могут заменить выбранный метод. Если готовность/боль/матч конфликтуют с типом, сохрани тему, но снизь нагрузку и замени рискованные упражнения.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
     : '';
   const trainingTypeContext = seasonDecision && trainingTypeLabel
-    ? `\n━━━━━━━━━━━━━━━━━━\nРАСЧЁТНЫЙ IN-SEASON ТИП СЕССИИ: ${trainingTypeLabel}\n→ Тип сверен с матчевым календарём и обязателен. Готовность может только снизить дозу.\n━━━━━━━━━━━━━━━━━━\n`
+    ? seasonDecision.manualSelection
+      ? `\n━━━━━━━━━━━━━━━━━━\nРУЧНОЙ ВЫБОР ТРЕНЕРА · ИГРОВОЙ ДЕНЬ: ${trainingTypeLabel}\n→ Тип задан тренером для конкретного игрока и даты, без календарного определения. Готовность и match load могут только снизить дозу.\n━━━━━━━━━━━━━━━━━━\n`
+      : `\n━━━━━━━━━━━━━━━━━━\nРАСЧЁТНЫЙ IN-SEASON ТИП СЕССИИ: ${trainingTypeLabel}\n→ Тип сверен с матчевым календарём и обязателен. Готовность может только снизить дозу.\n━━━━━━━━━━━━━━━━━━\n`
     : manualTrainingTypeContext;
 
   let isoWaveContext = '';
@@ -2025,11 +2037,13 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
   if (seasonDecision) scheduleContext = '';
 
   const manualWorkspaceContextBase = workspace === 'nkperf'
-    ? '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNK PERFORMANCE · РУЧНОЙ РЕЖИМ ПЛАНИРОВАНИЯ:\n• НЕ используй расписание, матчи, перелёты, день недели, match load или MD-логику Заречья.\n• Тренер сам выбрал цикл и вид тренировки через focus/trainingType.\n• Генерируй программу только по выбранной методике, ручному статусу тренера, состоянию игрока, истории веса/RPE, ограничениям, 1ПМ и комментариям тренера.\n• Если WHOOP/опросы/нейро отсутствуют — не блокируй генерацию: работай в coach/manual mode и будь консервативен.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+    ? '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNK PERFORMANCE · РУЧНОЙ РЕЖИМ ПЛАНИРОВАНИЯ:\n• НЕ определяй тип сессии по общему расписанию, дню недели, перелётам или MD-логике Заречья.\n• Тренер сам выбрал цикл и вид тренировки через focus/trainingType для конкретного игрока и даты.\n• WHOOP, опросы, травмы, история веса/RPE, 1ПМ и match load используются для дозировки и безопасных замен, но не меняют выбранный тип сессии.\n• Если доступных данных недостаточно — не блокируй генерацию: используй предусмотренный консервативный режим.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
     : '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nЗАРЕЧЬЕ · РУЧНОЙ ВЫБОР МЕТОДА:\n• focus и trainingType выбраны тренером вручную и обязательны для этой сессии.\n• НЕ определяй метод по дню недели и НЕ заменяй выбранный метод из-за календаря.\n• Матчи, перелёты, WHOOP, опросы и нейро меняют только дозировку, риск и варианты упражнений внутри выбранного метода.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
 
   const manualWorkspaceContext = seasonDecision
-    ? `\n━━━━━━━━━━━━━━━━━━\n${workspaceDisplayName(workspace)} · IN-SEASON РЕШЕНИЕ:\n• Тренер задаёт цель, а тип сессии сверен с матчами, переездами и match load этого рабочего пространства.\n• Не заменяй расчётный focus/trainingType. Готовность может только снизить дозу.\n━━━━━━━━━━━━━━━━━━\n`
+    ? seasonDecision.manualSelection
+      ? `\n━━━━━━━━━━━━━━━━━━\n${workspaceDisplayName(workspace)} · РУЧНОЙ ИГРОВОЙ ДЕНЬ:\n• Тренер вручную выбрал игровой праймер для конкретного игрока и даты; общий календарь не используется.\n• Не заменяй match-day focus/trainingType. Готовность, боль и match load могут только снизить дозу или вызвать безопасную замену.\n━━━━━━━━━━━━━━━━━━\n`
+      : `\n━━━━━━━━━━━━━━━━━━\n${workspaceDisplayName(workspace)} · IN-SEASON РЕШЕНИЕ:\n• Тренер задаёт цель, а тип сессии сверен с матчами, переездами и match load этого рабочего пространства.\n• Не заменяй расчётный focus/trainingType. Готовность может только снизить дозу.\n━━━━━━━━━━━━━━━━━━\n`
     : manualWorkspaceContextBase;
 
   const nkTestExclusionContext = workspace === 'nkperf'

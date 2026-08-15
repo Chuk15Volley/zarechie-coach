@@ -48,7 +48,12 @@ import { findExerciseUrl } from '../lib/exerciseBank';
 import { calcWeight } from '../lib/loadCalc';
 import { RESTRICTIONS, hasRestriction } from '../lib/exerciseRestrictions';
 import { exerciseTonnage, isPairableFreeWeightExercise, loadUnitsForExercise } from '../lib/tonnage';
-import { buildSeasonMicrocycle, isInSeasonFocus } from '../lib/seasonPolicy.mjs';
+import {
+  buildSeasonMicrocycle,
+  isInSeasonFocus,
+  isManualMatchDayFocus,
+  MANUAL_MATCH_DAY_FOCUS,
+} from '../lib/seasonPolicy.mjs';
 import { usesSeasonCalendar } from '../lib/workspacePolicy.mjs';
 
 // Map a camp focus phase to a representative training week (for auto-weight %).
@@ -644,6 +649,7 @@ const PHASES_BY_PERIOD = {
     { value: 'inseason_conversion',   label: 'Конверсия в мощность', sub: 'Короткая скоростная работа' },
     { value: 'inseason_taper',        label: 'Тейпер к пику', sub: 'Только перед отмеченным целевым турниром' },
     { value: 'inseason_md1_activation', label: 'MD-1 активация', sub: '12-20 мин · без накопления усталости' },
+    { value: MANUAL_MATCH_DAY_FOCUS, label: 'Игровой день · силовой праймер', sub: '20–25 мин · индивидуально · ручное сохранение', nkOnly: true },
   ],
   camp: [
     { value: 'camp_ecc_anterior',  label: 'Эксцентрика · Передняя цепь',  sub: 'Ручной выбор метода' },
@@ -682,6 +688,7 @@ const MATCH_LOAD_OPTIONS = [
 
 function defaultTrainingTypeForFocus(focusValue) {
   const f = String(focusValue || '');
+  if (isManualMatchDayFocus(f)) return 'activation_power';
   if (f.includes('posterior')) return 'posterior_chain';
   if (f.includes('fullbody')) return 'full_body';
   if (f.includes('recovery') || f.includes('prophylaxis') || f.includes('deload') || f === 'rehab') return 'recovery_prehab';
@@ -691,6 +698,7 @@ function defaultTrainingTypeForFocus(focusValue) {
 }
 
 const MANUAL_PHASE_SUB = {
+  [MANUAL_MATCH_DAY_FOCUS]: 'Ручной выбор · игровой день',
   inseason_strength: 'Ручной выбор · силовая',
   inseason_power: 'Ручной выбор · мощность',
   inseason_prophylaxis: 'Ручной выбор · профилактика',
@@ -708,6 +716,7 @@ const MANUAL_PHASE_SUB = {
 };
 
 const NK_PHASE_LABEL = {
+  [MANUAL_MATCH_DAY_FOCUS]: 'Игровой день · силовой праймер',
   inseason_accumulation: 'Накопление силы',
   inseason_conversion: 'Конверсия в мощность',
   inseason_md1_activation: 'Активация / тонус',
@@ -719,6 +728,10 @@ function phaseLabelForWorkspace(phase, workspace) {
 
 function phaseSubForWorkspace(phase, workspace) {
   return MANUAL_PHASE_SUB[phase.value] || (workspace === 'nkperf' ? 'Ручной выбор' : phase.sub);
+}
+
+function phasesForWorkspace(period, workspace) {
+  return (PHASES_BY_PERIOD[period] || []).filter(phase => !phase.nkOnly || workspace === 'nkperf');
 }
 
 function getFocusLabel(period, focusValue) {
@@ -1766,10 +1779,10 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
           </p>
         </div>
 
-        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${tone(data.schedule?.level || 'green')}`}>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"><CalendarDays size={11} /> {workspace === 'zarechie' ? 'Календарь Заречья' : 'Календарь NK Performance'}</div>
-          <p className="mt-1 text-[12px] font-semibold">{data.schedule?.label || 'Календарь без ближайшего матча'}</p>
-          <p className="mt-0.5 text-[10px] leading-snug opacity-70">{data.schedule?.detail || 'Режим определяется фазой и состоянием игрока.'}</p>
+        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${workspace === 'zarechie' ? tone(data.schedule?.level || 'green') : tone('green')}`}>
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"><CalendarDays size={11} /> {workspace === 'zarechie' ? 'Календарь Заречья' : 'Режим NK Performance'}</div>
+          <p className="mt-1 text-[12px] font-semibold">{workspace === 'zarechie' ? (data.schedule?.label || 'Календарь без ближайшего матча') : 'Ручной выбор тренера'}</p>
+          <p className="mt-0.5 text-[10px] leading-snug opacity-70">{workspace === 'zarechie' ? (data.schedule?.detail || 'Режим определяется фазой и состоянием игрока.') : 'Календарь не определяет тип сессии. Выберите метод для конкретного игрока и даты.'}</p>
         </div>
       </div>
 
@@ -2120,9 +2133,10 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
-  const matchDayManualReview = usesSeasonCalendar(workspace)
-    && isInSeasonFocus(focus)
-    && scheduleEvents.some(event => event.date === date && event.type === 'game');
+  const matchDayManualReview = (workspace === 'nkperf' && isManualMatchDayFocus(focus))
+    || (usesSeasonCalendar(workspace)
+      && isInSeasonFocus(focus)
+      && scheduleEvents.some(event => event.date === date && event.type === 'game'));
   const [nkSyncing, setNkSyncing] = useState(false);
 
   useEffect(() => {
@@ -2184,6 +2198,11 @@ export default function Home() {
   useEffect(() => {
     if (!apiKey) return;
     let cancelled = false;
+    if (!usesSeasonCalendar(workspace)) {
+      setScheduleEvents([]);
+      setShowSchedule(false);
+      return () => { cancelled = true; };
+    }
     fetch(`/api/schedule?workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
       .then(r => r.json())
       .then(data => {
@@ -2195,6 +2214,11 @@ export default function Home() {
 
   function switchWorkspace(ws) {
     setWorkspace(ws);
+    if (!usesSeasonCalendar(ws) && mainSection === 'planner') setMainSection('workouts');
+    if (ws === 'zarechie' && isManualMatchDayFocus(focus)) {
+      setFocus('inseason_strength');
+      setTrainingType('full_body');
+    }
     if (typeof window !== 'undefined') localStorage.setItem('workspace', ws);
     setPlayerId('');
     setSession(null);
@@ -2536,7 +2560,7 @@ export default function Home() {
 
   // Load monthly schedule when switching to planner section or changing month.
   useEffect(() => {
-    if (mainSection !== 'planner' || !apiKey) return;
+    if (mainSection !== 'planner' || !apiKey || !usesSeasonCalendar(workspace)) return;
     setPlannerLoading(true);
     setMonthSchedule(null);
     setPlannerEditDate(null);
@@ -2553,6 +2577,7 @@ export default function Home() {
   }
 
   async function savePlannerDay(dateStr, patch) {
+    if (!usesSeasonCalendar(workspace)) return;
     const existing = monthSchedule || [];
     let next;
     if (patch === null) {
@@ -2579,6 +2604,7 @@ export default function Home() {
   }
 
   async function runPlannerAutoplan() {
+    if (!usesSeasonCalendar(workspace)) return;
     setPlannerLoading(true);
     try {
       const r = await fetch(`/api/schedule/month?month=${plannerMonth}&workspace=${workspace}`, {
@@ -2685,7 +2711,7 @@ export default function Home() {
       }] : []),
       { label: 'Фаза', ok: !!qualityFocus, detail: getFocusLabel(period, qualityFocus) },
       { label: 'Тип', ok: !!qualityTrainingType, detail: TRAINING_TYPE_LABELS[qualityTrainingType] || 'не выбран' },
-      { label: 'Метод', ok: true, detail: isInSeasonFocus(qualityFocus) ? 'сверен с матчевым календарём' : 'ручной выбор тренера' },
+      { label: 'Метод', ok: true, detail: usesSeasonCalendar(workspace) && isInSeasonFocus(qualityFocus) ? 'сверен с матчевым календарём' : 'ручной выбор тренера' },
       { label: 'Recovery', ok: recoveryStatus !== 'red' || exCount <= 8, detail: recoveryStatus === 'red' ? 'сниженный объем' : 'по готовности' },
       { label: 'Упражнения', ok: exCount >= targetMin && exCount <= targetMax, detail: `${exCount} / цель ${targetMin}-${targetMax}` },
       { label: 'Запреты', ok: methodViolations.length === 0, detail: methodViolations.length ? `${methodViolations.length} наруш.` : 'чисто' },
@@ -3208,7 +3234,7 @@ export default function Home() {
     setError('');
     const focusList = getWeekFocuses(focus);
     const offsets = focusList.length === 4 ? [0, 2, 4, 6] : [0, 2, 4];
-    const planEntries = isInSeasonFocus(focus)
+    const planEntries = usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
       ? buildSeasonMicrocycle({ events: scheduleEvents, startDate: date, days: 7 })
       : focusList.map((item, index) => ({
         ...item,
@@ -3756,7 +3782,7 @@ export default function Home() {
                 ],
               ].map((row, ri) => (
                 <div key={ri} className="flex gap-0.5">
-                  {row.map(s => (
+                  {row.filter(s => s.id !== 'planner' || usesSeasonCalendar(workspace)).map(s => (
                     <button
                       key={s.id}
                       type="button"
@@ -3966,7 +3992,7 @@ export default function Home() {
           )}
 
           {/* Planner sidebar: month navigation + autoplan + legend */}
-          {mainSection === 'planner' && keyConnected && (
+          {mainSection === 'planner' && keyConnected && usesSeasonCalendar(workspace) && (
             <div className="flex-1 overflow-y-auto p-3 space-y-4">
               <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">Месяц</p>
               <div className="flex items-center gap-1">
@@ -4061,7 +4087,7 @@ export default function Home() {
                         key={p.value}
                         type="button"
                         onClick={() => {
-                          const nextFocus = PHASES_BY_PERIOD[p.value][0].value;
+                          const nextFocus = phasesForWorkspace(p.value, workspace)[0].value;
                           setPeriod(p.value);
                           setFocus(nextFocus);
                           setTrainingType(defaultTrainingTypeForFocus(nextFocus));
@@ -4086,8 +4112,8 @@ export default function Home() {
                     }}
                     className="w-full rounded-lg border border-white/[0.08] bg-[#0a1520] px-2 py-1.5 text-[11px] text-slate-300 outline-none focus:border-accent/40 [color-scheme:dark]"
                   >
-                    {PHASES_BY_PERIOD[period].map(ph => (
-                      <option key={ph.value} value={ph.value}>{ph.label}</option>
+                    {phasesForWorkspace(period, workspace).map(ph => (
+                      <option key={ph.value} value={ph.value}>{phaseLabelForWorkspace(ph, workspace)}</option>
                     ))}
                   </select>
 
@@ -4898,7 +4924,7 @@ export default function Home() {
           )}
 
           {/* ── Monthly planner workspace ── */}
-          {mainSection === 'planner' && (
+          {mainSection === 'planner' && usesSeasonCalendar(workspace) && (
             <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8">
               <div className="mb-6 flex items-center justify-between">
                 <div>
@@ -5803,7 +5829,7 @@ export default function Home() {
                       key={p.value}
                       type="button"
                       onClick={() => {
-                        const nextFocus = PHASES_BY_PERIOD[p.value][0].value;
+                        const nextFocus = phasesForWorkspace(p.value, workspace)[0].value;
                         setPeriod(p.value);
                         setFocus(nextFocus);
                         setTrainingType(defaultTrainingTypeForFocus(nextFocus));
@@ -5826,7 +5852,7 @@ export default function Home() {
                   }}
                   className={`${inputBase} ${focusRing} [color-scheme:dark]`}
                 >
-                  {PHASES_BY_PERIOD[period].map(ph => (
+                  {phasesForWorkspace(period, workspace).map(ph => (
                     <option key={ph.value} value={ph.value}>
                       {phaseLabelForWorkspace(ph, workspace)}{phaseSubForWorkspace(ph, workspace) ? ` · ${phaseSubForWorkspace(ph, workspace)}` : ''}
                     </option>
@@ -5888,7 +5914,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleGenerateWeek}
-                disabled={weekPlanLoading || loading || !apiKey || !playerId}
+                disabled={weekPlanLoading || loading || !apiKey || !playerId || matchDayManualReview}
                 className={`flex items-center justify-center gap-2 rounded-xl border border-white/[0.11] bg-white/[0.045] px-4 py-3 text-sm font-semibold text-slate-300 transition-all hover:border-white/[0.20] hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
                 title="Сгенерировать план на 3 дня: Силовой → Мощностной → Восстановление"
               >
@@ -5900,7 +5926,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => { setBatchOpen(o => !o); setBatchResults([]); }}
-                disabled={loading || weekPlanLoading || batchRunning}
+                disabled={loading || weekPlanLoading || batchRunning || matchDayManualReview}
                 className={`flex items-center justify-center gap-2 rounded-xl border ${batchOpen ? 'border-accent/40 bg-accent/10 text-accent' : 'border-white/[0.11] bg-white/[0.045] text-slate-300'} px-4 py-3 text-sm font-semibold transition-all hover:border-white/[0.20] hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
                 title="Сгенерировать тренировки для всей команды сразу"
               >

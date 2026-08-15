@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const ROOT = new URL('../', import.meta.url);
 
-test('NK Performance workspace switch loads its isolated schedule without removed state', async () => {
+test('NK Performance workspace switch clears the team schedule without removed state', async () => {
   const source = await readFile(new URL('pages/index.js', ROOT), 'utf8');
 
   assert.doesNotMatch(
@@ -12,10 +12,10 @@ test('NK Performance workspace switch loads its isolated schedule without remove
     /setAutoFocusNote\s*\(/,
     'The removed auto-focus setter crashes the client when NK Performance is selected',
   );
-  assert.doesNotMatch(
+  assert.match(
     source,
-    /if \(workspace === 'nkperf'\) \{\s*setScheduleEvents\(\[\]\);\s*setShowSchedule\(false\);\s*return \(\) => \{ cancelled = true; \};/,
-    'NK Performance must not clear its own isolated match calendar',
+    /if \(!usesSeasonCalendar\(workspace\)\) \{\s*setScheduleEvents\(\[\]\);\s*setShowSchedule\(false\);\s*return \(\) => \{ cancelled = true; \};/,
+    'NK Performance must clear any stale team calendar state',
   );
   assert.match(source, /fetch\(`\/api\/schedule\?workspace=\$\{workspace\}`/);
 });
