@@ -9,7 +9,7 @@ import {
 test('technical tempo is translated into clear lowering, pause and explosive ascent', () => {
   assert.equal(
     tempoDescription('0-3сек-X-0', 'Bulgarian Split Squat'),
-    'Темп: опускайся вниз под контролем; задержись внизу на 3 секунды; поднимайся вверх максимально резко.',
+    'Темп: опускайся вниз под контролем; пауза внизу — 3 секунды; поднимайся вверх максимально резко.',
   );
   assert.equal(
     tempoDescription('5-0-X-0', 'Goblet Squat'),
@@ -37,7 +37,7 @@ test('legacy encoded cue is replaced while the technical coaching point is prese
       tempo: '0-3сек-X-0',
       cue: 'Темп: 0-3сек-X-0. Переднее колено над вторым пальцем.',
     }),
-    'Темп: опускайся вниз под контролем; задержись внизу на 3 секунды; поднимайся вверх максимально резко. Переднее колено над вторым пальцем.',
+    'Темп: опускайся вниз под контролем; пауза внизу — 3 секунды; поднимайся вверх максимально резко. Переднее колено над вторым пальцем.',
   );
 });
 
@@ -48,7 +48,7 @@ test('session normalization applies the same wording to every exercise', () => {
       { name: 'DB Bench Press', tempo: '3-0-X-0', cue: 'Лопатки стабильны.' },
     ] }],
   });
-  assert.match(session.blocks[0].exercises[0].cue, /задержись внизу на 1 секунду/);
+  assert.match(session.blocks[0].exercises[0].cue, /пауза внизу — 1 секунда/);
   assert.match(session.blocks[0].exercises[0].cue, /поднимайся вверх максимально резко/);
   assert.match(session.blocks[0].exercises[1].cue, /выжимай максимально резко/);
   assert.deepEqual(normalizeSessionTempoDescriptions(session), session);
