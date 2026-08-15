@@ -49,7 +49,6 @@ import { calcWeight } from '../lib/loadCalc';
 import { RESTRICTIONS, hasRestriction } from '../lib/exerciseRestrictions';
 import { exerciseTonnage, isPairableFreeWeightExercise, loadUnitsForExercise } from '../lib/tonnage';
 import {
-  buildSeasonMicrocycle,
   isInSeasonFocus,
   isManualMatchDayFocus,
   MANUAL_MATCH_DAY_FOCUS,
@@ -649,7 +648,7 @@ const PHASES_BY_PERIOD = {
     { value: 'inseason_conversion',   label: 'Конверсия в мощность', sub: 'Короткая скоростная работа' },
     { value: 'inseason_taper',        label: 'Тейпер к пику', sub: 'Только перед отмеченным целевым турниром' },
     { value: 'inseason_md1_activation', label: 'MD-1 активация', sub: '12-20 мин · без накопления усталости' },
-    { value: MANUAL_MATCH_DAY_FOCUS, label: 'Игровой день · силовой праймер', sub: '20–25 мин · индивидуально · ручное сохранение', nkOnly: true },
+    { value: MANUAL_MATCH_DAY_FOCUS, label: 'Игровой день · силовой праймер', sub: '20–25 мин · индивидуально · ручное сохранение' },
   ],
   camp: [
     { value: 'camp_ecc_anterior',  label: 'Эксцентрика · Передняя цепь',  sub: 'Ручной выбор метода' },
@@ -731,7 +730,7 @@ function phaseSubForWorkspace(phase, workspace) {
 }
 
 function phasesForWorkspace(period, workspace) {
-  return (PHASES_BY_PERIOD[period] || []).filter(phase => !phase.nkOnly || workspace === 'nkperf');
+  return PHASES_BY_PERIOD[period] || [];
 }
 
 function getFocusLabel(period, focusValue) {
@@ -1779,10 +1778,10 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
           </p>
         </div>
 
-        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${workspace === 'zarechie' ? tone(data.schedule?.level || 'green') : tone('green')}`}>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"><CalendarDays size={11} /> {workspace === 'zarechie' ? 'Календарь Заречья' : 'Режим NK Performance'}</div>
-          <p className="mt-1 text-[12px] font-semibold">{workspace === 'zarechie' ? (data.schedule?.label || 'Календарь без ближайшего матча') : 'Ручной выбор тренера'}</p>
-          <p className="mt-0.5 text-[10px] leading-snug opacity-70">{workspace === 'zarechie' ? (data.schedule?.detail || 'Режим определяется фазой и состоянием игрока.') : 'Календарь не определяет тип сессии. Выберите метод для конкретного игрока и даты.'}</p>
+        <div className={`min-w-0 rounded-xl border px-3 py-2.5 ${tone('green')}`}>
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em]"><SlidersHorizontal size={11} /> {workspace === 'zarechie' ? 'Режим Заречье' : 'Режим NK Performance'}</div>
+          <p className="mt-1 text-[12px] font-semibold">Ручной выбор тренера</p>
+          <p className="mt-0.5 text-[10px] leading-snug opacity-70">Календарь не определяет тип сессии. Выберите метод для конкретного игрока и даты.</p>
         </div>
       </div>
 
@@ -2133,10 +2132,7 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
-  const matchDayManualReview = (workspace === 'nkperf' && isManualMatchDayFocus(focus))
-    || (usesSeasonCalendar(workspace)
-      && isInSeasonFocus(focus)
-      && scheduleEvents.some(event => event.date === date && event.type === 'game'));
+  const matchDayManualReview = isManualMatchDayFocus(focus);
   const [nkSyncing, setNkSyncing] = useState(false);
 
   useEffect(() => {
@@ -2215,10 +2211,6 @@ export default function Home() {
   function switchWorkspace(ws) {
     setWorkspace(ws);
     if (!usesSeasonCalendar(ws) && mainSection === 'planner') setMainSection('workouts');
-    if (ws === 'zarechie' && isManualMatchDayFocus(focus)) {
-      setFocus('inseason_strength');
-      setTrainingType('full_body');
-    }
     if (typeof window !== 'undefined') localStorage.setItem('workspace', ws);
     setPlayerId('');
     setSession(null);
@@ -2711,7 +2703,7 @@ export default function Home() {
       }] : []),
       { label: 'Фаза', ok: !!qualityFocus, detail: getFocusLabel(period, qualityFocus) },
       { label: 'Тип', ok: !!qualityTrainingType, detail: TRAINING_TYPE_LABELS[qualityTrainingType] || 'не выбран' },
-      { label: 'Метод', ok: true, detail: usesSeasonCalendar(workspace) && isInSeasonFocus(qualityFocus) ? 'сверен с матчевым календарём' : 'ручной выбор тренера' },
+      { label: 'Метод', ok: true, detail: 'ручной выбор тренера' },
       { label: 'Recovery', ok: recoveryStatus !== 'red' || exCount <= 8, detail: recoveryStatus === 'red' ? 'сниженный объем' : 'по готовности' },
       { label: 'Упражнения', ok: exCount >= targetMin && exCount <= targetMax, detail: `${exCount} / цель ${targetMin}-${targetMax}` },
       { label: 'Запреты', ok: methodViolations.length === 0, detail: methodViolations.length ? `${methodViolations.length} наруш.` : 'чисто' },
@@ -3234,13 +3226,11 @@ export default function Home() {
     setError('');
     const focusList = getWeekFocuses(focus);
     const offsets = focusList.length === 4 ? [0, 2, 4, 6] : [0, 2, 4];
-    const planEntries = usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
-      ? buildSeasonMicrocycle({ events: scheduleEvents, startDate: date, days: 7 })
-      : focusList.map((item, index) => ({
-        ...item,
-        date: addDaysToDate(date, offsets[index] ?? index * 2),
-        trainingType: defaultTrainingTypeForFocus(item.focus),
-      }));
+    const planEntries = focusList.map((item, index) => ({
+      ...item,
+      date: addDaysToDate(date, offsets[index] ?? index * 2),
+      trainingType: defaultTrainingTypeForFocus(item.focus),
+    }));
     try {
       const warmupSummary = todayWarmup ? summarizeWarmupForGym(todayWarmup) : '';
       // Generate days sequentially, accumulating used exercises so each new day avoids
@@ -5910,7 +5900,7 @@ export default function Home() {
                 </>
               )}
             </button>
-            {sessionType === 'gym' && (
+            {sessionType === 'gym' && period !== 'inseason' && (
               <button
                 type="button"
                 onClick={handleGenerateWeek}

@@ -1571,7 +1571,7 @@ export async function buildGenerationInputs(body) {
   }
 
   const prevDate = shiftDateStr(targetDate, -1);
-  const manualMatchDayRequested = workspace === 'nkperf' && isManualMatchDayFocus(focus);
+  const manualMatchDayRequested = isManualMatchDayFocus(focus);
   const [snapshot, sessionSummaries, actualSummaries, rawSchedule, raw1RM, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan, previousManualMatchDays] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, Number(days) || 7, workspace),
     getRecentSessionSummaries(String(playerId), 6, workspace).catch(() => []),

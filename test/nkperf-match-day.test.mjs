@@ -13,8 +13,8 @@ import {
   resolveManualMatchDaySession,
 } from '../lib/seasonPolicy.mjs';
 
-test('only Zarechie uses the team season calendar', () => {
-  assert.equal(usesSeasonCalendar('zarechie'), true);
+test('both coaching workspaces use manual session-type selection', () => {
+  assert.equal(usesSeasonCalendar('zarechie'), false);
   assert.equal(usesSeasonCalendar('nkperf'), false);
   assert.equal(usesSeasonCalendar('unknown'), false);
   assert.equal(usesMatchLoad('zarechie'), true);
@@ -23,7 +23,7 @@ test('only Zarechie uses the team season calendar', () => {
   assert.equal(workspaceDisplayName('nkperf'), 'NK PERFORMANCE');
 });
 
-test('NK Performance match day is a manual per-athlete selection', () => {
+test('match day is a manual per-athlete selection in both workspaces', () => {
   assert.equal(expectsPerformanceTests('zarechie'), true);
   assert.equal(expectsPerformanceTests('nkperf'), false);
   assert.equal(MANUAL_MATCH_DAY_FOCUS, 'inseason_match_day_primer');
@@ -44,31 +44,33 @@ test('NK Performance match day is a manual per-athlete selection', () => {
   }
 });
 
-test('generation APIs keep NK manual while Zarechie retains calendar safety', () => {
+test('generation APIs use manual match day in both workspaces', () => {
   const generation = fs.readFileSync(new URL('../pages/api/programs/generate.js', import.meta.url), 'utf8');
   const warmup = fs.readFileSync(new URL('../pages/api/programs/generate-warmup.js', import.meta.url), 'utf8');
   const teamWarmup = fs.readFileSync(new URL('../pages/api/warmup/generate.js', import.meta.url), 'utf8');
   const reschedule = fs.readFileSync(new URL('../pages/api/programs/reschedule.js', import.meta.url), 'utf8');
   const decisionData = fs.readFileSync(new URL('../pages/api/players/decision-data.js', import.meta.url), 'utf8');
 
-  assert.match(generation, /manualMatchDayRequested = workspace === 'nkperf' && isManualMatchDayFocus\(focus\)/);
+  assert.match(generation, /manualMatchDayRequested = isManualMatchDayFocus\(focus\)/);
   assert.match(generation, /resolveManualMatchDaySession\(\{ targetDate, consecutiveGameDay: previousManualMatchDays \+ 1 \}\)/);
   assert.match(generation, /usesSeasonCalendar\(workspace\) \? redis\('get', scheduleKey\(workspace\)\)/);
   assert.match(generation, /expectsPerformanceTests\(workspace\) && seasonDecision\?\.key !== 'match_day'/);
-  assert.match(warmup, /workspace === 'nkperf' && isManualMatchDayFocus\(focus\)/);
+  assert.match(warmup, /if \(isManualMatchDayFocus\(focus\)\)/);
   assert.match(teamWarmup, /usesSeasonCalendar\(workspace\)[\s\S]*savedSeasonDecision/);
   assert.match(reschedule, /if \(usesSeasonCalendar\(workspace\)\)/);
   assert.match(decisionData, /usesSeasonCalendar\(workspace\)/);
 });
 
-test('NK UI offers manual match day and never loads a team schedule', () => {
+test('both workspaces offer manual match day and never load a team schedule', () => {
   const source = fs.readFileSync(new URL('../pages/index.js', import.meta.url), 'utf8');
   assert.match(source, /MANUAL_MATCH_DAY_FOCUS/);
-  assert.match(source, /workspace === 'nkperf' && isManualMatchDayFocus\(focus\)/);
+  assert.match(source, /const matchDayManualReview = isManualMatchDayFocus\(focus\)/);
   assert.match(source, /if \(!usesSeasonCalendar\(workspace\)\) \{\s*setScheduleEvents\(\[\]\);\s*setShowSchedule\(false\)/);
   assert.match(source, /phasesForWorkspace\(period, workspace\)/);
   assert.match(source, /s\.id !== 'planner' \|\| usesSeasonCalendar\(workspace\)/);
   assert.match(source, /mainSection === 'planner' && usesSeasonCalendar\(workspace\)/);
+  assert.match(source, /Режим Заречье/);
   assert.match(source, /Режим NK Performance/);
+  assert.doesNotMatch(source, /nkOnly/);
   assert.doesNotMatch(source, /Календарь NK Performance/);
 });
