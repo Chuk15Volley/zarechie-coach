@@ -1,12 +1,13 @@
 // pages/api/warmup/generate.js
-// POST { date }. The warm-up type is resolved from the match calendar and the
-// saved S&C session instead of camp phase or weekday assumptions.
+// POST { date }. Zarechie resolves protective days from its team calendar.
+// NK Performance follows the coach-selected type stored with the S&C session.
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { pfx, scheduleKey } from '../../../lib/workspacePrefix';
 import { formatSeasonDecisionForPrompt, resolveSeasonSession } from '../../../lib/seasonPolicy.mjs';
+import { usesSeasonCalendar } from '../../../lib/workspacePolicy.mjs';
 
 const FOCUS_LABELS = {
   anterior: 'передняя цепь',
@@ -126,6 +127,7 @@ export default async function handler(req, res) {
   let morningExercisesContext = 'данные о конкретных упражнениях недоступны';
   let savedFocus = 'inseason_strength';
   let savedTrainingType = 'full_body';
+  let savedSeasonDecision = null;
   try {
     const keys = await redis('keys', `${pfx(workspace)}:session:*:${date}`);
     if (Array.isArray(keys) && keys.length) {
@@ -136,22 +138,27 @@ export default async function handler(req, res) {
         if (ctx) morningExercisesContext = ctx;
         savedFocus = record.focus || savedFocus;
         savedTrainingType = record.trainingType || savedTrainingType;
+        savedSeasonDecision = record.quality?.seasonDecision || null;
       }
     }
   } catch {
     // Non-fatal — proceed without context.
   }
 
-  const rawSchedule = await redis('get', scheduleKey(workspace)).catch(() => null);
+  const rawSchedule = usesSeasonCalendar(workspace)
+    ? await redis('get', scheduleKey(workspace)).catch(() => null)
+    : null;
   let events = [];
   try { events = rawSchedule ? JSON.parse(rawSchedule) : []; } catch { events = []; }
-  const decision = resolveSeasonSession({
-    events,
-    targetDate: date,
-    requestedFocus: savedFocus,
-    requestedTrainingType: savedTrainingType,
-    previousMatchLoad: { status: 'unknown' },
-  });
+  const decision = !usesSeasonCalendar(workspace) && savedSeasonDecision
+    ? savedSeasonDecision
+    : resolveSeasonSession({
+      events,
+      targetDate: date,
+      requestedFocus: savedFocus,
+      requestedTrainingType: savedTrainingType,
+      previousMatchLoad: { status: 'unknown' },
+    });
   const morningFocus = savedTrainingType === 'posterior_chain' ? 'posterior'
     : savedTrainingType === 'anterior_chain' ? 'anterior'
       : savedTrainingType === 'full_body' ? 'fullbody' : 'general';

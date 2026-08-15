@@ -8,7 +8,13 @@ import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRes
 import { redis } from '../../../lib/redis';
 import { scheduleKey } from '../../../lib/workspacePrefix';
 import { usesSeasonCalendar } from '../../../lib/workspacePolicy.mjs';
-import { formatSeasonDecisionForPrompt, isInSeasonFocus, resolveSeasonSession } from '../../../lib/seasonPolicy.mjs';
+import {
+  formatSeasonDecisionForPrompt,
+  isInSeasonFocus,
+  isManualMatchDayFocus,
+  resolveManualMatchDaySession,
+  resolveSeasonSession,
+} from '../../../lib/seasonPolicy.mjs';
 
 const WARMUP_TOOL = {
   name: 'build_warmup',
@@ -247,7 +253,9 @@ export default async function handler(req, res) {
 
   const dataSummary = summarizeSnapshot(snapshot);
   let seasonDecision = null;
-  if (usesSeasonCalendar(workspace) && isInSeasonFocus(focus)) {
+  if (workspace === 'nkperf' && isManualMatchDayFocus(focus)) {
+    seasonDecision = resolveManualMatchDaySession({ targetDate });
+  } else if (usesSeasonCalendar(workspace) && isInSeasonFocus(focus)) {
     const rawSchedule = await redis('get', scheduleKey(workspace)).catch(() => null);
     let events = [];
     try { events = rawSchedule ? JSON.parse(rawSchedule) : []; } catch { events = []; }
@@ -274,6 +282,7 @@ export default async function handler(req, res) {
     pep_phase2: 'PEP Phase 2 — Силовая мощь + Спринт',
     pep_phase3: 'PEP Phase 3 — Скорость + COD + Мощь',
     inseason: 'Игровой период',
+    inseason_match_day_primer: 'Игровой день · силовой праймер',
     preseason: 'Предсезонная подготовка',
     power: 'Развитие взрывной силы',
     strength: 'Максимальная силовая база',
