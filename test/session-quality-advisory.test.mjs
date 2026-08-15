@@ -24,6 +24,17 @@ test('failed dose and timing checks become coach warnings instead of blockers', 
   assert.match(quality.reviewMessage, /сохранение разрешено/);
 });
 
+test('an exceeded safety ceiling blocks persistence', () => {
+  const quality = advisorySessionQuality({
+    score: 80,
+    valid: false,
+    checks: [{ id: 'safety', ok: true }, { id: 'season_safety', ok: true }],
+    dose: { safe: false },
+  });
+  assert.equal(quality.blocking, true);
+  assert.match(quality.reviewMessage, /перед сохранением/);
+});
+
 test('generation and persistence routes contain no hard quality rejection', () => {
   assert.doesNotMatch(sources, /не прошла обязательн[^\n]+не сохранена/);
   assert.doesNotMatch(sources, /if \(!saveQuality\.valid/);

@@ -1,31 +1,18 @@
 // pages/api/warmup/generate.js
-// POST { date, phase }
-// date: 'YYYY-MM-DD', phase: 1|2|3
-// Determines morning focus from day of week, gets first player's saved session,
-// generates S&C warmup, saves to Redis, returns plan.
+// POST { date }. The warm-up type is resolved from the match calendar and the
+// saved S&C session instead of camp phase or weekday assumptions.
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
-import { pfx } from '../../../lib/workspacePrefix';
+import { pfx, scheduleKey } from '../../../lib/workspacePrefix';
+import { formatSeasonDecisionForPrompt, resolveSeasonSession } from '../../../lib/seasonPolicy.mjs';
 
 const FOCUS_LABELS = {
   anterior: 'передняя цепь',
   posterior: 'задняя цепь',
   fullbody: 'всё тело',
   general: 'общая нагрузка',
-};
-
-const PHASE_LABELS = {
-  1: 'Фаза 1 (Эксцентрик)',
-  2: 'Фаза 2 (Изометрик)',
-  3: 'Фаза 3 (Взрыв)',
-};
-
-const PHASE_GUIDANCE = {
-  1: 'Фаза 1 (Эксцентрик) — больше мобилизации и удержаний, суставная работа с паузами (2-3 сек в крайней точке), активация средняя интенсивность',
-  2: 'Фаза 2 (Изометрик) — акцент на мышечную активацию (изометрические удержания в активации), скоростной блок с изометрическими компонентами',
-  3: 'Фаза 3 (Взрыв) — меньше статики, больше динамики и скорости. Активация взрывная. Скоростной блок — максимальная интенсивность',
 };
 
 const OPENAI_WARMUP_MODEL = 'gpt-5.6-terra';
@@ -38,7 +25,7 @@ const TEAM_WARMUP_TOOL = {
     required: ['date', 'phase', 'morningFocus', 'sections'],
     properties: {
       date: { type: 'string' },
-      phase: { type: 'number' },
+      phase: { type: 'string' },
       morningFocus: { type: 'string' },
       sections: {
         type: 'array',
@@ -97,15 +84,6 @@ function findOpenAIFunctionCall(output, name) {
   return null;
 }
 
-function morningFocusFromDate(date) {
-  // getUTCDay: 0=Sun,1=Mon,...,5=Fri
-  const day = new Date(`${date}T00:00:00Z`).getUTCDay();
-  if (day === 1) return 'anterior';
-  if (day === 2) return 'posterior';
-  if (day === 5) return 'fullbody';
-  return 'general';
-}
-
 // Pull exercise names from blocks A/B/C of a saved session record for prompt context.
 function extractMorningContext(record) {
   try {
@@ -140,18 +118,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { date, phase, workspace = 'zarechie' } = req.body || {};
+  const { date, workspace = 'zarechie' } = req.body || {};
   if (!date) {
     return res.status(400).json({ error: 'date is required' });
   }
-  const phaseNum = Number(phase) || 1;
-  const morningFocus = morningFocusFromDate(date);
-  const morningFocusLabel = FOCUS_LABELS[morningFocus] || FOCUS_LABELS.general;
-  const phaseLabel = PHASE_LABELS[phaseNum] || PHASE_LABELS[1];
-  const phaseGuidance = PHASE_GUIDANCE[phaseNum] || PHASE_GUIDANCE[1];
-
   // Try to find a saved session of any player for this date, for prompt context.
   let morningExercisesContext = 'данные о конкретных упражнениях недоступны';
+  let savedFocus = 'inseason_strength';
+  let savedTrainingType = 'full_body';
   try {
     const keys = await redis('keys', `${pfx(workspace)}:session:*:${date}`);
     if (Array.isArray(keys) && keys.length) {
@@ -160,39 +134,55 @@ export default async function handler(req, res) {
         const record = JSON.parse(raw);
         const ctx = extractMorningContext(record);
         if (ctx) morningExercisesContext = ctx;
+        savedFocus = record.focus || savedFocus;
+        savedTrainingType = record.trainingType || savedTrainingType;
       }
     }
   } catch {
     // Non-fatal — proceed without context.
   }
 
+  const rawSchedule = await redis('get', scheduleKey(workspace)).catch(() => null);
+  let events = [];
+  try { events = rawSchedule ? JSON.parse(rawSchedule) : []; } catch { events = []; }
+  const decision = resolveSeasonSession({
+    events,
+    targetDate: date,
+    requestedFocus: savedFocus,
+    requestedTrainingType: savedTrainingType,
+    previousMatchLoad: { status: 'unknown' },
+  });
+  const morningFocus = savedTrainingType === 'posterior_chain' ? 'posterior'
+    : savedTrainingType === 'anterior_chain' ? 'anterior'
+      : savedTrainingType === 'full_body' ? 'fullbody' : 'general';
+  const morningFocusLabel = FOCUS_LABELS[morningFocus] || FOCUS_LABELS.general;
+  const protectedDay = ['md_plus_1', 'travel_day'].includes(decision.key);
+
   const prompt = `Ты — элитный S&C тренер. Составь командную разминку перед вечерней волейбольной тренировкой.
 
 КОНТЕКСТ:
-- Утром была тренировка: ${morningFocusLabel} (${morningExercisesContext})
-- Фаза сборов: ${phaseLabel}
-- Длительность разминки: 25-30 минут
+- Силовая сессия в этот день: ${morningFocusLabel} (${morningExercisesContext})
+- Решение сезонного микроцикла: ${decision.label}. ${decision.reason}
+- Длительность: ${protectedDay ? '12-18' : '15-22'} минут
 - Формат: только работа с телом / S&C, БЕЗ волейбольной технической работы
 
-ФАЗА ${phaseNum} — АКЦЕНТ:
-${phaseGuidance}
+${formatSeasonDecisionForPrompt(decision)}
 
 СТРУКТУРА (строго 4 блока):
-1. FOAM ROLLING — 4-5 упражнений, ВСЕ основные группы (квадрицепс, IT-band, хамстринги, ягодицы, грудной отдел, широчайшая), с учётом утренней нагрузки
-2. СУСТАВНАЯ МОБИЛИЗАЦИЯ — 4-5 упражнений (голеностоп, ТБС, грудной отдел, плечо), динамические
-3. ДИНАМИЧЕСКАЯ АКТИВАЦИЯ — 4-5 упражнений (ягодицы, кор, лопатки, ротаторы), активационные
-4. СКОРОСТНАЯ ПОДГОТОВКА — 3-4 упражнения (ускорения, COD, боковые движения), БЕЗ лесенки
+1. RAISE / ТЕМПЕРАТУРА — 2-3 динамичных движения. Foam rolling только точечно, 0-2 зоны, если есть дефицит.
+2. МОБИЛЬНОСТЬ — 3-4 движения по реальным ограничениям, без длительной пассивной растяжки.
+3. АКТИВАЦИЯ — 3-5 движений: стопа/колено/таз, кор, лопатка/ротаторы.
+4. PRIMER — ${protectedDay ? 'без прыжков: лёгкая координация, кровоток и дыхание' : 'короткая скоростная подготовка; на MD-1 не более 4-8 прыжковых контактов'}.
 
 ПРАВИЛА:
 - Формат повторений, НЕ время (например: "8 повт./ногу", "10 пассов", "3×6")
 - Поле "name": РУССКОЕ стандартное название упражнения из библиотеки, чтобы к нему автоматически нашлось видео. Используй короткие точные формулировки, без пояснений через тире. Примеры: "МФР квадрицепса", "90-90 смена (упор руками)", "Ягодичный мост – марши", "Ротация грудного на четвереньках", "Боковые шаги с мини-лентой", "А-марши на месте".
 - Поле "nameEn": профессиональный S&C английский (для поиска видео на YouTube). Примеры: "Quad Roll Foam Roller", "Hip 90/90 Rotation", "Glute Bridge March"
 - note к каждому упражнению: краткая подсказка на русском (1-2 предложения)
-- Учитывай что утром была нагрузка: если передняя цепь → особый акцент rolling на квад/IT-band, mobility на сгибатели бедра/голеностоп
-- Скорость блок: БЕЗ прыжков в высоту (команда тренировалась утром). Lateral shuffle, ускорения 5-10м, реактивные движения.
+- Не дублируй утренний S&C-объём. Разминка должна повысить готовность, а не создать вторую тренировку.
 
 ОТВЕТ — только JSON без markdown:
-{"date":"${date}","phase":${phaseNum},"morningFocus":"${morningFocus}","sections":[{"id":"rolling","label":"Foam Rolling","color":"violet","exercises":[{"name":"...","nameEn":"...","reps":"...","note":"..."}]},{"id":"mobility","label":"Суставная мобилизация","color":"sky","exercises":[]},{"id":"activation","label":"Динамическая активация","color":"amber","exercises":[]},{"id":"speed","label":"Скоростная подготовка","color":"cyan","exercises":[]}]}`;
+{"date":"${date}","phase":"${decision.key}","morningFocus":"${morningFocus}","sections":[{"id":"raise","label":"Raise / температура","color":"violet","exercises":[{"name":"...","nameEn":"...","reps":"...","note":"..."}]},{"id":"mobility","label":"Мобильность","color":"sky","exercises":[]},{"id":"activation","label":"Активация","color":"amber","exercises":[]},{"id":"primer","label":"Primer","color":"cyan","exercises":[]}]}`;
 
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -226,8 +216,15 @@ ${phaseGuidance}
 
     // Ensure core fields are consistent with the request.
     plan.date = date;
-    plan.phase = phaseNum;
+    plan.phase = decision.key;
     plan.morningFocus = morningFocus;
+    if (protectedDay) {
+      const jumpPattern = /jump|pogo|hop|bound|прыж|плиом/i;
+      plan.sections = (plan.sections || []).map(section => ({
+        ...section,
+        exercises: (section.exercises || []).filter(exercise => !jumpPattern.test(`${exercise.name || ''} ${exercise.nameEn || ''}`)),
+      }));
+    }
 
     await Promise.all([
       redis('set', `${pfx(workspace)}:warmup:${date}`, JSON.stringify(plan)),

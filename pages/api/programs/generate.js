@@ -20,6 +20,12 @@ import { formatPerformanceKpisForPrompt, performanceKpis } from '../../../lib/pe
 import { evaluateDevelopmentPlan, formatDevelopmentPlanForPrompt } from '../../../lib/developmentPlan.mjs';
 import { buildDosePrescription, formatDosePrescriptionForPrompt } from '../../../lib/sessionDose.mjs';
 import { readinessDecisionFromSnapshot, strictestRecoveryStatus } from '../../../lib/readinessDecision.mjs';
+import { IN_SEASON_SYSTEM_PROMPT } from '../../../lib/inSeasonPrompt.mjs';
+import {
+  formatSeasonDecisionForPrompt,
+  isInSeasonFocus,
+  resolveSeasonSession,
+} from '../../../lib/seasonPolicy.mjs';
 import {
   isOutputTokenLimit,
   SESSION_GENERATION_MODEL,
@@ -1533,6 +1539,12 @@ FIELD name — ENGLISH ONLY (professional S&C terminology):
 
 Заполни структуру через инструмент build_session.`;
 
+export function systemPromptForGeneration(focus = '', workspace = 'zarechie') {
+  return workspace === 'zarechie' && isInSeasonFocus(focus)
+    ? IN_SEASON_SYSTEM_PROMPT
+    : SYSTEM_PROMPT;
+}
+
 // Fetches all player data and builds the full SYSTEM/userPrompt for one session.
 // Shared by the synchronous generator (this file) and the async Batch-API generator
 // (generate-async.js) so both produce byte-identical prompts. Returns either
@@ -1596,12 +1608,30 @@ export async function buildGenerationInputs(body) {
     lsi = lsiArr;
   }
 
-  // #9: A single noisy or stale test must never silently replace the coach's
-  // selected method. Keep the requested focus and prescribe a conservative
-  // power dose only when the latest individual KPI trend is depressed.
-  let effectiveFocus = focus;
+  const scheduleEvents = parseJSONSafe(rawSchedule, []);
+  const previousMatchLoads = parseJSONSafe(rawMatchLoadPrev, {});
+  const requestedSeasonFocus = focus === 'inseason' ? 'inseason_strength' : focus;
+  const requestedSeasonTrainingType = trainingType || (
+    /prophylaxis|deload/.test(requestedSeasonFocus) ? 'recovery_prehab'
+      : /power|conversion|taper|md1/.test(requestedSeasonFocus) ? 'activation_power'
+        : 'full_body'
+  );
+  const seasonDecision = workspace === 'zarechie' && isInSeasonFocus(focus)
+    ? resolveSeasonSession({
+      events: Array.isArray(scheduleEvents) ? scheduleEvents : [],
+      targetDate,
+      requestedFocus: requestedSeasonFocus,
+      requestedTrainingType: requestedSeasonTrainingType,
+      previousMatchLoad: previousMatchLoads?.[String(playerId)] || null,
+    })
+    : null;
+
+  // Calendar safety can determine the in-season session type. Readiness and
+  // KPI signals may reduce its dose but cannot silently raise or replace it.
+  let effectiveFocus = seasonDecision?.focus || focus;
+  let effectiveTrainingType = seasonDecision?.trainingType || trainingType;
   let focusDowngradeNote = '';
-  if (workspace === 'zarechie' && focus === 'inseason_power') {
+  if (workspace === 'zarechie' && effectiveFocus === 'inseason_power') {
     const kpis = performanceKpis(snapshot.neuro, targetDate);
     const depressed = [kpis.rsi, kpis.cmj, kpis.sprint10m]
       .filter(metric => metric.value != null && !metric.stale && metric.meaningfulDecline);
@@ -1625,13 +1655,35 @@ export async function buildGenerationInputs(body) {
       .some(metric => metric.value != null && !metric.stale),
   });
   const effectiveRecovery = strictestRecoveryStatus(coachRecovery, readiness.decision.level);
+  const freshQuestionnaires = [
+    readiness.eveningFresh ? readiness.evening : null,
+    readiness.postMorningFresh ? readiness.postMorning : null,
+    readiness.morningFresh ? readiness.morning : null,
+  ].filter(Boolean);
+  const medicalReviewRequired = readiness.activeInjuries.length > 0
+    || freshQuestionnaires.some(record =>
+      record.hasInjury
+      || record.hasLoadConcern
+      || (record.painAreas || []).length > 0
+      || Object.values(record.zoneDetails || {}).some(detail => detail?.type === 'pain')
+    );
 
   let { userPrompt, dataSummary } = buildUserPrompt({
     snapshot, sessionSummaries, rawSchedule, raw1RM, rawFeedbacks,
-    actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType, notes, warmupSummary, teamUsedExercises, coachRecovery, microcycleSlot,
-    playbookText, workspace,
+    actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType: effectiveTrainingType, notes, warmupSummary, teamUsedExercises, coachRecovery, microcycleSlot,
+    playbookText, workspace, seasonDecision,
   });
-  const dosePrescription = buildDosePrescription({ focus: effectiveFocus, trainingType, coachRecovery: effectiveRecovery });
+  const seasonDecisionText = formatSeasonDecisionForPrompt(seasonDecision);
+  if (seasonDecisionText) {
+    userPrompt += seasonDecisionText;
+    dataSummary += seasonDecisionText;
+  }
+  const dosePrescription = buildDosePrescription({
+    focus: effectiveFocus,
+    trainingType: effectiveTrainingType,
+    coachRecovery: effectiveRecovery,
+    seasonContext: seasonDecision,
+  });
   const doseText = formatDosePrescriptionForPrompt(dosePrescription);
   userPrompt += doseText;
   dataSummary += doseText;
@@ -1693,6 +1745,10 @@ export async function buildGenerationInputs(body) {
     dataSummary,
     targetDate,
     dayGoal,
+    systemPrompt: systemPromptForGeneration(effectiveFocus, workspace),
+    effectiveFocus,
+    effectiveTrainingType,
+    seasonDecision,
     playerRestrictions: Array.isArray(restrictions) ? restrictions : [],
     questionnaireContext: {
       capturedAt: new Date().toISOString(),
@@ -1702,10 +1758,13 @@ export async function buildGenerationInputs(body) {
     },
     qualityContext: {
       focus: effectiveFocus,
-      trainingType,
+      trainingType: effectiveTrainingType,
       recentSessionSummaries: sessionSummaries,
       dosePrescription,
       effectiveRecovery,
+      seasonDecision,
+      medicalReviewRequired,
+      medicalReviewReason: medicalReviewRequired ? 'Активная/свежая боль или травма: нужна ручная проверка тренером перед сохранением.' : '',
     },
   };
 }
@@ -1741,7 +1800,7 @@ function findOpenAIFunctionCall(output, name) {
 }
 
 // Single OpenAI Responses API call → build_session function result. Returns arguments or null.
-async function callOpenAIForSession(apiKey, userPrompt) {
+async function callOpenAIForSession(apiKey, userPrompt, systemPrompt = SYSTEM_PROMPT) {
   const attempts = [
     { maxOutputTokens: SESSION_OUTPUT_TOKENS, reasoningEffort: 'medium' },
     { maxOutputTokens: SESSION_RETRY_OUTPUT_TOKENS, reasoningEffort: 'low' },
@@ -1755,7 +1814,7 @@ async function callOpenAIForSession(apiKey, userPrompt) {
       },
       body: JSON.stringify({
         model: OPENAI_SESSION_MODEL,
-        instructions: SYSTEM_PROMPT,
+        instructions: systemPrompt,
         input: userPrompt,
         max_output_tokens: attempt.maxOutputTokens,
         store: false,
@@ -1798,11 +1857,11 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e.message || 'Ошибка подготовки данных' });
   }
   if (inputs.error) return res.status(inputs.status || 400).json({ error: inputs.error });
-  const { snapshot, userPrompt, dataSummary, targetDate, playerRestrictions = [], qualityContext = {} } = inputs;
+  const { snapshot, userPrompt, dataSummary, targetDate, systemPrompt, effectiveFocus, effectiveTrainingType, playerRestrictions = [], qualityContext = {} } = inputs;
   const { dayGoal: bodyDayGoal = '', focus = '' } = req.body || {};
 
   try {
-    let first = await callOpenAIForSession(apiKey, userPrompt);
+    let first = await callOpenAIForSession(apiKey, userPrompt, systemPrompt);
     if (first.error) return res.status(first.status || 502).json({ error: first.error });
     let session = first.session;
     if (!session) {
@@ -1825,6 +1884,8 @@ export default async function handler(req, res) {
       dataSummary,
       date: targetDate,
       dayGoal: bodyDayGoal,
+      focus: effectiveFocus,
+      trainingType: effectiveTrainingType,
       validation: { valid: quality.valid, errors: quality.errors, warnings: quality.warnings },
       quality,
     });
@@ -1834,7 +1895,7 @@ export default async function handler(req, res) {
 }
 
 // ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
-function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie', microcycleSlot = null }) {
+function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie', microcycleSlot = null, seasonDecision = null }) {
   let dataSummary = summarizeSnapshot(snapshot, workspace);
   const freshEveningContext = eveningSafetyContext(snapshot.surveys, targetDate, snapshot.latestSurvey);
   const freshPostMorningContext = postMorningSafetyContext(snapshot.postMorningSurveys, targetDate, snapshot.latestPostMorning);
@@ -1852,9 +1913,12 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
   }
   const focusLabel = focusLabelForWorkspace(focus, workspace);
   const trainingTypeLabel = TRAINING_TYPE_LABELS[trainingType] || '';
-  const trainingTypeContext = trainingTypeLabel
+  const manualTrainingTypeContext = trainingTypeLabel
     ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nРУЧНОЙ ТИП ТРЕНИРОВКИ ОТ ТРЕНЕРА: ${trainingTypeLabel}\n→ Это главный тематический акцент сессии. День недели и календарь НЕ могут заменить выбранный метод. Если готовность/боль/матч конфликтуют с типом, сохрани тему, но снизь нагрузку и замени рискованные упражнения.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
     : '';
+  const trainingTypeContext = seasonDecision && trainingTypeLabel
+    ? `\n━━━━━━━━━━━━━━━━━━\nРАСЧЁТНЫЙ IN-SEASON ТИП СЕССИИ: ${trainingTypeLabel}\n→ Тип сверен с матчевым календарём и обязателен. Готовность может только снизить дозу.\n━━━━━━━━━━━━━━━━━━\n`
+    : manualTrainingTypeContext;
 
   let isoWaveContext = '';
   if (String(focus).startsWith('camp_iso_')) {
@@ -1930,10 +1994,17 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
   } catch (_) {
     // Schedule unavailable — continue without it
   }
+  // The deterministic season block added by buildGenerationInputs supersedes
+  // this legacy advisory calendar prose and avoids contradictory instructions.
+  if (seasonDecision) scheduleContext = '';
 
-  const manualWorkspaceContext = workspace === 'nkperf'
+  const manualWorkspaceContextBase = workspace === 'nkperf'
     ? '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNK PERFORMANCE · РУЧНОЙ РЕЖИМ ПЛАНИРОВАНИЯ:\n• НЕ используй расписание, матчи, перелёты, день недели, match load или MD-логику Заречья.\n• Тренер сам выбрал цикл и вид тренировки через focus/trainingType.\n• Генерируй программу только по выбранной методике, ручному статусу тренера, состоянию игрока, истории веса/RPE, ограничениям, 1ПМ и комментариям тренера.\n• Если WHOOP/опросы/нейро отсутствуют — не блокируй генерацию: работай в coach/manual mode и будь консервативен.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
     : '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nЗАРЕЧЬЕ · РУЧНОЙ ВЫБОР МЕТОДА:\n• focus и trainingType выбраны тренером вручную и обязательны для этой сессии.\n• НЕ определяй метод по дню недели и НЕ заменяй выбранный метод из-за календаря.\n• Матчи, перелёты, WHOOP, опросы и нейро меняют только дозировку, риск и варианты упражнений внутри выбранного метода.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+
+  const manualWorkspaceContext = seasonDecision
+    ? '\n━━━━━━━━━━━━━━━━━━\nЗАРЕЧЬЕ · IN-SEASON РЕШЕНИЕ:\n• Тренер задаёт цель, а тип сессии сверен с матчами, переездами и match load.\n• Не заменяй расчётный focus/trainingType. Готовность может только снизить дозу.\n━━━━━━━━━━━━━━━━━━\n'
+    : manualWorkspaceContextBase;
 
   const nkTestExclusionContext = workspace === 'nkperf'
     ? '\n⛔ NK PERFORMANCE: CMJ, RSI, 10 м и LSI не проводятся. Не учитывай любые тестовые значения, не считай их отсутствие дефицитом данных и не проси провести тест.\n'

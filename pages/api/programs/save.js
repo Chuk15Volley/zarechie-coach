@@ -61,7 +61,14 @@ export default async function handler(req, res) {
     focus,
     trainingType,
     dosePrescription: quality?.dose?.prescription || buildDosePrescription({ focus, trainingType }),
+    seasonDecision: quality?.seasonDecision || null,
   }));
+  if (saveQuality.blocking) {
+    return res.status(422).json({
+      error: saveQuality.reviewMessage,
+      quality: saveQuality,
+    });
+  }
 
   const record = {
     session: normalizedSession,

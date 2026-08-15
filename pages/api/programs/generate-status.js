@@ -86,7 +86,7 @@ function findOpenAIFunctionCall(output, name) {
   return null;
 }
 
-async function createOpenAIBackgroundResponse(apiKey, userPrompt, sessionTool, {
+async function createOpenAIBackgroundResponse(apiKey, userPrompt, systemPrompt, sessionTool, {
   maxOutputTokens = SESSION_OUTPUT_TOKENS,
   reasoningEffort = 'medium',
 } = {}) {
@@ -98,7 +98,7 @@ async function createOpenAIBackgroundResponse(apiKey, userPrompt, sessionTool, {
     },
     body: JSON.stringify({
       model: OPENAI_SESSION_MODEL,
-      instructions: SYSTEM_PROMPT,
+      instructions: systemPrompt || SYSTEM_PROMPT,
       input: userPrompt,
       max_output_tokens: maxOutputTokens,
       background: true,
@@ -165,7 +165,10 @@ export default async function handler(req, res) {
       date: record.date,
       dayGoal: record.dayGoal || '',
       autoSaved: !!record.autoSaved,
+      saveWarning: record.saveWarning || '',
       quality: record.quality || null,
+      focus: record.qualityContext?.focus || record.focus || '',
+      trainingType: record.qualityContext?.trainingType || record.trainingType || '',
     });
   }
   if (record.status === 'failed') {
@@ -191,6 +194,7 @@ export default async function handler(req, res) {
         date: refreshed.targetDate,
         dayGoal: refreshed.dayGoal || record.dayGoal || '',
         userPrompt: refreshed.userPrompt,
+        systemPrompt: refreshed.systemPrompt || SYSTEM_PROMPT,
         dataSummary: refreshed.dataSummary,
         playerRestrictions: refreshed.playerRestrictions || [],
         qualityContext: refreshed.qualityContext || {},
@@ -212,6 +216,7 @@ export default async function handler(req, res) {
     focus = '',
     trainingType = '',
     userPrompt,
+    systemPrompt = SYSTEM_PROMPT,
     sessionTool,
     autoSave = true,
     playerRestrictions = [],
@@ -227,7 +232,7 @@ export default async function handler(req, res) {
 
     if (!openaiResponseId) {
       const activePrompt = record.activePrompt || userPrompt;
-      const created = await createOpenAIBackgroundResponse(apiKey, activePrompt, sessionTool);
+      const created = await createOpenAIBackgroundResponse(apiKey, activePrompt, systemPrompt, sessionTool);
       if (created.error) return res.status(created.status || 502).json({ error: created.error });
       openaiResponse = created.response;
       openaiResponseId = openaiResponse?.id;
@@ -262,7 +267,7 @@ export default async function handler(req, res) {
     if (openaiResponse?.status !== 'completed') {
       if (isOutputTokenLimit(openaiResponse) && Number(record.tokenRetryCount || 0) < 1) {
         const activePrompt = record.activePrompt || userPrompt;
-        const retried = await createOpenAIBackgroundResponse(apiKey, activePrompt, sessionTool, {
+        const retried = await createOpenAIBackgroundResponse(apiKey, activePrompt, systemPrompt, sessionTool, {
           maxOutputTokens: SESSION_RETRY_OUTPUT_TOKENS,
           reasoningEffort: 'low',
         });
@@ -335,15 +340,15 @@ export default async function handler(req, res) {
       player,
       dataSummary,
       dayGoal: dayGoal || '',
-      focus: focus || '',
-      trainingType: trainingType || '',
+      focus: qualityContext.focus || focus || '',
+      trainingType: qualityContext.trainingType || trainingType || '',
       quality,
       date,
       savedAt: new Date().toISOString(),
     };
     let autoSaved = false;
     let saveWarning = '';
-    if (autoSave) {
+    if (autoSave && !quality.blocking && !quality.medicalReviewRequired) {
       try {
         await redisPipeline(autoSaveCommands(record2, workspace, playerId, date));
         autoSaved = true;
@@ -353,6 +358,10 @@ export default async function handler(req, res) {
         saveWarning = 'Тренировка создана, но автосохранение временно недоступно. Нажмите «Сохранить» ещё раз.';
         console.error('Redis save session failed:', error.message);
       }
+    } else if (autoSave && (quality.blocking || quality.medicalReviewRequired)) {
+      saveWarning = quality.blocking
+        ? quality.reviewMessage || 'Тренировка не автосохранена: нарушен лимит безопасности.'
+        : quality.medicalReviewReason;
     }
 
     await redis('set', `coach:batch:${batchId}`, JSON.stringify({
@@ -377,6 +386,8 @@ export default async function handler(req, res) {
       autoSaved,
       saveWarning,
       quality,
+      focus: qualityContext.focus || focus || '',
+      trainingType: qualityContext.trainingType || trainingType || '',
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });
