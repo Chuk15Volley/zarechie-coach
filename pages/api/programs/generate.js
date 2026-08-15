@@ -15,6 +15,7 @@ import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRes
 import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseMemory';
 import { getTeamPlaybook, formatPlaybookForPrompt } from '../../../lib/teamPlaybook';
 import { developmentPlanKey, pfx, scheduleKey, sessionsKey } from '../../../lib/workspacePrefix';
+import { expectsPerformanceTests, usesSeasonCalendar, workspaceDisplayName } from '../../../lib/workspacePolicy.mjs';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import { formatPerformanceKpisForPrompt, performanceKpis } from '../../../lib/performanceKpis.mjs';
 import { evaluateDevelopmentPlan, formatDevelopmentPlanForPrompt } from '../../../lib/developmentPlan.mjs';
@@ -1543,7 +1544,7 @@ FIELD name — ENGLISH ONLY (professional S&C terminology):
 Заполни структуру через инструмент build_session.`;
 
 export function systemPromptForGeneration(focus = '', workspace = 'zarechie') {
-  return workspace === 'zarechie' && isInSeasonFocus(focus)
+  return usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
     ? IN_SEASON_SYSTEM_PROMPT
     : SYSTEM_PROMPT;
 }
@@ -1570,7 +1571,7 @@ export async function buildGenerationInputs(body) {
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, Number(days) || 7, workspace),
     getRecentSessionSummaries(String(playerId), 6, workspace).catch(() => []),
     getRecentActualSummaries(String(playerId), workspace, 5).catch(() => []),
-    workspace === 'zarechie' ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
+    usesSeasonCalendar(workspace) ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
     redis('get', `${wpfx}:1rm:${String(playerId)}`).catch(() => null),
     (async () => {
       const dates = Array.from({ length: 5 }, (_, i) => {
@@ -1587,8 +1588,8 @@ export async function buildGenerationInputs(body) {
       });
     })(),
     redis('get', `${wpfx}:restrictions:${String(playerId)}`).catch(() => null),
-    workspace === 'zarechie' ? redis('get', matchLoadKey(workspace, targetDate)).catch(() => null) : Promise.resolve(null),
-    workspace === 'zarechie' ? redis('get', matchLoadKey(workspace, prevDate)).catch(() => null) : Promise.resolve(null),
+    usesSeasonCalendar(workspace) ? redis('get', matchLoadKey(workspace, targetDate)).catch(() => null) : Promise.resolve(null),
+    usesSeasonCalendar(workspace) ? redis('get', matchLoadKey(workspace, prevDate)).catch(() => null) : Promise.resolve(null),
     redis('get', developmentPlanKey(workspace, String(playerId))).catch(() => null),
   ]);
 
@@ -1619,7 +1620,7 @@ export async function buildGenerationInputs(body) {
       : /power|conversion|taper|md1/.test(requestedSeasonFocus) ? 'activation_power'
         : 'full_body'
   );
-  let seasonDecision = workspace === 'zarechie' && isInSeasonFocus(focus)
+  let seasonDecision = usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
     ? resolveSeasonSession({
       events: Array.isArray(scheduleEvents) ? scheduleEvents : [],
       targetDate,
@@ -1653,8 +1654,8 @@ export async function buildGenerationInputs(body) {
   // Match-day methodology deliberately has no day-of CMJ/RSImod test. Weekly
   // KPI history remains visible in the prompt, but its absence today must not
   // downgrade an otherwise complete morning/evening readiness snapshot.
-  const testsExpected = workspace === 'zarechie' && seasonDecision?.key !== 'match_day';
-  const readinessKpis = workspace === 'zarechie' ? performanceKpis(snapshot.neuro, targetDate) : null;
+  const testsExpected = expectsPerformanceTests(workspace) && seasonDecision?.key !== 'match_day';
+  const readinessKpis = expectsPerformanceTests(workspace) ? performanceKpis(snapshot.neuro, targetDate) : null;
   const readiness = readinessDecisionFromSnapshot(snapshot, targetDate, {
     testsExpected,
     neuroFresh: testsExpected && [readinessKpis.rsi, readinessKpis.cmj, readinessKpis.sprint10m]
@@ -1718,10 +1719,10 @@ export async function buildGenerationInputs(body) {
   }
   if (focusDowngradeNote) { userPrompt += focusDowngradeNote; dataSummary += focusDowngradeNote; }
 
-  const matchLoadText = workspace === 'zarechie'
+  const matchLoadText = usesSeasonCalendar(workspace)
     ? formatMatchLoadForPrompt(String(playerId), targetDate, rawMatchLoadToday, rawMatchLoadPrev)
     : '';
-  if (workspace === 'zarechie' && matchLoadText) {
+  if (matchLoadText) {
     dataSummary += `\n${matchLoadText}`;
     userPrompt += `\n${matchLoadText}`;
   }
@@ -2028,7 +2029,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     : '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nЗАРЕЧЬЕ · РУЧНОЙ ВЫБОР МЕТОДА:\n• focus и trainingType выбраны тренером вручную и обязательны для этой сессии.\n• НЕ определяй метод по дню недели и НЕ заменяй выбранный метод из-за календаря.\n• Матчи, перелёты, WHOOP, опросы и нейро меняют только дозировку, риск и варианты упражнений внутри выбранного метода.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
 
   const manualWorkspaceContext = seasonDecision
-    ? '\n━━━━━━━━━━━━━━━━━━\nЗАРЕЧЬЕ · IN-SEASON РЕШЕНИЕ:\n• Тренер задаёт цель, а тип сессии сверен с матчами, переездами и match load.\n• Не заменяй расчётный focus/trainingType. Готовность может только снизить дозу.\n━━━━━━━━━━━━━━━━━━\n'
+    ? `\n━━━━━━━━━━━━━━━━━━\n${workspaceDisplayName(workspace)} · IN-SEASON РЕШЕНИЕ:\n• Тренер задаёт цель, а тип сессии сверен с матчами, переездами и match load этого рабочего пространства.\n• Не заменяй расчётный focus/trainingType. Готовность может только снизить дозу.\n━━━━━━━━━━━━━━━━━━\n`
     : manualWorkspaceContextBase;
 
   const nkTestExclusionContext = workspace === 'nkperf'

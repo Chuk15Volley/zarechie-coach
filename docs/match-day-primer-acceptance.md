@@ -4,6 +4,8 @@
 
 The game-day generator is accepted against five positional profiles and the full set of readiness modes. These are control examples, not fixed templates: the generator remains free to select another approved combination when history and readiness support it.
 
+The same match-day methodology is active in both isolated workspaces: Zarechie-Odintsovo and NK Performance. Each workspace uses its own calendar, roster, monitoring history, match load and saved sessions. NK Performance does not require CMJ/RSI/10 m inputs; its readiness decision uses the available WHOOP, questionnaires, injury status and training history without weakening the match-day safety limits.
+
 Every normal control primer has exactly three pairs:
 
 - A: one lower-body strength movement plus one lower-body ballistic movement;

@@ -7,6 +7,7 @@ import { isAuthorized } from '../../../lib/auth';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { redis } from '../../../lib/redis';
 import { scheduleKey } from '../../../lib/workspacePrefix';
+import { usesSeasonCalendar } from '../../../lib/workspacePolicy.mjs';
 import { formatSeasonDecisionForPrompt, isInSeasonFocus, resolveSeasonSession } from '../../../lib/seasonPolicy.mjs';
 
 const WARMUP_TOOL = {
@@ -246,7 +247,7 @@ export default async function handler(req, res) {
 
   const dataSummary = summarizeSnapshot(snapshot);
   let seasonDecision = null;
-  if (workspace === 'zarechie' && isInSeasonFocus(focus)) {
+  if (usesSeasonCalendar(workspace) && isInSeasonFocus(focus)) {
     const rawSchedule = await redis('get', scheduleKey(workspace)).catch(() => null);
     let events = [];
     try { events = rawSchedule ? JSON.parse(rawSchedule) : []; } catch { events = []; }

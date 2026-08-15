@@ -5,6 +5,7 @@ import { isAuthorized } from '../../../lib/auth';
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { redis } from '../../../lib/redis';
 import { restrictionsKey, scheduleKey } from '../../../lib/workspacePrefix';
+import { expectsPerformanceTests, usesSeasonCalendar } from '../../../lib/workspacePolicy.mjs';
 import { performanceKpis } from '../../../lib/performanceKpis.mjs';
 import {
   readinessDecisionFromSnapshot,
@@ -36,6 +37,12 @@ function scheduleContext(events, targetDate) {
   }
   const travelSoon = typesByDate[shiftDate(targetDate, 1)] === 'travel' || typesByDate[shiftDate(targetDate, 2)] === 'travel';
 
+  if (typesByDate[targetDate] === 'game') {
+    return { level: 'yellow', label: 'День матча · силовой праймер', detail: 'Индивидуальный full-body праймер; проверка и сохранение только вручную.' };
+  }
+  if (typesByDate[targetDate] === 'travel') {
+    return { level: 'red', label: 'День переезда · Recovery', detail: 'Только мобильность, кровоток и профилактика.' };
+  }
   if (daysSinceGame === 1) {
     return { level: 'red', label: 'MD+1 · Recovery / Prehab', detail: 'День после матча: без тяжёлой силы и осевой нагрузки.' };
   }
@@ -68,11 +75,11 @@ export default async function handler(req, res) {
       // days covers the relevant evening status without loading 28-day history.
       getPlayerSnapshot(playerId, 3, targetDate, 3, workspace),
       redis('get', restrictionsKey(workspace, playerId)).catch(() => null),
-      workspace === 'zarechie' ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
+      usesSeasonCalendar(workspace) ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
     ]);
     if (!snapshot) return res.status(404).json({ error: 'Player not found' });
 
-    const testsExpected = workspace === 'zarechie';
+    const testsExpected = expectsPerformanceTests(workspace);
     const kpis = testsExpected ? performanceKpis(snapshot.neuro, targetDate) : null;
     const neuro = testsExpected ? {
       fresh: [kpis.rsi, kpis.cmj, kpis.sprint10m]
@@ -89,7 +96,7 @@ export default async function handler(req, res) {
     const zones = zoneSummary(evening);
     const postMorningZones = zoneSummary(postMorning);
     const restrictions = parseJSON(rawRestrictions, []);
-    const schedule = workspace === 'zarechie'
+    const schedule = usesSeasonCalendar(workspace)
       ? scheduleContext(parseJSON(rawSchedule, []), targetDate)
       : null;
     const dataQuality = {
