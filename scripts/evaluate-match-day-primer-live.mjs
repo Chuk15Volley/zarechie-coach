@@ -121,7 +121,7 @@ const exerciseSchema = {
     tempo: { type: 'string', minLength: 1 },
     autoReg: { type: 'string', minLength: 1, description: 'Один критерий стопа/снижения нагрузки.' },
     alternatives: { type: 'array', items: { type: 'string' } },
-    cue: { type: 'string', minLength: 1, description: 'Краткая русская подсказка, начинается с темпа.' },
+    cue: { type: 'string', minLength: 1, description: 'Краткая русская подсказка: опускание, пауза и максимально резкая рабочая фаза словами, без цифрового кода tempo.' },
     loadUnits: { type: 'integer', enum: [1, 2] },
   },
 };

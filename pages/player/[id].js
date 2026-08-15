@@ -11,6 +11,7 @@ import { resolveShareToken } from '../../lib/shareToken';
 import { parseSavedSession, sessionDayGoal, sessionTrainingLabel } from '../../lib/sessionLabel';
 import { pfx, playerPhotoKey, sessionKey, sessionsKey } from '../../lib/workspacePrefix';
 import { loadUnitsForExercise } from '../../lib/tonnage';
+import { exerciseDescription } from '../../lib/tempoDescription.mjs';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -315,11 +316,6 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
         <span className="shrink-0 rounded-lg bg-[#4ade80]/20 px-2 py-1 text-[11px] font-black text-[#4ade80]">
           {ex.code}
         </span>
-        {ex.tempo && (
-          <span className="shrink-0 rounded-lg border border-blue-500/25 bg-blue-500/[0.10] px-2 py-0.5 text-[10px] font-bold text-blue-400">
-            {ex.tempo}
-          </span>
-        )}
         <span className="min-w-0 pt-0.5 text-[17px] font-bold leading-snug text-white">{ex.name}</span>
       </div>
 
@@ -367,8 +363,8 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
             <span className="text-[13px] leading-snug text-amber-300/90">{ex.autoReg}</span>
           </div>
         )}
-        {ex.cue && (
-          <p className="text-[14px] leading-relaxed text-slate-400">{ex.cue}</p>
+        {(ex.cue || ex.tempo) && (
+          <p className="text-[14px] leading-relaxed text-slate-400">{exerciseDescription(ex)}</p>
         )}
       </div>
     </div>
@@ -1016,7 +1012,6 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                           <div key={ei} className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03]">
                             <div className="flex items-center gap-2.5 bg-gradient-to-r from-[#4ade80]/[0.10] to-transparent px-4 py-3">
                               <span className="shrink-0 rounded-lg bg-[#4ade80]/20 px-2 py-1 text-[11px] font-black text-[#4ade80]">{ex.code}</span>
-                              {ex.tempo && <span className="shrink-0 rounded-lg border border-blue-500/25 bg-blue-500/[0.10] px-2 py-0.5 text-[10px] font-bold text-blue-400">{ex.tempo}</span>}
                               <span className="text-[15px] font-bold leading-snug text-white">{ex.name}</span>
                             </div>
                             {plannedWeightLabel(ex) && (
@@ -1034,8 +1029,8 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                                 </div>
                               ))}
                             </div>
-                            {ex.coaching_note && (
-                              <div className="px-4 pb-3 text-[12px] leading-relaxed text-slate-500">{ex.coaching_note}</div>
+                            {(ex.cue || ex.coaching_note || ex.tempo) && (
+                              <div className="px-4 pb-3 text-[12px] leading-relaxed text-slate-500">{exerciseDescription(ex)}</div>
                             )}
                           </div>
                         ))}

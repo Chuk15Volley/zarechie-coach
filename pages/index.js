@@ -54,6 +54,7 @@ import {
   MANUAL_MATCH_DAY_FOCUS,
 } from '../lib/seasonPolicy.mjs';
 import { usesSeasonCalendar } from '../lib/workspacePolicy.mjs';
+import { exerciseDescription, stripTempoDescription, tempoDescription } from '../lib/tempoDescription.mjs';
 
 // Map a camp focus phase to a representative training week (for auto-weight %).
 function weekFromFocus(focus) {
@@ -1352,11 +1353,6 @@ function ExerciseCard({
           <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-black tracking-wide ${bc.codeBg} print:bg-slate-200 print:text-slate-700`}>
             {code}
           </span>
-          {tempo && (
-            <span className="shrink-0 rounded-md border border-white/[0.10] bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-mono font-semibold tracking-wider text-slate-400 print:border-slate-200 print:text-slate-600">
-              {tempo}
-            </span>
-          )}
           <div className="flex-1" />
           <button
             type="button"
@@ -1633,12 +1629,15 @@ function ExerciseCard({
           </details>
         )}
 
-        <AutoResizeTextarea
-          value={cue}
-          onChange={onChangeCue}
-          placeholder="Техническая подсказка"
-          className="w-full resize-none border-0 bg-transparent px-0 py-0.5 text-[13px] leading-snug text-slate-500 outline-none transition placeholder:text-slate-700 focus:text-slate-400 print:border-slate-300 print:text-slate-700"
-        />
+        <div className="rounded-lg border border-sky-400/[0.10] bg-sky-400/[0.035] px-2.5 py-2">
+          <p className="text-[12px] leading-snug text-sky-200/70">{tempoDescription(tempo, name)}</p>
+          <AutoResizeTextarea
+            value={stripTempoDescription(cue)}
+            onChange={value => onChangeCue(`${tempoDescription(tempo, name)} ${value}`.trim())}
+            placeholder="Техническая подсказка"
+            className="mt-1 w-full resize-none border-0 bg-transparent px-0 py-0.5 text-[13px] leading-snug text-slate-500 outline-none transition placeholder:text-slate-700 focus:text-slate-400 print:border-slate-300 print:text-slate-700"
+          />
+        </div>
       </div>
     </div>
   );
@@ -6714,8 +6713,8 @@ export default function Home() {
                             {ex.weightNote && (
                               <div style={{ fontSize: '6pt', color: '#475569', lineHeight: '1.15', marginBottom: '1px' }}>{ex.weightNote}</div>
                             )}
-                            {ex.cue && (
-                              <div style={{ fontSize: '5.5pt', color: '#64748b', fontStyle: 'italic', lineHeight: '1.15' }}>{ex.cue}</div>
+                            {(ex.cue || ex.tempo) && (
+                              <div style={{ fontSize: '5.5pt', color: '#64748b', fontStyle: 'italic', lineHeight: '1.15' }}>{exerciseDescription(ex)}</div>
                             )}
                           </div>
                         </div>
@@ -6824,13 +6823,15 @@ export default function Home() {
                             </div>
                             <div className="space-y-1.5 pl-8">
                               {(block.exercises || []).map((ex, ei) => (
-                                <div key={ei} className="flex flex-wrap items-baseline gap-2">
-                                  <span className="rounded bg-accent/10 px-1 text-[10px] font-bold text-accent">{ex.code}</span>
-                                  {ex.tempo && <span className="rounded border border-blue-500/20 bg-blue-500/[0.06] px-1 text-[9px] text-blue-400">{ex.tempo}</span>}
-                                  <span className="text-xs font-semibold text-slate-200">{ex.name}</span>
-                                  <span className="text-[10px] text-slate-500">{(ex.targetSets || []).length}×{ex.targetSets?.[0]}</span>
-                                  {ex.weightNote && <span className="text-[10px] text-slate-500">{ex.weightNote}</span>}
-                                  {ex.autoReg && <span className="text-[10px] text-amber-400/70">⚡ {ex.autoReg}</span>}
+                                <div key={ei} className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-2.5 py-2">
+                                  <div className="flex flex-wrap items-baseline gap-2">
+                                    <span className="rounded bg-accent/10 px-1 text-[10px] font-bold text-accent">{ex.code}</span>
+                                    <span className="text-xs font-semibold text-slate-200">{ex.name}</span>
+                                    <span className="text-[10px] text-slate-500">{(ex.targetSets || []).length}×{ex.targetSets?.[0]}</span>
+                                    {ex.weightNote && <span className="text-[10px] text-slate-500">{ex.weightNote}</span>}
+                                    {ex.autoReg && <span className="text-[10px] text-amber-400/70">⚡ {ex.autoReg}</span>}
+                                  </div>
+                                  <p className="mt-1 text-[10px] leading-snug text-slate-500">{exerciseDescription(ex)}</p>
                                 </div>
                               ))}
                             </div>
