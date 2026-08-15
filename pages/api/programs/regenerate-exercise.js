@@ -267,7 +267,11 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
         focus: record.focus || '',
         trainingType: record.trainingType || '',
         dosePrescription: record.quality?.dose?.prescription || buildDosePrescription({ focus: record.focus, trainingType: record.trainingType }),
+        seasonDecision: record.quality?.seasonDecision || null,
       }));
+      if (replacementQuality.blocking) {
+        return res.status(422).json({ error: replacementQuality.reviewMessage, quality: replacementQuality });
+      }
       const toSave = record.session ? { ...record, session: updatedSession, quality: replacementQuality } : updatedSession;
       await redis('set', sessionKey(workspace, playerId, date), JSON.stringify(toSave));
     }

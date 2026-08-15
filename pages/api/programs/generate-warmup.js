@@ -5,6 +5,9 @@
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { isAuthorized } from '../../../lib/auth';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
+import { redis } from '../../../lib/redis';
+import { scheduleKey } from '../../../lib/workspacePrefix';
+import { formatSeasonDecisionForPrompt, isInSeasonFocus, resolveSeasonSession } from '../../../lib/seasonPolicy.mjs';
 
 const WARMUP_TOOL = {
   name: 'build_warmup',
@@ -213,6 +216,18 @@ Recovery >75% / HRV норм / DOMS ≤2:
 
 Заполни структуру через инструмент build_warmup.`;
 
+const IN_SEASON_WARMUP_PROMPT = `Ты — S&C-тренер женской профессиональной волейбольной команды. Составь короткую in-season разминку, повышающую готовность без создания усталости.
+
+Структура 12–20 мин:
+A — raise: 2–3 динамичных движения. Foam rolling только точечно по дефициту.
+B — динамическая мобильность голеностопа, ТБС, грудного отдела/плеча по дефициту.
+C — активация стопы, колена/таза, кора и лопатки/ротаторов.
+D — primer только в пределах детерминированного типа дня.
+
+На MD+1 и в день переезда — ноль прыжков. На MD-1 — всего 4–8 качественных контактов, RPE 4–6. Не используй методы сборов и не делай длинную пассивную разминку. При боли исключи провоцирующие движения.
+
+Пиши кратко по-русски. Заполни build_warmup.`;
+
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -230,6 +245,19 @@ export default async function handler(req, res) {
   if (!snapshot) return res.status(404).json({ error: 'Player not found' });
 
   const dataSummary = summarizeSnapshot(snapshot);
+  let seasonDecision = null;
+  if (workspace === 'zarechie' && isInSeasonFocus(focus)) {
+    const rawSchedule = await redis('get', scheduleKey(workspace)).catch(() => null);
+    let events = [];
+    try { events = rawSchedule ? JSON.parse(rawSchedule) : []; } catch { events = []; }
+    seasonDecision = resolveSeasonSession({
+      events,
+      targetDate,
+      requestedFocus: focus === 'inseason' ? 'inseason_strength' : focus,
+      requestedTrainingType: /power|taper|md1/.test(focus) ? 'activation_power' : /prophylaxis|deload/.test(focus) ? 'recovery_prehab' : 'full_body',
+      previousMatchLoad: { status: 'unknown' },
+    });
+  }
 
   const FOCUS_LABELS = {
     eccentric_camp: 'СБОРЫ — Эксцентрическая фаза',
@@ -258,6 +286,7 @@ export default async function handler(req, res) {
 Фаза подготовки: ${focusLabel}
 Цель сессии после разминки: ${dayGoal || 'тренировка в тренажёрном зале по фазе'}
 ${notes ? `Комментарии тренера: ${notes}` : ''}
+${formatSeasonDecisionForPrompt(seasonDecision)}
 
 Составь разминку на ${targetDate} — 15–20 минут, 4 блока (A/B/C/D). Адаптируй к биометрике игрока и фазе подготовки.`;
 
@@ -270,7 +299,7 @@ ${notes ? `Комментарии тренера: ${notes}` : ''}
       },
       body: JSON.stringify({
         model: OPENAI_WARMUP_MODEL,
-        instructions: SYSTEM_PROMPT,
+        instructions: seasonDecision ? IN_SEASON_WARMUP_PROMPT : SYSTEM_PROMPT,
         input: userPrompt,
         max_output_tokens: 2000,
         store: false,
@@ -288,6 +317,13 @@ ${notes ? `Комментарии тренера: ${notes}` : ''}
     const toolUse = findOpenAIFunctionCall(data.output, 'build_warmup');
     const warmup = sanitizeUnavailableEquipmentExercises(parseFunctionArguments(toolUse?.arguments));
     if (!warmup) return res.status(502).json({ error: 'Модель не вернула структуру разминки' });
+    if (['md_plus_1', 'travel_day'].includes(seasonDecision?.key)) {
+      const jumpPattern = /jump|pogo|hop|bound|прыж|плиом/i;
+      warmup.blocks = (warmup.blocks || []).map(block => ({
+        ...block,
+        exercises: (block.exercises || []).filter(exercise => !jumpPattern.test(exercise.name || '')),
+      }));
+    }
 
     return res.status(200).json({
       session: {

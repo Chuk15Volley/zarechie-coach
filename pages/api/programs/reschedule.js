@@ -11,10 +11,12 @@ import {
   gymTonnageDatesKey,
   gymTonnageKey,
   pfx,
+  scheduleKey,
   sessionKey,
   sessionsKey,
 } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
+import { resolveSeasonSession } from '../../../lib/seasonPolicy.mjs';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -28,6 +30,12 @@ function hasPlayerProgress(raw) {
   if (!log) return false;
   return Object.values(log.done || {}).some(Boolean)
     || Object.values(log.weights || {}).some(value => String(value || '').trim() !== '');
+}
+
+function previousDate(date) {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
 }
 
 export default async function handler(req, res) {
@@ -49,7 +57,7 @@ export default async function handler(req, res) {
   const playerLogKey = `${prefix}:log:${playerId}:${fromDate}`;
 
   try {
-    const [sourceRaw, targetRaw, feedbackRaw, actualRaw, playerLogRaw, sourceTonnage, versions] = await Promise.all([
+    const [sourceRaw, targetRaw, feedbackRaw, actualRaw, playerLogRaw, sourceTonnage, versions, rawSchedule, rawPreviousMatchLoad] = await Promise.all([
       redis('get', sourceKey),
       redis('get', targetKey),
       redis('get', feedbackKey(workspace, playerId, fromDate)),
@@ -57,6 +65,8 @@ export default async function handler(req, res) {
       redis('get', playerLogKey),
       redis('get', gymTonnageKey(workspace, playerId, fromDate)),
       redis('lrange', sourceVersionsKey, 0, -1),
+      workspace === 'zarechie' ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
+      workspace === 'zarechie' ? redis('get', `${prefix}:match_load:${previousDate(toDate)}`).catch(() => null) : Promise.resolve(null),
     ]);
 
     const source = parseRecord(sourceRaw);
@@ -64,6 +74,23 @@ export default async function handler(req, res) {
     if (targetRaw) return res.status(409).json({ error: 'На выбранную дату уже есть сохранённая тренировка' });
     if (feedbackRaw || actualRaw || hasPlayerProgress(playerLogRaw)) {
       return res.status(409).json({ error: 'Тренировка уже отмечена как выполненная и не может быть перенесена' });
+    }
+    if (workspace === 'zarechie') {
+      const events = parseRecord(rawSchedule) || [];
+      const previousLoads = parseRecord(rawPreviousMatchLoad) || {};
+      const targetDecision = resolveSeasonSession({
+        events,
+        targetDate: toDate,
+        requestedFocus: source.focus || 'inseason_strength',
+        requestedTrainingType: source.trainingType || 'full_body',
+        previousMatchLoad: previousLoads?.[String(playerId)] || null,
+      });
+      if (targetDecision.overridden) {
+        return res.status(409).json({
+          error: `На ${toDate} нужен другой тип сессии: ${targetDecision.label}. ${targetDecision.reason} Создайте программу заново на целевую дату.`,
+          seasonDecision: targetDecision,
+        });
+      }
     }
 
     const movedAt = new Date().toISOString();

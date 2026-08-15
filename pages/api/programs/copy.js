@@ -72,7 +72,11 @@ export default async function handler(req, res) {
     trainingType: newRecord.trainingType || '',
     playerRestrictions: Array.isArray(restrictions) ? restrictions : [],
     dosePrescription: newRecord.quality?.dose?.prescription || buildDosePrescription({ focus: newRecord.focus, trainingType: newRecord.trainingType }),
+    seasonDecision: newRecord.quality?.seasonDecision || null,
   }));
+  if (copyQuality.blocking) {
+    return res.status(422).json({ error: copyQuality.reviewMessage, quality: copyQuality });
+  }
   newRecord.quality = copyQuality;
   newRecord.copiedFromPlayerId = String(fromPlayerId);
 

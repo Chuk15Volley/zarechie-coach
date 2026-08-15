@@ -48,6 +48,7 @@ import { findExerciseUrl } from '../lib/exerciseBank';
 import { calcWeight } from '../lib/loadCalc';
 import { RESTRICTIONS, hasRestriction } from '../lib/exerciseRestrictions';
 import { exerciseTonnage, isPairableFreeWeightExercise, loadUnitsForExercise } from '../lib/tonnage';
+import { buildSeasonMicrocycle, isInSeasonFocus } from '../lib/seasonPolicy.mjs';
 
 // Map a camp focus phase to a representative training week (for auto-weight %).
 function weekFromFocus(focus) {
@@ -615,23 +616,33 @@ function blockCfg(label) { return BLOCK_CONFIG[label] || BLOCK_CONFIG.A; }
 
 const WARMUP_SECTION_STYLES = {
   rolling:    { bar: 'bg-violet-400', text: 'text-violet-400', chip: 'bg-violet-400/[0.07] border-violet-400/20', icon: '⬤' },
+  raise:      { bar: 'bg-violet-400', text: 'text-violet-400', chip: 'bg-violet-400/[0.07] border-violet-400/20', icon: '⬤' },
   mobility:   { bar: 'bg-sky-400',    text: 'text-sky-400',    chip: 'bg-sky-400/[0.07] border-sky-400/20',    icon: '◎' },
   activation: { bar: 'bg-amber-400',  text: 'text-amber-400',  chip: 'bg-amber-400/[0.07] border-amber-400/20',  icon: '▶' },
   speed:      { bar: 'bg-cyan-400',   text: 'text-cyan-400',   chip: 'bg-cyan-400/[0.07] border-cyan-400/20',   icon: '⚡' },
+  primer:     { bar: 'bg-cyan-400',   text: 'text-cyan-400',   chip: 'bg-cyan-400/[0.07] border-cyan-400/20',   icon: '⚡' },
 };
 const WARMUP_FOCUS_MAP = { anterior: 'Утро: передняя цепь', posterior: 'Утро: задняя цепь', fullbody: 'Утро: всё тело', general: '' };
-const WARMUP_PHASE_MAP = { 1: 'Эксцентрика · нед. 1-3', 2: 'Изометрика · нед. 4-5', 3: 'Взрыв · нед. 6' };
+const WARMUP_PHASE_MAP = {
+  coach_selected: 'Тип по силовой сессии',
+  quiet_week_strength_1: 'Силовой день',
+  md_plus_1: 'MD+1 · восстановление',
+  md_minus_1: 'MD-1 · primer',
+  compressed_microdose: 'MD-2 · мощностная микродоза',
+  travel_day: 'День переезда · recovery',
+  match_day: 'День матча · primer',
+};
 
 const PHASES_BY_PERIOD = {
   inseason: [
-    { value: 'inseason_strength',     label: 'Силовая / поддержание', sub: '40-50 мин · RPE 6-7' },
-    { value: 'inseason_power',        label: 'Мощность / скорость',   sub: '40-50 мин · взрывная сила' },
+    { value: 'inseason_strength',     label: 'Силовая / поддержание', sub: '35-55 мин · RPE 7-8' },
+    { value: 'inseason_power',        label: 'Мощность / скорость',   sub: '25-40 мин · высокое качество' },
     { value: 'inseason_prophylaxis',  label: 'Профилактика',          sub: 'Слабые звенья · суставы' },
-    { value: 'inseason_deload',       label: 'Разгрузочная неделя',  sub: 'Каждые 4 недели' },
-    { value: 'inseason_accumulation', label: 'Накопление · Февраль', sub: '60 мин · 80–87% 1ПМ' },
-    { value: 'inseason_conversion',   label: 'Конверсия · Март',     sub: 'Сила → Мощность' },
-    { value: 'inseason_taper',        label: 'Тейпер к пику',        sub: '10 дней · Суперкубок / Кубок / Плей-офф' },
-    { value: 'inseason_md1_activation', label: 'Активация / мощность', sub: 'MD-1 / утро матча · 25-35 мин' },
+    { value: 'inseason_deload',       label: 'Разгрузочная неделя',  sub: 'По тренду усталости и календарю' },
+    { value: 'inseason_accumulation', label: 'Накопление', sub: 'Только в окне без плотных матчей' },
+    { value: 'inseason_conversion',   label: 'Конверсия в мощность', sub: 'Короткая скоростная работа' },
+    { value: 'inseason_taper',        label: 'Тейпер к пику', sub: 'Только перед отмеченным целевым турниром' },
+    { value: 'inseason_md1_activation', label: 'MD-1 активация', sub: '12-20 мин · без накопления усталости' },
   ],
   camp: [
     { value: 'camp_ecc_anterior',  label: 'Эксцентрика · Передняя цепь',  sub: 'Ручной выбор метода' },
@@ -674,6 +685,7 @@ function defaultTrainingTypeForFocus(focusValue) {
   if (f.includes('fullbody')) return 'full_body';
   if (f.includes('recovery') || f.includes('prophylaxis') || f.includes('deload') || f === 'rehab') return 'recovery_prehab';
   if (f.includes('power') || f.includes('activation') || f.includes('explosive') || f.includes('taper')) return 'activation_power';
+  if (f.includes('inseason')) return 'full_body';
   return 'anterior_chain';
 }
 
@@ -1944,9 +1956,9 @@ export default function Home() {
   const [date, setDate] = useState(todayISO());
   const [dayGoal, setDayGoal] = useState('');
   const [days, setDays] = useState(7);
-  const [period, setPeriod] = useState('camp');
-  const [focus, setFocus] = useState('camp_ecc_anterior');
-  const [trainingType, setTrainingType] = useState('anterior_chain');
+  const [period, setPeriod] = useState('inseason');
+  const [focus, setFocus] = useState('inseason_strength');
+  const [trainingType, setTrainingType] = useState('full_body');
   const [notes, setNotes] = useState('');
   const [sessionType, setSessionType] = useState('gym'); // 'gym' | 'warmup'
   const [loading, setLoading] = useState(false);
@@ -1966,7 +1978,6 @@ export default function Home() {
 
   // Warmup
   const [warmupDate, setWarmupDate] = useState(todayISO());
-  const [warmupPhase, setWarmupPhase] = useState(1);
   const [warmupPlan, setWarmupPlan] = useState(null);
   const [warmupLoading, setWarmupLoading] = useState(false);
   const [warmupError, setWarmupError] = useState('');
@@ -2557,11 +2568,15 @@ export default function Home() {
     }
     next.sort((a, b) => (a.date < b.date ? -1 : 1));
     setMonthSchedule(next);
-    await fetch('/api/schedule/month', {
+    const response = await fetch('/api/schedule/month', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
       body: JSON.stringify({ month: plannerMonth, days: next, workspace }),
-    }).catch(() => {});
+    }).catch(() => null);
+    if (response?.ok) {
+      const data = await response.json().catch(() => ({}));
+      if (Array.isArray(data.events)) setScheduleEvents(data.events);
+    }
   }
 
   async function runPlannerAutoplan() {
@@ -2573,6 +2588,7 @@ export default function Home() {
       });
       const d = await r.json();
       setMonthSchedule(Array.isArray(d.days) ? d.days : []);
+      if (Array.isArray(d.events)) setScheduleEvents(d.events);
     } catch {}
     setPlannerLoading(false);
   }
@@ -2648,10 +2664,13 @@ export default function Home() {
     const blocks = session.blocks || [];
     const exercises = blocks.flatMap(b => (b.exercises || []).map(ex => ({ ...ex, block: b.label })));
     const exCount = exercises.length;
-    const isRecovery = trainingType === 'recovery_prehab' || recoveryStatus === 'red';
-    const isSeason = period === 'inseason';
-    const targetMin = isRecovery ? 5 : isSeason ? 7 : 10;
-    const targetMax = isRecovery ? 7 : isSeason ? 10 : 12;
+    const qualityFocus = meta.focus || focus;
+    const qualityTrainingType = meta.trainingType || trainingType;
+    const isRecovery = qualityTrainingType === 'recovery_prehab' || recoveryStatus === 'red';
+    const isSeason = isInSeasonFocus(qualityFocus);
+    const prescribedExercises = meta.quality?.dose?.prescription?.exercises;
+    const targetMin = prescribedExercises?.min ?? (isRecovery ? 5 : isSeason ? 6 : 10);
+    const targetMax = prescribedExercises?.max ?? (isRecovery ? 8 : isSeason ? 10 : 12);
     const hasMainAlternatives = exercises.some(ex => /^[ABC]1\b/i.test(ex.code || '') && Array.isArray(ex.alternatives) && ex.alternatives.length >= 2);
     const dOrEAlt = exercises.some(ex => ['D','E'].includes(String(ex.block || '')) && Array.isArray(ex.alternatives) && ex.alternatives.length > 0);
     const nonMainFiveSec = exercises.some(ex => !/^[ABC]1\b/i.test(ex.code || '') && /5-0-X-0|0-5/i.test(ex.tempo || ''));
@@ -2665,9 +2684,9 @@ export default function Home() {
         ok: meta.quality.score >= 85,
         detail: `${meta.quality.score}/100 · ${meta.quality.grade || 'проверено'}`,
       }] : []),
-      { label: 'Фаза', ok: !!focus, detail: getFocusLabel(period, focus) },
-      { label: 'Тип', ok: !!trainingType, detail: TRAINING_TYPE_LABELS[trainingType] || 'не выбран' },
-      { label: 'Ручной метод', ok: true, detail: workspace === 'zarechie' ? 'календарь меняет только нагрузку' : 'без календаря Заречья' },
+      { label: 'Фаза', ok: !!qualityFocus, detail: getFocusLabel(period, qualityFocus) },
+      { label: 'Тип', ok: !!qualityTrainingType, detail: TRAINING_TYPE_LABELS[qualityTrainingType] || 'не выбран' },
+      { label: 'Метод', ok: true, detail: workspace === 'zarechie' ? 'сверен с матчевым календарём' : 'ручной режим без календаря' },
       { label: 'Recovery', ok: recoveryStatus !== 'red' || exCount <= 8, detail: recoveryStatus === 'red' ? 'сниженный объем' : 'по готовности' },
       { label: 'Упражнения', ok: exCount >= targetMin && exCount <= targetMax, detail: `${exCount} / цель ${targetMin}-${targetMax}` },
       { label: 'Запреты', ok: methodViolations.length === 0, detail: methodViolations.length ? `${methodViolations.length} наруш.` : 'чисто' },
@@ -2934,7 +2953,7 @@ export default function Home() {
       const r = await fetch('/api/warmup/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ date: warmupDate, phase: warmupPhase, workspace }),
+        body: JSON.stringify({ date: warmupDate, workspace }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Ошибка генерации');
@@ -3025,7 +3044,10 @@ export default function Home() {
         // Transient network blip during polling — keep trying until the attempt cap.
         continue;
       }
-      if (statusData.status === 'done') return; // generate-status already saved it
+      if (statusData.status === 'done') {
+        if (!statusData.autoSaved) throw new Error(statusData.saveWarning || 'Тренировка создана, но не прошла безопасное автосохранение.');
+        return;
+      }
       // status 'pending' → loop again
     }
     throw new Error('Генерация заняла слишком долго');
@@ -3158,9 +3180,12 @@ export default function Home() {
       }
       if (statusData.status === 'done') {
         setSession(statusData.session);
-        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel, sessionType: 'gym', quality: statusData.quality || null });
+        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType });
         setShowSummary(false);
         setAutoSaved(!!statusData.autoSaved);
+        if (statusData.saveWarning || statusData.quality?.medicalReviewRequired) {
+          setError(statusData.saveWarning || statusData.quality.medicalReviewReason);
+        }
         stopGenProgress(true);
         try { localStorage.removeItem('pending_batch'); } catch (_) {}
         return;
@@ -3180,25 +3205,31 @@ export default function Home() {
     setError('');
     const focusList = getWeekFocuses(focus);
     const offsets = focusList.length === 4 ? [0, 2, 4, 6] : [0, 2, 4];
-    const dates = focusList.map((_, index) => addDaysToDate(date, offsets[index] ?? index * 2));
+    const planEntries = isInSeasonFocus(focus)
+      ? buildSeasonMicrocycle({ events: scheduleEvents, startDate: date, days: 7 })
+      : focusList.map((item, index) => ({
+        ...item,
+        date: addDaysToDate(date, offsets[index] ?? index * 2),
+        trainingType: defaultTrainingTypeForFocus(item.focus),
+      }));
     try {
       const warmupSummary = todayWarmup ? summarizeWarmupForGym(todayWarmup) : '';
       // Generate days sequentially, accumulating used exercises so each new day avoids
       // repeating exercises from earlier days (a cohesive week, not 3 isolated days).
       const usedExercises = [];
       const results = [];
-      for (let i = 0; i < focusList.length; i++) {
-        const f = focusList[i];
+      for (let i = 0; i < planEntries.length; i++) {
+        const f = planEntries[i];
         const response = await fetch('/api/programs/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
           body: JSON.stringify({
             playerId,
-            date: dates[i],
+            date: f.date,
             dayGoal,
             days,
             focus: f.focus,
-            trainingType,
+            trainingType: f.trainingType,
             notes,
             warmupSummary: i === 0 ? warmupSummary : '',
             teamUsedExercises: usedExercises,
@@ -3215,14 +3246,16 @@ export default function Home() {
         const dayExercises = (data.session?.blocks || []).flatMap(b => (b.exercises || []).map(e => e.name).filter(Boolean));
         usedExercises.push(...dayExercises);
 
-        results.push({ ...data, planLabel: f.label, planDate: dates[i] });
+        results.push({ ...data, planLabel: f.label, planDate: f.date });
       }
       const planItems = results.map((data, i) => ({
         session: data.session,
         player: data.player,
-        date: dates[i],
-        focus: focusList[i].focus,
-        label: focusList[i].label,
+        date: planEntries[i].date,
+        focus: data.focus || planEntries[i].focus,
+        trainingType: data.trainingType || planEntries[i].trainingType,
+        label: planEntries[i].label,
+        quality: data.quality || null,
         saving: false,
         saved: false,
       }));
@@ -3243,7 +3276,7 @@ export default function Home() {
       const res = await fetch('/api/programs/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ playerId, date: item.date, session: item.session, player: item.player, dataSummary: '', dayGoal: item.label, focus: item.focus, trainingType, trainingLabel: item.label, workspace }),
+        body: JSON.stringify({ playerId, date: item.date, session: item.session, player: item.player, dataSummary: '', dayGoal: item.label, focus: item.focus, trainingType: item.trainingType, trainingLabel: item.label, quality: item.quality, workspace }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
       setWeekPlan(prev => prev.map((p, i) => i === idx ? { ...p, saving: false, saved: true } : p));
@@ -3264,6 +3297,8 @@ export default function Home() {
       dataSummary: pendingSaved.dataSummary,
       date: pendingSaved.date,
       quality: pendingSaved.quality || null,
+      focus: pendingSaved.focus || focus,
+      trainingType: pendingSaved.trainingType || trainingType,
     });
     setError('');
   }
@@ -3282,8 +3317,8 @@ export default function Home() {
           player: meta.player,
           dataSummary: meta.dataSummary,
           dayGoal: meta.dayGoal || '',
-          focus,
-          trainingType,
+          focus: meta.focus || focus,
+          trainingType: meta.trainingType || trainingType,
           trainingLabel: meta.focusLabel || getFocusLabel(period, focus),
           quality: meta.quality || null,
           workspace,
@@ -3780,27 +3815,11 @@ export default function Home() {
                 <DatePicker value={warmupDate} onChange={setWarmupDate} size="sm" />
               </div>
 
-              {/* Phase */}
+              {/* Calendar-led season context */}
               <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-slate-600">Фаза сборов</label>
-                <div className="flex gap-1.5">
-                  {[1, 2, 3].map(p => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setWarmupPhase(p)}
-                      className={`flex-1 rounded-xl border py-2 text-[11px] font-bold transition-all ${
-                        warmupPhase === p
-                          ? 'border-cyan-500/50 bg-cyan-500/[0.15] text-cyan-400'
-                          : 'border-white/[0.08] bg-white/[0.03] text-slate-600 hover:text-slate-300'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-1 text-[10px] text-slate-600">
-                  {warmupPhase === 1 ? 'Эксцентрика · нед. 1-3' : warmupPhase === 2 ? 'Изометрика · нед. 4-5' : 'Взрыв · нед. 6'}
+                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-slate-600">Логика разминки</label>
+                <p className="rounded-xl border border-cyan-500/15 bg-cyan-500/[0.05] px-3 py-2 text-[10px] leading-relaxed text-slate-500">
+                  Тип разминки автоматически определяется по матчам, переездам и силовой сессии в этот день.
                 </p>
               </div>
 

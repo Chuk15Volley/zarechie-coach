@@ -22,6 +22,6 @@ test('async generation refreshes questionnaires immediately before the first mod
   assert.match(asyncStatus, /inputsRefreshedAt/);
   assert.ok(
     asyncStatus.indexOf('buildGenerationInputs(record.generationRequest)')
-      < asyncStatus.indexOf('createOpenAIBackgroundResponse(apiKey, activePrompt, sessionTool)'),
+      < asyncStatus.indexOf('createOpenAIBackgroundResponse(apiKey, activePrompt'),
   );
 });
