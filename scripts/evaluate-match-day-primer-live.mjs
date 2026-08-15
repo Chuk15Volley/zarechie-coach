@@ -140,14 +140,16 @@ const tool = {
       periodization_note: { type: 'string' },
       blocks: {
         type: 'array',
+        minItems: 3,
+        maxItems: 3,
         items: {
           type: 'object',
           additionalProperties: false,
           required: ['label', 'rest_note', 'exercises'],
           properties: {
-            label: { type: 'string' },
+            label: { type: 'string', description: 'Только одна буква: A, B или C. Порядок блоков строго A, B, C.' },
             rest_note: { type: 'string' },
-            exercises: { type: 'array', items: exerciseSchema },
+            exercises: { type: 'array', minItems: 2, maxItems: 2, items: exerciseSchema },
           },
         },
       },
@@ -229,6 +231,7 @@ export async function evaluateMatchDayPrimerScenario(apiKey, scenarioId) {
   });
   const prompt = `Создай одну контрольную тренировку.\n` +
     `Игрок: ${scenario.position}; история весов не передана — не выдумывай кг, назначь ручной подбор до RPE 6.\n` +
+    `Верни ровно три блока с label строго "A", "B", "C" и кодами упражнений A1/A2, B1/B2, C1/C2.\n` +
     `${formatMatchDayPrimerForPrompt(primer)}${formatDosePrescriptionForPrompt(dose)}`;
   const session = await generate(apiKey, prompt);
   const quality = advisorySessionQuality(assessSessionQuality(session, {
@@ -245,6 +248,7 @@ export async function evaluateMatchDayPrimerScenario(apiKey, scenarioId) {
     blocking: quality.blocking,
     valid: quality.valid,
     issues: quality.improvements,
+    blocks: session.blocks?.map(block => ({ label: block.label, codes: block.exercises?.map(exercise => exercise.code) || [] })) || [],
     exercises: session.blocks?.flatMap(block => block.exercises?.map(exercise => exercise.name) || []) || [],
   };
 }
