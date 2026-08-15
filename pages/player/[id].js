@@ -135,6 +135,7 @@ export async function getServerSideProps({ params }) {
       sessionHistory,
       playerPhoto: playerPhoto || null,
       serverLog: serverLog || null,
+      isMatchDayPrimer: record.quality?.seasonDecision?.key === 'match_day',
     },
   };
 }
@@ -382,11 +383,14 @@ const FEEL_OPTIONS = [
   { value: 'very_hard', emoji: '🤕', label: 'Очень тяжело' },
 ];
 
-function FeedbackForm({ token, sessionDate, session, done, weights }) {
+function FeedbackForm({ token, sessionDate, session, done, weights, isMatchDayPrimer = false }) {
   const [rpe, setRpe] = useState(null);
   const [fatigue, setFatigue] = useState(null);
   const [feel, setFeel] = useState(null);
   const [note, setNote] = useState('');
+  const [speedFeel, setSpeedFeel] = useState(null);
+  const [legFeel, setLegFeel] = useState(null);
+  const [shoulderFeel, setShoulderFeel] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
   const missingWeightCount = (session?.blocks || []).reduce((missing, block, bi) =>
@@ -399,13 +403,17 @@ function FeedbackForm({ token, sessionDate, session, done, weights }) {
     }, 0), 0);
 
   async function submit() {
-    if (!rpe || !fatigue || sending || missingWeightCount > 0) return;
+    const primerComplete = speedFeel && legFeel && shoulderFeel;
+    if (!rpe || (!isMatchDayPrimer && !fatigue) || (isMatchDayPrimer && !primerComplete) || sending || missingWeightCount > 0) return;
     setSending(true);
     try {
       const response = await fetch('/api/player/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, date: sessionDate, rpe, fatigue, feel, note, done, weights }),
+        body: JSON.stringify({
+          token, date: sessionDate, rpe, fatigue, feel, note, done, weights,
+          primerFeedback: isMatchDayPrimer ? { speed: speedFeel, legs: legFeel, shoulder: shoulderFeel } : null,
+        }),
       });
       if (!response.ok) throw new Error('Feedback failed');
       setSubmitted(true);
@@ -455,7 +463,40 @@ function FeedbackForm({ token, sessionDate, session, done, weights }) {
           </div>
         </div>
 
+        {isMatchDayPrimer && (
+          <>
+            {[
+              ['Ощущение скорости', speedFeel, setSpeedFeel, 'Медленно', 'Очень быстро'],
+              ['Состояние ног', legFeel, setLegFeel, 'Тяжёлые', 'Лёгкие'],
+              ['Состояние плеча', shoulderFeel, setShoulderFeel, 'Дискомфорт', 'Свободно'],
+            ].map(([label, value, setter, low, high]) => (
+              <div key={label}>
+                <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{label} (1–5)</div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[1,2,3,4,5].map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setter(n)}
+                      aria-label={`${label}: ${n}`}
+                      className={`rounded-xl border py-2.5 text-[13px] font-black transition-all active:scale-95 ${
+                        value === n
+                          ? 'border-[#4ade80]/50 bg-[#4ade80]/[0.12] text-[#4ade80]'
+                          : 'border-white/[0.10] bg-white/[0.04] text-slate-400'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-1 flex justify-between text-[9px] text-slate-600"><span>{low}</span><span>{high}</span></div>
+              </div>
+            ))}
+          </>
+        )}
+
         {/* Overall fatigue */}
+        {!isMatchDayPrimer && (
         <div>
           <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
             Общая усталость после тренировки (1–5)
@@ -477,9 +518,10 @@ function FeedbackForm({ token, sessionDate, session, done, weights }) {
             ))}
           </div>
         </div>
+        )}
 
         {/* Feel */}
-        <div>
+        {!isMatchDayPrimer && <div>
           <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
             Общее ощущение
           </div>
@@ -500,10 +542,10 @@ function FeedbackForm({ token, sessionDate, session, done, weights }) {
               </button>
             ))}
           </div>
-        </div>
+        </div>}
 
         {/* Note */}
-        <div>
+        {!isMatchDayPrimer && <div>
           <textarea
             value={note}
             onChange={e => setNote(e.target.value)}
@@ -512,7 +554,7 @@ function FeedbackForm({ token, sessionDate, session, done, weights }) {
             rows={2}
             className="w-full resize-none rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2.5 text-[13px] text-slate-200 placeholder-slate-600 outline-none focus:border-[#4ade80]/30"
           />
-        </div>
+        </div>}
 
         {missingWeightCount > 0 && (
           <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2.5 text-[12px] font-semibold text-amber-300">
@@ -523,7 +565,7 @@ function FeedbackForm({ token, sessionDate, session, done, weights }) {
         <button
           type="button"
           onClick={submit}
-          disabled={!rpe || !fatigue || sending || missingWeightCount > 0}
+          disabled={!rpe || (!isMatchDayPrimer && !fatigue) || (isMatchDayPrimer && (!speedFeel || !legFeel || !shoulderFeel)) || sending || missingWeightCount > 0}
           className="w-full rounded-xl bg-[#4ade80] py-3 text-[13px] font-black text-[#060a0e] transition disabled:opacity-40 active:scale-[0.98]"
         >
           {sending ? 'Отправка...' : 'Отправить тренеру'}
@@ -586,7 +628,7 @@ function InstallHint() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function PlayerPage({ token, session, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog }) {
+export default function PlayerPage({ token, session, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog, isMatchDayPrimer = false }) {
   // Seed from the server log (cross-device source of truth) when present.
   const [done, setDone] = useState(serverLog?.done || {});
   const [weights, setWeights] = useState(serverLog?.weights || {});
@@ -903,7 +945,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
 
             {/* Completion banner + feedback */}
             {totalSets > 0 && doneCount === totalSets && (
-              <FeedbackForm token={token} sessionDate={sessionDate} session={session} done={done} weights={weights} />
+              <FeedbackForm token={token} sessionDate={sessionDate} session={session} done={done} weights={weights} isMatchDayPrimer={isMatchDayPrimer} />
             )}
           </div>
         )}
