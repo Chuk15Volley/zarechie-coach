@@ -11,6 +11,7 @@ import { exhistKey, exweightKey, gymTonnageDatesKey, gymTonnageKey, sessionKey, 
 import { assessSessionQuality } from '../../../lib/sessionValidator';
 import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
+import { normalizeSessionTempoDescriptions } from '../../../lib/tempoDescription.mjs';
 import { OPENAI_SESSION_MODEL, SYSTEM_PROMPT, buildGenerationInputs, normalizeExerciseLanguage } from './generate';
 import { normExName } from '../players/progression';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
@@ -301,6 +302,7 @@ export default async function handler(req, res) {
     }
     session = normalizeExerciseLanguage(session, focus);
     session = sanitizeUnavailableEquipmentExercises(session);
+    session = normalizeSessionTempoDescriptions(session);
 
     let quality = assessSessionQuality(session, {
       ...qualityContext,
@@ -324,6 +326,7 @@ export default async function handler(req, res) {
 
     // Re-sanitize compatibility candidates from older deployments too.
     session = sanitizeUnavailableEquipmentExercises(session);
+    session = normalizeSessionTempoDescriptions(session);
     quality = advisorySessionQuality(assessSessionQuality(session, {
       ...qualityContext,
       focus: qualityContext.focus || focus,

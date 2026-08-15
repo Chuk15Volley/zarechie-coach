@@ -22,6 +22,7 @@ import { evaluateDevelopmentPlan, formatDevelopmentPlanForPrompt } from '../../.
 import { buildDosePrescription, formatDosePrescriptionForPrompt } from '../../../lib/sessionDose.mjs';
 import { readinessDecisionFromSnapshot, strictestRecoveryStatus } from '../../../lib/readinessDecision.mjs';
 import { IN_SEASON_SYSTEM_PROMPT } from '../../../lib/inSeasonPrompt.mjs';
+import { normalizeSessionTempoDescriptions, stripTempoDescription, tempoDescription } from '../../../lib/tempoDescription.mjs';
 import { buildMatchDayPrimerContext, formatMatchDayPrimerForPrompt, matchDayAutomaticRecoveryStatus } from '../../../lib/matchDayPrimer.mjs';
 import {
   formatSeasonDecisionForPrompt,
@@ -214,7 +215,7 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
     },
     tempo: {
       type: 'string',
-      description: 'Темп: Эксц-Пауза_низ-Конц-Пауза_верх. X = максимально быстро. Эксцентрическая фаза: "5-0-X-0". Изометрическая фаза: "0-5сек-X-0". Взрывной/прыжок: "реактивный". Профилактика E-блок: "контролируемый".',
+      description: 'Внутренний технический код: Эксцентрика-ПаузаВнизу-Концентрика-ПаузаВверху. Концентрическая/рабочая фаза всегда X = максимально резко. Примеры: "3-1-X-0", "5-0-X-0", "0-5сек-X-0". Взрывной/прыжок: "реактивный". Профилактика: "контролируемый". Этот код не копируй дословно в cue.',
     },
     autoReg: {
       type: 'string',
@@ -227,7 +228,7 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
     },
     cue: {
       type: 'string',
-      description: 'Короткое описание для игрока на русском языке. ВСЕГДА начинай с описания темпа. Потом 1 профессиональная S&C-подсказка: конкретный угол сустава, паттерн движения или точка активации. Без "потому что", без "старайся", без воды. Примеры: "Темп: опускаемся 5 секунд медленно вниз, вверх максимально резко. Колено над вторым пальцем.", "Темп: пауза в напряжении 5 секунд, вверх максимально резко. Таз нейтрален."',
+      description: 'Короткое описание для игрока на русском языке. ВСЕГДА словами опиши опускание, паузу внизу и максимально резкую рабочую фазу; никогда не вставляй цифровой код tempo. Потом добавь одну профессиональную S&C-подсказку: конкретный угол сустава, паттерн движения или точку активации. Пример: "Темп: опускайся вниз 3 секунды; задержись внизу на 1 секунду; поднимайся вверх максимально резко. Колено над вторым пальцем."',
     },
   };
   const exerciseRequired = ['code', 'name', 'targetSets', 'tempo', 'alternatives', 'cue', 'loadUnits'];
@@ -315,29 +316,6 @@ function isMainStrengthCode(code) {
   return /^[ABC]1\b/i.test(String(code || ''));
 }
 
-function tempoLeadIn(tempo) {
-  const t = String(tempo || '').toLowerCase();
-  if (isFiveSecondEccTempo(tempo)) {
-    return 'Темп: опускаемся 5 секунд медленно вниз, вверх максимально резко.';
-  }
-  if (isFiveSecondIsoTempo(tempo)) {
-    return 'Темп: пауза в напряжении 5 секунд, вверх максимально резко.';
-  }
-  if (t.includes('реактив') || t === 'x-0-x-0') {
-    return 'Темп: быстро, упруго, без лишней паузы.';
-  }
-  if (t.includes('контрол')) {
-    return 'Темп: движение контролируемо, без рывков.';
-  }
-  if (/3-1-x-0/i.test(String(tempo || ''))) {
-    return 'Темп: 3 секунды вниз, пауза 1 секунда, вверх резко.';
-  }
-  if (/3-0-x-0/i.test(String(tempo || ''))) {
-    return 'Темп: 3 секунды вниз, вверх резко.';
-  }
-  return tempo ? `Темп: ${tempo}.` : 'Темп: контролируемо вниз, вверх активно.';
-}
-
 function isFiveSecondEccTempo(tempo) {
   return /^5-0-x-0$/i.test(String(tempo || '').trim());
 }
@@ -345,12 +323,6 @@ function isFiveSecondEccTempo(tempo) {
 function isFiveSecondIsoTempo(tempo) {
   const t = String(tempo || '').toLowerCase();
   return t.includes('5сек') || t.includes('iso') || t.includes('изо');
-}
-
-function stripTempoLeadIn(text) {
-  return String(text || '')
-    .replace(/^темп\s*[:—-]\s*[^.?!]*(?:[.?!]\s*)?/i, '')
-    .trim();
 }
 
 function stripMismatchedFiveSecondCue(text, tempo) {
@@ -362,7 +334,7 @@ function stripMismatchedFiveSecondCue(text, tempo) {
 }
 
 function conciseCue(text, tempo = '') {
-  const cleaned = stripMismatchedFiveSecondCue(stripTempoLeadIn(text), tempo)
+  const cleaned = stripMismatchedFiveSecondCue(stripTempoDescription(text), tempo)
     .replace(/\s+/g, ' ')
     .trim();
   if (!cleaned) return 'Держи корпус жёстко, движение чистое.';
@@ -383,7 +355,7 @@ export function normalizeExerciseLanguage(session, focus = '') {
           : isMainStrength && isIsoFocus(focus)
             ? '0-5сек-X-0'
             : (ex.tempo || '');
-        const lead = tempoLeadIn(nextTempo || ex.tempo);
+        const lead = tempoDescription(nextTempo || ex.tempo, ex.name);
         const cue = conciseCue(ex.cue, nextTempo || ex.tempo);
         return {
           ...ex,
@@ -1480,10 +1452,11 @@ FIELD name — ENGLISH ONLY (professional S&C terminology):
   ❌ NEVER Russian transliterations or mixed language names.
 
 ПОЛЯ cue, autoReg — русский язык, профессиональный S&C, без воды:
-  ✅ cue — короткое описание для игрока: ВСЕГДА начинается с темпа, затем 1 понятная техническая подсказка.
-  ✅ Эксцентрическая фаза: "Темп: опускаемся 5 секунд медленно вниз, вверх максимально резко. Колено над вторым пальцем."
-  ✅ Изометрическая фаза: "Темп: пауза в напряжении 5 секунд, вверх максимально резко. Таз нейтрален."
-  ✅ Остальные фазы: начни с короткого описания темпа, затем конкретный угол/паттерн/активация.
+  ✅ cue — короткое описание для игрока: ВСЕГДА словами опиши опускание, паузу внизу и максимально резкую рабочую фазу, затем добавь 1 понятную техническую подсказку.
+  ✅ Эксцентрическая фаза: "Темп: опускайся вниз 5 секунд; без паузы внизу; поднимайся вверх максимально резко. Колено над вторым пальцем."
+  ✅ Изометрическая фаза: "Темп: опускайся вниз под контролем; задержись внизу на 5 секунд; поднимайся вверх максимально резко. Таз нейтрален."
+  ✅ Для жимов, тяг, бросков, прыжков и изометрии используй смысловой глагол: выжимай, тяни, бросай, выпрыгивай или создавай напряжение максимально резко.
+  ❌ Никогда не показывай игроку цифровой код темпа внутри cue: "0-3сек-X-0", "3-1-X-0" и подобные записи запрещены.
   ✅ AutoReg — один критерий: "Скорость падает → стоп.", "RPE 9 → снизь 5%."
   ❌ Без "потому что", без "старайся", без "это активирует", без воды.
 
@@ -1495,7 +1468,7 @@ FIELD name — ENGLISH ONLY (professional S&C terminology):
 ТЕМП (поле tempo — обязательно для каждого упражнения)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Формат: Эксцентрик–ПаузаНиз–Концентрик–ПаузаВерх. X = максимально быстро.
+Формат — только внутреннее поле tempo: Эксцентрик–ПаузаНиз–Концентрик–ПаузаВерх. Концентрическая/рабочая фаза всегда X = максимально резко.
   Фаза 1 (эксцентрика), основные упражнения: "5-0-X-0"
   Фаза 2 (изометрика), удержание: "0-5сек-X-0" (пауза в напряжении 5 секунд, затем вверх максимально резко)
   Фаза 3 (взрыв) и все прыжки/A2: "X-0-X-0" или "реактивный"
@@ -1906,6 +1879,7 @@ export default async function handler(req, res) {
     // second paid model call or discards a usable response.
     session = normalizeExerciseLanguage(session, focus);
     session = sanitizeUnavailableEquipmentExercises(session);
+    session = normalizeSessionTempoDescriptions(session);
     const quality = advisorySessionQuality(assessSessionQuality(session, { ...qualityContext, playerRestrictions }));
 
     console.log('GEN blocks:', session.blocks?.length,
@@ -2286,7 +2260,7 @@ ${scheduleContext}
 Цель именно этой тренировки: ${dayGoal || 'не указана — ориентируйся на фазу подготовки и логику периодизации из истории'}
 ${notes ? `Комментарии тренера: ${notes}` : ''}
 
-Составь ОДНУ тренировку в зале на ${targetDate} — не микроцикл, а конкретно эту сессию. Обязательно заполни все поля: tempo для каждого упражнения, cue для каждого упражнения начинается с короткого описания темпа выполнения, rest_note для каждого блока. Формат компактный: без длинных объяснений, только параметры и короткие технические подсказки. Альтернативы 2-3 штуки заполни только для основных упражнений A/B/C, для D/E оставь alternatives пустым массивом. Для каждого упражнения заполни img_prompt кратким английским анатомическим описанием.`;
+Составь ОДНУ тренировку в зале на ${targetDate} — не микроцикл, а конкретно эту сессию. Обязательно заполни все поля: tempo для каждого упражнения; cue для каждого упражнения начинается с понятного словесного описания опускания, паузы и максимально резкой рабочей фазы без цифрового кода темпа; rest_note для каждого блока. Формат компактный: без длинных объяснений, только параметры и короткие технические подсказки. Альтернативы 2-3 штуки заполни только для основных упражнений A/B/C, для D/E оставь alternatives пустым массивом. Для каждого упражнения заполни img_prompt кратким английским анатомическим описанием.`;
 
   return { userPrompt, dataSummary };
 }

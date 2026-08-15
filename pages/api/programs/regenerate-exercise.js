@@ -7,6 +7,7 @@ import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { sessionKey } from '../../../lib/workspacePrefix';
 import { normalizeExerciseLanguage } from './generate';
+import { normalizeSessionTempoDescriptions } from '../../../lib/tempoDescription.mjs';
 import { assessSessionQuality } from '../../../lib/sessionValidator';
 import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
 import { isSledExercise, sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
@@ -100,7 +101,7 @@ const REPLACE_EXERCISE_TOOL = {
       },
       cue: {
         type: 'string',
-        description: 'Одна короткая техническая подсказка на русском языке, начиная с описания темпа.',
+        description: 'Одна короткая подсказка на русском: словесно опиши опускание, паузу и максимально резкую рабочую фазу без цифрового кода tempo, затем добавь один технический ориентир.',
       },
       autoReg: {
         type: 'string',
@@ -167,7 +168,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
 • Сохрани: code="${exercise.code}", tempo="${exercise.tempo || ''}"
 • НЕ используй упражнения, уже стоящие в программе: ${others}
 • ЗАПРЕЩЕНО навсегда: ${BANNED}
-• ЯЗЫК: поле name — профессиональный английский S&C ("Bulgarian Split Squat", "Trap Bar Deadlift", "Box Jump (Bilateral)"). Поле cue — короткое описание для игрока на русском языке: СНАЧАЛА описание темпа, ПОТОМ одна профессиональная подсказка S&C. Если tempo="5-0-X-0", начни cue так: "Темп: опускаемся 5 секунд медленно вниз, вверх максимально резко." Если tempo="0-5сек-X-0", начни cue так: "Темп: пауза в напряжении 5 секунд, вверх максимально резко." Поле autoReg — один критерий остановки, РУССКИЙ язык ("Скорость падает → стоп.", "RPE 9 → снизь 5%.").
+• ЯЗЫК: поле name — профессиональный английский S&C ("Bulgarian Split Squat", "Trap Bar Deadlift", "Box Jump (Bilateral)"). Поле cue — короткое описание для игрока на русском языке: СНАЧАЛА словами опиши опускание, паузу и максимально резкую рабочую фазу, ПОТОМ дай одну профессиональную подсказку S&C. Пример: "Темп: опускайся вниз 3 секунды; задержись внизу на 1 секунду; поднимайся вверх максимально резко. Колено над вторым пальцем." Никогда не вставляй в cue цифровой код tempo. Для жима, тяги, броска, прыжка или изометрии используй точный смысловой глагол. Поле autoReg — один критерий остановки, РУССКИЙ язык ("Скорость падает → стоп.", "RPE 9 → снизь 5%.").
 
 Сохрани targetSets, если замена не требует более безопасного объёма. Для DB/KB weightKg всегда означает вес ОДНОЙ гантели/гири; loadUnits: 1 для одного снаряда, 2 для пары. Для упражнения с внешним весом укажи практичный weightKg и weightNote. Для веса тела оставь weightKg=null и укажи понятный weightNote.
 
@@ -250,10 +251,12 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
     newExercise.targetSets = Array.isArray(newExercise.targetSets) && newExercise.targetSets.length
       ? newExercise.targetSets
       : (exercise.targetSets || []);
+    newExercise = normalizeSessionTempoDescriptions({ blocks: [{ exercises: [newExercise] }] })
+      .blocks[0].exercises[0];
 
     // Persist only when a saved session exists. Draft programs are updated in the UI
     // and will be stored by the normal Save command.
-    const updatedSession = sanitizeUnavailableEquipmentExercises({
+    const updatedSession = normalizeSessionTempoDescriptions(sanitizeUnavailableEquipmentExercises({
       ...session,
       blocks: session.blocks.map((currentBlock, currentBlockIndex) => currentBlockIndex !== blockIndex
         ? currentBlock
@@ -261,7 +264,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
           ...currentBlock,
           exercises: currentBlock.exercises.map((currentExercise, currentExerciseIndex) => currentExerciseIndex === exerciseIndex ? newExercise : currentExercise),
         }),
-    });
+    }));
     if (record) {
       const replacementQuality = advisorySessionQuality(assessSessionQuality(updatedSession, {
         focus: record.focus || '',
