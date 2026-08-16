@@ -53,3 +53,29 @@ test('session normalization applies the same wording to every exercise', () => {
   assert.match(session.blocks[0].exercises[1].cue, /выжимай максимально резко/);
   assert.deepEqual(normalizeSessionTempoDescriptions(session), session);
 });
+
+test('manual description override is shown and survives session normalization', () => {
+  const exercise = {
+    name: 'Goblet Squat',
+    tempo: '3-1-X-0',
+    cue: 'Колено над вторым пальцем.',
+    descriptionOverride: 'Моё индивидуальное описание для игрока.',
+  };
+  assert.equal(exerciseDescription(exercise), 'Моё индивидуальное описание для игрока.');
+
+  const session = normalizeSessionTempoDescriptions({
+    blocks: [{ exercises: [exercise] }],
+  });
+  assert.equal(session.blocks[0].exercises[0].descriptionOverride, exercise.descriptionOverride);
+  assert.match(session.blocks[0].exercises[0].cue, /пауза внизу — 1 секунда/);
+  assert.equal(exerciseDescription(session.blocks[0].exercises[0]), exercise.descriptionOverride);
+});
+
+test('an intentionally empty manual description stays empty', () => {
+  assert.equal(exerciseDescription({
+    name: 'Goblet Squat',
+    tempo: '3-1-X-0',
+    cue: 'Колено над вторым пальцем.',
+    descriptionOverride: '',
+  }), '');
+});
