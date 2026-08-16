@@ -24,7 +24,7 @@ test('failed dose and timing checks become coach warnings instead of blockers', 
   assert.match(quality.reviewMessage, /сохранение разрешено/);
 });
 
-test('an exceeded safety ceiling blocks persistence', () => {
+test('an exceeded safety ceiling blocks auto-save but allows reviewed coach save', () => {
   const quality = advisorySessionQuality({
     score: 80,
     valid: false,
@@ -32,13 +32,15 @@ test('an exceeded safety ceiling blocks persistence', () => {
     dose: { safe: false },
   });
   assert.equal(quality.blocking, true);
-  assert.match(quality.reviewMessage, /перед сохранением/);
+  assert.match(quality.reviewMessage, /ручное сохранение тренером разрешено/);
 });
 
 test('generation and persistence routes contain no hard quality rejection', () => {
   assert.doesNotMatch(sources, /не прошла обязательн[^\n]+не сохранена/);
   assert.doesNotMatch(sources, /if \(!saveQuality\.valid/);
   assert.doesNotMatch(sources, /if \(!copyQuality\.valid/);
+  assert.doesNotMatch(sources, /if \(saveQuality\.blocking\)/);
+  assert.doesNotMatch(sources, /if \(copyQuality\.blocking\)/);
   assert.doesNotMatch(sources, /if \(!replacementQuality\.valid/);
   assert.doesNotMatch(sources, /callOpenAIForSession\(apiKey, fixPrompt\)/);
   assert.doesNotMatch(sources, /processing_status: 'quality_correction'/);

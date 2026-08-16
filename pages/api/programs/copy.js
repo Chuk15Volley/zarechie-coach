@@ -74,10 +74,13 @@ export default async function handler(req, res) {
     dosePrescription: newRecord.quality?.dose?.prescription || buildDosePrescription({ focus: newRecord.focus, trainingType: newRecord.trainingType }),
     seasonDecision: newRecord.quality?.seasonDecision || null,
   }));
-  if (copyQuality.blocking) {
-    return res.status(422).json({ error: copyQuality.reviewMessage, quality: copyQuality });
-  }
-  newRecord.quality = copyQuality;
+  newRecord.quality = copyQuality.blocking
+    ? {
+        ...copyQuality,
+        coachOverrideApplied: true,
+        coachOverrideAt: newRecord.savedAt,
+      }
+    : copyQuality;
   newRecord.copiedFromPlayerId = String(fromPlayerId);
 
   const dateScore = parseInt(date.replace(/-/g, ''), 10);

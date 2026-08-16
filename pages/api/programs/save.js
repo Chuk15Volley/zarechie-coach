@@ -66,12 +66,14 @@ export default async function handler(req, res) {
     dosePrescription: quality?.dose?.prescription || buildDosePrescription({ focus, trainingType }),
     seasonDecision: quality?.seasonDecision || null,
   }));
-  if (saveQuality.blocking) {
-    return res.status(422).json({
-      error: saveQuality.reviewMessage,
-      quality: saveQuality,
-    });
-  }
+  const savedAt = new Date().toISOString();
+  const persistenceQuality = saveQuality.blocking
+    ? {
+        ...saveQuality,
+        coachOverrideApplied: true,
+        coachOverrideAt: savedAt,
+      }
+    : saveQuality;
 
   const record = {
     session: normalizedSession,
@@ -81,9 +83,9 @@ export default async function handler(req, res) {
     focus: focus || '',
     trainingType: trainingType || '',
     trainingLabel: trainingLabel || '',
-    quality: saveQuality,
+    quality: persistenceQuality,
     date,
-    savedAt: new Date().toISOString(),
+    savedAt,
   };
 
   // Score is the date as a plain integer (20260618) — sorts chronologically.
@@ -132,7 +134,7 @@ export default async function handler(req, res) {
       ...tonnageCmds,
     ];
     await redisPipeline(cmds);
-    return res.status(200).json({ status: 'ok', quality: saveQuality });
+    return res.status(200).json({ status: 'ok', quality: persistenceQuality });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
