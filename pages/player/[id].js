@@ -363,7 +363,7 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
             <span className="text-[13px] leading-snug text-amber-300/90">{ex.autoReg}</span>
           </div>
         )}
-        {(ex.cue || ex.tempo) && (
+        {(typeof ex.descriptionOverride === 'string' || ex.cue || ex.tempo) && (
           <p className="text-[14px] leading-relaxed text-slate-400">{exerciseDescription(ex)}</p>
         )}
       </div>
@@ -1029,7 +1029,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                                 </div>
                               ))}
                             </div>
-                            {(ex.cue || ex.coaching_note || ex.tempo) && (
+                            {(typeof ex.descriptionOverride === 'string' || ex.cue || ex.coaching_note || ex.tempo) && (
                               <div className="px-4 pb-3 text-[12px] leading-relaxed text-slate-500">{exerciseDescription(ex)}</div>
                             )}
                           </div>

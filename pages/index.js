@@ -54,7 +54,7 @@ import {
   MANUAL_MATCH_DAY_FOCUS,
 } from '../lib/seasonPolicy.mjs';
 import { usesSeasonCalendar } from '../lib/workspacePolicy.mjs';
-import { exerciseDescription, stripTempoDescription, tempoDescription } from '../lib/tempoDescription.mjs';
+import { exerciseDescription } from '../lib/tempoDescription.mjs';
 
 // Map a camp focus phase to a representative training week (for auto-weight %).
 function weekFromFocus(focus) {
@@ -1252,6 +1252,7 @@ function ExerciseCard({
   autoReg,
   alternatives,
   cue,
+  descriptionOverride,
   focus,
   week,
   oneRM,
@@ -1275,7 +1276,8 @@ function ExerciseCard({
   onChangeLoadUnits,
   onChangeTempo,
   onChangeAutoReg,
-  onChangeCue,
+  onChangeDescription,
+  onResetDescription,
   onRegenerate,
 }) {
   const [regenerating, setRegenerating] = useState(false);
@@ -1310,6 +1312,8 @@ function ExerciseCard({
   const hasConflict = hasRestriction(name, restrictions || []);
   const rmSuggestion = useMemo(() => calcWeight(name, focus, week, oneRM, position), [name, focus, week, oneRM, position]);
   const effectiveSuggestedKg = suggestedKg || rmSuggestion?.kg || null;
+  const hasDescriptionOverride = typeof descriptionOverride === 'string';
+  const displayedDescription = exerciseDescription({ name, tempo, cue, descriptionOverride });
 
   async function handleRegenerate() {
     if (regenerating || !onRegenerate) return;
@@ -1630,13 +1634,28 @@ function ExerciseCard({
         )}
 
         <div className="rounded-lg border border-sky-400/[0.10] bg-sky-400/[0.035] px-2.5 py-2">
-          <p className="text-[12px] leading-snug text-sky-200/70">{tempoDescription(tempo, name)}</p>
+          <div className="mb-1 flex items-center justify-between gap-2 print:hidden">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-sky-300/45">Описание для игрока</span>
+            {hasDescriptionOverride && (
+              <button
+                type="button"
+                onClick={onResetDescription}
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-white/[0.05] hover:text-slate-300"
+                title="Вернуть автоматически сформированное описание"
+              >
+                <RotateCcw size={10} />
+                Вернуть исходное
+              </button>
+            )}
+          </div>
           <AutoResizeTextarea
-            value={stripTempoDescription(cue)}
-            onChange={value => onChangeCue(`${tempoDescription(tempo, name)} ${value}`.trim())}
-            placeholder="Техническая подсказка"
-            className="mt-1 w-full resize-none border-0 bg-transparent px-0 py-0.5 text-[13px] leading-snug text-slate-500 outline-none transition placeholder:text-slate-700 focus:text-slate-400 print:border-slate-300 print:text-slate-700"
+            value={displayedDescription}
+            onChange={onChangeDescription}
+            minRows={2}
+            placeholder="Введите описание выполнения упражнения"
+            className="w-full resize-none border-0 bg-transparent px-0 py-0.5 text-[13px] leading-snug text-sky-100/65 outline-none transition placeholder:text-slate-700 focus:text-sky-100 print:text-slate-700"
           />
+          <p className="mt-1 text-[10px] leading-snug text-slate-700 print:hidden">Изменение увидит игрок после сохранения программы.</p>
         </div>
       </div>
     </div>
@@ -6228,22 +6247,15 @@ export default function Home() {
                     )}
                   </div>
                   {/* Primary save */}
-                  {autoSaved && meta.sessionType === 'gym' ? (
-                    <span className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.10] px-3.5 py-2 text-xs font-bold text-emerald-400">
-                      <Check size={13} strokeWidth={3} />
-                      Сохранено
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleSave}
-                      disabled={saving}
-                      className={`flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3.5 py-2 text-xs font-bold text-[#04212b] shadow-[0_2px_12px_-2px_rgba(34,211,238,0.35)] transition hover:bg-cyan-400 disabled:opacity-50 ${focusRing}`}
-                    >
-                      {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                      {justSaved ? 'Сохранено ✓' : 'Сохранить'}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving}
+                    className={`flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3.5 py-2 text-xs font-bold text-[#04212b] shadow-[0_2px_12px_-2px_rgba(34,211,238,0.35)] transition hover:bg-cyan-400 disabled:opacity-50 ${focusRing}`}
+                  >
+                    {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    {justSaved ? 'Сохранено ✓' : (autoSaved || pendingSaved ? 'Сохранить изменения' : 'Сохранить')}
+                  </button>
                   {pendingSaved && session && (
                     <button
                       type="button"
@@ -6510,6 +6522,7 @@ export default function Home() {
                           autoReg={ex.autoReg || ''}
                           alternatives={ex.alternatives || []}
                           cue={ex.cue || ''}
+                          descriptionOverride={ex.descriptionOverride}
                           focus={focus}
                           week={weekFromFocus(focus)}
                           oneRM={oneRM}
@@ -6525,7 +6538,7 @@ export default function Home() {
                           onActualKgChange={pendingSaved ? (v => updateExercise(bi, ei, { actualKg: v })) : undefined}
                           actualRpe={ex.actualRpe ?? null}
                           onActualRpeChange={pendingSaved ? (v => updateExercise(bi, ei, { actualRpe: v })) : undefined}
-                          onChangeName={v => updateExercise(bi, ei, { name: v })}
+                          onChangeName={v => updateExercise(bi, ei, { name: v, descriptionOverride: undefined })}
                           onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
                           onAddSet={() => addSetRow(bi, ei)}
                           onChangeWeight={v => updateExercise(bi, ei, { weightNote: v })}
@@ -6536,7 +6549,8 @@ export default function Home() {
                           onChangeLoadUnits={v => updateExercise(bi, ei, { loadUnits: v })}
                           onChangeTempo={v => updateExercise(bi, ei, { tempo: v })}
                           onChangeAutoReg={v => updateExercise(bi, ei, { autoReg: v })}
-                          onChangeCue={v => updateExercise(bi, ei, { cue: v })}
+                          onChangeDescription={v => updateExercise(bi, ei, { descriptionOverride: v })}
+                          onResetDescription={() => updateExercise(bi, ei, { descriptionOverride: undefined })}
                           onRegenerate={() => regenerateExercise(bi, ei)}
                         />
                       ))}
