@@ -3364,6 +3364,7 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
       setError('');
+      const savedQuality = data.quality || meta.quality || null;
       if (data.quality) setMeta(prev => prev ? { ...prev, quality: data.quality } : prev);
       setJustSaved(true);
       setPendingSaved({
@@ -3371,7 +3372,7 @@ export default function Home() {
         player: meta.player,
         dataSummary: meta.dataSummary,
         date: meta.date,
-        quality: meta.quality || null,
+        quality: savedQuality,
         savedAt: new Date().toISOString(),
       });
       setTimeout(() => setJustSaved(false), 2500);
