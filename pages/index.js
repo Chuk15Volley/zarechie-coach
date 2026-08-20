@@ -1271,6 +1271,7 @@ function ExerciseCard({
   onChangeName,
   onChangeSet,
   onAddSet,
+  onRemoveSet,
   onChangeWeight,
   onChangeWeightKg,
   onChangeLoadUnits,
@@ -1456,7 +1457,7 @@ function ExerciseCard({
           {targetSets.map((s, i) => (
             <div
               key={i}
-              className="flex items-center overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.04] transition-colors focus-within:border-accent/40 print:border-slate-300"
+              className="group/set flex items-center overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.04] transition-colors focus-within:border-accent/40 print:border-slate-300"
             >
               <span className="px-1.5 py-1 text-[10px] font-semibold text-slate-500">{i + 1}</span>
               <input
@@ -1465,6 +1466,17 @@ function ExerciseCard({
                 placeholder="—"
                 className="w-12 bg-transparent px-1 py-1 text-center text-[13px] font-semibold text-slate-100 outline-none print:text-slate-900"
               />
+              {targetSets.length > 1 && onRemoveSet && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveSet(i)}
+                  aria-label={`Удалить подход ${i + 1}`}
+                  title={`Удалить подход ${i + 1}`}
+                  className="mr-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md text-slate-600 transition hover:bg-rose-500/[0.12] hover:text-rose-400 focus-visible:bg-rose-500/[0.12] focus-visible:text-rose-400 focus-visible:outline-none print:hidden"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
           ))}
           <button
@@ -3650,6 +3662,25 @@ export default function Home() {
               exercises: b.exercises.map((ex, ei) =>
                 ei !== exIdx ? ex : { ...ex, targetSets: [...ex.targetSets, ''] }
               ),
+            }
+      ),
+    }));
+  }
+
+  function removeSetRow(blockIdx, exIdx, setIdx) {
+    setSession(prev => ({
+      ...prev,
+      blocks: prev.blocks.map((b, bi) =>
+        bi !== blockIdx
+          ? b
+          : {
+              ...b,
+              exercises: b.exercises.map((ex, ei) => {
+                if (ei !== exIdx) return ex;
+                const targetSets = Array.isArray(ex.targetSets) ? ex.targetSets : [];
+                if (targetSets.length <= 1) return ex;
+                return { ...ex, targetSets: targetSets.filter((_, si) => si !== setIdx) };
+              }),
             }
       ),
     }));
@@ -6590,6 +6621,7 @@ export default function Home() {
                           onChangeName={v => updateExercise(bi, ei, { name: v, descriptionOverride: undefined })}
                           onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
                           onAddSet={() => addSetRow(bi, ei)}
+                          onRemoveSet={si => removeSetRow(bi, ei, si)}
                           onChangeWeight={v => updateExercise(bi, ei, { weightNote: v })}
                           onChangeWeightKg={v => updateExercise(bi, ei, {
                             weightKg: v,
