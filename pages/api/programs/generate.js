@@ -24,6 +24,7 @@ import { readinessDecisionFromSnapshot, strictestRecoveryStatus } from '../../..
 import { IN_SEASON_SYSTEM_PROMPT } from '../../../lib/inSeasonPrompt.mjs';
 import { normalizeSessionTempoDescriptions, stripTempoDescription, tempoDescription } from '../../../lib/tempoDescription.mjs';
 import { buildMatchDayPrimerContext, formatMatchDayPrimerForPrompt, matchDayAutomaticRecoveryStatus } from '../../../lib/matchDayPrimer.mjs';
+import { buildInSeasonPowerContext, formatInSeasonPowerForPrompt } from '../../../lib/inSeasonPower.mjs';
 import {
   formatSeasonDecisionForPrompt,
   isInSeasonFocus,
@@ -147,7 +148,7 @@ const FOCUS_LABELS = {
   zvs_power_transfer: 'Межсезонье: Мощность и перенос — полные PAP-кластеры 80-87.5%, Resisted Approach Jump, позиционная работа; тейпер последняя неделя; RPE 8-9; JLU ≤500',
   // ── СЕЗОН ЗАРЕЧЬЕ 2025–2026 (сентябрь 2025 — апрель 2026) ───────────────
   inseason_strength:     'СЕЗОН · СИЛОВАЯ — 40-50 мин, без разминки (разминка уже сделана в игровом зале). 4 блока строго: 1) НИЗ ТЕЛА — преимущественно унилатерально, колено+таз-доминантно (Bulgarian Split Squat, Split Squat, выпады, Goblet Squat, Romanian Deadlift, SL RDL); 2) ВЕРХ ТЕЛА — жимы + подтягивания + тяги (DB Bench Press, Pull-up, Australian Pull-up, DB Row, Landmine Press); 3) АКЦЕНТ — профилактика / слабое звено по позиции; 4) КОР — антиротация / антиэкстензия / переноски (Pallof, Dead Bug, Suitcase Carry). ТОЛЬКО свободные веса, НИКАКИХ тренажёров. Не позже MD-3. Позиционные протоколы (Либеро/Связка/ОПП/MB/OH) применять как на сборах.',
-  inseason_power:        'СЕЗОН · МОЩНОСТНАЯ — 40-50 мин, гибрид-контраст: (1) безопасное скоростное движение DB/KB/trap-bar/medball/landmine/band с максимальной скоростью концентрики; (2) низко- или среднеударная плиометрика по готовности (pogo, snap-down, box jump low, medball throw, plyo push-up). Не позже MD-3. Без медленной эксцентрики, без высокообъёмной плиометрики рядом с игрой, без обычной штанги.',
+  inseason_power:        'СЕЗОН · МОЩНОСТЬ / СКОРОСТЬ — Development 50–55 мин на MD-4+ (MD-3 только green + невысокая match load) или Microdose 30 мин на MD-2; sprint/COD 5–7 м, позиционный прыжковый бюджет, одна complex-пара только в Development, upper/rotational power и prehab. Разминка проводится тренером отдельно.',
   inseason_prophylaxis:  'СЕЗОН · ПРОФИЛАКТИКА/ВОССТАНОВЛЕНИЕ — день MD+2 после игры (обычно понедельник) + pre-game MD-1. Слабые звенья волейболиста, мобильность, контроль движения, стабилизация суставов. БЕЗ тяжёлой штанги, БЕЗ высокоударной плиометрики. Pre-game MD-1: короткая нейромышечная активация + тонус, не утомлять.',
   inseason_accumulation: 'СЕЗОН · ФЕВРАЛЬ · БЛОК НАКОПЛЕНИЯ СИЛЫ — 60 мин (вместо обычных 40). Структура та же (4 блока), все блоки удлиняются пропорционально: больше сетов/упражнений. Интенсивность 80–87% 1ПМ с индивидуальной поправкой по состоянию (CMJ/RSI baseline + Recovery). Единственное окно сезона для реального набора силы перед мартовской конверсией. Волна 3:1 сохраняется. «Священные» упражнения обязательны.',
   inseason_conversion:   'СЕЗОН · МАРТ-АПРЕЛЬ · КОНВЕРСИЯ В МОЩНОСТЬ — перевод накопленной февральской силы в скоростно-силовые качества к плей-офф. Смещение акцента: больше баллистики и плиометрики, снижение медленной силовой работы, поддержание нейромышечной готовности. 40–50 мин.',
@@ -171,7 +172,7 @@ const MANUAL_FOCUS_LABELS = {
   camp_iso_posterior: 'СБОРЫ · ИЗОМЕТРИКА · Задняя цепь — ручной выбор тренера; пауза в напряжении 5 сек в угле 45° бедро → вверх максимально резко; метод не привязан к дню недели',
   camp_explosive:     'СБОРЫ · ВЗРЫВ / ПОТЕНЦИАЦИЯ — ручной выбор тренера; нагрузка 50-60% 1ПМ, максимальная скорость, объём -40-50%; без привязки к дню недели',
   inseason_strength:  'СЕЗОН · СИЛОВАЯ — ручной выбор тренера; 40-60 мин, развитие/поддержание силы, блоки под позицию игрока; день недели не меняет метод',
-  inseason_power:     'СЕЗОН · МОЩНОСТНАЯ — ручной выбор тренера; 30-45 мин, скорость DB/KB/trap-bar/medball/landmine/band, плиометрика только по готовности CMJ/RSI/Recovery; день недели не меняет метод',
+  inseason_power:     'СЕЗОН · МОЩНОСТЬ / СКОРОСТЬ — ручной выбор тренера; детерминированный режим Development 50–55 мин или Microdose 30 мин, позиционный прыжковый бюджет и sprint/COD 5–7 м',
   inseason_prophylaxis: 'СЕЗОН · ПРОФИЛАКТИКА/ВОССТАНОВЛЕНИЕ — ручной выбор тренера; слабые звенья, мобильность, контроль движения, стабилизация суставов; день недели не меняет метод',
   inseason_accumulation: 'СЕЗОН · БЛОК НАКОПЛЕНИЯ СИЛЫ — ручной выбор тренера; 60 мин, больше сетов/упражнений, 80-87% 1ПМ с поправкой по состоянию',
   inseason_conversion: 'СЕЗОН · КОНВЕРСИЯ В МОЩНОСТЬ — ручной выбор тренера; перевод силы в скоростно-силовые качества, меньше медленной силовой работы',
@@ -223,7 +224,7 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
     },
     alternatives: {
       type: 'array',
-      description: '2-3 профессиональные альтернативы только для основных упражнений блоков A/B/C. Для D/E оставь пустой массив. Названия упражнений на английском.',
+      description: '2-3 профессиональные альтернативы только для основных упражнений блоков A/B/C. Для D/E/F оставь пустой массив. Названия упражнений на английском.',
       items: { type: 'string' },
     },
     cue: {
@@ -258,12 +259,12 @@ export function buildSessionTool({ includeImgPrompt = false } = {}) {
         },
         blocks: {
           type: 'array',
-          description: 'Блоки тренировки по порядку. Каждый блок — круг/суперсет из 1–4 упражнений (A1→A2→A3→пауза→повтор круга). Обычно 5 блоков: A, B, C, D, E.',
+          description: 'Блоки тренировки по порядку. Каждый блок — круг/суперсет из 1–4 упражнений. Обычная сессия обычно A–E; inseason_power Development строго A–F, Microdose строго A–D; match-day строго A–C.',
           items: {
             type: 'object',
             required: ['label', 'rest_note', 'exercises'],
             properties: {
-              label: { type: 'string', description: 'Буква блока: A, B, C, D, E' },
+              label: { type: 'string', description: 'Буква блока: A, B, C, D, E или F согласно детерминированной структуре.' },
               rest_note: {
                 type: 'string',
                 description: 'Протокол отдыха. В игровом праймере: "15–30 сек X1→X2, полное восстановление между кругами". В обычной PAP-паре: "10-15 сек A1→A2, 3 мин после пары". Прямые подходы: "2-3 мин".',
@@ -1531,7 +1532,7 @@ export function systemPromptForGeneration(focus = '', workspace = 'zarechie') {
 // (generate-async.js) so both produce byte-identical prompts. Returns either
 // { error, status } on failure or { snapshot, userPrompt, dataSummary, targetDate, dayGoal }.
 export async function buildGenerationInputs(body) {
-  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie', planningMode = '', microcycleSlot = null } = body || {};
+  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', powerMode = 'auto', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie', planningMode = '', microcycleSlot = null } = body || {};
   if (!playerId) return { error: 'playerId required', status: 400 };
   const wpfx = pfx(workspace);
 
@@ -1618,21 +1619,17 @@ export async function buildGenerationInputs(body) {
   let effectiveFocus = seasonDecision?.focus || focus;
   let effectiveTrainingType = seasonDecision?.trainingType || trainingType;
   let focusDowngradeNote = '';
+  let powerKpiRecovery = 'green';
   if (workspace === 'zarechie' && effectiveFocus === 'inseason_power') {
     const kpis = performanceKpis(snapshot.neuro, targetDate);
     const depressed = [kpis.rsi, kpis.cmj, kpis.sprint10m]
       .filter(metric => metric.value != null && !metric.stale && metric.meaningfulDecline);
     if (depressed.length >= 2) {
       const detail = depressed.map(metric => `${metric.label} ${metric.performanceDeltaPercent}% от baseline`).join(', ');
-      focusDowngradeNote = `\n⚠ КОРРЕКЦИЯ ДОЗЫ МОЩНОСТИ: два свежих индивидуальных KPI снижены (${detail}). Сохрани выбранный метод inseason_power, но сократи плиометрику/спринт на 30-50%, оставь только высококачественные повторения, останови блок при падении техники или скорости.\n`;
+      powerKpiRecovery = 'yellow';
+      focusDowngradeNote = `\n⚠ КОРРЕКЦИЯ ДОЗЫ МОЩНОСТИ: два свежих индивидуальных KPI снижены (${detail}). Применён детерминированный YELLOW-профиль; качество, полный отдых и тяжёлая complex-пара Development сохраняются.\n`;
     }
   }
-
-  // Team Playbook — evidence from the team's own historical session outcomes.
-  const playbookData = await getTeamPlaybook(workspace).catch(() => null);
-  const playbookText = playbookData
-    ? formatPlaybookForPrompt(playbookData, snapshot.player?.position || '', effectiveFocus)
-    : '';
 
   // Match-day methodology deliberately has no day-of CMJ/RSImod test. Weekly
   // KPI history remains visible in the prompt, but its absence today must not
@@ -1646,8 +1643,34 @@ export async function buildGenerationInputs(body) {
   });
   // On match day, local pain changes the affected chain inside the primer
   // policy; it does not silently cancel loading of every healthy region.
-  const automaticDoseRecovery = matchDayAutomaticRecoveryStatus(readiness.decision, seasonDecision?.key === 'match_day');
+  const automaticDoseRecovery = strictestRecoveryStatus(
+    matchDayAutomaticRecoveryStatus(readiness.decision, seasonDecision?.key === 'match_day'),
+    powerKpiRecovery,
+  );
   const effectiveRecovery = strictestRecoveryStatus(coachRecovery, automaticDoseRecovery);
+  const powerContext = buildInSeasonPowerContext({
+    focus: effectiveFocus,
+    seasonDecision,
+    position: snapshot.player?.position || '',
+    recoveryStatus: effectiveRecovery,
+    requestedMode: powerMode,
+  });
+  if (powerContext?.mode === 'recovery') {
+    effectiveFocus = 'inseason_prophylaxis';
+    effectiveTrainingType = 'recovery_prehab';
+    focusDowngradeNote = '';
+    if (seasonDecision) {
+      seasonDecision = {
+        ...seasonDecision,
+        key: 'power_red_recovery',
+        focus: effectiveFocus,
+        trainingType: effectiveTrainingType,
+        label: 'Recovery / prehab вместо мощности',
+        reason: powerContext.reason,
+        requestedPowerKey: seasonDecision.key,
+      };
+    }
+  }
   const matchDayPrimer = buildMatchDayPrimerContext({
     targetDate,
     seasonDecision,
@@ -1656,6 +1679,13 @@ export async function buildGenerationInputs(body) {
     recoveryStatus: effectiveRecovery,
   });
   if (matchDayPrimer) seasonDecision = { ...seasonDecision, primer: matchDayPrimer };
+
+  // Team Playbook — evidence from the team's own historical session outcomes.
+  // Resolve it after readiness because red power days become recovery/prehab.
+  const playbookData = await getTeamPlaybook(workspace).catch(() => null);
+  const playbookText = playbookData
+    ? formatPlaybookForPrompt(playbookData, snapshot.player?.position || '', effectiveFocus)
+    : '';
   const freshQuestionnaires = [
     readiness.eveningFresh ? readiness.evening : null,
     readiness.postMorningFresh ? readiness.postMorning : null,
@@ -1684,19 +1714,27 @@ export async function buildGenerationInputs(body) {
     userPrompt += matchDayPrimerText;
     dataSummary += matchDayPrimerText;
   }
+  const powerMethodText = formatInSeasonPowerForPrompt(powerContext);
+  if (powerMethodText) {
+    userPrompt += powerMethodText;
+    dataSummary += powerMethodText;
+  }
   const dosePrescription = buildDosePrescription({
     focus: effectiveFocus,
     trainingType: effectiveTrainingType,
     coachRecovery: effectiveRecovery,
     seasonContext: seasonDecision,
     matchDayPrimer,
+    powerContext,
   });
   const doseText = formatDosePrescriptionForPrompt(dosePrescription);
   userPrompt += doseText;
   dataSummary += doseText;
-  if (effectiveRecovery !== coachRecovery) {
+  if (effectiveRecovery !== coachRecovery || powerContext?.mode === 'recovery') {
     const readinessNote = `\n⚠ АВТОМАТИЧЕСКАЯ КОРРЕКЦИЯ ДОЗЫ: ${readiness.decision.label}. ${readiness.decision.detail} `
-      + `Выбранная тренером цепь и метод сохраняются, но объём, длительность и RPE обязаны соответствовать статусу ${effectiveRecovery.toUpperCase()}.\n`;
+      + (powerContext?.mode === 'recovery'
+        ? 'Красный статус отменяет мощностную работу: назначь recovery/prehab без прыжков и тяжёлой силы.\n'
+        : `Выбранная тренером цепь и метод сохраняются, но объём, длительность и RPE обязаны соответствовать статусу ${effectiveRecovery.toUpperCase()}.\n`);
     userPrompt += readinessNote;
     dataSummary += readinessNote;
   }
@@ -1768,6 +1806,7 @@ export async function buildGenerationInputs(body) {
       trainingType: effectiveTrainingType,
       recentSessionSummaries: sessionSummaries,
       dosePrescription,
+      powerContext,
       effectiveRecovery,
       seasonDecision,
       medicalReviewRequired,

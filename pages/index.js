@@ -642,7 +642,7 @@ const WARMUP_PHASE_MAP = {
 const PHASES_BY_PERIOD = {
   inseason: [
     { value: 'inseason_strength',     label: 'Силовая / поддержание', sub: '35-55 мин · RPE 7-8' },
-    { value: 'inseason_power',        label: 'Мощность / скорость',   sub: '25-40 мин · высокое качество' },
+    { value: 'inseason_power',        label: 'Мощность / скорость',   sub: 'Development 50–55 · Microdose 30 мин' },
     { value: 'inseason_prophylaxis',  label: 'Профилактика',          sub: 'Слабые звенья · суставы' },
     { value: 'inseason_deload',       label: 'Разгрузочная неделя',  sub: 'По тренду усталости и календарю' },
     { value: 'inseason_accumulation', label: 'Накопление', sub: 'Только в окне без плотных матчей' },
@@ -1990,6 +1990,7 @@ export default function Home() {
   const [period, setPeriod] = useState('inseason');
   const [focus, setFocus] = useState('inseason_strength');
   const [trainingType, setTrainingType] = useState('full_body');
+  const [powerMode, setPowerMode] = useState('development');
   const [notes, setNotes] = useState('');
   const [sessionType, setSessionType] = useState('gym'); // 'gym' | 'warmup'
   const [loading, setLoading] = useState(false);
@@ -3051,7 +3052,7 @@ export default function Home() {
     const submitRes = await fetch('/api/programs/generate-async', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, trainingType, notes, coachRecovery: recoveryStatus, workspace, autoSave: true }),
+      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, trainingType, powerMode, notes, coachRecovery: recoveryStatus, workspace, autoSave: true }),
     });
     const submitData = await submitRes.json().catch(() => ({}));
     if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
@@ -3167,6 +3168,7 @@ export default function Home() {
           days,
           focus,
           trainingType,
+          powerMode,
           notes,
           warmupSummary,
           coachRecovery: recoveryStatus,
@@ -3267,6 +3269,7 @@ export default function Home() {
             days,
             focus: f.focus,
             trainingType: f.trainingType,
+            powerMode: f.focus === 'inseason_power' ? powerMode : 'auto',
             notes,
             warmupSummary: i === 0 ? warmupSummary : '',
             teamUsedExercises: usedExercises,
@@ -4125,6 +4128,29 @@ export default function Home() {
                       <option key={ph.value} value={ph.value}>{phaseLabelForWorkspace(ph, workspace)}</option>
                     ))}
                   </select>
+
+                  {focus === 'inseason_power' && (
+                    <div className="grid grid-cols-2 gap-1 rounded-lg border border-violet-400/20 bg-violet-400/[0.05] p-1">
+                      {[
+                        { value: 'development', label: 'Development', sub: '50–55 мин' },
+                        { value: 'microdose', label: 'Microdose', sub: '30 мин' },
+                      ].map(mode => (
+                        <button
+                          key={mode.value}
+                          type="button"
+                          onClick={() => setPowerMode(mode.value)}
+                          className={`rounded-md px-2 py-1.5 text-left transition ${
+                            powerMode === mode.value
+                              ? 'bg-violet-400/20 text-violet-200'
+                              : 'text-slate-600 hover:text-slate-400'
+                          }`}
+                        >
+                          <span className="block text-[10px] font-black">{mode.label}</span>
+                          <span className="block text-[8px]">{mode.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Manual training type */}
                   <select
@@ -5867,6 +5893,28 @@ export default function Home() {
                     </option>
                   ))}
                 </select>
+                {focus === 'inseason_power' && (
+                  <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-xl border border-violet-400/20 bg-violet-400/[0.05] p-1.5">
+                    {[
+                      { value: 'development', label: 'Development', sub: '50–55 мин · полная работа' },
+                      { value: 'microdose', label: 'Microdose', sub: '30 мин · без тяжёлой пары' },
+                    ].map(mode => (
+                      <button
+                        key={mode.value}
+                        type="button"
+                        onClick={() => setPowerMode(mode.value)}
+                        className={`rounded-lg border px-3 py-2 text-left transition ${
+                          powerMode === mode.value
+                            ? 'border-violet-300/40 bg-violet-400/20 text-violet-100'
+                            : 'border-transparent text-slate-600 hover:bg-white/[0.04] hover:text-slate-400'
+                        }`}
+                      >
+                        <span className="block text-[11px] font-black">{mode.label}</span>
+                        <span className="mt-0.5 block text-[9px] opacity-70">{mode.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
