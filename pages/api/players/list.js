@@ -6,6 +6,9 @@ import { isAuthorized } from '../../../lib/auth';
 import { extractPlayerPhoto, hydratePlayerPhotos } from '../../../lib/playerPhotos';
 import { rosterKey, sessionsKey } from '../../../lib/workspacePrefix';
 import { dashboardRedis, dashboardRedisPipeline, hasZarechieDashboardStore } from '../../../lib/zarechieDashboardStore';
+import { getReadySixRoster, usesReadySix } from '../../../lib/readySixClient';
+import { normalizeReadySixRoster } from '../../../lib/readySixSnapshotAdapter';
+import { todayISO } from '../../../lib/playerData';
 
 // Upstash REST may return already-parsed objects — parse defensively.
 function parseJSON(raw) {
@@ -42,6 +45,23 @@ export default async function handler(req, res) {
 
   try {
   const workspace = String(req.query.workspace || 'zarechie');
+
+  if (usesReadySix(workspace)) {
+    const payload = await getReadySixRoster(workspace, todayISO());
+    const roster = await hydratePlayerPhotos(normalizeReadySixRoster(payload), workspace);
+    const meta = await redisPipeline(
+      roster.map(player => ['zrange', sessionsKey(workspace, player.id), -1, -1])
+    ).catch(() => []);
+    return res.status(200).json({
+      source: 'readysix',
+      organizationId: payload.organizationId,
+      revision: payload.revision,
+      players: roster.map((player, index) => ({
+        ...player,
+        lastSessionDate: Array.isArray(meta[index]) && meta[index].length ? meta[index][0] : null,
+      })),
+    });
+  }
 
   if (workspace === 'nkperf') {
     const raw = await redis('get', rosterKey(workspace)).catch(() => null);

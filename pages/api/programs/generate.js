@@ -1981,6 +1981,27 @@ export default async function handler(req, res) {
 // ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
 function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie', microcycleSlot = null, seasonDecision = null }) {
   let dataSummary = summarizeSnapshot(snapshot, workspace);
+  if (snapshot.readySixDecision) {
+    const decision = snapshot.readySixDecision;
+    const strengthTargets = (decision.targets || []).filter(target =>
+      target.target === 'strength_upper' || target.target === 'strength_lower'
+    );
+    const targetLines = strengthTargets.map(target =>
+      `• ${target.target === 'strength_upper' ? 'Верх тела' : 'Низ тела'}: лимит ${target.capPercent ?? '—'}%${target.restrictions?.length ? `; ${target.restrictions.join('; ')}` : ''}`
+    );
+    const block = [
+      '',
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+      `READYSIX · АВТОМАТИЧЕСКАЯ ГРАНИЦА НАГРУЗКИ (${decision.engineVersion || 'версия не указана'})`,
+      `• Общий лимит: ${decision.capPercent ?? '—'}% | уверенность: ${decision.confidence || 'не указана'} | hard stop: ${decision.hardStopSignal ? 'ДА' : 'нет'}`,
+      ...targetLines,
+      decision.reasons?.length ? `• Основания: ${decision.reasons.join('; ')}` : null,
+      decision.restrictions?.length ? `• Ограничения: ${decision.restrictions.join('; ')}` : null,
+      '→ Это верхняя граница. Ручной статус тренера может сделать решение строже, но не мягче.',
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    ].filter(Boolean).join('\n');
+    dataSummary += `\n${block}`;
+  }
   const freshEveningContext = eveningSafetyContext(snapshot.surveys, targetDate, snapshot.latestSurvey);
   const freshPostMorningContext = postMorningSafetyContext(snapshot.postMorningSurveys, targetDate, snapshot.latestPostMorning);
 
