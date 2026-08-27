@@ -1,4 +1,4 @@
-const CACHE = 'nk-coach-v2';
+const CACHE = 'nk-coach-v3';
 const STATIC_PATHS = new Set(['/nk-logo.jpg', '/favicon.svg']);
 
 self.addEventListener('install', event => {
@@ -61,15 +61,15 @@ function offlineResponse(request, url) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07101a">
+  <meta name="theme-color" content="#050b12">
   <title>Нет соединения · NK Coach</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#07101a;color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:24px;text-align:center}.card{max-width:420px}.icon{font-size:48px;margin-bottom:18px}h1{font-size:22px;margin:0 0 10px}p{color:#94a3b8;font-size:15px;line-height:1.5;margin:0 0 24px}button{border:1px solid rgba(74,222,128,.35);border-radius:14px;background:rgba(74,222,128,.14);color:#4ade80;font-size:15px;font-weight:700;padding:12px 20px}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 20% 0,rgba(52,211,153,.16),transparent 38%),linear-gradient(160deg,#050b12,#071820);color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:24px;text-align:center}.card{width:min(100%,420px);border:1px solid rgba(110,231,183,.16);border-radius:28px;padding:34px 24px;background:rgba(12,29,34,.72);box-shadow:0 30px 80px rgba(0,0,0,.45)}.logo{width:58px;height:58px;border:1px solid rgba(110,231,183,.3);border-radius:18px;object-fit:cover;box-shadow:0 12px 32px rgba(0,0,0,.38);margin-bottom:20px}h1{font-size:24px;letter-spacing:-.03em;margin:0 0 10px}p{color:#94a3b8;font-size:15px;line-height:1.55;margin:0 0 24px}button{border:1px solid rgba(74,222,128,.38);border-radius:16px;background:linear-gradient(145deg,#6aefad,#39d58c);color:#06120d;font-size:15px;font-weight:800;padding:13px 22px;box-shadow:0 12px 28px rgba(52,211,153,.18)}
   </style>
 </head>
 <body>
   <main class="card">
-    <div class="icon">📡</div>
+    <img class="logo" src="/nk-logo.jpg" alt="NK">
     <h1>Нет соединения с сервером</h1>
     <p>Проверь интернет и попробуй открыть тренировку ещё раз.</p>
     <button type="button" onclick="location.reload()">Повторить</button>

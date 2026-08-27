@@ -23,3 +23,19 @@ test('player exercise surfaces use premium branded glass components', () => {
 test('player install prompt stays aligned to the mobile application canvas', () => {
   assert.match(styles, /\.player-install-hint \{[\s\S]*width: min\(calc\(100% - 32px\), 508px\)/);
 });
+
+test('player experience includes start, focus, rest, undo and completion states', () => {
+  assert.match(playerPage, /player-start-card/);
+  assert.match(playerPage, /player-focus-toggle/);
+  assert.match(playerPage, /player-rest-timer/);
+  assert.match(playerPage, /player-undo-toast/);
+  assert.match(playerPage, /player-completion-summary/);
+  assert.match(playerPage, /gym:pending:/);
+});
+
+test('exercise technique opens in a branded in-app video modal', () => {
+  assert.match(playerPage, /PlayerVideoModal/);
+  assert.match(playerPage, /youtube-nocookie\.com\/embed/);
+  assert.match(styles, /\.player-video-modal-card/);
+  assert.match(styles, /@keyframes player-modal-in/);
+});
