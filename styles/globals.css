@@ -55,7 +55,11 @@ select {
 }
 
 .app-shell p,
-.app-shell li,
+.app-shell li {
+  font-weight: 450;
+  letter-spacing: -0.012em;
+}
+
 .app-shell label,
 .app-shell input,
 .app-shell textarea,
@@ -201,8 +205,8 @@ select {
   transform: translateY(-48%);
   pointer-events: none;
   background: url('/nk-logo.jpg') center / contain no-repeat;
-  opacity: 0.045;
-  filter: grayscale(0.15) saturate(0.85) contrast(1.3);
+  opacity: 0.062;
+  filter: grayscale(0.08) saturate(0.92) contrast(1.52);
   mix-blend-mode: screen;
   -webkit-mask-image: radial-gradient(circle, #000 34%, rgba(0,0,0,0.84) 54%, transparent 76%);
   mask-image: radial-gradient(circle, #000 34%, rgba(0,0,0,0.84) 54%, transparent 76%);
@@ -306,7 +310,10 @@ select {
 
 .sidebar-player-row {
   min-height: 54px;
-  box-shadow: inset 0 1px rgba(255,255,255,0.018);
+  background: linear-gradient(145deg, rgba(255,255,255,0.026), rgba(255,255,255,0.008));
+  box-shadow: inset 0 1px rgba(255,255,255,0.022);
+  -webkit-backdrop-filter: blur(14px) saturate(1.16);
+  backdrop-filter: blur(14px) saturate(1.16);
 }
 
 .sidebar-player-row:hover {
@@ -314,8 +321,7 @@ select {
 }
 
 .sidebar-roster-head {
-  background:
-    linear-gradient(180deg, rgba(7, 16, 25, 0.99) 0%, rgba(7, 16, 25, 0.94) 78%, rgba(7, 16, 25, 0) 100%);
+  background: transparent;
 }
 
 .premium-sidebar--collapsed .sidebar-copy,
@@ -388,7 +394,9 @@ select {
     radial-gradient(circle at 7% 0%, rgba(52, 211, 153, 0.16), transparent 35%),
     radial-gradient(circle at 92% 10%, rgba(139, 92, 246, 0.12), transparent 32%),
     radial-gradient(circle at 72% 100%, rgba(34, 211, 238, 0.09), transparent 36%),
-    linear-gradient(145deg, rgba(14, 29, 37, 0.97), rgba(8, 17, 27, 0.985));
+    linear-gradient(145deg, rgba(14, 29, 37, 0.72), rgba(8, 17, 27, 0.80));
+  -webkit-backdrop-filter: blur(28px) saturate(1.22);
+  backdrop-filter: blur(28px) saturate(1.22);
   box-shadow:
     0 46px 120px -66px rgba(0, 0, 0, 1),
     0 0 0 1px rgba(110, 231, 183, 0.025),
@@ -417,8 +425,8 @@ select {
   content: "";
   pointer-events: none;
   background: url('/nk-logo.jpg') center / contain no-repeat;
-  opacity: 0.035;
-  filter: grayscale(0.2) saturate(0.85) contrast(1.35);
+  opacity: 0.064;
+  filter: grayscale(0.12) saturate(0.9) contrast(1.55);
   mix-blend-mode: screen;
   -webkit-mask-image: radial-gradient(circle, #000 30%, rgba(0,0,0,0.75) 54%, transparent 75%);
   mask-image: radial-gradient(circle, #000 30%, rgba(0,0,0,0.75) 54%, transparent 75%);
@@ -426,8 +434,10 @@ select {
 
 .command-stat,
 .command-player-card {
-  background: linear-gradient(145deg, rgba(255,255,255,0.052), rgba(255,255,255,0.018));
+  background: linear-gradient(145deg, rgba(255,255,255,0.038), rgba(255,255,255,0.010));
   box-shadow: inset 0 1px rgba(255,255,255,0.035);
+  -webkit-backdrop-filter: blur(18px) saturate(1.16);
+  backdrop-filter: blur(18px) saturate(1.16);
 }
 
 .command-stat {
@@ -471,7 +481,9 @@ select {
     radial-gradient(circle at 8% 0%, rgba(52,211,153,0.10), transparent 35%),
     radial-gradient(circle at 96% 100%, rgba(139,92,246,0.065), transparent 32%),
     linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.014)),
-    rgba(8, 17, 24, 0.72);
+    rgba(8, 17, 24, 0.56);
+  -webkit-backdrop-filter: blur(22px) saturate(1.18);
+  backdrop-filter: blur(22px) saturate(1.18);
   box-shadow: 0 22px 64px -44px rgba(0,0,0,0.92), inset 0 1px rgba(255,255,255,0.065);
 }
 
@@ -489,6 +501,8 @@ select {
 .premium-workspace-tabs {
   background: linear-gradient(180deg, rgba(255,255,255,0.024), rgba(0,0,0,0.14));
   box-shadow: inset 0 1px rgba(255,255,255,0.035), 0 14px 34px -30px rgba(0,0,0,0.96);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  backdrop-filter: blur(18px) saturate(1.15);
 }
 
 .premium-form {
@@ -496,7 +510,9 @@ select {
   background:
     radial-gradient(circle at 0 0, rgba(52, 211, 153, 0.11), transparent 34%),
     radial-gradient(circle at 100% 0, rgba(139, 92, 246, 0.055), transparent 30%),
-    linear-gradient(145deg, rgba(15, 28, 34, 0.96), rgba(9, 18, 27, 0.96));
+    linear-gradient(145deg, rgba(15, 28, 34, 0.73), rgba(9, 18, 27, 0.80));
+  -webkit-backdrop-filter: blur(26px) saturate(1.2);
+  backdrop-filter: blur(26px) saturate(1.2);
   box-shadow:
     0 34px 94px -56px rgba(0, 0, 0, 1),
     0 0 0 1px rgba(110,231,183,0.018),
@@ -514,8 +530,8 @@ select {
   content: "";
   pointer-events: none;
   background: url('/nk-logo.jpg') center / contain no-repeat;
-  opacity: 0.018;
-  filter: grayscale(0.2) contrast(1.4);
+  opacity: 0.043;
+  filter: grayscale(0.12) contrast(1.58);
   mix-blend-mode: screen;
   -webkit-mask-image: radial-gradient(circle, #000 26%, transparent 72%);
   mask-image: radial-gradient(circle, #000 26%, transparent 72%);
@@ -528,7 +544,9 @@ select {
   background:
     radial-gradient(circle at 100% 0, rgba(34, 211, 238, 0.085), transparent 32%),
     radial-gradient(circle at 0 100%, rgba(139, 92, 246, 0.045), transparent 30%),
-    linear-gradient(155deg, rgba(12, 25, 30, 0.98), rgba(8, 17, 24, 0.98));
+    linear-gradient(155deg, rgba(12, 25, 30, 0.74), rgba(8, 17, 24, 0.82));
+  -webkit-backdrop-filter: blur(26px) saturate(1.2);
+  backdrop-filter: blur(26px) saturate(1.2);
   box-shadow:
     0 38px 104px -58px rgba(0,0,0,1),
     0 0 0 1px rgba(103,232,249,0.018),
@@ -537,7 +555,9 @@ select {
 
 .premium-exercise-card {
   background:
-    linear-gradient(155deg, rgba(21, 34, 36, 0.98), rgba(12, 24, 28, 0.98));
+    linear-gradient(155deg, rgba(21, 34, 36, 0.72), rgba(12, 24, 28, 0.80));
+  -webkit-backdrop-filter: blur(22px) saturate(1.18);
+  backdrop-filter: blur(22px) saturate(1.18);
   box-shadow:
     0 24px 58px -34px rgba(0, 0, 0, 0.98),
     0 0 0 1px rgba(110,231,183,0.014),
@@ -546,10 +566,110 @@ select {
 
 .premium-exercise-card:hover {
   background:
-    linear-gradient(155deg, rgba(24, 39, 41, 0.99), rgba(13, 27, 31, 0.99));
+    linear-gradient(155deg, rgba(31, 49, 51, 0.80), rgba(13, 27, 31, 0.88));
   box-shadow:
     0 28px 64px -36px rgba(0, 0, 0, 0.98),
     inset 0 1px rgba(255,255,255,0.06);
+}
+
+.premium-popover,
+.premium-select-popover,
+.premium-modal-card,
+.premium-toast {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(52, 211, 153, 0.14), transparent 42%),
+    radial-gradient(circle at 100% 100%, rgba(139, 92, 246, 0.10), transparent 40%),
+    linear-gradient(145deg, rgba(14, 28, 36, 0.80), rgba(7, 15, 25, 0.88));
+  -webkit-backdrop-filter: blur(30px) saturate(1.35);
+  backdrop-filter: blur(30px) saturate(1.35);
+  box-shadow:
+    0 32px 90px -34px rgba(0, 0, 0, 0.98),
+    0 0 0 1px rgba(103, 232, 249, 0.025),
+    inset 0 1px rgba(255, 255, 255, 0.10);
+}
+
+.premium-select-trigger {
+  display: flex;
+  background-image:
+    linear-gradient(120deg, rgba(255,255,255,0.026), transparent 44%),
+    linear-gradient(145deg, rgba(11, 25, 32, 0.52), rgba(7, 16, 25, 0.62));
+  -webkit-backdrop-filter: blur(16px) saturate(1.18);
+  backdrop-filter: blur(16px) saturate(1.18);
+  box-shadow: inset 0 1px rgba(255,255,255,0.045), 0 16px 34px -30px rgba(0,0,0,0.95);
+}
+
+.premium-select-trigger[aria-expanded="true"] {
+  border-color: rgba(103, 232, 249, 0.42);
+  background-image:
+    radial-gradient(circle at 12% 0%, rgba(52,211,153,0.10), transparent 55%),
+    linear-gradient(145deg, rgba(14, 33, 39, 0.72), rgba(8, 18, 29, 0.76));
+  box-shadow: 0 0 0 3px rgba(34,211,238,0.07), inset 0 1px rgba(255,255,255,0.07);
+}
+
+.premium-select-popover {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(103,232,249,0.30) transparent;
+  animation: premium-popover-in 150ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.premium-select-option {
+  color: #91a3af;
+}
+
+.premium-select-option:hover {
+  background: linear-gradient(90deg, rgba(103,232,249,0.09), rgba(139,92,246,0.05));
+  color: #f0fdfa;
+}
+
+.premium-select-option.is-selected {
+  background: linear-gradient(90deg, rgba(52,211,153,0.15), rgba(34,211,238,0.075));
+  box-shadow: inset 0 1px rgba(255,255,255,0.045);
+}
+
+.premium-modal-backdrop {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(34,211,238,0.08), transparent 34%),
+    rgba(2, 7, 13, 0.68);
+  -webkit-backdrop-filter: blur(14px) saturate(0.85);
+  backdrop-filter: blur(14px) saturate(0.85);
+}
+
+.premium-modal-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.premium-modal-card::before {
+  position: absolute;
+  top: -90px;
+  right: -90px;
+  width: 240px;
+  aspect-ratio: 1;
+  content: "";
+  pointer-events: none;
+  background: url('/nk-logo.jpg') center / contain no-repeat;
+  opacity: 0.045;
+  filter: grayscale(0.1) contrast(1.55);
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(circle, #000 30%, transparent 72%);
+  mask-image: radial-gradient(circle, #000 30%, transparent 72%);
+}
+
+.premium-modal-card h3 {
+  position: relative;
+  font-family: var(--type-display);
+  font-size: 1.25rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.premium-toast {
+  box-shadow: 0 24px 70px -30px rgba(16,185,129,0.68), inset 0 1px rgba(255,255,255,0.09);
+}
+
+@keyframes premium-popover-in {
+  from { opacity: 0; transform: translateY(-5px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .app-shell .text-slate-700 {
