@@ -3747,6 +3747,7 @@ export default function Home() {
       </div>
 
       <div className="app-shell relative flex min-h-screen text-slate-100">
+        <div className="nk-background-mark print:hidden" aria-hidden="true" />
 
         {/* ══════════════════════════════════════
             SIDEBAR — desktop only (sm+)

@@ -28,13 +28,53 @@ body {
 }
 
 .app-shell {
+  position: relative;
   isolation: isolate;
   font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background:
     radial-gradient(circle at 20% 8%, rgba(52, 211, 153, 0.095), transparent 30%),
     radial-gradient(circle at 92% 92%, rgba(34, 211, 238, 0.08), transparent 31%),
-    radial-gradient(circle at 78% 4%, rgba(139, 92, 246, 0.055), transparent 28%),
+    radial-gradient(circle at 78% 4%, rgba(139, 92, 246, 0.072), transparent 28%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.012) 0, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 120px),
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.009) 0, rgba(255,255,255,0.009) 1px, transparent 1px, transparent 120px),
     linear-gradient(145deg, #071017 0%, #07111a 50%, #081820 100%);
+}
+
+.app-shell::before {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, transparent 0 42%, rgba(110,231,183,0.025) 48%, transparent 54%),
+    radial-gradient(circle at 58% 48%, transparent 0 28%, rgba(103,232,249,0.035) 48%, transparent 66%);
+}
+
+.nk-background-mark {
+  position: fixed;
+  z-index: 0;
+  top: 50%;
+  right: clamp(-170px, -4vw, -40px);
+  width: min(62vw, 920px);
+  aspect-ratio: 1;
+  transform: translateY(-48%);
+  pointer-events: none;
+  background: url('/nk-logo.jpg') center / contain no-repeat;
+  opacity: 0.045;
+  filter: grayscale(0.15) saturate(0.85) contrast(1.3);
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(circle, #000 34%, rgba(0,0,0,0.84) 54%, transparent 76%);
+  mask-image: radial-gradient(circle, #000 34%, rgba(0,0,0,0.84) 54%, transparent 76%);
+}
+
+.nk-background-mark::after {
+  position: absolute;
+  inset: 16%;
+  border: 1px solid rgba(110, 231, 183, 0.45);
+  border-radius: 50%;
+  content: "";
+  box-shadow: 0 0 120px rgba(52, 211, 153, 0.20), inset 0 0 90px rgba(34, 211, 238, 0.12);
 }
 
 .premium-sidebar {
@@ -47,8 +87,9 @@ body {
     linear-gradient(180deg, rgba(10, 19, 29, 0.99), rgba(6, 12, 21, 0.995)),
     #071019;
   box-shadow:
-    32px 0 80px -52px rgba(0, 0, 0, 0.98),
-    inset -1px 0 rgba(255, 255, 255, 0.018);
+    38px 0 96px -58px rgba(0, 0, 0, 1),
+    inset -1px 0 rgba(255, 255, 255, 0.024),
+    inset 0 1px rgba(255, 255, 255, 0.025);
   transition: width 240ms cubic-bezier(.2,.8,.2,1);
 }
 
@@ -70,6 +111,16 @@ body {
   background:
     radial-gradient(circle at 18% 0%, rgba(52, 211, 153, 0.14), transparent 42%),
     linear-gradient(180deg, rgba(255,255,255,0.025), transparent);
+}
+
+.sidebar-brand::after {
+  position: absolute;
+  right: 18px;
+  bottom: -1px;
+  left: 18px;
+  height: 1px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(110,231,183,0.34), rgba(103,232,249,0.18), transparent);
 }
 
 .sidebar-nav-grid {
@@ -116,6 +167,10 @@ body {
 .sidebar-player-row {
   min-height: 54px;
   box-shadow: inset 0 1px rgba(255,255,255,0.018);
+}
+
+.sidebar-player-row:hover {
+  box-shadow: 0 16px 34px -26px rgba(34, 211, 238, 0.55), inset 0 1px rgba(255,255,255,0.04);
 }
 
 .sidebar-roster-head {
@@ -176,6 +231,7 @@ body {
 
 .workspace-main {
   position: relative;
+  z-index: 1;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   background:
@@ -194,11 +250,14 @@ body {
     radial-gradient(circle at 72% 100%, rgba(34, 211, 238, 0.09), transparent 36%),
     linear-gradient(145deg, rgba(14, 29, 37, 0.97), rgba(8, 17, 27, 0.985));
   box-shadow:
-    0 42px 110px -66px rgba(0, 0, 0, 0.98),
-    inset 0 1px rgba(255, 255, 255, 0.075);
+    0 46px 120px -66px rgba(0, 0, 0, 1),
+    0 0 0 1px rgba(110, 231, 183, 0.025),
+    inset 0 1px rgba(255, 255, 255, 0.085),
+    inset 0 -1px rgba(103, 232, 249, 0.028);
 }
 
 .premium-command-center::before {
+  z-index: 2;
   position: absolute;
   top: 0;
   left: 8%;
@@ -208,11 +267,49 @@ body {
   background: linear-gradient(90deg, transparent, rgba(110, 231, 183, 0.72), rgba(103, 232, 249, 0.52), transparent);
 }
 
+.premium-command-center::after {
+  position: absolute;
+  z-index: 0;
+  top: -22%;
+  right: -11%;
+  width: min(58%, 720px);
+  aspect-ratio: 1;
+  content: "";
+  pointer-events: none;
+  background: url('/nk-logo.jpg') center / contain no-repeat;
+  opacity: 0.035;
+  filter: grayscale(0.2) saturate(0.85) contrast(1.35);
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(circle, #000 30%, rgba(0,0,0,0.75) 54%, transparent 75%);
+  mask-image: radial-gradient(circle, #000 30%, rgba(0,0,0,0.75) 54%, transparent 75%);
+}
+
 .command-stat,
 .command-player-card {
   background: linear-gradient(145deg, rgba(255,255,255,0.052), rgba(255,255,255,0.018));
   box-shadow: inset 0 1px rgba(255,255,255,0.035);
 }
+
+.command-stat {
+  position: relative;
+  overflow: hidden;
+}
+
+.command-stat::after {
+  position: absolute;
+  top: 0;
+  right: 18%;
+  left: 18%;
+  height: 1px;
+  content: "";
+  background: linear-gradient(90deg, transparent, currentColor, transparent);
+  opacity: 0.22;
+}
+
+.command-stat:nth-child(1) { border-color: rgba(103,232,249,0.14); }
+.command-stat:nth-child(2) { border-color: rgba(110,231,183,0.14); }
+.command-stat:nth-child(3) { border-color: rgba(167,243,208,0.14); }
+.command-stat:nth-child(4) { border-color: rgba(196,181,253,0.14); }
 
 .command-player-card:hover {
   background: linear-gradient(145deg, rgba(103,232,249,0.10), rgba(139,92,246,0.04));
@@ -228,44 +325,83 @@ body {
 }
 
 .premium-player-header {
+  position: relative;
+  overflow: hidden;
   background:
     radial-gradient(circle at 8% 0%, rgba(52,211,153,0.10), transparent 35%),
     radial-gradient(circle at 96% 100%, rgba(139,92,246,0.065), transparent 32%),
     linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.014)),
     rgba(8, 17, 24, 0.72);
-  box-shadow: 0 18px 60px -42px rgba(0,0,0,0.88), inset 0 1px rgba(255,255,255,0.045);
+  box-shadow: 0 22px 64px -44px rgba(0,0,0,0.92), inset 0 1px rgba(255,255,255,0.065);
+}
+
+.premium-player-header::after {
+  position: absolute;
+  top: 0;
+  right: 5%;
+  left: 5%;
+  height: 1px;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(110,231,183,0.36), rgba(196,181,253,0.18), transparent);
 }
 
 .premium-workspace-tabs {
-  box-shadow: inset 0 1px rgba(255,255,255,0.025);
+  background: linear-gradient(180deg, rgba(255,255,255,0.024), rgba(0,0,0,0.14));
+  box-shadow: inset 0 1px rgba(255,255,255,0.035), 0 14px 34px -30px rgba(0,0,0,0.96);
 }
 
 .premium-form {
+  isolation: isolate;
   background:
     radial-gradient(circle at 0 0, rgba(52, 211, 153, 0.11), transparent 34%),
     radial-gradient(circle at 100% 0, rgba(139, 92, 246, 0.055), transparent 30%),
     linear-gradient(145deg, rgba(15, 28, 34, 0.96), rgba(9, 18, 27, 0.96));
   box-shadow:
-    0 28px 80px -52px rgba(0, 0, 0, 0.96),
-    inset 0 1px rgba(255,255,255,0.065);
+    0 34px 94px -56px rgba(0, 0, 0, 1),
+    0 0 0 1px rgba(110,231,183,0.018),
+    inset 0 1px rgba(255,255,255,0.078);
+}
+
+.premium-form::after,
+.premium-session-card::after {
+  position: absolute;
+  z-index: -1;
+  top: -80px;
+  right: -110px;
+  width: 480px;
+  aspect-ratio: 1;
+  content: "";
+  pointer-events: none;
+  background: url('/nk-logo.jpg') center / contain no-repeat;
+  opacity: 0.018;
+  filter: grayscale(0.2) contrast(1.4);
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(circle, #000 26%, transparent 72%);
+  mask-image: radial-gradient(circle, #000 26%, transparent 72%);
 }
 
 .premium-session-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   background:
     radial-gradient(circle at 100% 0, rgba(34, 211, 238, 0.085), transparent 32%),
     radial-gradient(circle at 0 100%, rgba(139, 92, 246, 0.045), transparent 30%),
     linear-gradient(155deg, rgba(12, 25, 30, 0.98), rgba(8, 17, 24, 0.98));
   box-shadow:
-    0 34px 90px -54px rgba(0,0,0,0.98),
-    inset 0 1px rgba(255,255,255,0.055);
+    0 38px 104px -58px rgba(0,0,0,1),
+    0 0 0 1px rgba(103,232,249,0.018),
+    inset 0 1px rgba(255,255,255,0.072);
 }
 
 .premium-exercise-card {
   background:
     linear-gradient(155deg, rgba(21, 34, 36, 0.98), rgba(12, 24, 28, 0.98));
   box-shadow:
-    0 22px 52px -34px rgba(0, 0, 0, 0.95),
-    inset 0 1px rgba(255,255,255,0.045);
+    0 24px 58px -34px rgba(0, 0, 0, 0.98),
+    0 0 0 1px rgba(110,231,183,0.014),
+    inset 0 1px rgba(255,255,255,0.06);
 }
 
 .premium-exercise-card:hover {
@@ -295,6 +431,12 @@ body {
   font: inherit;
 }
 
+.app-shell input,
+.app-shell textarea,
+.app-shell select {
+  box-shadow: inset 0 1px rgba(255,255,255,0.025), 0 12px 28px -26px rgba(0,0,0,0.95);
+}
+
 .app-shell button:focus-visible,
 .app-shell a:focus-visible,
 .app-shell input:focus-visible,
@@ -313,11 +455,12 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #24333d;
+  border: 3px solid transparent;
+  background: linear-gradient(180deg, #31434c, #1d3039) padding-box;
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #344753;
+  background: linear-gradient(180deg, #3f5962, #27434c) padding-box;
 }
 
 @media (max-width: 1100px) and (min-width: 640px) {
@@ -378,6 +521,12 @@ body {
 }
 
 @media (max-width: 639px) {
+  .nk-background-mark {
+    right: -45%;
+    width: 125vw;
+    opacity: 0.028;
+  }
+
   .workspace-main {
     height: auto;
     min-height: 100vh;
