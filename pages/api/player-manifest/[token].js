@@ -14,19 +14,26 @@ export default async function handler(req, res) {
   const playerName = String(player?.name || '').trim();
 
   const manifest = {
+    id: `/player/${tokenValue}`,
     name: playerName ? `${playerName} · NK Coach` : 'Korenchuk Performance - Моя тренировка',
     short_name: playerName || 'KP System',
     description: 'Korenchuk Performance System · Strength & Conditioning',
     start_url: `/player/${tokenValue}`,
-    scope: `/player/${tokenValue}`,
+    scope: '/player/',
     display: 'standalone',
-    background_color: '#07101a',
-    theme_color: '#07101a',
+    display_override: ['standalone', 'minimal-ui'],
+    background_color: '#050b12',
+    theme_color: '#050b12',
     orientation: 'portrait-primary',
+    categories: ['fitness', 'sports', 'health'],
     icons: [
-      { src: playerIcon, sizes: '512x512', purpose: 'any maskable' },
-      { src: playerIcon, sizes: '192x192', purpose: 'any maskable' },
-      { src: '/nk-logo.jpg', sizes: '512x512', type: 'image/jpeg', purpose: 'any' },
+      { src: playerIcon, sizes: '512x512', purpose: 'any' },
+      { src: playerIcon, sizes: '192x192', purpose: 'any' },
+      { src: '/nk-logo.jpg', sizes: '512x512', type: 'image/jpeg', purpose: 'any maskable' },
+    ],
+    shortcuts: [
+      { name: 'Тренировка', short_name: 'Тренировка', url: `/player/${tokenValue}`, icons: [{ src: '/nk-logo.jpg', sizes: '192x192' }] },
+      { name: 'История', short_name: 'История', url: `/player/${tokenValue}#history`, icons: [{ src: '/nk-logo.jpg', sizes: '192x192' }] },
     ],
   };
 
