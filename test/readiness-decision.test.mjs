@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readinessDecisionFromSnapshot, strictestRecoveryStatus } from '../lib/readinessDecision.mjs';
+import { readinessDecisionFromSnapshot, readySixDecisionLevel, strictestRecoveryStatus } from '../lib/readinessDecision.mjs';
 
 test('latest low morning readiness reduces a future-day dose without changing method', () => {
   const result = readinessDecisionFromSnapshot({
@@ -58,4 +58,30 @@ test('fresh pain from any questionnaire is normalized and blocks normal loading'
   }, '2026-08-06', { testsExpected: false });
 
   assert.equal(result.decision.level, 'red');
+});
+
+test('ReadySix strength target is a hard upper boundary for generator readiness', () => {
+  const result = readinessDecisionFromSnapshot({
+    morning: [{ date: '2026-08-27', readiness: 5 }],
+    surveys: [{ date: '2026-08-26', fatigue: 1 }],
+    postMorningSurveys: [],
+    whoop: [{ date: '2026-08-27', recovery: 90 }],
+    injuryLog: [],
+    readySixDecision: {
+      capPercent: 100,
+      confidence: 'high',
+      targets: [
+        { target: 'strength_upper', capPercent: 100 },
+        { target: 'strength_lower', capPercent: 60, restrictions: ['reduce lower volume'] },
+      ],
+    },
+  }, '2026-08-27', { testsExpected: false });
+  assert.equal(result.readySixDecision.level, 'yellow');
+  assert.equal(result.decision.level, 'yellow');
+  assert.match(result.decision.detail, /60%/);
+});
+
+test('ReadySix missing data never becomes a green signal', () => {
+  assert.equal(readySixDecisionLevel({ recommendation: 'insufficient_data', confidence: 'insufficient', targets: [] }).level, 'yellow');
+  assert.equal(readySixDecisionLevel({ capPercent: 0, hardStopSignal: true, targets: [] }).level, 'red');
 });

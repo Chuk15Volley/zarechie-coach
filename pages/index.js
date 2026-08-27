@@ -641,8 +641,8 @@ const WARMUP_PHASE_MAP = {
 
 const PHASES_BY_PERIOD = {
   inseason: [
-    { value: 'inseason_strength',     label: 'Силовая / поддержание', sub: '35-55 мин · RPE 7-8' },
-    { value: 'inseason_power',        label: 'Мощность / скорость',   sub: '25-40 мин · высокое качество' },
+    { value: 'inseason_strength',     label: 'Силовая / поддержание', sub: 'Развивающая 50–55 · Поддерживающая 30–35 мин' },
+    { value: 'inseason_power',        label: 'Мощность / скорость',   sub: 'Development 50–55 · Microdose 30 мин' },
     { value: 'inseason_prophylaxis',  label: 'Профилактика',          sub: 'Слабые звенья · суставы' },
     { value: 'inseason_deload',       label: 'Разгрузочная неделя',  sub: 'По тренду усталости и календарю' },
     { value: 'inseason_accumulation', label: 'Накопление', sub: 'Только в окне без плотных матчей' },
@@ -1271,6 +1271,7 @@ function ExerciseCard({
   onChangeName,
   onChangeSet,
   onAddSet,
+  onRemoveSet,
   onChangeWeight,
   onChangeWeightKg,
   onChangeLoadUnits,
@@ -1456,7 +1457,7 @@ function ExerciseCard({
           {targetSets.map((s, i) => (
             <div
               key={i}
-              className="flex items-center overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.04] transition-colors focus-within:border-accent/40 print:border-slate-300"
+              className="group/set flex items-center overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.04] transition-colors focus-within:border-accent/40 print:border-slate-300"
             >
               <span className="px-1.5 py-1 text-[10px] font-semibold text-slate-500">{i + 1}</span>
               <input
@@ -1465,6 +1466,17 @@ function ExerciseCard({
                 placeholder="—"
                 className="w-12 bg-transparent px-1 py-1 text-center text-[13px] font-semibold text-slate-100 outline-none print:text-slate-900"
               />
+              {targetSets.length > 1 && onRemoveSet && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveSet(i)}
+                  aria-label={`Удалить подход ${i + 1}`}
+                  title={`Удалить подход ${i + 1}`}
+                  className="mr-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md text-slate-600 transition hover:bg-rose-500/[0.12] hover:text-rose-400 focus-visible:bg-rose-500/[0.12] focus-visible:text-rose-400 focus-visible:outline-none print:hidden"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
           ))}
           <button
@@ -1990,6 +2002,8 @@ export default function Home() {
   const [period, setPeriod] = useState('inseason');
   const [focus, setFocus] = useState('inseason_strength');
   const [trainingType, setTrainingType] = useState('full_body');
+  const [powerMode, setPowerMode] = useState('development');
+  const [strengthMode, setStrengthMode] = useState('development');
   const [notes, setNotes] = useState('');
   const [sessionType, setSessionType] = useState('gym'); // 'gym' | 'warmup'
   const [loading, setLoading] = useState(false);
@@ -3051,7 +3065,7 @@ export default function Home() {
     const submitRes = await fetch('/api/programs/generate-async', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, trainingType, notes, coachRecovery: recoveryStatus, workspace, autoSave: true }),
+      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, trainingType, powerMode, strengthMode, notes, coachRecovery: recoveryStatus, workspace, autoSave: true }),
     });
     const submitData = await submitRes.json().catch(() => ({}));
     if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
@@ -3167,6 +3181,8 @@ export default function Home() {
           days,
           focus,
           trainingType,
+          powerMode,
+          strengthMode,
           notes,
           warmupSummary,
           coachRecovery: recoveryStatus,
@@ -3219,7 +3235,8 @@ export default function Home() {
       }
       if (statusData.status === 'done') {
         setSession(statusData.session);
-        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType });
+        if (statusData.strengthMode) setStrengthMode(statusData.strengthMode);
+        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
         setShowSummary(false);
         setAutoSaved(!!statusData.autoSaved);
         if (statusData.saveWarning || statusData.quality?.medicalReviewRequired) {
@@ -3267,6 +3284,8 @@ export default function Home() {
             days,
             focus: f.focus,
             trainingType: f.trainingType,
+            powerMode: f.focus === 'inseason_power' ? powerMode : 'auto',
+            strengthMode: f.focus === 'inseason_strength' ? strengthMode : 'development',
             notes,
             warmupSummary: i === 0 ? warmupSummary : '',
             teamUsedExercises: usedExercises,
@@ -3328,6 +3347,10 @@ export default function Home() {
 
   function loadSavedRecord() {
     if (!pendingSaved) return;
+    const savedStrengthMode = pendingSaved.strengthMode
+      || pendingSaved.quality?.dose?.prescription?.strengthContext?.selectedMode
+      || null;
+    if (savedStrengthMode) setStrengthMode(savedStrengthMode);
     setSession(pendingSaved.session);
     setMeta({
       player: pendingSaved.player,
@@ -3336,6 +3359,7 @@ export default function Home() {
       quality: pendingSaved.quality || null,
       focus: pendingSaved.focus || focus,
       trainingType: pendingSaved.trainingType || trainingType,
+      strengthMode: savedStrengthMode,
     });
     setError('');
   }
@@ -3357,6 +3381,7 @@ export default function Home() {
           focus: meta.focus || focus,
           trainingType: meta.trainingType || trainingType,
           trainingLabel: meta.focusLabel || getFocusLabel(period, focus),
+          strengthMode: meta.strengthMode || strengthMode,
           quality: meta.quality || null,
           workspace,
         }),
@@ -3647,6 +3672,25 @@ export default function Home() {
               exercises: b.exercises.map((ex, ei) =>
                 ei !== exIdx ? ex : { ...ex, targetSets: [...ex.targetSets, ''] }
               ),
+            }
+      ),
+    }));
+  }
+
+  function removeSetRow(blockIdx, exIdx, setIdx) {
+    setSession(prev => ({
+      ...prev,
+      blocks: prev.blocks.map((b, bi) =>
+        bi !== blockIdx
+          ? b
+          : {
+              ...b,
+              exercises: b.exercises.map((ex, ei) => {
+                if (ei !== exIdx) return ex;
+                const targetSets = Array.isArray(ex.targetSets) ? ex.targetSets : [];
+                if (targetSets.length <= 1) return ex;
+                return { ...ex, targetSets: targetSets.filter((_, si) => si !== setIdx) };
+              }),
             }
       ),
     }));
@@ -4125,6 +4169,52 @@ export default function Home() {
                       <option key={ph.value} value={ph.value}>{phaseLabelForWorkspace(ph, workspace)}</option>
                     ))}
                   </select>
+
+                  {focus === 'inseason_strength' && (
+                    <div className="grid grid-cols-2 gap-1 rounded-lg border border-cyan-400/20 bg-cyan-400/[0.05] p-1">
+                      {[
+                        { value: 'development', label: 'Развивающая', sub: '50–55 мин' },
+                        { value: 'maintenance', label: 'Поддерживающая', sub: '30–35 мин' },
+                      ].map(mode => (
+                        <button
+                          key={mode.value}
+                          type="button"
+                          onClick={() => setStrengthMode(mode.value)}
+                          className={`rounded-md px-2 py-1.5 text-left transition ${
+                            strengthMode === mode.value
+                              ? 'bg-cyan-400/20 text-cyan-200'
+                              : 'text-slate-600 hover:text-slate-400'
+                          }`}
+                        >
+                          <span className="block text-[10px] font-black">{mode.label}</span>
+                          <span className="block text-[8px]">{mode.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {focus === 'inseason_power' && (
+                    <div className="grid grid-cols-2 gap-1 rounded-lg border border-violet-400/20 bg-violet-400/[0.05] p-1">
+                      {[
+                        { value: 'development', label: 'Development', sub: '50–55 мин' },
+                        { value: 'microdose', label: 'Microdose', sub: '30 мин' },
+                      ].map(mode => (
+                        <button
+                          key={mode.value}
+                          type="button"
+                          onClick={() => setPowerMode(mode.value)}
+                          className={`rounded-md px-2 py-1.5 text-left transition ${
+                            powerMode === mode.value
+                              ? 'bg-violet-400/20 text-violet-200'
+                              : 'text-slate-600 hover:text-slate-400'
+                          }`}
+                        >
+                          <span className="block text-[10px] font-black">{mode.label}</span>
+                          <span className="block text-[8px]">{mode.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Manual training type */}
                   <select
@@ -5867,6 +5957,50 @@ export default function Home() {
                     </option>
                   ))}
                 </select>
+                {focus === 'inseason_strength' && (
+                  <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.05] p-1.5">
+                    {[
+                      { value: 'development', label: 'Развивающая', sub: '50–55 мин · развитие силы' },
+                      { value: 'maintenance', label: 'Поддерживающая', sub: '30–35 мин · поддержание' },
+                    ].map(mode => (
+                      <button
+                        key={mode.value}
+                        type="button"
+                        onClick={() => setStrengthMode(mode.value)}
+                        className={`rounded-lg border px-3 py-2 text-left transition ${
+                          strengthMode === mode.value
+                            ? 'border-cyan-300/40 bg-cyan-400/20 text-cyan-100'
+                            : 'border-transparent text-slate-600 hover:bg-white/[0.04] hover:text-slate-400'
+                        }`}
+                      >
+                        <span className="block text-[11px] font-black">{mode.label}</span>
+                        <span className="mt-0.5 block text-[9px] opacity-70">{mode.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {focus === 'inseason_power' && (
+                  <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-xl border border-violet-400/20 bg-violet-400/[0.05] p-1.5">
+                    {[
+                      { value: 'development', label: 'Development', sub: '50–55 мин · полная работа' },
+                      { value: 'microdose', label: 'Microdose', sub: '30 мин · без тяжёлой пары' },
+                    ].map(mode => (
+                      <button
+                        key={mode.value}
+                        type="button"
+                        onClick={() => setPowerMode(mode.value)}
+                        className={`rounded-lg border px-3 py-2 text-left transition ${
+                          powerMode === mode.value
+                            ? 'border-violet-300/40 bg-violet-400/20 text-violet-100'
+                            : 'border-transparent text-slate-600 hover:bg-white/[0.04] hover:text-slate-400'
+                        }`}
+                      >
+                        <span className="block text-[11px] font-black">{mode.label}</span>
+                        <span className="mt-0.5 block text-[9px] opacity-70">{mode.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -6542,6 +6676,7 @@ export default function Home() {
                           onChangeName={v => updateExercise(bi, ei, { name: v, descriptionOverride: undefined })}
                           onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
                           onAddSet={() => addSetRow(bi, ei)}
+                          onRemoveSet={si => removeSetRow(bi, ei, si)}
                           onChangeWeight={v => updateExercise(bi, ei, { weightNote: v })}
                           onChangeWeightKg={v => updateExercise(bi, ei, {
                             weightKg: v,

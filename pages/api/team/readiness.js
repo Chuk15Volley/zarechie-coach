@@ -12,6 +12,8 @@ import { isAuthorized } from '../../../lib/auth';
 import { getPlayerSnapshot } from '../../../lib/playerData';
 import { rosterKey } from '../../../lib/workspacePrefix';
 import { performanceKpis } from '../../../lib/performanceKpis.mjs';
+import { getReadySixTeamReadiness, usesReadySix } from '../../../lib/readySixClient';
+import { normalizeReadySixTeamReadiness } from '../../../lib/readySixSnapshotAdapter';
 
 function num(v) {
   if (v == null || v === '') return null;
@@ -88,13 +90,16 @@ export default async function handler(req, res) {
 
   try {
     // ── Roster ───────────────────────────────────────────────────────────────
-    const rosterRaw = await redis('get', rosterKey(workspace)).catch(() => null);
-    let roster = parseJSON(rosterRaw);
+    const readySixTeam = usesReadySix(workspace)
+      ? normalizeReadySixTeamReadiness(await getReadySixTeamReadiness(workspace, date))
+      : null;
+    const rosterRaw = readySixTeam ? null : await redis('get', rosterKey(workspace)).catch(() => null);
+    let roster = readySixTeam ? readySixTeam.roster : parseJSON(rosterRaw);
     if (!Array.isArray(roster)) roster = [];
 
     if (!roster.length) return res.status(200).json({ players: [] });
 
-    const snapshots = await Promise.all(
+    const snapshots = readySixTeam?.snapshots || await Promise.all(
       roster.map(p => getPlayerSnapshot(String(p.id), 7, date, 28, workspace).catch(() => null))
     );
 
