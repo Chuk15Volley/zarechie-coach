@@ -43,6 +43,7 @@ import {
   CalendarRange,
   CheckCircle2,
   SlidersHorizontal,
+  Search,
 } from 'lucide-react';
 import { findExerciseUrl } from '../lib/exerciseBank';
 import { calcWeight } from '../lib/loadCalc';
@@ -1094,7 +1095,7 @@ function ExerciseVideoPanel({ name, apiKey }) {
 
   return (
     <div className="print:hidden">
-      <div className="mx-3 mt-1.5 overflow-hidden rounded-xl border border-white/[0.08] bg-[#05090f] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="mx-4 mt-2 overflow-hidden rounded-2xl border border-white/[0.10] bg-[#05090f] shadow-[0_14px_32px_-22px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.05)]">
         {videoId ? (
           <a
             href={watchUrl}
@@ -1350,7 +1351,7 @@ function ExerciseCard({
   }
 
   return (
-    <div className={`group h-fit overflow-hidden rounded-xl border border-white/[0.09] bg-[#101a1d] shadow-[0_10px_28px_rgba(0,0,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.16] hover:bg-[#132024] hover:shadow-[0_14px_34px_rgba(0,0,0,0.3)] print:break-inside-avoid print:border-slate-300 print:bg-white ${hasConflict ? 'ring-1 ring-rose-500/30' : ''}`}>
+    <div className={`premium-exercise-card group h-fit overflow-hidden rounded-2xl border border-white/[0.10] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.18] print:break-inside-avoid print:border-slate-300 print:bg-white ${hasConflict ? 'ring-1 ring-rose-500/30' : ''}`}>
       {/* Header */}
       <div className={`bg-gradient-to-r ${bc.headerFrom} to-transparent px-3 pt-2.5 pb-2 print:bg-slate-100`}>
         {/* Row 1: badges + regenerate button */}
@@ -2125,6 +2126,19 @@ export default function Home() {
 
   // Mobile sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    setSidebarCollapsed(window.localStorage.getItem('kps-sidebar-collapsed') === '1');
+  }, []);
+
+  function toggleDesktopSidebar() {
+    setSidebarCollapsed(current => {
+      const next = !current;
+      window.localStorage.setItem('kps-sidebar-collapsed', next ? '1' : '0');
+      return next;
+    });
+  }
 
   // Block collapse in session view
   const [collapsedBlocks, setCollapsedBlocks] = useState(new Set());
@@ -3732,31 +3746,42 @@ export default function Home() {
         <div className="absolute top-1/3 right-1/4 h-[320px] w-[320px] rounded-full bg-violet-500/[0.05] blur-[100px]" />
       </div>
 
-      <div className="relative flex min-h-screen text-slate-100">
+      <div className="app-shell relative flex min-h-screen text-slate-100">
 
         {/* ══════════════════════════════════════
             SIDEBAR — desktop only (sm+)
         ══════════════════════════════════════ */}
-        <aside className="hidden sm:flex w-[260px] shrink-0 flex-col border-r border-white/[0.06] bg-[#060c15] print:hidden">
+        <aside className={`premium-sidebar sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden print:hidden sm:flex ${sidebarCollapsed ? 'premium-sidebar--collapsed w-[88px]' : 'w-[320px]'}`}>
 
           {/* Logo + API Key */}
-          <div className="border-b border-white/[0.05] p-5">
-            <div className="mb-4 flex items-center gap-3">
+          <div className="sidebar-brand border-b border-white/[0.06] p-5">
+            <div className="flex items-center gap-3">
               <div className="relative h-10 w-10 shrink-0">
                 <div className="absolute -inset-[1.5px] rounded-[14px] bg-gradient-to-br from-accent/60 via-accent/20 to-transparent" />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/nk-logo.jpg" alt="NK" className="relative h-10 w-10 rounded-xl object-cover" />
               </div>
-              <div>
+              <div className="sidebar-copy min-w-0">
                 <div className="text-[13px] font-black tracking-tight text-white leading-tight">Nikolay Korenchuk</div>
                 <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-accent">Performance System</div>
               </div>
+              <button
+                type="button"
+                onClick={toggleDesktopSidebar}
+                className="sidebar-collapse-button ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.035] text-slate-500 transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white"
+                aria-label={sidebarCollapsed ? 'Развернуть боковую панель' : 'Свернуть боковую панель'}
+                title={sidebarCollapsed ? 'Развернуть панель' : 'Свернуть панель'}
+              >
+                {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+              </button>
             </div>
 
             <button
               type="button"
               onClick={() => setKeyPanelOpen(false)}
-              className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-semibold transition-all ${focusRing} ${
+              aria-label={keyConnected ? 'ReadySix подключён' : 'ReadySix не подключён'}
+              title={keyConnected ? 'ReadySix подключён' : 'ReadySix не подключён'}
+              className={`sidebar-connected mt-4 flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-semibold transition-all ${focusRing} ${
                 keyConnected
                   ? 'border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-400 hover:bg-emerald-500/[0.11]'
                   : 'border-white/[0.07] bg-white/[0.03] text-slate-500 hover:border-white/[0.12] hover:text-slate-300'
@@ -3768,12 +3793,12 @@ export default function Home() {
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
                   </span>
-                  Подключено
+                  <span className="sidebar-copy">Подключено</span>
                 </>
               ) : (
                 <>
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-700" />
-                  Нет подключения
+                  <span className="sidebar-copy">Нет подключения</span>
                 </>
               )}
             </button>
@@ -3798,7 +3823,7 @@ export default function Home() {
 
           {/* Workspace switcher */}
           {keyConnected && (
-            <div className="border-b border-white/[0.05] px-3 pb-2 pt-2">
+            <div className="sidebar-context border-b border-white/[0.06] px-3 py-3">
               <div className="flex rounded-xl bg-white/[0.04] p-0.5 gap-0.5">
                 {[
                   { id: 'zarechie', label: 'Заречье', emoji: '🏐', activeClass: 'bg-[#22D3EE]/[0.15] text-[#22D3EE] border-[#22D3EE]/20' },
@@ -3821,7 +3846,7 @@ export default function Home() {
 
           {/* Section switcher — 2×3 grid */}
           {keyConnected && (
-            <div className="border-b border-white/[0.05] px-3 pb-2 pt-2 space-y-0.5">
+            <div className="sidebar-nav-grid border-b border-white/[0.06] px-3 py-3">
               {[
                 [
                   { id: 'readiness', label: 'Готовность', icon: <Activity size={12} />,    activeClass: 'bg-emerald-500/[0.15] text-emerald-400 border-emerald-500/20' },
@@ -3834,13 +3859,15 @@ export default function Home() {
                   { id: 'planner',  label: 'Месяц',    icon: <CalendarRange size={12} />,  activeClass: 'bg-sky-500/[0.15] text-sky-400 border-sky-500/20' },
                 ],
               ].map((row, ri) => (
-                <div key={ri} className="flex gap-0.5">
+                <div key={ri} className="sidebar-nav-row">
                   {row.filter(s => s.id !== 'planner' || usesSeasonCalendar(workspace)).map(s => (
                     <button
                       key={s.id}
                       type="button"
                       onClick={() => { setMainSection(s.id); if (s.id === 'warmup') loadWarmupHistory(); }}
-                      className={`flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[10px] font-semibold transition-all ${
+                      aria-label={s.label}
+                      title={s.label}
+                      className={`sidebar-nav-item flex flex-1 items-center gap-2 rounded-xl border px-3 py-2.5 text-[11px] font-semibold transition-all ${
                         mainSection === s.id
                           ? s.activeClass
                           : 'border-transparent text-slate-600 hover:text-slate-400 hover:bg-white/[0.03]'
@@ -3857,10 +3884,10 @@ export default function Home() {
 
           {/* Library quick-access */}
           {keyConnected && (
-            <div className="border-b border-white/[0.05] px-3 pb-2 pt-1.5">
+            <div className="sidebar-context border-b border-white/[0.06] px-3 py-3">
               <a
                 href="/library"
-                className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[11px] font-semibold text-slate-500 transition-all hover:border-[#22D3EE]/20 hover:bg-[#22D3EE]/[0.05] hover:text-[#22D3EE]"
+                className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-2.5 text-[11px] font-semibold text-slate-400 transition-all hover:border-[#22D3EE]/25 hover:bg-[#22D3EE]/[0.07] hover:text-[#67e8f9]"
               >
                 <BookOpen size={12} />
                 Библиотека упражнений
@@ -3870,7 +3897,7 @@ export default function Home() {
 
           {/* Tab switcher: Players | Day (workouts section only) */}
           {mainSection === 'workouts' && keyConnected && players.length > 0 && (
-            <div className="border-b border-white/[0.05] px-3 pb-2 pt-2">
+            <div className="sidebar-context border-b border-white/[0.06] px-3 py-3">
               <div className="flex rounded-lg bg-white/[0.04] p-0.5">
                 {[{ id: 'players', label: 'Игроки' }, { id: 'day', label: 'День' }].map(tab => (
                   <button
@@ -3890,7 +3917,7 @@ export default function Home() {
 
           {/* Warmup sidebar panel */}
           {mainSection === 'warmup' && keyConnected && (
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            <div className="sidebar-context flex-1 overflow-y-auto p-4 space-y-3">
               {/* Date */}
               <div>
                 <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-slate-600">Дата</label>
@@ -3946,7 +3973,7 @@ export default function Home() {
 
           {/* Readiness sidebar: date picker + refresh + summary */}
           {mainSection === 'readiness' && keyConnected && (
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            <div className="sidebar-context flex-1 overflow-y-auto p-4 space-y-3">
               <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">Утренний экран</p>
               <DatePicker value={readinessDate} onChange={setReadinessDate} maxDate={todayISO()} size="sm" className="w-full" />
               <button
@@ -3989,7 +4016,7 @@ export default function Home() {
 
           {/* Calendar sidebar: week navigation */}
           {mainSection === 'calendar' && keyConnected && (
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            <div className="sidebar-context flex-1 overflow-y-auto p-4 space-y-3">
               <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">Навигация</p>
               {/* Prev / current / next week */}
               <div className="flex items-center gap-1">
@@ -4046,7 +4073,7 @@ export default function Home() {
 
           {/* Planner sidebar: month navigation + autoplan + legend */}
           {mainSection === 'planner' && keyConnected && usesSeasonCalendar(workspace) && (
-            <div className="flex-1 overflow-y-auto p-3 space-y-4">
+            <div className="sidebar-context flex-1 overflow-y-auto p-4 space-y-4">
               <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">Месяц</p>
               <div className="flex items-center gap-1">
                 <button
@@ -4112,7 +4139,7 @@ export default function Home() {
 
           {/* Player list (workouts section only) */}
           {mainSection === 'workouts' && (
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="sidebar-context sidebar-player-scroll flex-1 overflow-y-auto px-3 py-3">
             {!keyConnected && (
               <p className="px-3 py-5 text-[11px] text-slate-600">Введи ключ чтобы загрузить состав</p>
             )}
@@ -4401,15 +4428,20 @@ export default function Home() {
 
             {/* ── Вкладка: Игроки ── */}
             {leftTab === 'players' && keyConnected && players.length > 0 && (
-              <div className="px-1 pb-2">
+              <div className="sticky top-0 z-10 -mx-1 mb-2 border-b border-white/[0.05] bg-[#081019]/95 px-1 pb-3 pt-1 backdrop-blur-xl">
+                <div className="mb-2 flex items-center justify-between px-1">
+                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Состав</span>
+                  <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10px] font-bold text-slate-400">{filteredPlayers.length}/{players.length}</span>
+                </div>
                 {/* Player search */}
-                <div className="relative mb-2">
+                <div className="relative">
+                  <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
                     type="text"
                     value={playerSearch}
                     onChange={e => setPlayerSearch(e.target.value)}
                     placeholder="Поиск игрока..."
-                    className="w-full rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-1.5 text-[11px] text-slate-300 outline-none transition placeholder:text-slate-700 focus:border-accent/40"
+                    className="w-full rounded-xl border border-white/[0.09] bg-white/[0.035] py-2 pl-9 pr-8 text-[12px] text-slate-200 outline-none transition placeholder:text-slate-600 hover:border-white/[0.14] focus:border-accent/45 focus:bg-white/[0.055]"
                   />
                   {playerSearch && (
                     <button
@@ -4424,7 +4456,7 @@ export default function Home() {
               </div>
             )}
             {leftTab === 'players' && keyConnected && players.length > 0 && (
-              <div className="flex flex-wrap gap-1 px-1 pb-2">
+              <div className="flex flex-wrap gap-1 px-1 pb-3">
                 {[
                   { key: 'all', label: 'Все' },
                   { key: 'diagonal', label: 'Диаг', cls: 'bg-violet-400' },
@@ -4450,18 +4482,18 @@ export default function Home() {
             {leftTab === 'players' && filteredPlayers.map(p => (
               <div
                 key={p.id}
-                className={`group w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-150 ${
+                className={`sidebar-player-row group mb-1 flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all duration-200 ${
                   playerId === p.id
-                    ? 'bg-accent/[0.08] text-white ring-1 ring-inset ring-accent/20'
-                    : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
+                    ? 'border-accent/25 bg-accent/[0.10] text-white shadow-[0_10px_26px_-18px_rgba(74,222,128,0.8)]'
+                    : 'border-transparent text-slate-400 hover:border-white/[0.08] hover:bg-white/[0.045] hover:text-slate-100'
                 }`}
               >
                 <button type="button" onClick={() => selectPlayer(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                <div className="relative shrink-0 h-8 w-8">
+                <div className="relative h-10 w-10 shrink-0">
                   {p.photo ? (
-                    <img src={p.photo} alt="" className="h-8 w-8 rounded-xl object-cover object-top" />
+                    <img src={p.photo} alt="" className="h-10 w-10 rounded-[14px] object-cover object-top ring-1 ring-white/[0.12]" />
                   ) : (
-                    <div className={`h-8 w-8 flex items-center justify-center rounded-xl text-[11px] font-black transition-colors ${
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-[14px] text-[11px] font-black transition-colors ${
                       playerId === p.id
                         ? 'bg-accent text-[#060a0e]'
                         : 'bg-white/[0.07] text-slate-400 group-hover:bg-white/[0.10]'
@@ -4473,7 +4505,7 @@ export default function Home() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <div className="text-[12.5px] font-semibold leading-tight truncate">{p.name}</div>
+                  <div className="truncate text-[13px] font-bold leading-tight text-slate-100">{p.name}</div>
                     {p.lastSessionDate === date && (
                       <span title="Тренировка сохранена на эту дату" className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.7)]" />
                     )}
@@ -4545,18 +4577,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Library link */}
-          <div className="border-t border-white/[0.05] p-3">
-            <a
-              href="/library"
-              className="flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold text-slate-500 transition hover:bg-white/[0.04] hover:text-accent"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
-              </svg>
-              Библиотека упражнений
-            </a>
-          </div>
         </aside>
 
         {/* ══════════════════════════════════════
@@ -4697,12 +4717,12 @@ export default function Home() {
         {/* ══════════════════════════════════════
             WORKSPACE
         ══════════════════════════════════════ */}
-        <div className={`flex-1 min-w-0 overflow-y-auto flex flex-col${mobileView === 'players' ? ' hidden sm:flex' : ''}`}>
+        <div className={`workspace-main h-screen min-w-0 flex-1 overflow-y-auto flex-col${mobileView === 'players' ? ' hidden sm:flex' : ' flex'}`}>
           <div className="h-[2px] w-full bg-gradient-to-r from-transparent via-accent/80 to-transparent print:hidden" />
 
           {/* ── Warmup workspace ── */}
           {mainSection === 'warmup' && (
-            <div className="mx-auto w-full max-w-5xl px-6 py-8 sm:px-10">
+            <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               {warmupLoading && (
                 <div className="flex flex-col items-center justify-center py-24 gap-4">
                   <div className="h-8 w-8 rounded-full border-2 border-cyan-400/30 border-t-cyan-400 animate-spin" />
@@ -4772,7 +4792,7 @@ export default function Home() {
 
           {/* ── Team readiness (Feature 1) ── */}
           {mainSection === 'readiness' && (
-            <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8">
+            <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <div className="mb-6 flex items-center justify-between">
                 <div>
                   <h2 className="flex items-center gap-2 text-xl font-black tracking-tight text-white">
@@ -4911,7 +4931,7 @@ export default function Home() {
 
           {/* ── Team calendar ── */}
           {mainSection === 'calendar' && (
-            <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8">
+            <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               {/* Header */}
               <div className="mb-6 flex items-center justify-between">
                 <div>
@@ -5024,7 +5044,7 @@ export default function Home() {
 
           {/* ── Monthly planner workspace ── */}
           {mainSection === 'planner' && usesSeasonCalendar(workspace) && (
-            <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8">
+            <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <div className="mb-6 flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-black tracking-tight text-white">План месяца</h2>
@@ -5124,7 +5144,7 @@ export default function Home() {
 
           {/* ── Tonnage dashboard ── */}
           {mainSection === 'tonnage' && (
-            <div className="mx-auto w-full max-w-5xl px-6 py-8 sm:px-10">
+            <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <div className="mb-5 flex items-center justify-between">
                 <h2 className="text-xl font-black tracking-tight text-white">Нагрузка команды</h2>
                 <button
@@ -5291,11 +5311,11 @@ export default function Home() {
           )}
 
           {mainSection === 'workouts' && (<>
-          <div className="mx-auto w-full max-w-5xl px-6 py-8 sm:px-10">
+          <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
 
           {/* ── Workspace header (player selected) ── */}
           {playerId && selectedPlayer ? (
-            <div className="mb-7 flex items-center gap-4 print:hidden">
+            <div className="premium-player-header mb-6 flex items-center gap-4 rounded-3xl border border-white/[0.08] bg-white/[0.025] px-4 py-4 print:hidden sm:px-5">
               <button
                 type="button"
                 onClick={() => setMobileView('players')}
@@ -5363,7 +5383,7 @@ export default function Home() {
 
           {/* ── Workspace tabs: Программа / История ── */}
           {playerId && selectedPlayer && (
-            <div className="mb-5 flex rounded-xl bg-white/[0.03] p-0.5 print:hidden border border-white/[0.06]">
+            <div className="premium-workspace-tabs mb-5 flex rounded-2xl border border-white/[0.08] bg-black/15 p-1 print:hidden">
               {[
                 { id: 'program', label: 'Программа', icon: <Dumbbell size={12} /> },
                 { id: 'history', label: 'История', icon: <History size={12} /> },
@@ -5691,7 +5711,7 @@ export default function Home() {
           {workspaceTab === 'program' && playerId && <>
           <form
             onSubmit={handleGenerate}
-            className="relative overflow-hidden rounded-2xl border border-white/[0.10] bg-[linear-gradient(145deg,rgba(17,31,33,0.92),rgba(10,19,27,0.88))] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:p-5 print:hidden"
+            className="premium-form relative overflow-hidden rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-6 print:hidden"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent" />
 
@@ -6321,7 +6341,7 @@ export default function Home() {
 
           {/* ── Session result ── */}
           {session && meta && (
-            <div className="mt-6 animate-fade-in rounded-xl border border-white/[0.09] bg-[#0c171b]/90 p-5 shadow-[0_4px_32px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:p-6 print:border-none print:bg-white print:p-0 print:shadow-none">
+            <div className="premium-session-card mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
 
               {/* Result toolbar */}
               <div className="mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden">
@@ -6642,7 +6662,7 @@ export default function Home() {
                       );
                     })()}
                     {!collapsedBlocks.has(block.label) && (
-                    <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid items-start gap-5 lg:grid-cols-2">
                       {(block.exercises || []).map((ex, ei) => (
                         <ExerciseCard
                           key={ex.code || ei}
@@ -7151,24 +7171,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Keyboard shortcuts hint bar */}
-      <div className="fixed inset-x-0 bottom-0 z-30 hidden items-center justify-center gap-4 border-t border-white/[0.04] bg-[#060c15]/80 px-4 py-1.5 backdrop-blur-sm sm:flex print:hidden">
-        <span className="flex items-center gap-1.5 text-[10px] text-slate-700">
-          <kbd className="rounded px-1 py-0.5 border border-white/[0.08] bg-white/[0.04] font-mono text-[9px] text-slate-600">G</kbd>
-          Генерация
-        </span>
-        <span className="text-slate-800">·</span>
-        <span className="flex items-center gap-1.5 text-[10px] text-slate-700">
-          <kbd className="rounded px-1 py-0.5 border border-white/[0.08] bg-white/[0.04] font-mono text-[9px] text-slate-600">S</kbd>
-          Сохранить
-        </span>
-        <span className="text-slate-800">·</span>
-        <span className="flex items-center gap-1.5 text-[10px] text-slate-700">
-          <kbd className="rounded px-1 py-0.5 border border-white/[0.08] bg-white/[0.04] font-mono text-[9px] text-slate-600">Alt</kbd>
-          <kbd className="rounded px-1 py-0.5 border border-white/[0.08] bg-white/[0.04] font-mono text-[9px] text-slate-600">← →</kbd>
-          Игрок
-        </span>
-      </div>
     </>
   );
 }
