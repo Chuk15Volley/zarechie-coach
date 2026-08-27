@@ -754,7 +754,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
         <div className="absolute bottom-0 right-0 h-[300px] w-[300px] rounded-full bg-blue-600/[0.07] blur-[100px]" />
       </div>
 
-      <div className="min-h-screen bg-[#07101a] text-slate-100">
+      <div className="app-shell player-page-shell min-h-screen bg-[#07101a] text-slate-100">
 
         {/* ── Sticky header ── */}
         <div className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#07101a]/95 backdrop-blur-xl">
@@ -773,7 +773,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                   <div className="mb-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-[#4ade80]/60">
                     Korenchuk Performance System
                   </div>
-                  <div className="truncate text-[22px] font-black leading-none text-white">{player?.name || 'Игрок'}</div>
+                  <div className="player-page-title truncate text-[22px] leading-none text-white">{player?.name || 'Игрок'}</div>
                   {player?.position && (
                     <div className="mt-1 text-[11px] text-slate-500">{player.position}</div>
                   )}

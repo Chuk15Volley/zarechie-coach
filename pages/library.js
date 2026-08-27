@@ -576,7 +576,7 @@ export default function LibraryPage() {
   return (
     <>
       <Head><title>Библиотека упражнений · Korenchuk Performance System</title></Head>
-      <div className="min-h-screen px-4 py-6 text-slate-100 sm:px-8 sm:py-10" style={{ background: '#060c15' }}>
+      <div className="app-shell premium-library-shell min-h-screen px-4 py-6 text-slate-100 sm:px-8 sm:py-10" style={{ background: '#060c15' }}>
         <div className="mx-auto max-w-6xl">
 
           {/* ── Header ── */}
@@ -585,7 +585,7 @@ export default function LibraryPage() {
               <Link href="/" className="text-[12px] font-semibold text-slate-500 transition hover:text-accent">
                 ← Главная
               </Link>
-              <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Библиотека упражнений</h1>
+              <h1 className="premium-library-title mt-1 text-2xl text-white">Библиотека упражнений</h1>
               <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[12px] text-slate-500">
                 <span>Всего: <span className="font-semibold text-slate-300">{cards.length}</span></span>
                 {gymCount > 0 && <span className="text-amber-400/70">Зал: <span className="font-semibold">{gymCount}</span></span>}
