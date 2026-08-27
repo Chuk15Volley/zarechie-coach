@@ -172,7 +172,7 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedW
     <button
       type="button"
       onClick={onToggle}
-      className={`flex h-[72px] w-full min-w-0 flex-col items-center justify-center rounded-xl border px-1.5 py-2 transition-all duration-200 active:scale-[0.97] ${
+      className={`player-set-button flex h-[72px] w-full min-w-0 flex-col items-center justify-center rounded-xl border px-1.5 py-2 transition-all duration-200 active:scale-[0.97] ${
         done
           ? 'border-emerald-400/55 bg-emerald-500/[0.16] shadow-[0_0_16px_rgba(52,211,153,0.14)]'
           : 'border-white/[0.10] bg-white/[0.035]'
@@ -255,7 +255,7 @@ function ExerciseMedia({ name, token }) {
           href={watchUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="relative block aspect-video w-full overflow-hidden rounded-[18px] border border-white/[0.09] bg-black text-left shadow-[0_10px_24px_rgba(0,0,0,0.28)]"
+          className="player-exercise-media relative block aspect-video w-full overflow-hidden rounded-[18px] border border-white/[0.09] bg-black text-left shadow-[0_10px_24px_rgba(0,0,0,0.28)]"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -266,7 +266,7 @@ function ExerciseMedia({ name, token }) {
           />
           <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
           <span className="absolute inset-0 grid place-items-center">
-            <span className="grid h-12 w-12 place-items-center rounded-full bg-red-600 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
+            <span className="player-video-button grid h-12 w-12 place-items-center rounded-full bg-red-600 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
               <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5">
                 <path d="M8 5v14l11-7z" />
               </svg>
@@ -310,17 +310,17 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
   const setGrid = setCount >= 4 ? 'grid-cols-4' : setCount === 3 ? 'grid-cols-3' : setCount === 2 ? 'grid-cols-2' : 'grid-cols-1';
 
   return (
-    <div className="overflow-hidden rounded-[20px] border border-white/[0.1] bg-[#0d1921] shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
+    <article className="player-exercise-card overflow-hidden rounded-[20px] border border-white/[0.1] bg-[#0d1921] shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
       {/* Header */}
-      <div className="flex items-start gap-2.5 bg-gradient-to-r from-[#4ade80]/[0.15] to-transparent px-3.5 py-3">
-        <span className="shrink-0 rounded-lg bg-[#4ade80]/20 px-2 py-1 text-[11px] font-black text-[#4ade80]">
+      <div className="player-exercise-heading flex items-start gap-2.5 bg-gradient-to-r from-[#4ade80]/[0.15] to-transparent px-3.5 py-3">
+        <span className="player-exercise-code shrink-0 rounded-lg bg-[#4ade80]/20 px-2 py-1 text-[11px] font-black text-[#4ade80]">
           {ex.code}
         </span>
-        <span className="min-w-0 pt-0.5 text-[17px] font-bold leading-snug text-white">{ex.name}</span>
+        <span className="player-exercise-name min-w-0 pt-0.5 text-[17px] font-bold leading-snug text-white">{ex.name}</span>
       </div>
 
       {plannedWeight && (
-        <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] bg-[#4ade80]/[0.065] px-3.5 py-2.5">
+        <div className="player-weight-strip flex items-baseline justify-between gap-3 border-b border-white/[0.06] bg-[#4ade80]/[0.065] px-3.5 py-2.5">
           <div className="text-[10px] font-black uppercase tracking-[0.15em] text-[#4ade80]/60">Рабочий вес</div>
           <div className="text-right text-[18px] font-black leading-none text-[#4ade80]">{plannedWeight}</div>
         </div>
@@ -358,7 +358,7 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
           <div className="text-[14px] font-semibold text-slate-200">{weightNote}</div>
         )}
         {ex.autoReg && (
-          <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2.5">
+          <div className="player-autoreg flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2.5">
             <span className="text-base leading-none text-amber-400">⚡</span>
             <span className="text-[13px] leading-snug text-amber-300/90">{ex.autoReg}</span>
           </div>
@@ -367,7 +367,7 @@ function ExCard({ bi, ei, ex, done, onToggle, weights, onWeightChange, token }) 
           <p className="text-[14px] leading-relaxed text-slate-400">{exerciseDescription(ex)}</p>
         )}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -419,7 +419,7 @@ function FeedbackForm({ token, sessionDate, session, done, weights, isMatchDayPr
 
   if (submitted) {
     return (
-      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.09] px-4 py-8 text-center">
+      <div className="player-feedback-success rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.09] px-4 py-8 text-center">
         <div className="mb-2 text-3xl">💪</div>
         <div className="text-base font-black text-emerald-300">Тренировка завершена!</div>
         <div className="mt-2 text-sm text-emerald-600">Оценка отправлена тренеру</div>
@@ -428,14 +428,14 @@ function FeedbackForm({ token, sessionDate, session, done, weights, isMatchDayPr
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.09] px-4 py-5 text-center">
+    <div className="player-feedback space-y-4">
+      <div className="player-feedback-success rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.09] px-4 py-5 text-center">
         <div className="mb-1 text-3xl">💪</div>
         <div className="text-base font-black text-emerald-300">Тренировка завершена!</div>
         <div className="mt-0.5 text-xs text-emerald-600">Оцени нагрузку для тренера</div>
       </div>
 
-      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 space-y-4">
+      <div className="player-feedback-card rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 space-y-4">
         {/* RPE */}
         <div>
           <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
@@ -596,7 +596,7 @@ function InstallHint() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-5 inset-x-4 z-50 animate-fade-in">
+    <div className="player-install-hint fixed bottom-5 inset-x-4 z-50 animate-fade-in">
       <div className="flex items-start gap-3 rounded-2xl border border-white/[0.12] bg-[#0d1e30]/95 px-4 py-3.5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-xl">
         <div className="mt-0.5 text-xl leading-none">📲</div>
         <div className="flex-1 min-w-0">
@@ -737,7 +737,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
       <Head>
         <title>{player?.name ? `${player.name} · NK Coach` : 'NK Coach'}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-        <meta name="theme-color" content="#07101a" />
+        <meta name="theme-color" content="#050b12" />
         {/* PWA */}
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -748,75 +748,81 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
         <link rel="apple-touch-icon" sizes="180x180" href="/nk-logo.jpg" />
       </Head>
 
-      {/* Ambient bg */}
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-20 -left-20 h-[380px] w-[380px] rounded-full bg-[#4ade80]/[0.09] blur-[100px]" />
-        <div className="absolute bottom-0 right-0 h-[300px] w-[300px] rounded-full bg-blue-600/[0.07] blur-[100px]" />
+      {/* Branded ambient background */}
+      <div className="player-ambient pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="player-ambient-emerald absolute -top-20 -left-20 h-[380px] w-[380px] rounded-full bg-[#4ade80]/[0.09] blur-[100px]" />
+        <div className="player-ambient-cyan absolute bottom-0 right-0 h-[300px] w-[300px] rounded-full bg-blue-600/[0.07] blur-[100px]" />
       </div>
 
       <div className="app-shell player-page-shell min-h-screen bg-[#07101a] text-slate-100">
-
-        {/* ── Sticky header ── */}
-        <div className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#07101a]/95 backdrop-blur-xl">
-          <div className="px-4 pb-2 pt-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                {/* Player avatar */}
-                {playerPhoto ? (
-                  <img src={playerPhoto} alt="" className="h-10 w-10 shrink-0 rounded-xl border border-white/[0.1] object-cover" />
-                ) : (
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80]/20 text-[12px] font-black text-[#4ade80]">
-                    {initials(player?.name)}
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <div className="mb-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-[#4ade80]/60">
-                    Korenchuk Performance System
-                  </div>
-                  <div className="player-page-title truncate text-[22px] leading-none text-white">{player?.name || 'Игрок'}</div>
-                  {player?.position && (
-                    <div className="mt-1 text-[11px] text-slate-500">{player.position}</div>
-                  )}
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                {activeTab === 'workout' && session ? (
-                  <>
-                    <div className={`text-[10px] font-bold uppercase tracking-wide ${isToday ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      {isToday ? '● Сегодня' : '● Последняя'}
-                    </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5" suppressHydrationWarning>{formatDate(sessionDate)}</div>
-                  </>
-                ) : activeTab === 'workout' ? (
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-amber-400">● Ожидает программу</div>
-                ) : selectedHistDate ? (
-                  <div className="text-[10px] text-slate-500">{selectedHistDate}</div>
-                ) : (
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">● История</div>
-                )}
+        {/* ── Athlete identity hero ── */}
+        <header className="player-hero px-4 pb-4 pt-4">
+          <div className="player-brand-row mb-5 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <img src="/nk-logo.jpg" alt="NK" className="player-brand-logo h-9 w-9 shrink-0 rounded-xl object-cover" />
+              <div className="min-w-0">
+                <div className="player-brand-name truncate text-[10px] font-extrabold uppercase tracking-[0.18em] text-white">NK Performance</div>
+                <div className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.2em] text-emerald-300/60">Athlete application</div>
               </div>
             </div>
+            <div className="player-session-state shrink-0 text-right">
+              {activeTab === 'workout' && session ? (
+                <>
+                  <div className={`player-status-pill ${isToday ? 'is-today' : 'is-latest'}`}>
+                    <span />{isToday ? 'Сегодня' : 'Последняя'}
+                  </div>
+                  <div className="player-session-date" suppressHydrationWarning>{formatDate(sessionDate)}</div>
+                </>
+              ) : activeTab === 'workout' ? (
+                <div className="player-status-pill is-latest"><span />Ожидает программу</div>
+              ) : selectedHistDate ? (
+                <div className="player-session-date">{selectedHistDate}</div>
+              ) : (
+                <div className="player-status-pill is-muted"><span />История</div>
+              )}
+            </div>
+          </div>
 
-            {/* Progress bar — workout tab only */}
-            {totalSets > 0 && activeTab === 'workout' && (
-              <div className="mt-2.5">
-                <div className="flex justify-between mb-1">
-                  <span className="text-[10px] text-slate-600">Подходы</span>
-                  <span className="text-[10px] font-semibold text-slate-400">{doneCount}/{totalSets} · {pct}%</span>
+          <div className="player-identity flex items-center gap-3.5">
+            {playerPhoto ? (
+              <img src={playerPhoto} alt="" className="player-avatar h-14 w-14 shrink-0 rounded-[18px] border border-white/[0.1] object-cover" />
+            ) : (
+              <div className="player-avatar flex h-14 w-14 shrink-0 items-center justify-center rounded-[18px] bg-[#4ade80]/20 text-[14px] font-black text-[#4ade80]">
+                {initials(player?.name)}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="mb-1 text-[8px] font-black uppercase tracking-[0.2em] text-[#4ade80]/60">
+                Personal performance plan
+              </div>
+              <h1 className="player-page-title text-white">{player?.name || 'Игрок'}</h1>
+              {player?.position && (
+                <div className="player-position mt-1.5 text-[11px] text-slate-500">{player.position}</div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* ── Compact sticky workout control ── */}
+        {activeTab === 'workout' && session && (
+          <div className="player-progress-dock sticky top-0 z-30 border-y border-white/[0.07] bg-[#07101a]/95 px-4 pb-3 pt-3 backdrop-blur-xl">
+            {totalSets > 0 && (
+              <div className="player-progress-panel">
+                <div className="mb-2 flex items-end justify-between">
+                  <div>
+                    <div className="player-kicker">Прогресс тренировки</div>
+                    <div className="mt-0.5 text-[12px] font-semibold text-slate-300">{doneCount} из {totalSets} подходов</div>
+                  </div>
+                  <div className="player-progress-value">{pct}<span>%</span></div>
                 </div>
-                <div className="h-[3px] w-full rounded-full bg-white/[0.06]">
-                  <div
-                    className="h-[3px] rounded-full bg-[#4ade80] transition-all duration-500"
-                    style={{ width: `${pct}%` }}
-                  />
+                <div className="player-progress-track h-[4px] w-full rounded-full bg-white/[0.06]">
+                  <div className="h-full rounded-full bg-[#4ade80] transition-all duration-500" style={{ width: `${pct}%` }} />
                 </div>
               </div>
             )}
-          </div>
 
-          {/* Block nav — workout tab only */}
-          {blocks.length > 0 && activeTab === 'workout' && (
-            <div className="flex gap-2 overflow-x-auto px-4 pb-2.5 no-scrollbar">
+            {blocks.length > 0 && (
+            <div className="player-block-nav mt-3 flex gap-2 overflow-x-auto no-scrollbar">
               {blocks.map((block, bi) => {
                 const blockTotal = (block.exercises || []).reduce((s, ex) => s + (ex.targetSets?.length || 0), 0);
                 const blockDone = (block.exercises || []).reduce((s, ex, ei) =>
@@ -827,7 +833,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                     key={bi}
                     type="button"
                     onClick={() => scrollToBlock(bi)}
-                    className={`grid h-10 w-12 shrink-0 place-items-center rounded-xl text-xs font-bold transition-all ${
+                    className={`player-block-chip grid h-10 min-w-[48px] shrink-0 place-items-center rounded-xl px-3 text-xs font-bold transition-all ${
                       blockComplete
                         ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
                         : activeBlock === bi
@@ -840,12 +846,13 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                 );
               })}
             </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* ── Tab bar ── */}
         {!notFound && sessionDates.length > 0 && (
-          <div className="flex gap-1.5 border-b border-white/[0.05] px-4 py-2">
+          <nav className="player-tabs flex gap-1.5 border-b border-white/[0.05] px-4 py-2">
             {[['workout', 'Тренировка'], ['history', `История (${sessionDates.length})`]].map(([tab, label]) => (
               <button
                 key={tab}
@@ -863,7 +870,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                 {label}
               </button>
             ))}
-          </div>
+          </nav>
         )}
 
         {/* ── Invalid token ── */}
@@ -891,11 +898,11 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
 
         {/* ── Session content ── */}
         {!notFound && session && activeTab === 'workout' && (
-          <div className="space-y-5 px-3.5 pb-20 pt-3.5">
+          <main className="player-workout-content space-y-6 px-3.5 pb-24 pt-4">
 
             {/* Goal */}
             {dayGoal && (
-              <div className="rounded-xl border border-[#4ade80]/20 bg-[#4ade80]/[0.05] px-3.5 py-3">
+              <div className="player-goal-card rounded-xl border border-[#4ade80]/20 bg-[#4ade80]/[0.05] px-4 py-4">
                 <div className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#4ade80]/50">
                   Цель тренировки
                 </div>
@@ -908,11 +915,12 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
               <div
                 key={bi}
                 ref={el => (blockRefs.current[bi] = el)}
-                style={{ scrollMarginTop: '180px' }}
+                className="player-block-section"
+                style={{ scrollMarginTop: '150px' }}
               >
                 {/* Block header */}
-                <div className="mb-3 flex items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e] shadow-[0_4px_14px_rgba(74,222,128,0.18)]">
+                <div className="player-block-heading mb-3 flex items-center gap-3">
+                  <span className="player-block-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e] shadow-[0_4px_14px_rgba(74,222,128,0.18)]">
                     {block.label}
                   </span>
                   <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
@@ -943,12 +951,12 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
             {totalSets > 0 && doneCount === totalSets && (
               <FeedbackForm token={token} sessionDate={sessionDate} session={session} done={done} weights={weights} isMatchDayPrimer={isMatchDayPrimer} />
             )}
-          </div>
+          </main>
         )}
 
         {/* ── History tab ── */}
         {!notFound && activeTab === 'history' && (
-          <div className="px-4 pb-24 pt-4">
+          <main className="player-history px-4 pb-24 pt-4">
             {!selectedHistDate ? (
               <div className="space-y-2">
                 <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Все тренировки</p>
@@ -957,7 +965,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                     key={item.date}
                     type="button"
                     onClick={() => loadHistSession(item.date)}
-                    className="w-full flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-left transition hover:bg-white/[0.05] active:scale-[0.98]"
+                    className="player-history-row w-full flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-left transition hover:bg-white/[0.05] active:scale-[0.98]"
                   >
                     <div className="flex-1">
                       <div className="text-[13px] font-semibold text-slate-200">{formatDate(item.date)}</div>
@@ -1009,7 +1017,7 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
                       </div>
                       <div className="space-y-3">
                         {(block.exercises || []).map((ex, ei) => (
-                          <div key={ei} className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03]">
+                          <div key={ei} className="player-history-exercise overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03]">
                             <div className="flex items-center gap-2.5 bg-gradient-to-r from-[#4ade80]/[0.10] to-transparent px-4 py-3">
                               <span className="shrink-0 rounded-lg bg-[#4ade80]/20 px-2 py-1 text-[11px] font-black text-[#4ade80]">{ex.code}</span>
                               <span className="text-[15px] font-bold leading-snug text-white">{ex.name}</span>
@@ -1048,12 +1056,13 @@ export default function PlayerPage({ token, session, player, sessionDate, dayGoa
             ) : (
               <div className="py-20 text-center text-slate-600 text-sm">Тренировка не найдена</div>
             )}
-          </div>
+          </main>
         )}
 
         {/* ── Footer ── */}
-        <div className="fixed bottom-0 left-0 right-0 flex items-center justify-center border-t border-white/[0.05] bg-[#07101a]/95 py-2 backdrop-blur-xl">
-          <span className="text-[10px] text-white/[0.15] font-medium tracking-[0.18em] uppercase">
+        <div className="player-footer fixed bottom-0 left-0 right-0 flex items-center justify-center border-t border-white/[0.05] bg-[#07101a]/95 py-2 backdrop-blur-xl">
+          <span className="flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.2em] text-white/[0.24]">
+            <span className="h-1 w-1 rounded-full bg-emerald-400/70" />
             Korenchuk Performance System
           </span>
         </div>
