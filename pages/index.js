@@ -3751,57 +3751,46 @@ export default function Home() {
         {/* ══════════════════════════════════════
             SIDEBAR — desktop only (sm+)
         ══════════════════════════════════════ */}
-        <aside className={`premium-sidebar sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden print:hidden sm:flex ${sidebarCollapsed ? 'premium-sidebar--collapsed w-[88px]' : 'w-[320px]'}`}>
+        <aside className={`premium-sidebar sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden print:hidden sm:flex ${sidebarCollapsed ? 'premium-sidebar--collapsed w-[88px]' : 'w-[344px]'}`}>
 
           {/* Logo + API Key */}
-          <div className="sidebar-brand border-b border-white/[0.06] p-5">
+          <div className="sidebar-brand border-b border-white/[0.06] p-4">
             <div className="flex items-center gap-3">
-              <div className="relative h-10 w-10 shrink-0">
-                <div className="absolute -inset-[1.5px] rounded-[14px] bg-gradient-to-br from-accent/60 via-accent/20 to-transparent" />
+              <div className="relative h-11 w-11 shrink-0">
+                <div className="absolute -inset-[2px] rounded-[16px] bg-gradient-to-br from-emerald-300 via-cyan-400/70 to-violet-500/40 shadow-[0_0_24px_-8px_rgba(52,211,153,0.85)]" />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/nk-logo.jpg" alt="NK" className="relative h-10 w-10 rounded-xl object-cover" />
+                <img src="/nk-logo.jpg" alt="NK" className="relative h-11 w-11 rounded-[14px] object-cover ring-1 ring-black/50" />
               </div>
               <div className="sidebar-copy min-w-0">
-                <div className="text-[13px] font-black tracking-tight text-white leading-tight">Nikolay Korenchuk</div>
-                <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-accent">Performance System</div>
+                <div className="truncate text-[13px] font-black leading-tight tracking-tight text-white">Nikolay Korenchuk</div>
+                <div className="mt-0.5 bg-gradient-to-r from-emerald-300 via-cyan-300 to-violet-300 bg-clip-text text-[8px] font-black uppercase tracking-[0.19em] text-transparent">Performance System</div>
               </div>
-              <button
-                type="button"
-                onClick={toggleDesktopSidebar}
-                className="sidebar-collapse-button ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.035] text-slate-500 transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white"
-                aria-label={sidebarCollapsed ? 'Развернуть боковую панель' : 'Свернуть боковую панель'}
-                title={sidebarCollapsed ? 'Развернуть панель' : 'Свернуть панель'}
-              >
-                {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
-              </button>
+              <div className="sidebar-brand-actions ml-auto flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setKeyPanelOpen(false)}
+                  aria-label={keyConnected ? 'ReadySix подключён' : 'ReadySix не подключён'}
+                  title={keyConnected ? 'ReadySix подключён' : 'ReadySix не подключён'}
+                  className={`sidebar-connected flex h-8 items-center gap-1.5 rounded-xl border px-2.5 text-[9px] font-black uppercase tracking-wider transition-all ${focusRing} ${
+                    keyConnected
+                      ? 'border-emerald-400/25 bg-emerald-400/[0.10] text-emerald-300 shadow-[0_0_20px_-10px_rgba(52,211,153,0.9)]'
+                      : 'border-white/[0.08] bg-white/[0.035] text-slate-500'
+                  }`}
+                >
+                  <span className={`relative flex h-1.5 w-1.5 shrink-0 rounded-full ${keyConnected ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.9)]' : 'bg-slate-600'}`} />
+                  <span className="sidebar-copy">Live</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleDesktopSidebar}
+                  className="sidebar-collapse-button grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/[0.09] bg-white/[0.04] text-slate-400 transition hover:border-cyan-300/25 hover:bg-cyan-300/[0.08] hover:text-cyan-200"
+                  aria-label={sidebarCollapsed ? 'Развернуть боковую панель' : 'Свернуть боковую панель'}
+                  title={sidebarCollapsed ? 'Развернуть панель' : 'Свернуть панель'}
+                >
+                  {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+                </button>
+              </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setKeyPanelOpen(false)}
-              aria-label={keyConnected ? 'ReadySix подключён' : 'ReadySix не подключён'}
-              title={keyConnected ? 'ReadySix подключён' : 'ReadySix не подключён'}
-              className={`sidebar-connected mt-4 flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-semibold transition-all ${focusRing} ${
-                keyConnected
-                  ? 'border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-400 hover:bg-emerald-500/[0.11]'
-                  : 'border-white/[0.07] bg-white/[0.03] text-slate-500 hover:border-white/[0.12] hover:text-slate-300'
-              }`}
-            >
-              {keyConnected ? (
-                <>
-                  <span className="relative flex h-1.5 w-1.5 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  </span>
-                  <span className="sidebar-copy">Подключено</span>
-                </>
-              ) : (
-                <>
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-700" />
-                  <span className="sidebar-copy">Нет подключения</span>
-                </>
-              )}
-            </button>
 
             {false && keyPanelOpen && (
               <div className="mt-3 animate-fade-in space-y-2">
@@ -3823,18 +3812,18 @@ export default function Home() {
 
           {/* Workspace switcher */}
           {keyConnected && (
-            <div className="sidebar-context border-b border-white/[0.06] px-3 py-3">
-              <div className="flex rounded-xl bg-white/[0.04] p-0.5 gap-0.5">
+            <div className="sidebar-context sidebar-workspace border-b border-white/[0.06] px-3 py-2.5">
+              <div className="sidebar-workspace-switcher flex gap-1 rounded-2xl border border-white/[0.07] bg-black/20 p-1">
                 {[
-                  { id: 'zarechie', label: 'Заречье', emoji: '🏐', activeClass: 'bg-[#22D3EE]/[0.15] text-[#22D3EE] border-[#22D3EE]/20' },
-                  { id: 'nkperf',   label: 'NK Performance', emoji: '💪', activeClass: 'bg-emerald-500/[0.15] text-emerald-400 border-emerald-500/20' },
+                  { id: 'zarechie', label: 'Заречье', emoji: '🏐', activeClass: 'border-cyan-300/25 bg-gradient-to-br from-cyan-300/20 to-sky-500/10 text-cyan-200 shadow-[0_10px_28px_-18px_rgba(34,211,238,0.9)]' },
+                  { id: 'nkperf',   label: 'NK Pro', emoji: '✦', activeClass: 'border-emerald-300/25 bg-gradient-to-br from-emerald-300/20 to-teal-500/10 text-emerald-200 shadow-[0_10px_28px_-18px_rgba(52,211,153,0.9)]' },
                 ].map(w => (
                   <button
                     key={w.id}
                     type="button"
                     onClick={() => switchWorkspace(w.id)}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-[10px] font-bold transition-all border ${
-                      workspace === w.id ? w.activeClass : 'border-transparent text-slate-600 hover:text-slate-400'
+                    className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-1.5 text-[10px] font-bold transition-all ${
+                      workspace === w.id ? w.activeClass : 'border-transparent text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
                     }`}
                   >
                     <span>{w.emoji}</span><span>{w.label}</span>
@@ -3846,17 +3835,18 @@ export default function Home() {
 
           {/* Section switcher — 2×3 grid */}
           {keyConnected && (
-            <div className="sidebar-nav-grid border-b border-white/[0.06] px-3 py-3">
+            <div className="sidebar-nav-grid border-b border-white/[0.06] px-3 py-2.5">
               {[
                 [
-                  { id: 'readiness', label: 'Готовность', icon: <Activity size={12} />,    activeClass: 'bg-emerald-500/[0.15] text-emerald-400 border-emerald-500/20' },
-                  { id: 'workouts',  label: 'Зал',        icon: <Dumbbell size={12} />,    activeClass: 'bg-white/[0.10] text-white border-white/10' },
-                  { id: 'warmup',    label: 'Разминка',   icon: <Zap size={12} />,          activeClass: 'bg-cyan-500/[0.15] text-cyan-400 border-cyan-500/20' },
+                  { id: 'readiness', label: 'Готовность', icon: <Activity size={14} />, tone: 'tone-emerald', activeClass: 'border-emerald-300/25 bg-emerald-300/[0.13] text-emerald-200 shadow-[0_8px_22px_-16px_rgba(52,211,153,0.9)]' },
+                  { id: 'workouts',  label: 'Зал',        icon: <Dumbbell size={14} />, tone: 'tone-cyan', activeClass: 'border-cyan-300/25 bg-cyan-300/[0.13] text-cyan-100 shadow-[0_8px_22px_-16px_rgba(34,211,238,0.9)]' },
+                  { id: 'warmup',    label: 'Разминка',   icon: <Zap size={14} />, tone: 'tone-violet', activeClass: 'border-violet-300/25 bg-violet-300/[0.13] text-violet-200 shadow-[0_8px_22px_-16px_rgba(167,139,250,0.9)]' },
                 ],
                 [
-                  { id: 'tonnage',  label: 'Нагрузка', icon: <BarChart2 size={12} />,      activeClass: 'bg-amber-500/[0.15] text-amber-400 border-amber-500/20' },
-                  { id: 'calendar', label: 'Неделя',   icon: <CalendarDays size={12} />,   activeClass: 'bg-violet-500/[0.15] text-violet-400 border-violet-500/20' },
-                  { id: 'planner',  label: 'Месяц',    icon: <CalendarRange size={12} />,  activeClass: 'bg-sky-500/[0.15] text-sky-400 border-sky-500/20' },
+                  { id: 'tonnage',  label: 'Нагрузка', icon: <BarChart2 size={14} />, tone: 'tone-amber', activeClass: 'border-amber-300/25 bg-amber-300/[0.13] text-amber-200 shadow-[0_8px_22px_-16px_rgba(251,191,36,0.9)]' },
+                  { id: 'calendar', label: 'Неделя',   icon: <CalendarDays size={14} />, tone: 'tone-rose', activeClass: 'border-rose-300/25 bg-rose-300/[0.13] text-rose-200 shadow-[0_8px_22px_-16px_rgba(251,113,133,0.9)]' },
+                  { id: 'planner',  label: 'Месяц',    icon: <CalendarRange size={14} />, tone: 'tone-blue', activeClass: 'border-blue-300/25 bg-blue-300/[0.13] text-blue-200 shadow-[0_8px_22px_-16px_rgba(96,165,250,0.9)]' },
+                  { id: 'library', label: 'База', ariaLabel: 'Библиотека упражнений', icon: <BookOpen size={14} />, tone: 'tone-pink', activeClass: '' },
                 ],
               ].map((row, ri) => (
                 <div key={ri} className="sidebar-nav-row">
@@ -3864,13 +3854,20 @@ export default function Home() {
                     <button
                       key={s.id}
                       type="button"
-                      onClick={() => { setMainSection(s.id); if (s.id === 'warmup') loadWarmupHistory(); }}
-                      aria-label={s.label}
-                      title={s.label}
-                      className={`sidebar-nav-item flex flex-1 items-center gap-2 rounded-xl border px-3 py-2.5 text-[11px] font-semibold transition-all ${
+                      onClick={() => {
+                        if (s.id === 'library') {
+                          window.location.assign('/library');
+                          return;
+                        }
+                        setMainSection(s.id);
+                        if (s.id === 'warmup') loadWarmupHistory();
+                      }}
+                      aria-label={s.ariaLabel || s.label}
+                      title={s.ariaLabel || s.label}
+                      className={`sidebar-nav-item ${s.tone} flex flex-1 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[10px] font-bold transition-all ${
                         mainSection === s.id
                           ? s.activeClass
-                          : 'border-transparent text-slate-600 hover:text-slate-400 hover:bg-white/[0.03]'
+                          : 'border-white/[0.035] text-slate-500 hover:border-white/[0.10] hover:bg-white/[0.045] hover:text-slate-200'
                       }`}
                     >
                       {s.icon}
@@ -3882,30 +3879,17 @@ export default function Home() {
             </div>
           )}
 
-          {/* Library quick-access */}
-          {keyConnected && (
-            <div className="sidebar-context border-b border-white/[0.06] px-3 py-3">
-              <a
-                href="/library"
-                className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-2.5 text-[11px] font-semibold text-slate-400 transition-all hover:border-[#22D3EE]/25 hover:bg-[#22D3EE]/[0.07] hover:text-[#67e8f9]"
-              >
-                <BookOpen size={12} />
-                Библиотека упражнений
-              </a>
-            </div>
-          )}
-
           {/* Tab switcher: Players | Day (workouts section only) */}
           {mainSection === 'workouts' && keyConnected && players.length > 0 && (
-            <div className="sidebar-context border-b border-white/[0.06] px-3 py-3">
-              <div className="flex rounded-lg bg-white/[0.04] p-0.5">
+            <div className="sidebar-context border-b border-white/[0.06] px-3 py-2">
+              <div className="sidebar-roster-tabs flex rounded-xl border border-white/[0.06] bg-black/20 p-1">
                 {[{ id: 'players', label: 'Игроки' }, { id: 'day', label: 'День' }].map(tab => (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => setLeftTab(tab.id)}
-                    className={`flex-1 rounded-md py-1.5 text-[11px] font-semibold transition-all ${
-                      leftTab === tab.id ? 'bg-white/[0.10] text-white' : 'text-slate-600 hover:text-slate-400'
+                    className={`flex-1 rounded-lg py-1.5 text-[10px] font-bold transition-all ${
+                      leftTab === tab.id ? 'bg-gradient-to-r from-white/[0.11] to-white/[0.06] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'
                     }`}
                   >
                     {tab.label}
@@ -4139,7 +4123,7 @@ export default function Home() {
 
           {/* Player list (workouts section only) */}
           {mainSection === 'workouts' && (
-          <div className="sidebar-context sidebar-player-scroll flex-1 overflow-y-auto px-3 py-3">
+          <div className="sidebar-context sidebar-player-scroll min-h-0 flex-1 overflow-y-auto px-3 py-2.5">
             {!keyConnected && (
               <p className="px-3 py-5 text-[11px] text-slate-600">Введи ключ чтобы загрузить состав</p>
             )}
@@ -4428,7 +4412,7 @@ export default function Home() {
 
             {/* ── Вкладка: Игроки ── */}
             {leftTab === 'players' && keyConnected && players.length > 0 && (
-              <div className="sticky top-0 z-10 -mx-1 mb-2 border-b border-white/[0.05] bg-[#081019]/95 px-1 pb-3 pt-1 backdrop-blur-xl">
+              <div className="sidebar-roster-head sticky top-0 z-10 -mx-1 mb-2 border-b border-white/[0.05] px-1 pb-2.5 pt-1 backdrop-blur-xl">
                 <div className="mb-2 flex items-center justify-between px-1">
                   <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Состав</span>
                   <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10px] font-bold text-slate-400">{filteredPlayers.length}/{players.length}</span>
@@ -4441,7 +4425,7 @@ export default function Home() {
                     value={playerSearch}
                     onChange={e => setPlayerSearch(e.target.value)}
                     placeholder="Поиск игрока..."
-                    className="w-full rounded-xl border border-white/[0.09] bg-white/[0.035] py-2 pl-9 pr-8 text-[12px] text-slate-200 outline-none transition placeholder:text-slate-600 hover:border-white/[0.14] focus:border-accent/45 focus:bg-white/[0.055]"
+                    className="w-full rounded-xl border border-white/[0.09] bg-black/20 py-2 pl-9 pr-8 text-[11px] text-slate-100 outline-none transition placeholder:text-slate-600 hover:border-white/[0.16] focus:border-cyan-300/40 focus:bg-cyan-300/[0.04]"
                   />
                   {playerSearch && (
                     <button
@@ -4456,7 +4440,7 @@ export default function Home() {
               </div>
             )}
             {leftTab === 'players' && keyConnected && players.length > 0 && (
-              <div className="flex flex-wrap gap-1 px-1 pb-3">
+              <div className="no-scrollbar flex flex-nowrap gap-0.5 overflow-x-auto px-1 pb-2">
                 {[
                   { key: 'all', label: 'Все' },
                   { key: 'diagonal', label: 'Диаг', cls: 'bg-violet-400' },
@@ -4469,7 +4453,7 @@ export default function Home() {
                     key={key}
                     type="button"
                     onClick={() => setPositionFilter(key)}
-                    className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold transition-all ${
+                    className={`flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-[9px] font-bold transition-all ${
                       positionFilter === key ? 'bg-white/[0.10] text-white' : 'text-slate-600 hover:text-slate-400'
                     }`}
                   >
@@ -4482,18 +4466,18 @@ export default function Home() {
             {leftTab === 'players' && filteredPlayers.map(p => (
               <div
                 key={p.id}
-                className={`sidebar-player-row group mb-1 flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all duration-200 ${
+                className={`sidebar-player-row group mb-1.5 flex w-full items-center gap-3 rounded-2xl border px-2.5 py-2 text-left transition-all duration-200 ${
                   playerId === p.id
-                    ? 'border-accent/25 bg-accent/[0.10] text-white shadow-[0_10px_26px_-18px_rgba(74,222,128,0.8)]'
-                    : 'border-transparent text-slate-400 hover:border-white/[0.08] hover:bg-white/[0.045] hover:text-slate-100'
+                    ? 'border-cyan-300/25 bg-gradient-to-r from-cyan-300/[0.13] to-emerald-300/[0.07] text-white shadow-[0_12px_30px_-18px_rgba(34,211,238,0.85)]'
+                    : 'border-white/[0.045] bg-white/[0.018] text-slate-400 hover:border-cyan-300/15 hover:bg-gradient-to-r hover:from-cyan-300/[0.06] hover:to-violet-300/[0.035] hover:text-slate-100'
                 }`}
               >
                 <button type="button" onClick={() => selectPlayer(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                <div className="relative h-10 w-10 shrink-0">
+                <div className="relative h-9 w-9 shrink-0">
                   {p.photo ? (
-                    <img src={p.photo} alt="" className="h-10 w-10 rounded-[14px] object-cover object-top ring-1 ring-white/[0.12]" />
+                    <img src={p.photo} alt="" className="h-9 w-9 rounded-xl object-cover object-top ring-1 ring-white/[0.14]" />
                   ) : (
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-[14px] text-[11px] font-black transition-colors ${
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-xl text-[10px] font-black transition-colors ${
                       playerId === p.id
                         ? 'bg-accent text-[#060a0e]'
                         : 'bg-white/[0.07] text-slate-400 group-hover:bg-white/[0.10]'
@@ -4585,30 +4569,27 @@ export default function Home() {
         {mobileView === 'players' && (
           <div className="flex sm:hidden flex-col w-full min-h-screen">
             {/* Mobile header */}
-            <div className="border-b border-white/[0.06] bg-[#060c15] px-5 py-4">
-              <div className="flex items-center gap-3 mb-4">
+            <div className="mobile-command-header border-b border-white/[0.07] px-4 py-4">
+              <div className="flex items-center gap-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/nk-logo.jpg" alt="NK" className="h-9 w-9 shrink-0 rounded-xl object-cover" />
-                <div>
-                  <div className="text-[13px] font-black tracking-tight text-white leading-tight">Nikolay Korenchuk</div>
-                  <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-accent">Performance System</div>
+                <img src="/nk-logo.jpg" alt="NK" className="h-10 w-10 shrink-0 rounded-[14px] object-cover ring-1 ring-emerald-300/35 shadow-[0_0_20px_-9px_rgba(52,211,153,0.9)]" />
+                <div className="min-w-0">
+                  <div className="truncate text-[13px] font-black leading-tight tracking-tight text-white">Nikolay Korenchuk</div>
+                  <div className="mt-0.5 bg-gradient-to-r from-emerald-300 via-cyan-300 to-violet-300 bg-clip-text text-[8px] font-black uppercase tracking-[0.18em] text-transparent">Performance System</div>
                 </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setKeyPanelOpen(false)}
-                className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-semibold transition-all ${focusRing} ${
+                <button
+                  type="button"
+                  onClick={() => setKeyPanelOpen(false)}
+                  className={`ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[9px] font-black uppercase tracking-wider transition-all ${focusRing} ${
                   keyConnected
-                    ? 'border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-400'
+                    ? 'border-emerald-300/25 bg-emerald-300/[0.10] text-emerald-200'
                     : 'border-white/[0.07] bg-white/[0.03] text-slate-500'
                 }`}
-              >
-                {keyConnected ? (
-                  <><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Подключено</>
-                ) : (
-                  <><span className="h-1.5 w-1.5 rounded-full bg-slate-700" />Нет подключения</>
-                )}
-              </button>
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${keyConnected ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.9)]' : 'bg-slate-600'}`} />
+                  ReadySix
+                </button>
+              </div>
               {false && keyPanelOpen && (
                 <div className="mt-3">
                   <input
@@ -4621,6 +4602,32 @@ export default function Home() {
                 </div>
               )}
             </div>
+            {/* Mobile workspace switcher */}
+            {keyConnected && (
+              <div className="border-b border-white/[0.06] px-4 py-2.5">
+                <div className="flex gap-1 rounded-2xl border border-white/[0.07] bg-black/20 p-1">
+                  {[
+                    { id: 'zarechie', label: 'Заречье', icon: '🏐' },
+                    { id: 'nkperf', label: 'NK Pro', icon: '✦' },
+                  ].map(w => (
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => switchWorkspace(w.id)}
+                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-black transition-all ${
+                        workspace === w.id
+                          ? w.id === 'zarechie'
+                            ? 'border-cyan-300/25 bg-cyan-300/[0.12] text-cyan-200'
+                            : 'border-emerald-300/25 bg-emerald-300/[0.12] text-emerald-200'
+                          : 'border-transparent text-slate-500'
+                      }`}
+                    >
+                      <span>{w.icon}</span>{w.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Mobile library link */}
             <div className="border-b border-white/[0.06] px-5 py-2">
               <a
@@ -4656,7 +4663,25 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-600">Состав команды</p>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Состав команды</p>
+                <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10px] font-black text-slate-400">{filteredPlayers.length}/{players.length}</span>
+              </div>
+              <div className="relative mb-3">
+                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  value={playerSearch}
+                  onChange={e => setPlayerSearch(e.target.value)}
+                  placeholder="Найти спортсмена..."
+                  className="w-full rounded-2xl border border-white/[0.09] bg-black/20 py-2.5 pl-9 pr-9 text-[12px] text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/35 focus:bg-cyan-300/[0.035]"
+                />
+                {playerSearch && (
+                  <button type="button" onClick={() => setPlayerSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 {filteredPlayers.map(p => (
                   <div key={p.id} className="relative">
@@ -5621,10 +5646,94 @@ export default function Home() {
           )}
 
           {workspaceTab === 'program' && !playerId && batchSelectedIds.size === 0 && (
-            <div className="hidden sm:flex flex-col items-center justify-center min-h-[65vh] text-center print:hidden">
-              <div className="mb-3 text-6xl opacity-10">🏋</div>
-              <h2 className="text-[18px] font-black text-slate-600">Выберите игрока</h2>
-              <p className="mt-1 text-sm text-slate-700">Состав — в панели слева</p>
+            <div className="hidden min-h-[calc(100vh-66px)] items-center py-8 sm:flex print:hidden">
+              <div className="premium-command-center w-full rounded-[32px] border border-white/[0.10] p-7 lg:p-9">
+                <div className="relative z-10 flex flex-col gap-7">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="max-w-2xl">
+                      <div className="mb-3 flex items-center gap-2">
+                        <span className="h-px w-8 bg-gradient-to-r from-emerald-300 to-cyan-300" />
+                        <span className="bg-gradient-to-r from-emerald-300 via-cyan-300 to-violet-300 bg-clip-text text-[10px] font-black uppercase tracking-[0.24em] text-transparent">
+                          Performance command center
+                        </span>
+                      </div>
+                      <h2 className="text-[30px] font-black leading-[1.05] tracking-[-0.035em] text-white lg:text-[38px]">
+                        Управляйте подготовкой<br className="hidden lg:block" /> в одном пространстве
+                      </h2>
+                      <p className="mt-4 max-w-xl text-[13px] leading-relaxed text-slate-400">
+                        Выберите спортсмена из состава, оцените актуальное состояние и соберите персональную тренировку под методику дня.
+                      </p>
+                    </div>
+                    <div className={`inline-flex w-fit items-center gap-2 rounded-2xl border px-3.5 py-2 text-[11px] font-black ${
+                      workspace === 'zarechie'
+                        ? 'border-cyan-300/20 bg-cyan-300/[0.08] text-cyan-200'
+                        : 'border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-200'
+                    }`}>
+                      <span className={`h-2 w-2 rounded-full ${workspace === 'zarechie' ? 'bg-cyan-300' : 'bg-emerald-300'} shadow-[0_0_12px_currentColor]`} />
+                      {workspace === 'zarechie' ? 'Заречье' : 'NK Performance'}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    {[
+                      { label: 'Спортсмены', value: players.length || '—', sub: 'активный состав', color: 'text-cyan-200', icon: <Users size={15} /> },
+                      { label: 'Программы', value: players.filter(p => p.lastSessionDate === date).length, sub: `на ${date.slice(5).replace('-', '.')}`, color: 'text-emerald-200', icon: <CheckCircle2 size={15} /> },
+                      { label: 'Данные', value: keyConnected ? 'LIVE' : 'OFF', sub: 'ReadySix', color: keyConnected ? 'text-emerald-200' : 'text-rose-200', icon: <Activity size={15} /> },
+                      { label: 'Режим', value: 'PRO', sub: 'coach workspace', color: 'text-violet-200', icon: <Orbit size={15} /> },
+                    ].map(item => (
+                      <div key={item.label} className="command-stat rounded-2xl border border-white/[0.075] p-4">
+                        <div className={`mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] ${item.color}`}>
+                          {item.icon}{item.label}
+                        </div>
+                        <div className="text-[24px] font-black leading-none tracking-tight text-white">{item.value}</div>
+                        <div className="mt-1.5 text-[10px] text-slate-500">{item.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div>
+                    <div className="mb-3 flex items-end justify-between gap-4">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Быстрый выбор</div>
+                        <div className="mt-1 text-[15px] font-bold text-slate-200">Состав команды</div>
+                      </div>
+                      <div className="text-[10px] text-slate-500">Все спортсмены доступны в панели слева</div>
+                    </div>
+                    {players.length > 0 ? (
+                      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+                        {players.slice(0, 6).map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => selectPlayer(p)}
+                            className="command-player-card group flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.075] p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300/20"
+                          >
+                            <div className="relative h-11 w-11 shrink-0">
+                              {p.photo ? (
+                                <img src={p.photo} alt="" className="h-11 w-11 rounded-[14px] object-cover object-top ring-1 ring-white/[0.14]" />
+                              ) : (
+                                <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-gradient-to-br from-cyan-300/20 to-violet-400/15 text-[11px] font-black text-cyan-100 ring-1 ring-white/[0.08]">
+                                  {initials(p.name)}
+                                </div>
+                              )}
+                              <span className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0b1820] ${positionDot(p.position)}`} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[12px] font-black text-slate-100">{p.name}</div>
+                              <div className="mt-0.5 truncate text-[10px] text-slate-500">{p.position || 'Позиция не указана'}</div>
+                            </div>
+                            <ArrowRight size={14} className="shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-cyan-200" />
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-white/[0.07] bg-black/15 px-5 py-8 text-center text-[12px] text-slate-500">
+                        Загружаю актуальный состав из ReadySix…
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
