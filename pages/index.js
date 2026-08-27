@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Head from 'next/head';
 import {
   Activity,
@@ -157,7 +158,7 @@ function DatePicker({ value, onChange, maxDate, minDate, size = 'default', class
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-[60] mt-2 w-[276px] rounded-2xl border border-white/[0.10] bg-[#0d1b2e] p-4 shadow-[0_24px_64px_rgba(0,0,0,0.80)] backdrop-blur-xl">
+        <div className="premium-popover absolute left-0 top-full z-[60] mt-2 w-[276px] rounded-2xl border border-white/[0.10] p-4">
           {/* Month navigation */}
           <div className="mb-4 flex items-center justify-between">
             <button type="button" onClick={prevM}
@@ -209,6 +210,105 @@ function DatePicker({ value, onChange, maxDate, minDate, size = 'default', class
         </div>
       )}
     </div>
+  );
+}
+
+function PremiumSelect({ value, onChange, options, className = '', title, disabled = false, compact = false }) {
+  const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+  const selected = options.find(option => String(option.value) === String(value)) || options[0];
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function positionMenu() {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const desiredHeight = Math.min(340, options.length * (compact ? 38 : 46) + 16);
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const opensUp = spaceBelow < Math.min(desiredHeight, 260) && rect.top > spaceBelow;
+      setMenuStyle({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)),
+        top: opensUp ? Math.max(8, rect.top - desiredHeight - 8) : rect.bottom + 8,
+        width: rect.width,
+        maxHeight: desiredHeight,
+      });
+    }
+
+    function handlePointer(event) {
+      if (!triggerRef.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setOpen(false);
+    }
+
+    function handleKey(event) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+
+    positionMenu();
+    document.addEventListener('mousedown', handlePointer);
+    document.addEventListener('keydown', handleKey);
+    window.addEventListener('resize', positionMenu);
+    window.addEventListener('scroll', positionMenu, true);
+    return () => {
+      document.removeEventListener('mousedown', handlePointer);
+      document.removeEventListener('keydown', handleKey);
+      window.removeEventListener('resize', positionMenu);
+      window.removeEventListener('scroll', positionMenu, true);
+    };
+  }, [compact, open, options.length]);
+
+  const menu = open && menuStyle && typeof document !== 'undefined' ? createPortal(
+    <div
+      ref={menuRef}
+      role="listbox"
+      aria-label={title}
+      className="premium-select-popover fixed z-[120] overflow-y-auto rounded-2xl border border-white/[0.14] p-1.5"
+      style={menuStyle}
+    >
+      {options.map(option => {
+        const active = String(option.value) === String(value);
+        return (
+          <button
+            key={String(option.value)}
+            type="button"
+            role="option"
+            aria-selected={active}
+            onClick={() => { onChange(option.value); setOpen(false); }}
+            className={`premium-select-option flex w-full items-center gap-3 rounded-xl text-left transition-all ${compact ? 'px-2.5 py-2 text-[11px]' : 'px-3 py-2.5 text-[12px]'} ${active ? 'is-selected' : ''}`}
+          >
+            <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border ${active ? 'border-emerald-300/30 bg-emerald-300/15 text-emerald-200' : 'border-white/[0.07] bg-white/[0.025] text-transparent'}`}>
+              <Check size={11} strokeWidth={2.8} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-semibold text-slate-200">{option.label}</span>
+              {option.sub && <span className="mt-0.5 block truncate text-[10px] text-slate-500">{option.sub}</span>}
+            </span>
+          </button>
+        );
+      })}
+    </div>,
+    document.querySelector('main') || document.body,
+  ) : null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={disabled}
+        title={title}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => !disabled && setOpen(current => !current)}
+        className={`premium-select-trigger flex items-center gap-2 text-left disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+      >
+        <span className="min-w-0 flex-1 truncate">{selected?.label || 'Выберите'}</span>
+        <ChevronDown size={compact ? 12 : 14} className={`shrink-0 text-slate-500 transition-transform duration-200 ${open ? 'rotate-180 text-cyan-200' : ''}`} />
+      </button>
+      {menu}
+    </>
   );
 }
 
@@ -1508,15 +1608,17 @@ function ExerciseCard({
             <span className="text-[12px] font-medium text-slate-500">{isPairableFreeWeightExercise(name) ? 'кг/снаряд' : 'кг'}</span>
           </div>
           {isPairableFreeWeightExercise(name) && (
-            <select
+            <PremiumSelect
               value={loadUnitsForExercise({ name, loadUnits })}
-              onChange={e => onChangeLoadUnits?.(Number(e.target.value))}
+              onChange={nextValue => onChangeLoadUnits?.(Number(nextValue))}
+              options={[
+                { value: 1, label: '1 снаряд' },
+                { value: 2, label: '2 снаряда' },
+              ]}
               title="Количество гантелей или гирь для расчёта тоннажа"
               className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-[11px] font-semibold text-slate-400 outline-none transition focus:border-accent/50"
-            >
-              <option value={1}>1 снаряд</option>
-              <option value={2}>2 снаряда</option>
-            </select>
+              compact
+            />
           )}
           {onActualKgChange && (
             <div className="flex items-center gap-1.5">
@@ -1900,13 +2002,13 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
                 className="w-full rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[12px] text-slate-200 outline-none placeholder:text-slate-700 focus:border-accent/30"
               />
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <select
+                <PremiumSelect
                   value={goal.metric || 'manual'}
-                  onChange={event => updateGoal(index, { metric: event.target.value, baselineValue: null, baselineDate: null, targetValue: null })}
+                  onChange={nextValue => updateGoal(index, { metric: nextValue, baselineValue: null, baselineDate: null, targetValue: null })}
+                  options={metricOptions}
                   className="rounded-lg border border-white/[0.07] bg-[#101a1d] px-3 py-2 text-[11px] text-slate-300 outline-none focus:border-accent/30"
-                >
-                  {metricOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
+                  compact
+                />
                 {goal.metric && goal.metric !== 'manual' ? (
                   <input
                     type="number"
@@ -1948,16 +2050,18 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
             {plan.review.due && <div className="mt-1 text-[10px] font-semibold text-amber-400">Цикл завершён: подтвердите продолжение, смену дозы/метода или новую цель.</div>}
             {plan.review.due && (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <select
+                <PremiumSelect
                   value={plan.reviewDecision || 'pending'}
-                  onChange={event => onChange({ ...plan, reviewDecision: event.target.value })}
+                  onChange={nextValue => onChange({ ...plan, reviewDecision: nextValue })}
+                  options={[
+                    { value: 'pending', label: 'Решение не принято' },
+                    { value: 'continue', label: 'Продолжить метод' },
+                    { value: 'adjust', label: 'Изменить дозу или метод' },
+                    { value: 'complete', label: 'Закрыть цель' },
+                  ]}
                   className="rounded-lg border border-white/[0.08] bg-[#101a1d] px-3 py-2 text-[11px] text-slate-300 outline-none focus:border-accent/30"
-                >
-                  <option value="pending">Решение не принято</option>
-                  <option value="continue">Продолжить метод</option>
-                  <option value="adjust">Изменить дозу или метод</option>
-                  <option value="complete">Закрыть цель</option>
-                </select>
+                  compact
+                />
                 <input
                   value={plan.reviewNote || ''}
                   onChange={event => onChange({ ...plan, reviewNote: event.target.value })}
@@ -4169,18 +4273,19 @@ export default function Home() {
                   </div>
 
                   {/* Phase select */}
-                  <select
+                  <PremiumSelect
                     value={focus}
-                    onChange={e => {
-                      setFocus(e.target.value);
-                      setTrainingType(defaultTrainingTypeForFocus(e.target.value));
+                    onChange={nextValue => {
+                      setFocus(nextValue);
+                      setTrainingType(defaultTrainingTypeForFocus(nextValue));
                     }}
+                    options={phasesForWorkspace(period, workspace).map(ph => ({
+                      value: ph.value,
+                      label: phaseLabelForWorkspace(ph, workspace),
+                    }))}
                     className="w-full rounded-lg border border-white/[0.08] bg-[#0a1520] px-2 py-1.5 text-[11px] text-slate-300 outline-none focus:border-accent/40 [color-scheme:dark]"
-                  >
-                    {phasesForWorkspace(period, workspace).map(ph => (
-                      <option key={ph.value} value={ph.value}>{phaseLabelForWorkspace(ph, workspace)}</option>
-                    ))}
-                  </select>
+                    compact
+                  />
 
                   {focus === 'inseason_strength' && (
                     <div className="grid grid-cols-2 gap-1 rounded-lg border border-cyan-400/20 bg-cyan-400/[0.05] p-1">
@@ -4229,16 +4334,14 @@ export default function Home() {
                   )}
 
                   {/* Manual training type */}
-                  <select
+                  <PremiumSelect
                     value={trainingType}
-                    onChange={e => setTrainingType(e.target.value)}
+                    onChange={setTrainingType}
+                    options={TRAINING_TYPES}
                     className="w-full rounded-lg border border-white/[0.08] bg-[#0a1520] px-2 py-1.5 text-[11px] text-slate-300 outline-none focus:border-accent/40 [color-scheme:dark]"
                     title="Ручной тип тренировки"
-                  >
-                    {TRAINING_TYPES.map(type => (
-                      <option key={type.value} value={type.value}>{type.label}</option>
-                    ))}
-                  </select>
+                    compact
+                  />
 
                   {/* Day goal */}
                   <input
@@ -4318,19 +4421,17 @@ export default function Home() {
                       </button>
 
                       {/* Match load marker */}
-                      <select
+                      <PremiumSelect
                         value={matchLoads[p.id]?.status || ''}
-                        onChange={e => updateMatchLoad(p.id, e.target.value)}
+                        onChange={nextValue => updateMatchLoad(p.id, nextValue)}
+                        options={MATCH_LOAD_OPTIONS}
                         disabled={matchLoadSaving || batchRunning}
                         className={`shrink-0 rounded-lg border border-white/[0.07] bg-[#071018] px-1.5 py-1 text-[10px] outline-none [color-scheme:dark] ${
                           matchLoads[p.id]?.status ? 'text-amber-300' : 'text-slate-600'
                         }`}
                         title="Игровая нагрузка после матча"
-                      >
-                        {MATCH_LOAD_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
+                        compact
+                      />
 
                       {/* Status badges */}
                       <div className="flex items-center gap-1 shrink-0">
@@ -4413,7 +4514,7 @@ export default function Home() {
 
             {/* ── Вкладка: Игроки ── */}
             {leftTab === 'players' && keyConnected && players.length > 0 && (
-              <div className="sidebar-roster-head sticky top-0 z-10 -mx-1 mb-2 border-b border-white/[0.05] px-1 pb-2.5 pt-1 backdrop-blur-xl">
+              <div className="sidebar-roster-head -mx-1 mb-2 border-b border-white/[0.05] px-1 pb-2.5 pt-1">
                 <div className="mb-2 flex items-center justify-between px-1">
                   <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Состав</span>
                   <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10px] font-bold text-slate-400">{filteredPlayers.length}/{players.length}</span>
@@ -6073,20 +6174,19 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
-                <select
+                <PremiumSelect
                   value={focus}
-                  onChange={e => {
-                    setFocus(e.target.value);
-                    setTrainingType(defaultTrainingTypeForFocus(e.target.value));
+                  onChange={nextValue => {
+                    setFocus(nextValue);
+                    setTrainingType(defaultTrainingTypeForFocus(nextValue));
                   }}
+                  options={phasesForWorkspace(period, workspace).map(ph => ({
+                    value: ph.value,
+                    label: `${phaseLabelForWorkspace(ph, workspace)}${phaseSubForWorkspace(ph, workspace) ? ` · ${phaseSubForWorkspace(ph, workspace)}` : ''}`,
+                  }))}
                   className={`${inputBase} ${focusRing} [color-scheme:dark]`}
-                >
-                  {phasesForWorkspace(period, workspace).map(ph => (
-                    <option key={ph.value} value={ph.value}>
-                      {phaseLabelForWorkspace(ph, workspace)}{phaseSubForWorkspace(ph, workspace) ? ` · ${phaseSubForWorkspace(ph, workspace)}` : ''}
-                    </option>
-                  ))}
-                </select>
+                  title="Выберите фазу подготовки"
+                />
                 {focus === 'inseason_strength' && (
                   <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.05] p-1.5">
                     {[
@@ -6135,15 +6235,13 @@ export default function Home() {
 
               <div>
                 <SectionLabel icon={<Target size={11} />} text="Тип и акцент" />
-                <select
+                <PremiumSelect
                   value={trainingType}
-                  onChange={e => setTrainingType(e.target.value)}
+                  onChange={setTrainingType}
+                  options={TRAINING_TYPES}
                   className={`${inputBase} ${focusRing} mb-2 [color-scheme:dark]`}
-                >
-                  {TRAINING_TYPES.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
-                </select>
+                  title="Выберите тип тренировки"
+                />
                 <input
                   type="text"
                   value={dayGoal}
@@ -7146,11 +7244,11 @@ export default function Home() {
       {/* ── Copy program modal ── */}
       {copyModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          className="premium-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={() => setCopyModalOpen(false)}
         >
           <div
-            className="w-full max-w-xs rounded-2xl border border-white/[0.1] bg-[#0d1e30] p-5 shadow-2xl"
+            className="premium-modal-card w-full max-w-xs rounded-3xl border border-white/[0.12] p-5"
             onClick={e => e.stopPropagation()}
           >
             <h3 className="mb-1 text-sm font-bold text-white">Скопировать тренировку</h3>
@@ -7192,7 +7290,7 @@ export default function Home() {
 
       {/* ── Copy done toast ── */}
       {copyDone && (
-        <div className="fixed bottom-5 right-5 z-50 rounded-xl border border-emerald-500/30 bg-[#0d2010] px-4 py-3 text-sm font-semibold text-emerald-300 shadow-xl animate-fade-in">
+        <div className="premium-toast fixed bottom-5 right-5 z-50 rounded-2xl border border-emerald-300/20 px-4 py-3 text-sm font-semibold text-emerald-200 animate-fade-in">
           ✓ Скопировано → {copyDone}
         </div>
       )}
@@ -7200,11 +7298,11 @@ export default function Home() {
       {/* ── Photo edit modal ── */}
       {editPhotoFor && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          className="premium-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={() => { if (!photoUploading) setEditPhotoFor(null); }}
         >
           <div
-            className="w-full max-w-xs rounded-2xl border border-white/[0.1] bg-[#0d1e30] p-5 shadow-2xl"
+            className="premium-modal-card w-full max-w-xs rounded-3xl border border-white/[0.12] p-5"
             onClick={e => e.stopPropagation()}
           >
             <h3 className="mb-4 text-sm font-bold text-white">Фото профиля</h3>
