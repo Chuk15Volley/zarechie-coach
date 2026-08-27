@@ -8,7 +8,7 @@ import { isAuthorized } from '../../../lib/auth';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { getPlayerSnapshot } from '../../../lib/playerData';
 import { exhistKey, exweightKey, gymTonnageDatesKey, gymTonnageKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
-import { assessSessionQuality } from '../../../lib/sessionValidator';
+import { assessSessionQuality, qualityCorrectionPrompt } from '../../../lib/sessionValidator';
 import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { normalizeSessionTempoDescriptions } from '../../../lib/tempoDescription.mjs';
@@ -170,6 +170,7 @@ export default async function handler(req, res) {
       quality: record.quality || null,
       focus: record.qualityContext?.focus || record.focus || '',
       trainingType: record.qualityContext?.trainingType || record.trainingType || '',
+      strengthMode: record.qualityContext?.strengthMode || record.strengthMode || null,
     });
   }
   if (record.status === 'failed') {
@@ -311,8 +312,35 @@ export default async function handler(req, res) {
       playerRestrictions,
     });
 
-    // Compatibility for correction jobs queued by older deployments. New
-    // generations use one response; the deterministic audit is advisory.
+    // The strength methodology gets one automatic repair attempt. If the
+    // deterministic structure/dose audit still fails after that attempt, the
+    // original or corrected candidate is returned with a specific warning and
+    // remains available for an explicit manual save.
+    if (quality.strength && !quality.valid && !record.correctionAttempted) {
+      const correctionPrompt = qualityCorrectionPrompt(userPrompt, session, quality);
+      const corrected = await createOpenAIBackgroundResponse(apiKey, correctionPrompt, systemPrompt, sessionTool, {
+        maxOutputTokens: SESSION_RETRY_OUTPUT_TOKENS,
+        reasoningEffort: 'low',
+      });
+      if (!corrected.error && corrected.response?.id) {
+        await redis('set', `coach:batch:${batchId}`, JSON.stringify({
+          ...record,
+          status: 'submitted',
+          openaiResponseId: corrected.response.id,
+          openaiStatus: corrected.response.status || 'queued',
+          activePrompt: correctionPrompt,
+          correctionAttempted: true,
+          candidateSession: session,
+          candidateQuality: quality,
+          tokenRetryCount: 0,
+          correctionStartedAt: new Date().toISOString(),
+        }), 'EX', 3600).catch(() => {});
+        return res.status(200).json({ status: 'pending', processing_status: 'quality_correction' });
+      }
+    }
+
+    // Compare the single repair attempt with its original candidate and keep
+    // the better complete version.
     if (record.correctionAttempted && record.candidateSession && record.candidateQuality) {
       const candidateQuality = record.candidateQuality;
       const correctedIsBetter = (quality.valid && !candidateQuality.valid)
@@ -345,6 +373,7 @@ export default async function handler(req, res) {
       dayGoal: dayGoal || '',
       focus: qualityContext.focus || focus || '',
       trainingType: qualityContext.trainingType || trainingType || '',
+      strengthMode: qualityContext.strengthMode || null,
       quality,
       date,
       savedAt: new Date().toISOString(),
@@ -394,6 +423,7 @@ export default async function handler(req, res) {
       quality,
       focus: qualityContext.focus || focus || '',
       trainingType: qualityContext.trainingType || trainingType || '',
+      strengthMode: qualityContext.strengthMode || null,
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });

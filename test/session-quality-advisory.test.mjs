@@ -43,5 +43,5 @@ test('generation and persistence routes contain no hard quality rejection', () =
   assert.doesNotMatch(sources, /if \(copyQuality\.blocking\)/);
   assert.doesNotMatch(sources, /if \(!replacementQuality\.valid/);
   assert.doesNotMatch(sources, /callOpenAIForSession\(apiKey, fixPrompt\)/);
-  assert.doesNotMatch(sources, /processing_status: 'quality_correction'/);
+  assert.match(sources, /processing_status: 'quality_correction'/);
 });
