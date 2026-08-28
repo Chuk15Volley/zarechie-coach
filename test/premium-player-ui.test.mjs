@@ -33,9 +33,15 @@ test('player experience includes start, focus, rest, undo and completion states'
   assert.match(playerPage, /gym:pending:/);
 });
 
-test('exercise technique opens in a branded in-app video modal', () => {
-  assert.match(playerPage, /PlayerVideoModal/);
-  assert.match(playerPage, /youtube-nocookie\.com\/embed/);
-  assert.match(styles, /\.player-video-modal-card/);
-  assert.match(styles, /@keyframes player-modal-in/);
+test('exercise technique opens the original video externally without an embedded auth gate', () => {
+  assert.match(playerPage, /href=\{watchUrl\}[\s\S]*?target="_blank"/);
+  assert.doesNotMatch(playerPage, /PlayerVideoModal|youtube-nocookie\.com\/embed|<iframe/);
+  assert.doesNotMatch(styles, /\.player-video-modal-card|@keyframes player-modal-in/);
+});
+
+test('focus mode keeps every exercise in the active block expanded', () => {
+  assert.match(playerPage, /blockIsComplete\(context\.block, context\.bi, newDone\)/);
+  assert.match(playerPage, /nextIncompleteBlock\(session, context\.bi, newDone\)/);
+  assert.match(playerPage, /className=\{`player-block-compact/);
+  assert.doesNotMatch(playerPage, /collapsed=\{focusMode && \(activeExercise/);
 });
