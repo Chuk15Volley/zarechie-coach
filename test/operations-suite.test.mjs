@@ -68,6 +68,7 @@ test('operations surfaces include live commands, batched status, checkpoints and
   assert.match(playerPage, /api\/player\/commands/);
   assert.match(playerPage, /Сообщение тренера · LIVE/);
   assert.match(teamStatusApi, /redisPipeline/);
-  assert.match(snapshotApi, /confirmation !== 'RESTORE'/);
+  assert.match(snapshotApi, /RESTORE \$\{id\}/);
+  assert.match(snapshotApi, /createEncryptedBackup/);
   assert.match(workflow, /npm run build/);
 });
