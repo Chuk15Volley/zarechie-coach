@@ -4,6 +4,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { pfx, scheduleKey } from '../../../lib/workspacePrefix';
 import { formatSeasonDecisionForPrompt, resolveSeasonSession } from '../../../lib/seasonPolicy.mjs';
@@ -115,6 +116,7 @@ export default async function handler(req, res) {
   if (!isAuthorized(req)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  if (!await enforceRateLimit(req, res, { scope: 'ai-team-warmup', limit: 12, windowSeconds: 600 })) return;
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -209,6 +211,7 @@ ${formatSeasonDecisionForPrompt(decision)}
         tools: [toolForOpenAI(TEAM_WARMUP_TOOL)],
         tool_choice: { type: 'function', name: 'build_team_warmup' },
       }),
+      signal: AbortSignal.timeout(50000),
     });
 
     if (!r.ok) {

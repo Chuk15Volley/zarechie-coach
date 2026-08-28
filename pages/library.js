@@ -436,9 +436,17 @@ export default function LibraryPage() {
   const [mergingIdx, setMergingIdx] = useState(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem('coachApiKey');
-    if (saved) setApiKey(saved);
-    else setLoading(false);
+    let cancelled = false;
+    localStorage.removeItem('coachApiKey');
+    fetch('/api/auth/session', { cache: 'no-store' })
+      .then(response => {
+        if (!cancelled && response.ok) setApiKey('session');
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, []);
 
   const load = useCallback(() => {
@@ -667,7 +675,7 @@ export default function LibraryPage() {
 
           {!apiKey && (
             <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-8 text-center text-[13px] text-slate-500">
-              Не найден API-ключ. Открой <Link href="/" className="text-accent hover:underline">главную</Link> и подключи ключ тренера.
+              Защищённая сессия не найдена. Перейдите на <Link href="/" className="text-accent hover:underline">главную</Link> и войдите в систему.
             </div>
           )}
 

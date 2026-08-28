@@ -6,6 +6,7 @@
 import { getAllCards } from '../../../lib/exerciseLibrary';
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 
 export const config = { maxDuration: 60 };
 
@@ -28,6 +29,7 @@ function extractText(data) {
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await enforceRateLimit(req, res, { scope: 'ai-library-categorize', limit: 4, windowSeconds: 3600 })) return;
   if (req.method !== 'POST') return res.status(405).end();
 
   const cards = await getAllCards();
@@ -73,6 +75,7 @@ ${list}`;
       input: prompt,
       store: false,
     }),
+    signal: AbortSignal.timeout(50000),
   });
 
   if (!apiResp.ok) {

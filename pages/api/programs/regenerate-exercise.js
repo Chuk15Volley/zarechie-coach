@@ -5,6 +5,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { sessionKey } from '../../../lib/workspacePrefix';
 import { normalizeExerciseLanguage } from './generate';
 import { normalizeSessionTempoDescriptions } from '../../../lib/tempoDescription.mjs';
@@ -113,6 +114,7 @@ const REPLACE_EXERCISE_TOOL = {
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await enforceRateLimit(req, res, { scope: 'ai-regenerate-exercise', limit: 30, windowSeconds: 600 })) return;
   if (req.method !== 'POST') return res.status(405).end();
 
   const { playerId, date, blockIndex, exerciseIndex, session: requestedSession, workspace = 'zarechie' } = req.body || {};
@@ -202,6 +204,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
           tools: [REPLACE_EXERCISE_TOOL],
           tool_choice: { type: 'function', name: 'replace_exercise' },
         }),
+        signal: AbortSignal.timeout(25000),
       });
 
       if (!r.ok) {

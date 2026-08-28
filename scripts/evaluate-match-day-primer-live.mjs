@@ -192,11 +192,13 @@ async function generate(apiKey, prompt) {
       instructions: IN_SEASON_SYSTEM_PROMPT,
       input: prompt,
       max_output_tokens: 10000,
+      store: false,
       reasoning: { effort: 'medium' },
       text: { verbosity: 'low' },
       tools: [tool],
       tool_choice: { type: 'function', name: 'build_session' },
     }),
+    signal: AbortSignal.timeout(55000),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload?.error?.message || `OpenAI HTTP ${response.status}`);

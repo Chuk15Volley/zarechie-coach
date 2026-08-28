@@ -4,6 +4,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { setVideo } from '../../../lib/exerciseLibrary';
 
 export const config = { maxDuration: 60 };
@@ -27,6 +28,7 @@ function nameFromSlug(slug) {
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).end();
+  if (!await enforceRateLimit(req, res, { scope: 'admin-video-sync', limit: 5, windowSeconds: 3600 })) return;
 
   let synced = 0, skipped = 0;
   const errors = [];

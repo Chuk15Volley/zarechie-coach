@@ -4,6 +4,7 @@
 
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { redis } from '../../../lib/redis';
 import { scheduleKey } from '../../../lib/workspacePrefix';
@@ -237,6 +238,7 @@ D — primer только в пределах детерминированног
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await enforceRateLimit(req, res, { scope: 'ai-generate-warmup', limit: 12, windowSeconds: 600 })) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -316,6 +318,7 @@ ${formatSeasonDecisionForPrompt(seasonDecision)}
         tools: [warmupToolForOpenAI(WARMUP_TOOL)],
         tool_choice: { type: 'function', name: 'build_warmup' },
       }),
+      signal: AbortSignal.timeout(50000),
     });
 
     if (!response.ok) {

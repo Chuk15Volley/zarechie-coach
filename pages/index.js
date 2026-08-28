@@ -2108,8 +2108,11 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
 }
 
 export default function Home() {
-  const [apiKey, setApiKey] = useState('coach-ui');
-  const [keyPanelOpen, setKeyPanelOpen] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [authChecking, setAuthChecking] = useState(true);
+  const [loginSecret, setLoginSecret] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
   const [players, setPlayers] = useState([]);
   const [playersError, setPlayersError] = useState('');
   const [playerId, setPlayerId] = useState('');
@@ -2337,9 +2340,19 @@ export default function Home() {
   const [volumeStats, setVolumeStats] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
     localStorage.removeItem('coachApiKey');
-    setApiKey('coach-ui');
-    setKeyPanelOpen(false);
+    fetch('/api/auth/session', { cache: 'no-store' })
+      .then(response => {
+        if (!cancelled) setApiKey(response.ok ? 'session' : '');
+      })
+      .catch(() => {
+        if (!cancelled) setApiKey('');
+      })
+      .finally(() => {
+        if (!cancelled) setAuthChecking(false);
+      });
+    return () => { cancelled = true; };
   }, []);
 
   // Resume a pending async gym generation after a tab reload. Only resumes when the saved
@@ -2439,7 +2452,6 @@ export default function Home() {
   useEffect(() => {
     if (!apiKey) return;
     let cancelled = false;
-    localStorage.setItem('coachApiKey', apiKey);
     setPlayersError('');
 
     if (workspace === 'nkperf') {
@@ -2450,6 +2462,7 @@ export default function Home() {
     fetch(`/api/players/list?workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } })
       .then(async r => {
         const data = await r.json().catch(() => ({}));
+        if (r.status === 401) setApiKey('');
         if (!r.ok) throw new Error(data.error || `Ошибка (${r.status})`);
         const list = data.players || [];
         if (cancelled) return;
@@ -4015,6 +4028,105 @@ export default function Home() {
     saveScheduleToServer(updated);
   }
 
+  async function handleLogin(event) {
+    event.preventDefault();
+    if (!loginSecret || loginSubmitting) return;
+    setLoginSubmitting(true);
+    setLoginError('');
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trainerKey: loginSecret }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Ошибка авторизации (${response.status})`);
+      setLoginSecret('');
+      setApiKey('session');
+    } catch (loginFailure) {
+      setLoginError(loginFailure.message || 'Не удалось войти');
+    } finally {
+      setLoginSubmitting(false);
+    }
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    setApiKey('');
+    setPlayers([]);
+    setPlayerId('');
+    setSession(null);
+  }
+
+  if (authChecking) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[#060c15] text-slate-300">
+        <Head><title>Korenchuk Performance System</title></Head>
+        <div className="flex items-center gap-3 text-sm font-semibold">
+          <Loader2 size={18} className="animate-spin text-emerald-300" />
+          Проверка защищённой сессии…
+        </div>
+      </div>
+    );
+  }
+
+  if (!apiKey) {
+    return (
+      <>
+        <Head>
+          <title>Вход · Korenchuk Performance System</title>
+          <meta name="robots" content="noindex,nofollow" />
+        </Head>
+        <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#060c15] px-4 text-slate-100">
+          <div className="pointer-events-none absolute -left-40 -top-40 h-[560px] w-[560px] rounded-full bg-emerald-400/[0.08] blur-[120px]" />
+          <div className="pointer-events-none absolute -bottom-48 -right-40 h-[520px] w-[520px] rounded-full bg-cyan-400/[0.07] blur-[120px]" />
+          <form onSubmit={handleLogin} className="relative w-full max-w-md rounded-[30px] border border-white/[0.09] bg-[#0b141f]/95 p-7 shadow-[0_35px_100px_-30px_rgba(0,0,0,0.9)] sm:p-9">
+            <div className="mb-7 flex items-center gap-3.5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/nk-logo.jpg" alt="NK" className="h-12 w-12 rounded-2xl object-cover ring-1 ring-emerald-300/35" />
+              <div>
+                <div className="text-[15px] font-black tracking-tight text-white">Nikolay Korenchuk</div>
+                <div className="mt-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-300">Performance System</div>
+              </div>
+            </div>
+            <div className="mb-6">
+              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-300">
+                <Shield size={19} />
+              </div>
+              <h1 className="text-xl font-black text-white">Защищённый вход</h1>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-slate-500">Введите ключ тренера. Он используется один раз и не сохраняется в браузере.</p>
+            </div>
+            <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500" htmlFor="trainer-key">Ключ доступа</label>
+            <input
+              id="trainer-key"
+              type="password"
+              value={loginSecret}
+              onChange={event => setLoginSecret(event.target.value)}
+              autoComplete="current-password"
+              autoFocus
+              maxLength={512}
+              className="mt-2 w-full rounded-2xl border border-white/[0.10] bg-black/25 px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-slate-700 focus:border-emerald-300/35 focus:ring-2 focus:ring-emerald-300/10"
+              placeholder="••••••••••••"
+            />
+            {loginError && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-400/20 bg-rose-400/[0.07] px-3 py-2.5 text-[12px] text-rose-300">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {loginError}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={!loginSecret || loginSubmitting}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-300 to-cyan-300 px-4 py-3.5 text-[12px] font-black text-[#061116] shadow-[0_16px_36px_-18px_rgba(52,211,153,0.9)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {loginSubmitting ? <Loader2 size={15} className="animate-spin" /> : <Shield size={15} />}
+              {loginSubmitting ? 'Проверка…' : 'Войти в систему'}
+            </button>
+          </form>
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <Head>
@@ -4055,9 +4167,9 @@ export default function Home() {
               <div className="sidebar-brand-actions ml-auto flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setKeyPanelOpen(false)}
-                  aria-label={keyConnected ? 'ReadySix подключён' : 'ReadySix не подключён'}
-                  title={keyConnected ? 'ReadySix подключён' : 'ReadySix не подключён'}
+                  onClick={logout}
+                  aria-label="Выйти из системы"
+                  title="Выйти из системы"
                   className={`sidebar-connected flex h-8 items-center gap-1.5 rounded-xl border px-2.5 text-[9px] font-black uppercase tracking-wider transition-all ${focusRing} ${
                     keyConnected
                       ? 'border-emerald-400/25 bg-emerald-400/[0.10] text-emerald-300 shadow-[0_0_20px_-10px_rgba(52,211,153,0.9)]'
@@ -4065,7 +4177,7 @@ export default function Home() {
                   }`}
                 >
                   <span className={`relative flex h-1.5 w-1.5 shrink-0 rounded-full ${keyConnected ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.9)]' : 'bg-slate-600'}`} />
-                  <span className="sidebar-copy">Live</span>
+                  <span className="sidebar-copy">Выйти</span>
                 </button>
                 <button
                   type="button"
@@ -4079,22 +4191,6 @@ export default function Home() {
               </div>
             </div>
 
-            {false && keyPanelOpen && (
-              <div className="mt-3 animate-fade-in space-y-2">
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={e => setApiKey(e.target.value)}
-                  placeholder=""
-                  className={`${inputBase} text-[12px] ${focusRing}`}
-                />
-                {playersError && (
-                  <p className="mt-1.5 flex items-center gap-1 text-[11px] text-rose-400">
-                    <AlertTriangle size={11} /> {playersError}
-                  </p>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Workspace switcher */}
@@ -4868,7 +4964,8 @@ export default function Home() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setKeyPanelOpen(false)}
+                  onClick={logout}
+                  title="Выйти из системы"
                   className={`ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[9px] font-black uppercase tracking-wider transition-all ${focusRing} ${
                   keyConnected
                     ? 'border-emerald-300/25 bg-emerald-300/[0.10] text-emerald-200'
@@ -4876,20 +4973,9 @@ export default function Home() {
                 }`}
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${keyConnected ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.9)]' : 'bg-slate-600'}`} />
-                  ReadySix
+                  Выйти
                 </button>
               </div>
-              {false && keyPanelOpen && (
-                <div className="mt-3">
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={e => setApiKey(e.target.value)}
-                    placeholder=""
-                    className={`${inputBase} text-[12px] ${focusRing}`}
-                  />
-                </div>
-              )}
             </div>
             {/* Mobile workspace switcher */}
             {keyConnected && (

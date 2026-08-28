@@ -4,6 +4,7 @@
 // One concrete free-weight alternative for a restricted exercise, preserving the same movement vector.
 
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
 
 const OPENAI_MODEL = 'gpt-5.6-terra';
@@ -27,6 +28,7 @@ export default async function handler(req, res) {
   if (!isAuthorized(req)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  if (!await enforceRateLimit(req, res, { scope: 'ai-suggest-alternative', limit: 30, windowSeconds: 600 })) return;
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -61,6 +63,7 @@ export default async function handler(req, res) {
         max_output_tokens: 160,
         store: false,
       }),
+      signal: AbortSignal.timeout(20000),
     });
 
     if (!apiResp.ok) {

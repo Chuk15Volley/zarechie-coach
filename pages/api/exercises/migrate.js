@@ -7,6 +7,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { setImage, setVideo } from '../../../lib/exerciseLibrary';
 
 export const config = { maxDuration: 60 };
@@ -34,6 +35,7 @@ function nameFromSlug(slug) {
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).end();
+  if (!await enforceRateLimit(req, res, { scope: 'admin-exercise-migrate', limit: 3, windowSeconds: 3600 })) return;
 
   let migrated = 0;
   let skipped = 0;
