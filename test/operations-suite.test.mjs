@@ -8,6 +8,7 @@ const coachPage = readFileSync(new URL('../pages/index.js', import.meta.url), 'u
 const playerPage = readFileSync(new URL('../pages/player/[id].js', import.meta.url), 'utf8');
 const teamStatusApi = readFileSync(new URL('../pages/api/programs/team-status.js', import.meta.url), 'utf8');
 const snapshotApi = readFileSync(new URL('../pages/api/system/snapshots.js', import.meta.url), 'utf8');
+const recoveryApi = readFileSync(new URL('../pages/api/system/recovery-drill.js', import.meta.url), 'utf8');
 const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
 
 const blockStats = [
@@ -70,5 +71,7 @@ test('operations surfaces include live commands, batched status, checkpoints and
   assert.match(teamStatusApi, /redisPipeline/);
   assert.match(snapshotApi, /RESTORE \$\{id\}/);
   assert.match(snapshotApi, /createEncryptedBackup/);
+  assert.match(coachPage, /Проверить восстановление/);
+  assert.match(recoveryApi, /runRecoveryDrill/);
   assert.match(workflow, /npm run build/);
 });

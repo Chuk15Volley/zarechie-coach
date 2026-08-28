@@ -58,13 +58,21 @@ test('restore commands preserve Redis types and TTL', () => {
   ]);
 });
 
-test('deployment config schedules a daily authenticated backup', () => {
+test('deployment config schedules authenticated backup and recovery jobs', () => {
   const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
-  assert.deepEqual(config.crons, [{ path: '/api/cron/backup', schedule: '30 2 * * *' }]);
+  assert.deepEqual(config.crons, [
+    { path: '/api/cron/backup', schedule: '30 2 * * *' },
+    { path: '/api/cron/recovery-drill', schedule: '30 3 * * 0' },
+  ]);
   const cronApi = readFileSync(new URL('../pages/api/cron/backup.js', import.meta.url), 'utf8');
-  assert.match(cronApi, /process\.env\.CRON_SECRET/);
-  assert.match(cronApi, /timingSafeEqual/);
+  const recoveryCronApi = readFileSync(new URL('../pages/api/cron/recovery-drill.js', import.meta.url), 'utf8');
+  const cronAuth = readFileSync(new URL('../lib/cronAuth.js', import.meta.url), 'utf8');
+  assert.match(cronApi, /cronAuthorizationStatus/);
+  assert.match(recoveryCronApi, /cronAuthorizationStatus/);
+  assert.match(cronAuth, /process\.env\.CRON_SECRET/);
+  assert.match(cronAuth, /timingSafeEqual/);
   assert.match(cronApi, /Promise\.allSettled/);
+  assert.match(recoveryCronApi, /Promise\.allSettled/);
   const backupLibrary = readFileSync(new URL('../lib/platformBackup.js', import.meta.url), 'utf8');
   assert.match(backupLibrary, /process\.env\.BACKUP_READ_WRITE_TOKEN/);
   assert.doesNotMatch(backupLibrary, /process\.env\.BLOB_READ_WRITE_TOKEN/);
