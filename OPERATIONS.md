@@ -92,6 +92,13 @@ after every production deployment.
 - Player lists never embed base64 photos. They return versioned, authenticated `/api/players/photo` URLs, keeping roster JSON small and allowing private immutable browser caching.
 - A new photo version changes the URL hash automatically. Photo writes are pipelined and fail explicitly when storage is unavailable.
 
+## Team readiness fast path
+
+- Complete readiness responses are cached for 60 seconds in workspace-, date-, and release-scoped Redis keys. Preview deployments cannot contaminate Production cache entries.
+- Concurrent misses inside one function instance are coalesced. A validated cached response may be served for no more than five minutes when the data source fails; the API reports this as `cache: "stale"` and emits a structured warning.
+- `X-Readiness-Cache` reports `hit`, `miss`, `refresh`, or `stale`; `X-Readiness-Cache-Age` reports milliseconds. An authenticated `refresh=1` request forces recomputation.
+- Invalid or impossible dates are rejected with HTTP 400, and unknown workspace values are normalized to `zarechie` to prevent cross-workspace reads.
+
 ## Known Notes
 
 - Old domain `zarechie-coach.vercel.app` is still owned by the old Vercel team and is not used.

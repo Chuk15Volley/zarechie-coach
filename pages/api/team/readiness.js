@@ -16,6 +16,7 @@ import { getReadySixTeamReadiness, usesReadySix } from '../../../lib/readySixCli
 import { normalizeReadySixTeamReadiness } from '../../../lib/readySixSnapshotAdapter';
 import { recordPlatformEvent } from '../../../lib/platformTelemetry';
 import { hydratePlayerPhotos, playerPhotoPath } from '../../../lib/playerPhotos';
+import { getCachedTeamReadiness } from '../../../lib/teamReadinessCache';
 
 function num(v) {
   if (v == null || v === '') return null;
@@ -94,9 +95,49 @@ export default async function handler(req, res) {
 
   const date = String(req.query.date || '') ||
     new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
-  const workspace = String(req.query.workspace || 'zarechie');
+  const workspace = req.query.workspace === 'nkperf' ? 'nkperf' : 'zarechie';
+
+  if (!isCalendarDate(date)) return res.status(400).json({ error: 'Invalid date. Expected YYYY-MM-DD' });
 
   try {
+    const result = await getCachedTeamReadiness(
+      workspace,
+      date,
+      () => buildTeamReadiness(workspace, date),
+      { forceRefresh: req.query.refresh === '1' }
+    );
+    res.setHeader('X-Readiness-Cache', result.cache);
+    res.setHeader('X-Readiness-Cache-Age', String(Math.round(result.ageMs)));
+    if (result.cache === 'stale') {
+      console.warn(JSON.stringify({
+        level: 'warning',
+        area: 'readiness_cache',
+        workspace,
+        date,
+        ageMs: Math.round(result.ageMs),
+        message: 'Serving stale readiness after refresh failure',
+      }));
+    }
+    return res.status(200).json({ ...result.payload, cache: result.cache, cacheAgeMs: Math.round(result.ageMs) });
+  } catch (e) {
+    await recordPlatformEvent({
+      workspace,
+      area: String(e?.code || '').startsWith('READYSIX_') ? 'readysix' : 'readiness',
+      status: 'error',
+      message: e.message,
+      meta: { code: e?.code || 'READINESS_FAILED', date },
+    }).catch(() => {});
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+function isCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+async function buildTeamReadiness(workspace, date) {
     // ── Roster ───────────────────────────────────────────────────────────────
     const readySixPayload = usesReadySix(workspace)
       ? normalizeReadySixTeamReadiness(await getReadySixTeamReadiness(workspace, date))
@@ -108,7 +149,7 @@ export default async function handler(req, res) {
     let roster = readySixTeam ? readySixTeam.roster : parseJSON(rosterRaw);
     if (!Array.isArray(roster)) roster = [];
 
-    if (!roster.length) return res.status(200).json({ players: [] });
+    if (!roster.length) return { players: [] };
 
     const snapshots = readySixTeam?.snapshots || await Promise.all(
       roster.map(p => getPlayerSnapshot(String(p.id), 7, date, 28, workspace).catch(() => null))
@@ -241,15 +282,5 @@ export default async function handler(req, res) {
       };
     });
 
-    return res.status(200).json({ players });
-  } catch (e) {
-    await recordPlatformEvent({
-      workspace,
-      area: String(e?.code || '').startsWith('READYSIX_') ? 'readysix' : 'readiness',
-      status: 'error',
-      message: e.message,
-      meta: { code: e?.code || 'READINESS_FAILED', date },
-    }).catch(() => {});
-    return res.status(500).json({ error: e.message });
-  }
+    return { players };
 }

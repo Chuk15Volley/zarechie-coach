@@ -4374,7 +4374,7 @@ export default function Home() {
                 type="button"
                 onClick={() => {
                   setReadinessLoading(true);
-                  fetch(`/api/team/readiness?date=${readinessDate}&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
+                  fetch(`/api/team/readiness?date=${readinessDate}&workspace=${workspace}&refresh=1`, { headers: { 'x-api-key': apiKey } })
                     .then(r => r.json()).then(d => setReadinessData(d))
                     .catch(() => setReadinessData({ players: [] }))
                     .finally(() => setReadinessLoading(false));
@@ -5228,6 +5228,12 @@ export default function Home() {
               {readinessLoading && (
                 <div className="flex items-center justify-center py-20 text-[13px] text-slate-600">
                   <Loader2 size={18} className="mr-2 animate-spin" /> Загрузка...
+                </div>
+              )}
+
+              {!readinessLoading && readinessData?.cache === 'stale' && (
+                <div className="mb-4 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-[12px] font-semibold text-amber-200">
+                  Показаны последние надёжные данные: источник временно недоступен. Обновление будет повторено автоматически.
                 </div>
               )}
 
