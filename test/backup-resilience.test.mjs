@@ -65,4 +65,7 @@ test('deployment config schedules a daily authenticated backup', () => {
   assert.match(cronApi, /process\.env\.CRON_SECRET/);
   assert.match(cronApi, /timingSafeEqual/);
   assert.match(cronApi, /Promise\.allSettled/);
+  const backupLibrary = readFileSync(new URL('../lib/platformBackup.js', import.meta.url), 'utf8');
+  assert.match(backupLibrary, /process\.env\.BACKUP_READ_WRITE_TOKEN/);
+  assert.doesNotMatch(backupLibrary, /process\.env\.BLOB_READ_WRITE_TOKEN/);
 });

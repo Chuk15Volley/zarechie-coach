@@ -31,6 +31,7 @@ Configured in `production`, `preview`, and `development`:
 - `KV_REST_API_URL`
 - `KV_REST_API_TOKEN`
 - `BLOB_READ_WRITE_TOKEN`
+- `BACKUP_READ_WRITE_TOKEN` (отдельный private Vercel Blob store; не заменяет публичное медиа-хранилище)
 - `TRAINER_API_KEY`
 - `SESSION_SECRET` (случайная строка не короче 32 символов)
 - `BACKUP_ENCRYPTION_KEY` (отдельный случайный секрет не короче 32 символов; не менять без процедуры ротации архивов)

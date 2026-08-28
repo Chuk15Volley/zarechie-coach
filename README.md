@@ -30,6 +30,7 @@
 |---|---|
 | `KV_REST_API_URL` | URL Upstash Redis |
 | `KV_REST_API_TOKEN` | токен Upstash Redis |
+| `BACKUP_READ_WRITE_TOKEN` | токен отдельного private Vercel Blob для резервных копий |
 | `TRAINER_API_KEY` | обязательный серверный ключ доступа тренера |
 | `SESSION_SECRET` | рекомендуемый отдельный секрет подписи сессии, не короче 32 символов |
 | `BACKUP_ENCRYPTION_KEY` | отдельный секрет AES-256 для шифрования резервных копий, не короче 32 символов |
