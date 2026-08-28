@@ -4,11 +4,14 @@ import { readFileSync } from 'node:fs';
 import {
   getCachedTeamReadiness,
   TEAM_READINESS_CACHE_FRESH_MS,
+  TEAM_READINESS_CACHE_SCHEMA,
   TEAM_READINESS_CACHE_STALE_MS,
 } from '../lib/teamReadinessCache.js';
 import {
   READINESS_LATENCY_HISTOGRAM_BOUNDS_MS,
   READINESS_LATENCY_MIN_HEALTH_SAMPLES,
+  READINESS_WARM_TARGET_MS,
+  READINESS_COLD_TARGET_MS,
   readinessLatencyKey,
   readinessLatencyRollupKey,
   readinessLatencyRollupKeys,
@@ -25,6 +28,7 @@ function record(ageMs, overrides = {}) {
   return JSON.stringify({
     workspace: 'zarechie',
     date: '2026-08-28',
+    schema: TEAM_READINESS_CACHE_SCHEMA,
     release: 'release-a',
     cachedAt: new Date(now - ageMs).toISOString(),
     payload,
@@ -48,7 +52,7 @@ test('fresh readiness cache avoids expensive player aggregation', async () => {
   assert.deepEqual(result.payload, payload);
 });
 
-test('readiness cache miss stores a release-isolated record for five minutes', async () => {
+test('readiness cache miss stores a schema-isolated record across releases for ten minutes', async () => {
   let stored;
   const result = await getCachedTeamReadiness('zarechie', '2026-08-28', async () => payload, {
     now,
@@ -57,8 +61,8 @@ test('readiness cache miss stores a release-isolated record for five minutes', a
     redisSet: async (...args) => { stored = args; },
   });
   assert.equal(result.cache, 'miss');
-  assert.equal(stored[2], 300);
-  assert.match(stored[0], /team-readiness:v1:release-a:2026-08-28$/);
+  assert.equal(stored[2], 600);
+  assert.match(stored[0], /team-readiness:v2:2026-08-28$/);
   assert.deepEqual(JSON.parse(stored[1]).payload, payload);
 });
 
@@ -131,7 +135,7 @@ test('expired readiness never masks a prolonged outage', async () => {
   }), /ReadySix unavailable/);
 });
 
-test('a cache record from another deployment is never reused', async () => {
+test('a compatible cache record is reused across deployments', async () => {
   let computeCalls = 0;
   const result = await getCachedTeamReadiness('zarechie', '2026-08-28', async () => {
     computeCalls += 1;
@@ -142,8 +146,8 @@ test('a cache record from another deployment is never reused', async () => {
     redisGet: async () => record(1),
     redisSet: async () => null,
   });
-  assert.equal(result.cache, 'miss');
-  assert.equal(computeCalls, 1);
+  assert.equal(result.cache, 'hit');
+  assert.equal(computeCalls, 0);
 });
 
 test('concurrent readiness misses coalesce into one aggregation', async () => {
@@ -182,7 +186,7 @@ test('readiness latency summary reports nearest-rank p95 and waits for a useful 
   assert.equal(summary.cacheHitRate, 80);
   assert.equal(summary.healthy, true);
 
-  const degraded = summarizeReadinessLatency(rows.map(row => JSON.stringify({ ...JSON.parse(row), durationMs: 1800 })), { now });
+  const degraded = summarizeReadinessLatency(rows.map(row => JSON.stringify({ ...JSON.parse(row), durationMs: 1800, cache: 'hit' })), { now });
   assert.equal(degraded.healthy, false);
 });
 
@@ -211,7 +215,7 @@ test('readiness recording atomically updates a bounded minute histogram', async 
   const rollup = commands.find(command => command[0] === 'EVAL');
   assert.match(rollup[1], /hincrby/);
   assert.equal(rollup[4], String(minute));
-  assert.deepEqual(rollup.slice(5), ['1', '1', '1750', '12', String(3 * 24 * 60 * 60)]);
+  assert.deepEqual(rollup.slice(5), ['1', '1', '1750', '12', String(3 * 24 * 60 * 60), 'w', '1']);
 });
 
 test('rolling histogram keeps a true high-volume 24-hour SLO without raw sample growth', () => {
@@ -223,6 +227,14 @@ test('rolling histogram keeps a true high-volume 24-hour SLO without raw sample 
     [`${minute}:s`]: '10500000',
     [`${minute}:b9`]: '9500',
     [`${minute}:b12`]: '500',
+    [`${minute}:wn`]: '9500',
+    [`${minute}:wo`]: '0',
+    [`${minute}:ws`]: '4750000',
+    [`${minute}:wb7`]: '9500',
+    [`${minute}:xn`]: '500',
+    [`${minute}:xo`]: '0',
+    [`${minute}:xs`]: '2500000',
+    [`${minute}:xb14`]: '500',
   }], { now });
   assert.equal(healthy.sampleCount, 10000);
   assert.equal(healthy.p95Ms, 1000);
@@ -230,6 +242,10 @@ test('rolling histogram keeps a true high-volume 24-hour SLO without raw sample 
   assert.equal(healthy.cacheHitRate, 95);
   assert.equal(healthy.targetViolationRate, 5);
   assert.equal(healthy.healthy, true);
+  assert.equal(healthy.warm.p95Ms, 500);
+  assert.equal(healthy.cold.p95Ms, 5000);
+  assert.equal(healthy.warm.targetMs, READINESS_WARM_TARGET_MS);
+  assert.equal(healthy.cold.targetMs, READINESS_COLD_TARGET_MS);
   assert.equal(healthy.telemetrySource, 'rolling_histogram');
 
   const degraded = summarizeReadinessRollups([{
@@ -239,10 +255,19 @@ test('rolling histogram keeps a true high-volume 24-hour SLO without raw sample 
     [`${minute}:s`]: '11200000',
     [`${minute}:b9`]: '9400',
     [`${minute}:b12`]: '600',
+    [`${minute}:wn`]: '9400',
+    [`${minute}:wo`]: '600',
+    [`${minute}:ws`]: '11200000',
+    [`${minute}:wb12`]: '9400',
+    [`${minute}:xn`]: '600',
+    [`${minute}:xo`]: '0',
+    [`${minute}:xs`]: '600000',
+    [`${minute}:xb9`]: '600',
   }], { now });
   assert.equal(degraded.p95Ms, 2000);
   assert.equal(degraded.targetViolationRate, 6);
   assert.equal(degraded.healthy, false);
+  assert.equal(degraded.warm.healthy, false);
 });
 
 test('rolling histogram excludes expired minutes and warms up from recent raw samples', () => {
@@ -282,5 +307,9 @@ test('readiness API validates date, normalizes workspace and exposes cache state
   assert.match(dashboard, /workspace=\$\{workspace\}&refresh=1/);
   assert.match(dashboard, /readinessData\?\.cache === 'stale'/);
   assert.match(dashboard, /Readiness p95/);
-  assert.match(dashboard, /24ч rollup/);
+  assert.match(dashboard, /тёплый \/ холодный/);
+  const warmCron = readFileSync(new URL('../pages/api/cron/readiness-warm.js', import.meta.url), 'utf8');
+  const vercel = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  assert.match(warmCron, /prewarmTeamReadiness/);
+  assert.ok(vercel.crons.some(job => job.path === '/api/cron/readiness-warm' && job.schedule === '* * * * *'));
 });

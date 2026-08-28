@@ -64,6 +64,7 @@ test('deployment config schedules authenticated backup and recovery jobs', () =>
     { path: '/api/cron/backup', schedule: '30 2 * * *' },
     { path: '/api/cron/recovery-drill', schedule: '30 3 * * 0' },
     { path: '/api/cron/slo-alerts', schedule: '*/5 * * * *' },
+    { path: '/api/cron/readiness-warm', schedule: '* * * * *' },
   ]);
   const cronApi = readFileSync(new URL('../pages/api/cron/backup.js', import.meta.url), 'utf8');
   const recoveryCronApi = readFileSync(new URL('../pages/api/cron/recovery-drill.js', import.meta.url), 'utf8');
