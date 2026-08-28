@@ -26,8 +26,8 @@ export default async function handler(req, res) {
     if (!players.length) {
       return res.status(502).json({ error: 'NK Performance API returned no players' });
     }
-    players = await hydratePlayerPhotos(players, 'nkperf');
     await redis('set', 'nkperf:roster', JSON.stringify(players));
+    players = await hydratePlayerPhotos(players, 'nkperf');
     return res.status(200).json({ synced: players.length, players });
   }
 

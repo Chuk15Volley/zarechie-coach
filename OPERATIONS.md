@@ -85,6 +85,13 @@ after every production deployment.
 - Backup failures are logged at `error`; recovery failures are logged at `critical`. Both Cron endpoints return HTTP 500 on partial or complete failure so Vercel alerting can detect the incident.
 - Keep the team default Vercel `error`/`critical` alert rule enabled. Add an external Slack or webhook destination when an operational channel is selected.
 
+## Roster fast path
+
+- ReadySix roster responses are cached for two minutes in workspace-scoped Redis keys. A validated copy may be used for up to 15 minutes only when ReadySix is temporarily unavailable.
+- Concurrent cache misses inside one function instance are coalesced into one upstream request.
+- Player lists never embed base64 photos. They return versioned, authenticated `/api/players/photo` URLs, keeping roster JSON small and allowing private immutable browser caching.
+- A new photo version changes the URL hash automatically. Photo writes are pipelined and fail explicitly when storage is unavailable.
+
 ## Known Notes
 
 - Old domain `zarechie-coach.vercel.app` is still owned by the old Vercel team and is not used.

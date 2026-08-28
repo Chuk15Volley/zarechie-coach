@@ -15,6 +15,7 @@ import { performanceKpis } from '../../../lib/performanceKpis.mjs';
 import { getReadySixTeamReadiness, usesReadySix } from '../../../lib/readySixClient';
 import { normalizeReadySixTeamReadiness } from '../../../lib/readySixSnapshotAdapter';
 import { recordPlatformEvent } from '../../../lib/platformTelemetry';
+import { hydratePlayerPhotos, playerPhotoPath } from '../../../lib/playerPhotos';
 
 function num(v) {
   if (v == null || v === '') return null;
@@ -97,8 +98,11 @@ export default async function handler(req, res) {
 
   try {
     // ── Roster ───────────────────────────────────────────────────────────────
-    const readySixTeam = usesReadySix(workspace)
+    const readySixPayload = usesReadySix(workspace)
       ? normalizeReadySixTeamReadiness(await getReadySixTeamReadiness(workspace, date))
+      : null;
+    const readySixTeam = readySixPayload
+      ? { ...readySixPayload, roster: await hydratePlayerPhotos(readySixPayload.roster, workspace) }
       : null;
     const rosterRaw = readySixTeam ? null : await redis('get', rosterKey(workspace)).catch(() => null);
     let roster = readySixTeam ? readySixTeam.roster : parseJSON(rosterRaw);
@@ -214,7 +218,7 @@ export default async function handler(req, res) {
         id: p.id,
         name: p.name || '',
         position: p.position || '',
-        photo: p.photo || null,
+        photo: p.photo || (p.hasPhoto ? playerPhotoPath(workspace, p.id) : null),
         recovery, hrv, hrvZ, sleep_hours,
         mws, doms, readiness,
         cmj, cmjDate, cmjBaseline, cmjDrop, rsi, rsiDate,

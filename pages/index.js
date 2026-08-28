@@ -5901,7 +5901,7 @@ export default function Home() {
               </div>
               <div
                 className="relative group/avatar shrink-0 cursor-pointer h-14 w-14"
-                onClick={() => { setEditPhotoFor(selectedPlayer.id); setPhotoInput(selectedPlayer.photo || ''); }}
+                onClick={() => { setEditPhotoFor(selectedPlayer.id); setPhotoInput(/^(?:data:|https:\/\/)/.test(selectedPlayer.photo || '') ? selectedPlayer.photo : ''); }}
                 title="Изменить фото"
               >
                 {/* Gradient ring */}
