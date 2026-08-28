@@ -4,7 +4,7 @@ import { parsePlatformEvents } from '../../../lib/platformTelemetry';
 import { backupIsConfigured } from '../../../lib/platformBackup';
 import { pfx } from '../../../lib/workspacePrefix';
 import { readySixIntegrationMode } from '../../../lib/readySixClient';
-import { readinessLatencyKey, summarizeReadinessLatency } from '../../../lib/readinessTelemetry';
+import { readinessLatencyKey, readinessLatencyRollupKeys, summarizeReadinessTelemetry } from '../../../lib/readinessTelemetry';
 import { operationalAlertStatus } from '../../../lib/operationalAlerts';
 
 function parseJson(raw) {
@@ -34,12 +34,14 @@ export default async function handler(req, res) {
     redisReadWrite = String(await redis('get', probeKey)) === String(started);
     await redis('del', probeKey).catch(() => {});
   } catch (_) {}
-  const [rawEvents, rawCounters, rawBackup, rawRecovery, rawReadinessLatency] = await redisPipeline([
+  const readinessRollupKeys = readinessLatencyRollupKeys(workspace);
+  const [rawEvents, rawCounters, rawBackup, rawRecovery, rawReadinessLatency, ...rawReadinessRollups] = await redisPipeline([
     ['LRANGE', `${prefix}:platform:events`, '0', '199'],
     ['HGETALL', `${prefix}:platform:counters`],
     ['GET', `${prefix}:platform:backup:last`],
     ['GET', `${prefix}:platform:recovery:last`],
     ['LRANGE', readinessLatencyKey(workspace), '0', '199'],
+    ...readinessRollupKeys.map(key => ['HGETALL', key]),
   ]).catch(() => [[], {}, null, null, []]);
   const events = parsePlatformEvents(rawEvents);
   const since = Date.now() - 24 * 60 * 60 * 1000;
@@ -63,7 +65,7 @@ export default async function handler(req, res) {
   const recoveryAgeHours = latestRecovery?.checkedAt ? Math.max(0, (Date.now() - new Date(latestRecovery.checkedAt).getTime()) / 3600000) : null;
   const recoveryFresh = latestRecovery?.status === 'ok' && recoveryAgeHours != null && recoveryAgeHours <= 8 * 24;
   const recoveryCritical = latestRecovery?.status === 'error' || (recoveryAgeHours != null && recoveryAgeHours > 10 * 24);
-  const readinessPerformance = summarizeReadinessLatency(rawReadinessLatency);
+  const readinessPerformance = summarizeReadinessTelemetry(rawReadinessLatency, rawReadinessRollups);
   const status = !redisOk || !redisReadWrite || !config.redis || (backupAgeHours != null && backupAgeHours > 72) || recoveryCritical
     ? 'error'
     : errors24h > 0 || !config.readySix || !config.ai || !backupFresh || !recoveryFresh || !readinessPerformance.healthy ? 'warning' : 'healthy';
