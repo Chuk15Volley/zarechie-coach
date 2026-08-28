@@ -6,7 +6,8 @@ import { isAuthorized } from '../../../lib/auth';
 import { extractPlayerPhoto, hydratePlayerPhotos } from '../../../lib/playerPhotos';
 import { rosterKey, sessionsKey } from '../../../lib/workspacePrefix';
 import { dashboardRedis, dashboardRedisPipeline, hasZarechieDashboardStore } from '../../../lib/zarechieDashboardStore';
-import { getReadySixRoster, usesReadySix } from '../../../lib/readySixClient';
+import { usesReadySix } from '../../../lib/readySixClient';
+import { getCachedReadySixRoster } from '../../../lib/readySixRosterCache';
 import { normalizeReadySixRoster } from '../../../lib/readySixSnapshotAdapter';
 import { todayISO } from '../../../lib/playerData';
 
@@ -47,13 +48,16 @@ export default async function handler(req, res) {
   const workspace = String(req.query.workspace || 'zarechie');
 
   if (usesReadySix(workspace)) {
-    const payload = await getReadySixRoster(workspace, todayISO());
+    const rosterResult = await getCachedReadySixRoster(workspace, todayISO());
+    const payload = rosterResult.payload;
     const roster = await hydratePlayerPhotos(normalizeReadySixRoster(payload), workspace);
     const meta = await redisPipeline(
       roster.map(player => ['zrange', sessionsKey(workspace, player.id), -1, -1])
     ).catch(() => []);
     return res.status(200).json({
       source: 'readysix',
+      cache: rosterResult.cache,
+      cacheAgeMs: Math.round(rosterResult.ageMs),
       organizationId: payload.organizationId,
       revision: payload.revision,
       players: roster.map((player, index) => ({
@@ -166,7 +170,7 @@ export default async function handler(req, res) {
   // response, which used to make newly added players disappear intermittently
   // from team-wide screens.
   await redis('set', 'coach:roster', JSON.stringify(
-    deduped.map(p => ({ id: p.id, name: p.name, position: p.position, photo: p.photo || null }))
+    deduped.map(p => ({ id: p.id, name: p.name, position: p.position, hasPhoto: !!p.hasPhoto }))
   )).catch(() => {});
 
   res.status(200).json({ players: playersWithMeta });
