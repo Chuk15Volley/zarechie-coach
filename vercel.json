@@ -13,6 +13,7 @@
     "pages/api/exercises/player-media.js": { "maxDuration": 15 },
     "pages/api/system/snapshots.js": { "maxDuration": 60 },
     "pages/api/system/recovery-drill.js": { "maxDuration": 60 },
+    "pages/api/team/readiness.js": { "maxDuration": 15 },
     "pages/api/cron/backup.js": { "maxDuration": 60 },
     "pages/api/cron/recovery-drill.js": { "maxDuration": 60 }
   },

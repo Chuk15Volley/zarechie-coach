@@ -4,6 +4,7 @@ import { parsePlatformEvents } from '../../../lib/platformTelemetry';
 import { backupIsConfigured } from '../../../lib/platformBackup';
 import { pfx } from '../../../lib/workspacePrefix';
 import { readySixIntegrationMode } from '../../../lib/readySixClient';
+import { readinessLatencyKey, summarizeReadinessLatency } from '../../../lib/readinessTelemetry';
 
 function parseJson(raw) {
   if (!raw) return null;
@@ -32,12 +33,13 @@ export default async function handler(req, res) {
     redisReadWrite = String(await redis('get', probeKey)) === String(started);
     await redis('del', probeKey).catch(() => {});
   } catch (_) {}
-  const [rawEvents, rawCounters, rawBackup, rawRecovery] = await redisPipeline([
-    ['LRANGE', `${prefix}:platform:events`, '0', '79'],
+  const [rawEvents, rawCounters, rawBackup, rawRecovery, rawReadinessLatency] = await redisPipeline([
+    ['LRANGE', `${prefix}:platform:events`, '0', '199'],
     ['HGETALL', `${prefix}:platform:counters`],
     ['GET', `${prefix}:platform:backup:last`],
     ['GET', `${prefix}:platform:recovery:last`],
-  ]).catch(() => [[], {}, null, null]);
+    ['LRANGE', readinessLatencyKey(workspace), '0', '199'],
+  ]).catch(() => [[], {}, null, null, []]);
   const events = parsePlatformEvents(rawEvents);
   const since = Date.now() - 24 * 60 * 60 * 1000;
   const recent = events.filter(event => new Date(event.at).getTime() >= since);
@@ -60,16 +62,25 @@ export default async function handler(req, res) {
   const recoveryAgeHours = latestRecovery?.checkedAt ? Math.max(0, (Date.now() - new Date(latestRecovery.checkedAt).getTime()) / 3600000) : null;
   const recoveryFresh = latestRecovery?.status === 'ok' && recoveryAgeHours != null && recoveryAgeHours <= 8 * 24;
   const recoveryCritical = latestRecovery?.status === 'error' || (recoveryAgeHours != null && recoveryAgeHours > 10 * 24);
+  const readinessPerformance = summarizeReadinessLatency(rawReadinessLatency);
   const status = !redisOk || !redisReadWrite || !config.redis || (backupAgeHours != null && backupAgeHours > 72) || recoveryCritical
     ? 'error'
-    : errors24h > 0 || !config.readySix || !config.ai || !backupFresh || !recoveryFresh ? 'warning' : 'healthy';
+    : errors24h > 0 || !config.readySix || !config.ai || !backupFresh || !recoveryFresh || !readinessPerformance.healthy ? 'warning' : 'healthy';
   res.setHeader('Cache-Control', 'no-store');
   return res.status(200).json({
     status,
     checkedAt: new Date().toISOString(),
     latencyMs: Date.now() - started,
     services: { redis: redisOk && redisReadWrite, readySix: config.readySix, ai: config.ai, trainerAuth: config.trainerKey, backup: backupFresh, recovery: recoveryFresh },
-    checks: { redisPing: redisOk, redisReadWrite, backupConfigured: config.backup, backupFresh, recoveryFresh },
+    checks: {
+      redisPing: redisOk,
+      redisReadWrite,
+      backupConfigured: config.backup,
+      backupFresh,
+      recoveryFresh,
+      readinessP95: readinessPerformance.enoughSamples ? readinessPerformance.healthy : null,
+    },
+    readinessPerformance,
     readySixMode,
     release: {
       commit: process.env.VERCEL_GIT_COMMIT_SHA || 'local',

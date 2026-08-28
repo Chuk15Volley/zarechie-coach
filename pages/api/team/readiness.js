@@ -17,6 +17,8 @@ import { normalizeReadySixTeamReadiness } from '../../../lib/readySixSnapshotAda
 import { recordPlatformEvent } from '../../../lib/platformTelemetry';
 import { hydratePlayerPhotos, playerPhotoPath } from '../../../lib/playerPhotos';
 import { getCachedTeamReadiness } from '../../../lib/teamReadinessCache';
+import { recordReadinessLatency } from '../../../lib/readinessTelemetry';
+import { waitUntil } from '@vercel/functions';
 
 function num(v) {
   if (v == null || v === '') return null;
@@ -99,15 +101,44 @@ export default async function handler(req, res) {
 
   if (!isCalendarDate(date)) return res.status(400).json({ error: 'Invalid date. Expected YYYY-MM-DD' });
 
+  const started = Date.now();
   try {
     const result = await getCachedTeamReadiness(
       workspace,
       date,
       () => buildTeamReadiness(workspace, date),
-      { forceRefresh: req.query.refresh === '1' }
+      {
+        forceRefresh: req.query.refresh === '1',
+        schedule: promise => waitUntil(promise),
+        onBackgroundError: error => {
+          console.error(JSON.stringify({
+            level: 'error',
+            area: 'readiness_refresh',
+            workspace,
+            date,
+            message: String(error?.message || 'Background readiness refresh failed').slice(0, 240),
+          }));
+          return recordPlatformEvent({
+            workspace,
+            area: 'readiness_refresh',
+            status: 'error',
+            message: 'Фоновое обновление готовности не выполнено',
+            meta: { date, reason: String(error?.message || '').slice(0, 120) },
+          });
+        },
+      }
     );
+    const durationMs = Date.now() - started;
+    waitUntil(recordReadinessLatency({
+      workspace,
+      durationMs,
+      cache: result.cache,
+      playerCount: result.payload.players.length,
+      date,
+    }));
     res.setHeader('X-Readiness-Cache', result.cache);
     res.setHeader('X-Readiness-Cache-Age', String(Math.round(result.ageMs)));
+    res.setHeader('Server-Timing', `readiness;dur=${durationMs}`);
     if (result.cache === 'stale') {
       console.warn(JSON.stringify({
         level: 'warning',
@@ -118,7 +149,12 @@ export default async function handler(req, res) {
         message: 'Serving stale readiness after refresh failure',
       }));
     }
-    return res.status(200).json({ ...result.payload, cache: result.cache, cacheAgeMs: Math.round(result.ageMs) });
+    return res.status(200).json({
+      ...result.payload,
+      cache: result.cache,
+      cacheAgeMs: Math.round(result.ageMs),
+      revalidating: Boolean(result.revalidating),
+    });
   } catch (e) {
     await recordPlatformEvent({
       workspace,
