@@ -5,8 +5,9 @@
 
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
-import { exweightKey } from '../../../lib/workspacePrefix';
+import { exweightKey, pfx, sessionsKey } from '../../../lib/workspacePrefix';
 import { canonicalExerciseId, exerciseId, legacyExerciseId } from '../../../lib/exerciseIdentity.mjs';
+import { recommendLoad } from '../../../lib/loadProgression.mjs';
 
 // Legacy key kept only for read compatibility with existing history.
 export function legacyNormExName(name) {
@@ -84,6 +85,27 @@ export default async function handler(req, res) {
       ['HGETALL', exweightKey(workspace, playerId, legacy)],
     ])
   ).catch(() => []);
+  const recentDates = await redis('zrevrange', sessionsKey(workspace, playerId), '0', '9').catch(() => []);
+  const actualRows = Array.isArray(recentDates) && recentDates.length
+    ? await redisPipeline(recentDates.map(date => ['GET', `${pfx(workspace)}:session:actual:${playerId}:${date}`])).catch(() => [])
+    : [];
+  const exposureMap = new Map();
+  actualRows.forEach((raw, rowIndex) => {
+    let record = null;
+    try { record = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : null; } catch (_) {}
+    for (const exercise of record?.exercises || []) {
+      const id = exercise.exerciseId || canonicalExerciseId(exercise.name);
+      if (!exposureMap.has(id)) exposureMap.set(id, []);
+      if (Number(exercise.actualKg) > 0) exposureMap.get(id).push({
+        date: recentDates[rowIndex],
+        kg: Number(exercise.actualKg),
+        rpe: Number(exercise.sessionRpe || record.sessionRpe) || null,
+        completedSets: Number(exercise.completedSets) || 0,
+        plannedSets: Number(exercise.plannedSets) || 0,
+        pain: Boolean(exercise.pain),
+      });
+    }
+  });
 
   const progression = {};
   const progressionById = {};
@@ -106,6 +128,7 @@ export default async function handler(req, res) {
     const pain = record.pain === '1' || record.pain === true || record.pain === 'true';
     if (!kg) return;
 
+    const smart = recommendLoad(exposureMap.get(id) || [], { name, currentKg: kg, pain });
     const value = {
       exerciseId: id,
       kg,
@@ -118,8 +141,13 @@ export default async function handler(req, res) {
       loadUnits: record.loadUnits === '2' || record.loadUnits === 2 ? 2 : 1,
       completedSets: Number(record.completedSets) || null,
       plannedSets: Number(record.plannedSets) || null,
-      suggestedKg: suggestKg(kg, rpe, pain, name),
-      decision: progressionDecision(kg, rpe, pain, name),
+      suggestedKg: smart.suggestedKg ?? suggestKg(kg, rpe, pain, name),
+      decision: smart.reasons?.length ? smart.reasons.join(' · ') : progressionDecision(kg, rpe, pain, name),
+      confidence: smart.confidence,
+      trend: smart.trend,
+      recentExposures: smart.exposures || [],
+      completionPercent: smart.completionPercent ?? null,
+      averageRpe: smart.avgRpe ?? null,
     };
     progression[name] = value;
     progressionById[id] = value;
