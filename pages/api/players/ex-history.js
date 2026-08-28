@@ -12,18 +12,24 @@ export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { playerId, names, workspace = 'zarechie' } = req.body || {};
-  if (!playerId || !Array.isArray(names) || !names.length)
-    return res.status(400).json({ error: 'playerId and names[] required' });
+  const { playerId, names = [], exercises = [], workspace = 'zarechie' } = req.body || {};
+  const requested = [
+    ...(Array.isArray(exercises) ? exercises.map(ex => ({ id: ex?.exerciseId || normExName(ex?.name), name: ex?.name || '' })) : []),
+    ...(Array.isArray(names) ? names.map(name => ({ id: normExName(name), name })) : []),
+  ].filter(item => item.name);
+  if (!playerId || !requested.length)
+    return res.status(400).json({ error: 'playerId and names[] or exercises[] required' });
 
-  const unique = [...new Set(names.filter(Boolean))];
-  const results = await redisPipeline(unique.flatMap(n => [
-    ['HGETALL', exhistKey(workspace, playerId, normExName(n))],
-    ['HGETALL', exhistKey(workspace, playerId, legacyNormExName(n))],
+  const unique = [...new Map(requested.map(item => [item.id, item])).values()];
+  const results = await redisPipeline(unique.flatMap(item => [
+    ['HGETALL', exhistKey(workspace, playerId, item.id)],
+    ['HGETALL', exhistKey(workspace, playerId, legacyNormExName(item.name))],
   ])).catch(() => []);
 
   const histories = {};
-  unique.forEach((name, i) => {
+  const historiesById = {};
+  unique.forEach((item, i) => {
+    const { id, name } = item;
     const currentRaw = results[i * 2];
     const legacyRaw = results[i * 2 + 1];
     const currentHasData = Array.isArray(currentRaw)
@@ -44,8 +50,11 @@ export default async function handler(req, res) {
       .filter(e => e.kg > 0 && e.date)
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    if (entries.length > 0) histories[name] = entries;
+    if (entries.length > 0) {
+      histories[name] = entries;
+      historiesById[id] = entries;
+    }
   });
 
-  return res.status(200).json({ histories });
+  return res.status(200).json({ histories, historiesById });
 }

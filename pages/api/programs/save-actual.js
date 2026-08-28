@@ -8,6 +8,7 @@ import { isAuthorized } from '../../../lib/auth';
 import { normExName } from '../players/progression';
 import { pfx, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise } from '../../../lib/tonnage';
+import { exerciseId } from '../../../lib/exerciseIdentity.mjs';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
@@ -60,7 +61,7 @@ export default async function handler(req, res) {
   for (const ex of exercises) {
     const actualKg = parseFloat(ex.actualKg) || 0;
     if (!actualKg || !ex.name) continue;
-    const norm = normExName(ex.name);
+    const norm = exerciseId(ex) || normExName(ex.name);
     const block = ex.block || '';
     const blockFb = block ? blockFeedback[block] || {} : {};
     const rpe = ex.actualRpe != null && ex.actualRpe !== '' ? String(ex.actualRpe) : '';

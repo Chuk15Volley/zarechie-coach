@@ -15,6 +15,7 @@ import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
 import { normalizeSessionTempoDescriptions } from '../../../lib/tempoDescription.mjs';
+import { ensureSessionExerciseIds, exerciseId } from '../../../lib/exerciseIdentity.mjs';
 
 function formatKg(value) {
   const n = parseFloat(value);
@@ -58,7 +59,7 @@ export default async function handler(req, res) {
   }
 
   const normalizedSession = normalizeSessionTempoDescriptions(
-    sanitizeUnavailableEquipmentExercises(normalizeSavedWeights(session))
+    ensureSessionExerciseIds(sanitizeUnavailableEquipmentExercises(normalizeSavedWeights(session)))
   );
   const saveQuality = advisorySessionQuality(assessSessionQuality(normalizedSession, {
     focus,
@@ -98,7 +99,7 @@ export default async function handler(req, res) {
     for (const ex of block.exercises || []) {
       const kg = weightKgFromExercise(ex);
       if (!kg || kg <= 0 || !ex.name) continue;
-      const norm = normExName(ex.name);
+      const norm = exerciseId(ex) || normExName(ex.name);
       exweightCmds.push(['HSET', exweightKey(workspace, playerId, norm), 'kg', String(kg), 'date', date, 'loadUnits', String(loadUnitsForExercise(ex))]);
       exweightCmds.push(['HSET', exhistKey(workspace, playerId, norm), date, String(kg)]);
     }

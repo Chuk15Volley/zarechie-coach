@@ -6,7 +6,7 @@
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { exweightKey } from '../../../lib/workspacePrefix';
-import { canonicalExerciseId, legacyExerciseId } from '../../../lib/exerciseIdentity.mjs';
+import { canonicalExerciseId, exerciseId, legacyExerciseId } from '../../../lib/exerciseIdentity.mjs';
 
 // Legacy key kept only for read compatibility with existing history.
 export function legacyNormExName(name) {
@@ -65,14 +65,17 @@ export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { playerId, names, workspace = 'zarechie' } = req.body || {};
-  if (!playerId || !Array.isArray(names) || !names.length) {
-    return res.status(400).json({ error: 'playerId and names[] required' });
+  const { playerId, names = [], exercises = [], workspace = 'zarechie' } = req.body || {};
+  const requested = [
+    ...(Array.isArray(exercises) ? exercises.map(ex => ({ id: exerciseId(ex), name: ex?.name || ex?.title || '' })) : []),
+    ...(Array.isArray(names) ? names.map(name => ({ id: canonicalExerciseId(name), name })) : []),
+  ].filter(item => item.name);
+  if (!playerId || !requested.length) {
+    return res.status(400).json({ error: 'playerId and names[] or exercises[] required' });
   }
 
-  // Deduplicate names to avoid redundant Redis calls.
-  const unique = [...new Set(names.filter(Boolean))];
-  const keyPairs = unique.map(n => [normExName(n), legacyNormExName(n)]);
+  const unique = [...new Map(requested.map(item => [item.id, item])).values()];
+  const keyPairs = unique.map(item => [item.id, legacyNormExName(item.name)]);
 
   // Batch-fetch all exercise weight records.
   const results = await redisPipeline(
@@ -83,7 +86,9 @@ export default async function handler(req, res) {
   ).catch(() => []);
 
   const progression = {};
-  unique.forEach((name, i) => {
+  const progressionById = {};
+  unique.forEach((item, i) => {
+    const { id, name } = item;
     const currentRaw = results[i * 2];
     const raw = hasHashData(currentRaw) ? currentRaw : results[i * 2 + 1];
     if (!raw) return;
@@ -101,7 +106,8 @@ export default async function handler(req, res) {
     const pain = record.pain === '1' || record.pain === true || record.pain === 'true';
     if (!kg) return;
 
-    progression[name] = {
+    const value = {
+      exerciseId: id,
       kg,
       rpe: rpe || null,
       pain,
@@ -110,10 +116,14 @@ export default async function handler(req, res) {
       source: record.source || 'planned',
       date: record.date || null,
       loadUnits: record.loadUnits === '2' || record.loadUnits === 2 ? 2 : 1,
+      completedSets: Number(record.completedSets) || null,
+      plannedSets: Number(record.plannedSets) || null,
       suggestedKg: suggestKg(kg, rpe, pain, name),
       decision: progressionDecision(kg, rpe, pain, name),
     };
+    progression[name] = value;
+    progressionById[id] = value;
   });
 
-  return res.status(200).json({ progression });
+  return res.status(200).json({ progression, progressionById });
 }
