@@ -293,6 +293,17 @@ test('rolling histogram excludes expired minutes and warms up from recent raw sa
   assert.equal(READINESS_LATENCY_HISTOGRAM_BOUNDS_MS.at(-1), 60000);
 });
 
+test('first segmented sample retires legacy overall health without a migration false alarm', () => {
+  const minute = Math.floor(now / 60000);
+  const summary = summarizeReadinessRollups([{
+    [`${minute}:n`]: '48', [`${minute}:o`]: '4', [`${minute}:s`]: '48000', [`${minute}:b12`]: '48',
+    [`${minute}:xn`]: '1', [`${minute}:xo`]: '0', [`${minute}:xs`]: '4450', [`${minute}:xb14`]: '1',
+  }], { now });
+  assert.equal(summary.overallHealthy, false);
+  assert.equal(summary.cold.enoughSamples, false);
+  assert.equal(summary.healthy, true);
+});
+
 test('readiness API validates date, normalizes workspace and exposes cache state', () => {
   const source = readFileSync(new URL('../pages/api/team/readiness.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../pages/index.js', import.meta.url), 'utf8');
