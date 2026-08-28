@@ -12,9 +12,12 @@
     "pages/api/exercises/sync-videos.js": { "maxDuration": 60 },
     "pages/api/exercises/player-media.js": { "maxDuration": 15 },
     "pages/api/system/snapshots.js": { "maxDuration": 60 },
-    "pages/api/cron/backup.js": { "maxDuration": 60 }
+    "pages/api/system/recovery-drill.js": { "maxDuration": 60 },
+    "pages/api/cron/backup.js": { "maxDuration": 60 },
+    "pages/api/cron/recovery-drill.js": { "maxDuration": 60 }
   },
   "crons": [
-    { "path": "/api/cron/backup", "schedule": "30 2 * * *" }
+    { "path": "/api/cron/backup", "schedule": "30 2 * * *" },
+    { "path": "/api/cron/recovery-drill", "schedule": "30 3 * * 0" }
   ]
 }

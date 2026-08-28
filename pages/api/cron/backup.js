@@ -1,13 +1,6 @@
-import crypto from 'node:crypto';
 import { createEncryptedBackup } from '../../../lib/platformBackup';
 import { recordPlatformEvent } from '../../../lib/platformTelemetry';
-
-function secretMatches(value, expected) {
-  if (!value || !expected) return false;
-  const actualDigest = crypto.createHash('sha256').update(String(value)).digest();
-  const expectedDigest = crypto.createHash('sha256').update(String(expected)).digest();
-  return crypto.timingSafeEqual(actualDigest, expectedDigest);
-}
+import { cronAuthorizationStatus } from '../../../lib/cronAuth';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store, max-age=0');
@@ -15,9 +8,8 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET');
     return res.status(405).json({ error: 'Method not allowed' });
   }
-  const authorization = String(req.headers.authorization || '');
-  if (!process.env.CRON_SECRET) return res.status(503).json({ error: 'Cron authorization is not configured' });
-  if (!secretMatches(authorization, `Bearer ${process.env.CRON_SECRET}`)) return res.status(401).json({ error: 'Unauthorized' });
+  const authorization = cronAuthorizationStatus(req);
+  if (!authorization.ok) return res.status(authorization.status).json({ error: authorization.error });
 
   const workspaces = ['zarechie', 'nkperf'];
   const results = await Promise.allSettled(workspaces.map(async workspace => {
@@ -30,6 +22,7 @@ export default async function handler(req, res) {
     : { workspace: workspaces[index], error: 'backup_failed' });
   const failures = results.map((result, index) => ({ result, workspace: workspaces[index] })).filter(item => item.result.status === 'rejected');
   if (failures.length) {
+    console.error(JSON.stringify({ level: 'error', area: 'backup_cron', failures: failures.map(({ workspace, result }) => ({ workspace, reason: String(result.reason?.message || '').slice(0, 120) })) }));
     await Promise.all(failures.map(({ result, workspace }) => recordPlatformEvent({
       workspace,
       area: 'backup',

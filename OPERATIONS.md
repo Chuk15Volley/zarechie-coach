@@ -58,6 +58,7 @@ Run these checks after env or deploy changes:
 - Generate gym session on one approved real player
 - Delete any test session from Redis after testing
 - `GET /api/system/health` reports a fresh encrypted backup for each workspace
+- `GET /api/system/health` reports a successful recovery drill not older than eight days
 
 For automated checks, pass `Authorization: Bearer $TRAINER_API_KEY`. For the
 browser UI, use `/api/auth/login`; never place the trainer key in `localStorage`
@@ -73,6 +74,16 @@ after every production deployment.
 - Listing: authenticated `GET /api/system/snapshots?workspace=zarechie`.
 - Restore requires the exact Blob `pathname` and `confirmation: "RESTORE <backup-id>"`; always validate the target workspace before restoring.
 - Never rotate or delete `BACKUP_ENCRYPTION_KEY` until all retained archives have been re-encrypted or have expired.
+
+## Recovery drills and alerting
+
+- Vercel Cron runs an isolated recovery drill every Sunday at 03:30 UTC (06:30 Moscow) for both workspaces.
+- The drill downloads and authenticates the latest encrypted archive, selects up to 240 durable keys while covering every Redis type present, restores them only into hashed `drill:<workspace>:<run-id>:*` keys, verifies type/value/TTL, and then deletes every temporary key.
+- Temporary drill keys always receive a 15-minute TTL as a second cleanup boundary. The drill never overwrites Production keys.
+- Manual drill: authenticated `POST /api/system/recovery-drill` with `{ "workspace": "zarechie" }` or `{ "workspace": "nkperf" }`.
+- Health is fresh for eight days. An explicit drill failure or a check older than ten days raises the overall health state to `error`.
+- Backup failures are logged at `error`; recovery failures are logged at `critical`. Both Cron endpoints return HTTP 500 on partial or complete failure so Vercel alerting can detect the incident.
+- Keep the team default Vercel `error`/`critical` alert rule enabled. Add an external Slack or webhook destination when an operational channel is selected.
 
 ## Known Notes
 
