@@ -4,11 +4,14 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { getNKRoster } from '../../../lib/nkperfClient';
 import { hydratePlayerPhotos } from '../../../lib/playerPhotos';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (req.method === 'POST' && !await enforceRateLimit(req, res, { scope: 'admin-nk-sync', limit: 30, windowSeconds: 600 })) return;
 
   if (req.method === 'GET') {
     const raw = await redis('get', 'nkperf:roster').catch(() => null);

@@ -2,6 +2,8 @@ import {
   evaluateMatchDayPrimerScenario,
   MATCH_DAY_LIVE_SCENARIOS,
 } from '../../../scripts/evaluate-match-day-primer-live.mjs';
+import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 
 export const config = { maxDuration: 60 };
 
@@ -10,7 +12,9 @@ export default async function handler(req, res) {
   // deployments are protected by Vercel authentication and no player data is
   // read or persisted by the evaluator.
   if (process.env.VERCEL_ENV === 'production') return res.status(404).end();
+  if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!await enforceRateLimit(req, res, { scope: 'ai-match-day-evaluation', limit: 10, windowSeconds: 3600 })) return;
 
   const scenarioId = String(req.query?.scenario || '');
   if (!MATCH_DAY_LIVE_SCENARIOS.some(item => item.id === scenarioId)) {

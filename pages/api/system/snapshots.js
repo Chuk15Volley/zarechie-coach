@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { operationsSnapshotKey, pfx, playbookKey, rosterKey, scheduleKey } from '../../../lib/workspacePrefix';
 import { recordPlatformEvent } from '../../../lib/platformTelemetry';
@@ -24,6 +25,7 @@ async function snapshotKeys(workspace) {
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (req.method !== 'GET' && !await enforceRateLimit(req, res, { scope: 'admin-snapshots', limit: 10, windowSeconds: 3600 })) return;
   const workspace = String((req.method === 'GET' ? req.query.workspace : req.body?.workspace) || 'zarechie') === 'nkperf' ? 'nkperf' : 'zarechie';
   const indexKey = `${pfx(workspace)}:ops_snapshots`;
   res.setHeader('Cache-Control', 'no-store');

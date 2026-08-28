@@ -4,13 +4,16 @@
 // the same for the UI: return { batchId }, then the client polls generate-status.js.
 
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { redis } from '../../../lib/redis';
 import { buildGenerationInputs, buildSessionTool } from './generate';
+import crypto from 'node:crypto';
 
 export const config = { maxDuration: 15 };
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await enforceRateLimit(req, res, { scope: 'ai-generate-async', limit: 40, windowSeconds: 600 })) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -27,7 +30,7 @@ export default async function handler(req, res) {
 
   // Keep the full schema for the polled path.
   const sessionTool = buildSessionTool({ includeImgPrompt: true });
-  const batchId = `openai-gen-${playerId}-${Date.now()}`;
+  const batchId = `openai-gen-${crypto.randomUUID()}`;
 
   try {
     // Track the queued job so generate-status can run OpenAI and persist the result.
@@ -58,10 +61,10 @@ export default async function handler(req, res) {
       }),
       'EX',
       3600,
-    ).catch(e => console.error('Redis SET batch failed:', e.message));
+    );
 
     return res.status(200).json({ batchId, estimatedMinutes: 2 });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return res.status(503).json({ error: 'Не удалось поставить генерацию в очередь. Повторите попытку.' });
   }
 }

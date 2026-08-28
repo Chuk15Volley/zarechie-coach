@@ -4,6 +4,7 @@
 // → updates title + registers English alias (images/videos preserved via same canonicalId).
 import { getAllCards, normalize } from '../../../lib/exerciseLibrary';
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { redis } from '../../../lib/redis';
 
 const OPENAI_MODEL = 'gpt-5.6-terra';
@@ -25,6 +26,7 @@ function extractText(data) {
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await enforceRateLimit(req, res, { scope: 'ai-library-rename', limit: 4, windowSeconds: 3600 })) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const cards = await getAllCards();
@@ -64,6 +66,7 @@ ${list}
 
 Return: [{"i":1,"name":"English Name"},{"i":2,"name":"English Name"},...]`,
     }),
+    signal: AbortSignal.timeout(50000),
   });
 
   if (!apiResponse.ok) {

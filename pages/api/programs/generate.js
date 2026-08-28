@@ -7,6 +7,7 @@
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
 import { countPreviousConsecutiveMatchDaySessions, getRecentSessionSummaries, getRecentStrengthAnchors } from '../../../lib/sessionHistory';
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
 import { assessSessionQuality } from '../../../lib/sessionValidator';
@@ -1906,6 +1907,7 @@ async function callOpenAIForSession(apiKey, userPrompt, systemPrompt = SYSTEM_PR
         tools: [sessionToolForOpenAI(SESSION_TOOL)],
         tool_choice: { type: 'function', name: 'build_session' },
       }),
+      signal: AbortSignal.timeout(50000),
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
@@ -1924,6 +1926,7 @@ export default async function handler(req, res) {
   if (!isAuthorized(req)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  if (!await enforceRateLimit(req, res, { scope: 'ai-generate', limit: 12, windowSeconds: 600 })) return;
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

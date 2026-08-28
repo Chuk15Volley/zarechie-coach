@@ -30,7 +30,10 @@
 |---|---|
 | `KV_REST_API_URL` | URL Upstash Redis |
 | `KV_REST_API_TOKEN` | токен Upstash Redis |
-| `TRAINER_API_KEY` | серверный ключ доступа тренера, если используется |
+| `TRAINER_API_KEY` | обязательный серверный ключ доступа тренера |
+| `SESSION_SECRET` | рекомендуемый отдельный секрет подписи сессии, не короче 32 символов |
+| `SESSION_TTL_SECONDS` | срок HttpOnly-сессии; по умолчанию 12 часов, диапазон 15 минут–7 дней |
+| `REDIS_TIMEOUT_MS` | таймаут Redis REST-запроса; по умолчанию 5000 мс |
 | `OPENAI_API_KEY` | ключ OpenAI для генерации тренировок, разминок и AI-помощников |
 | `READYSIX_URL` | серверный URL ReadySix |
 | `READYSIX_INTEGRATION_MODE` | `legacy` или `primary`; по умолчанию `legacy` |
@@ -49,8 +52,14 @@ npm install
 npm run dev
 ```
 
+Требуется Node.js 20.9 или новее. Вход выполняется ключом тренера, после чего
+браузер получает подписанную `HttpOnly`, `Secure`, `SameSite=Strict` сессию.
+Ключ не сохраняется в `localStorage`.
+
 ## Проверка
 
 ```bash
+npm test
 npm run build
+npm audit --omit=dev
 ```

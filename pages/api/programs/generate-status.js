@@ -5,6 +5,8 @@
 // Redis, and returns { status: 'done', session, player, dataSummary, date, dayGoal }.
 
 import { isAuthorized } from '../../../lib/auth';
+import { enforceRateLimit } from '../../../lib/rateLimit';
+import crypto from 'node:crypto';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { getPlayerSnapshot } from '../../../lib/playerData';
 import { exhistKey, exweightKey, gymTonnageDatesKey, gymTonnageKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
@@ -105,11 +107,13 @@ async function createOpenAIBackgroundResponse(apiKey, userPrompt, systemPrompt, 
       input: userPrompt,
       max_output_tokens: maxOutputTokens,
       background: true,
+      store: false,
       reasoning: { effort: reasoningEffort },
       text: { verbosity: 'low' },
       tools: [sessionToolForOpenAI(sessionTool)],
       tool_choice: { type: 'function', name: 'build_session' },
     }),
+    signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -124,6 +128,7 @@ async function retrieveOpenAIResponse(apiKey, responseId) {
       Authorization: `Bearer ${apiKey}`,
       'content-type': 'application/json',
     },
+    signal: AbortSignal.timeout(10000),
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -139,6 +144,7 @@ function parseSessionFromResponse(response) {
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await enforceRateLimit(req, res, { scope: 'ai-generation-status', limit: 600, windowSeconds: 600 })) return;
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -147,7 +153,12 @@ export default async function handler(req, res) {
   }
 
   const { batchId } = req.query || {};
-  if (!batchId) return res.status(400).json({ error: 'batchId required' });
+  const normalizedBatchId = String(batchId || '');
+  const currentBatchId = /^openai-gen-[0-9a-f-]{36}$/i.test(normalizedBatchId);
+  const legacyBatchId = /^openai-gen-[a-z0-9_:-]{1,100}-\d{13}$/i.test(normalizedBatchId);
+  if (!currentBatchId && !legacyBatchId) {
+    return res.status(400).json({ error: 'Invalid batchId' });
+  }
 
   // Resolve the queued record saved at submit time.
   let record;
@@ -230,6 +241,16 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Неполные данные задачи генерации' });
   }
 
+  // Polling requests can overlap in the browser and across function instances.
+  // Serialize every state transition so a single batch can never submit or
+  // retry the same paid OpenAI request twice.
+  const lockKey = `coach:batch-lock:${batchId}`;
+  const lockToken = crypto.randomUUID();
+  const acquired = await redis('set', lockKey, lockToken, 'NX', 'PX', 35000).catch(() => null);
+  if (acquired !== 'OK') {
+    return res.status(200).json({ status: 'pending', processing_status: 'state_transition' });
+  }
+
   try {
     let openaiResponse = null;
     let openaiResponseId = record.openaiResponseId;
@@ -251,7 +272,7 @@ export default async function handler(req, res) {
         activePrompt,
         tokenRetryCount: record.tokenRetryCount || 0,
       };
-      await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', 3600).catch(() => {});
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', 3600);
     } else {
       const retrieved = await retrieveOpenAIResponse(apiKey, openaiResponseId);
       if (retrieved.error) return res.status(retrieved.status || 502).json({ error: retrieved.error });
@@ -286,7 +307,7 @@ export default async function handler(req, res) {
           activePrompt,
           tokenRetryCount: Number(record.tokenRetryCount || 0) + 1,
           tokenRetryStartedAt: new Date().toISOString(),
-        }), 'EX', 3600).catch(() => {});
+        }), 'EX', 3600);
         return res.status(200).json({ status: 'pending', processing_status: 'token_limit_retry' });
       }
       const failureMessage = sessionResponseFailureMessage(openaiResponse);
@@ -338,7 +359,7 @@ export default async function handler(req, res) {
           candidateQuality: quality,
           tokenRetryCount: 0,
           correctionStartedAt: new Date().toISOString(),
-        }), 'EX', 3600).catch(() => {});
+        }), 'EX', 3600);
         return res.status(200).json({ status: 'pending', processing_status: 'quality_correction' });
       }
     }
@@ -414,7 +435,7 @@ export default async function handler(req, res) {
       autoSaved,
       saveWarning,
       completedAt: new Date().toISOString(),
-    }), 'EX', 3600).catch(() => {});
+    }), 'EX', 3600);
     await recordPlatformEvent({ workspace, area: 'generation', status: saveWarning ? 'warning' : 'ok', message: saveWarning, meta: { playerId, batchId, autoSaved } }).catch(() => {});
 
     return res.status(200).json({
@@ -434,5 +455,8 @@ export default async function handler(req, res) {
   } catch (e) {
     await recordPlatformEvent({ workspace: record?.workspace || 'zarechie', area: 'generation', status: 'error', message: e.message, meta: { batchId } }).catch(() => {});
     return res.status(500).json({ error: e.message });
+  } finally {
+    const releaseScript = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+    await redisPipeline([['EVAL', releaseScript, '1', lockKey, lockToken]]).catch(() => {});
   }
 }

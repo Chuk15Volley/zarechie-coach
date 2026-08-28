@@ -4,6 +4,7 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { validateImageBuffer } from '../../../lib/imageData';
 
 export const config = { maxDuration: 15 };
 
@@ -21,19 +22,32 @@ export default async function handler(req, res) {
   const blobUrl = await redis('get', `exercise:manual:${slugify(name)}`).catch(() => null);
   if (!blobUrl) return res.status(404).end();
 
+  try {
+    const parsed = new URL(blobUrl);
+    if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith('.blob.vercel-storage.com')) {
+      return res.status(404).end();
+    }
+  } catch (_) {
+    return res.status(404).end();
+  }
+
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
   try {
-    const upstream = await fetch(blobUrl, { headers });
+    const upstream = await fetch(blobUrl, { headers, signal: AbortSignal.timeout(10000) });
     if (!upstream.ok) return res.status(404).end();
 
-    const contentType = upstream.headers.get('content-type') || 'image/jpeg';
-    res.setHeader('Content-Type', contentType);
+    const contentType = upstream.headers.get('content-type') || '';
+    const declaredLength = Number(upstream.headers.get('content-length') || 0);
+    if (declaredLength > 3 * 1024 * 1024) return res.status(413).end();
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    const validated = validateImageBuffer(buffer, contentType);
+    res.setHeader('Content-Type', validated.mimeType);
+    res.setHeader('Content-Length', String(buffer.length));
     res.setHeader('Cache-Control', 'private, max-age=86400');
-
-    const buf = await upstream.arrayBuffer();
-    return res.send(Buffer.from(buf));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.send(buffer);
   } catch (_) {
     return res.status(502).end();
   }

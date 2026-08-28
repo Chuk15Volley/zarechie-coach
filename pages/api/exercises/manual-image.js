@@ -14,6 +14,7 @@
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { normalize, getCard, setImage } from '../../../lib/exerciseLibrary';
+import { decodeImageDataUrl, streamImageDataUrl } from '../../../lib/imageData';
 
 export const config = { api: { bodyParser: { sizeLimit: '4mb' } }, maxDuration: 15 };
 
@@ -22,22 +23,11 @@ function legacySlug(name) {
   return name.toLowerCase().trim().replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-+|-+$/g, '');
 }
 
-function streamDataUrl(res, dataUrl) {
-  const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
-  if (!m) return false;
-  const buf = Buffer.from(m[2], 'base64');
-  res.setHeader('Content-Type', m[1]);
-  // no-cache so the browser always revalidates; avoids stale image after delete+re-upload
-  res.setHeader('Cache-Control', 'private, no-cache');
-  res.send(buf);
-  return true;
-}
-
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
 
-  const nameParam = (req.query.name || req.body?.name || '').trim();
-  if (!nameParam) return res.status(400).json({ error: 'name required' });
+  const nameParam = String(req.query.name || req.body?.name || '').trim();
+  if (!nameParam || nameParam.length > 200) return res.status(400).json({ error: 'Invalid name' });
 
   // Use derived canonicalId (no fuzzy match) so each exercise owns its own image slot.
   const { normName, canonicalId } = normalize(nameParam);
@@ -45,11 +35,11 @@ export default async function handler(req, res) {
   // ── SERVE (img src) ──────────────────────────────────────────────────────
   if (req.method === 'GET' && req.query.serve === '1') {
     const card = await getCard(canonicalId);
-    if (card?.image && streamDataUrl(res, card.image)) return;
+    if (card?.image && streamImageDataUrl(res, card.image)) return;
 
     // Fallback: legacy exercise:manual:{slug} key
     const legacy = await redis('get', `exercise:manual:${legacySlug(nameParam)}`).catch(() => null);
-    if (legacy && streamDataUrl(res, legacy)) return;
+    if (legacy && streamImageDataUrl(res, legacy)) return;
 
     return res.status(404).end();
   }
@@ -78,6 +68,7 @@ export default async function handler(req, res) {
   if (!imageData) return res.status(400).json({ error: 'imageData required' });
 
   try {
+    decodeImageDataUrl(imageData);
     // Pin alias to the derived canonicalId so that resolveId() in other code
     // (e.g. video API) also maps this exercise name to the correct card,
     // overriding any fuzzy match that may have been registered previously.
@@ -85,6 +76,7 @@ export default async function handler(req, res) {
     await setImage(nameParam, imageData);
     return res.status(200).json({ ok: true });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    const status = /изображ|JPEG|PNG|WebP|файл/i.test(e.message) ? 400 : 500;
+    return res.status(status).json({ error: status === 400 ? e.message : 'Не удалось сохранить изображение' });
   }
 }

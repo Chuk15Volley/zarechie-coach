@@ -1,6 +1,7 @@
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { playerPhotoKey } from '../../../lib/workspacePrefix';
+import { decodeImageDataUrl } from '../../../lib/imageData';
 
 function idVariants(playerId) {
   const raw = String(playerId || '').trim();
@@ -25,8 +26,13 @@ export default async function handler(req, res) {
       workspace === 'zarechie' ? redis('del', `player:photo:${id}`).catch(() => {}) : Promise.resolve(),
     ]));
   } else {
-    if (!String(photoUrl).startsWith('data:image/')) {
-      try { new URL(photoUrl); } catch (_) { return res.status(400).json({ error: 'Invalid URL' }); }
+    if (String(photoUrl).startsWith('data:')) {
+      try { decodeImageDataUrl(photoUrl); } catch (error) { return res.status(400).json({ error: error.message }); }
+    } else {
+      try {
+        const parsed = new URL(photoUrl);
+        if (parsed.protocol !== 'https:' || String(photoUrl).length > 2048) throw new Error('Invalid URL');
+      } catch (_) { return res.status(400).json({ error: 'Invalid URL' }); }
     }
     await Promise.all(ids.flatMap(id => [
       redis('set', playerPhotoKey(workspace, id), photoUrl).catch(() => {}),

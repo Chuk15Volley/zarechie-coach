@@ -7,18 +7,9 @@
 
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
+import { decodeImageDataUrl, streamImageDataUrl } from '../../../lib/imageData';
 
 export const config = { api: { bodyParser: { sizeLimit: '4mb' } }, maxDuration: 15 };
-
-function streamDataUrl(res, dataUrl) {
-  const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
-  if (!m) return false;
-  const buf = Buffer.from(m[2], 'base64');
-  res.setHeader('Content-Type', m[1]);
-  res.setHeader('Cache-Control', 'private, no-cache');
-  res.send(buf);
-  return true;
-}
 
 function parseHash(raw) {
   if (!raw) return null;
@@ -33,13 +24,13 @@ function parseHash(raw) {
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
 
-  const id = (req.query.id || req.body?.id || '').trim();
-  if (!id) return res.status(400).json({ error: 'id required' });
+  const id = String(req.query.id || req.body?.id || '').trim();
+  if (!/^[a-z0-9_-]{1,120}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
 
   // ── SERVE ─────────────────────────────────────────────────────────────────
   if (req.method === 'GET') {
     const image = await redis('hget', `ex:lib:${id}`, 'image').catch(() => null);
-    if (image && streamDataUrl(res, image)) return;
+    if (image && streamImageDataUrl(res, image)) return;
     return res.status(404).end();
   }
 
@@ -56,15 +47,17 @@ export default async function handler(req, res) {
   if (!imageData) return res.status(400).json({ error: 'imageData required' });
 
   try {
+    decodeImageDataUrl(imageData);
     const ts = String(Date.now());
     const existing = parseHash(await redis('hgetall', `ex:lib:${id}`).catch(() => null));
     const createdAt = existing?.createdAt || ts;
     const fields = ['image', imageData, 'updatedAt', ts, 'createdAt', createdAt];
-    if (title?.trim() && !existing?.title) fields.push('title', title.trim());
+    if (title?.trim() && !existing?.title) fields.push('title', title.trim().slice(0, 200));
     await redis('hset', `ex:lib:${id}`, ...fields);
     await redis('sadd', 'ex:index', id).catch(() => {});
     return res.status(200).json({ ok: true });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    const status = /изображ|JPEG|PNG|WebP|файл/i.test(e.message) ? 400 : 500;
+    return res.status(status).json({ error: status === 400 ? e.message : 'Не удалось сохранить изображение' });
   }
 }

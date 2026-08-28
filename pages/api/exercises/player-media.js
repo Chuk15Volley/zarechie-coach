@@ -8,6 +8,7 @@
 import { redis } from '../../../lib/redis';
 import { normalize, getCard } from '../../../lib/exerciseLibrary';
 import { resolveShareToken } from '../../../lib/shareToken';
+import { streamImageDataUrl } from '../../../lib/imageData';
 
 export const config = { maxDuration: 15 };
 
@@ -21,20 +22,11 @@ async function isValidToken(token) {
   return !!resolved?.playerId;
 }
 
-function streamDataUrl(res, dataUrl) {
-  const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
-  if (!m) return false;
-  res.setHeader('Content-Type', m[1]);
-  res.setHeader('Cache-Control', 'private, max-age=86400');
-  res.send(Buffer.from(m[2], 'base64'));
-  return true;
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
 
   const { token, name, serve } = req.query;
-  if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+  if (!name?.trim() || name.trim().length > 200) return res.status(400).json({ error: 'Invalid name' });
 
   if (!await isValidToken(token)) return res.status(401).json({ error: 'Invalid token' });
 
@@ -43,10 +35,10 @@ export default async function handler(req, res) {
 
   // ── SERVE image ──────────────────────────────────────────────────────────
   if (serve === '1') {
-    if (card?.image && streamDataUrl(res, card.image)) return;
+    if (card?.image && streamImageDataUrl(res, card.image)) return;
     // fallback: legacy key
     const legacy = await redis('get', `exercise:manual:${legacySlug(name)}`).catch(() => null);
-    if (legacy && streamDataUrl(res, legacy)) return;
+    if (legacy && streamImageDataUrl(res, legacy)) return;
     return res.status(404).end();
   }
 
