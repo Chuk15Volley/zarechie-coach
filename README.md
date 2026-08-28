@@ -30,8 +30,11 @@
 |---|---|
 | `KV_REST_API_URL` | URL Upstash Redis |
 | `KV_REST_API_TOKEN` | токен Upstash Redis |
+| `BACKUP_READ_WRITE_TOKEN` | токен отдельного private Vercel Blob для резервных копий |
 | `TRAINER_API_KEY` | обязательный серверный ключ доступа тренера |
 | `SESSION_SECRET` | рекомендуемый отдельный секрет подписи сессии, не короче 32 символов |
+| `BACKUP_ENCRYPTION_KEY` | отдельный секрет AES-256 для шифрования резервных копий, не короче 32 символов |
+| `CRON_SECRET` | секрет авторизации ежедневного задания резервного копирования |
 | `SESSION_TTL_SECONDS` | срок HttpOnly-сессии; по умолчанию 12 часов, диапазон 15 минут–7 дней |
 | `REDIS_TIMEOUT_MS` | таймаут Redis REST-запроса; по умолчанию 5000 мс |
 | `OPENAI_API_KEY` | ключ OpenAI для генерации тренировок, разминок и AI-помощников |

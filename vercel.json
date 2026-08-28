@@ -10,6 +10,11 @@
     "pages/api/exercises/library.js": { "maxDuration": 20 },
     "pages/api/exercises/migrate.js": { "maxDuration": 60 },
     "pages/api/exercises/sync-videos.js": { "maxDuration": 60 },
-    "pages/api/exercises/player-media.js": { "maxDuration": 15 }
-  }
+    "pages/api/exercises/player-media.js": { "maxDuration": 15 },
+    "pages/api/system/snapshots.js": { "maxDuration": 60 },
+    "pages/api/cron/backup.js": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/cron/backup", "schedule": "30 2 * * *" }
+  ]
 }

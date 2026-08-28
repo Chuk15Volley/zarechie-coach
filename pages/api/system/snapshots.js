@@ -1,74 +1,52 @@
-import crypto from 'crypto';
 import { isAuthorized } from '../../../lib/auth';
 import { enforceRateLimit } from '../../../lib/rateLimit';
-import { redis, redisPipeline } from '../../../lib/redis';
-import { operationsSnapshotKey, pfx, playbookKey, rosterKey, scheduleKey } from '../../../lib/workspacePrefix';
+import { createEncryptedBackup, listEncryptedBackups, restoreEncryptedBackup } from '../../../lib/platformBackup';
 import { recordPlatformEvent } from '../../../lib/platformTelemetry';
 
-function parse(raw) {
-  if (!raw) return null;
-  try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_) { return null; }
+function workspaceFrom(req) {
+  const requested = req.method === 'GET' ? req.query.workspace : req.body?.workspace;
+  return requested === 'nkperf' ? 'nkperf' : 'zarechie';
 }
 
-async function snapshotKeys(workspace) {
-  const prefix = pfx(workspace);
-  const sessionKeys = [];
-  let cursor = '0';
-  do {
-    const scan = await redis('scan', cursor, 'match', `${prefix}:session:*`, 'count', '500').catch(() => ['0', []]);
-    cursor = String(scan?.[0] || '0');
-    const batch = Array.isArray(scan?.[1]) ? scan[1] : [];
-    sessionKeys.push(...batch.filter(key => !String(key).endsWith(':versions')));
-  } while (cursor !== '0' && sessionKeys.length < 2000);
-  return [...new Set([rosterKey(workspace), scheduleKey(workspace), playbookKey(workspace), ...sessionKeys])];
+function safeError(error) {
+  const message = String(error?.message || 'Backup operation failed');
+  if (message.includes('not configured')) return { status: 503, message: 'Резервное копирование не настроено' };
+  if (message.includes('not found')) return { status: 404, message: 'Резервная копия не найдена' };
+  return { status: 500, message: 'Операция с резервной копией не выполнена' };
 }
 
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0');
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
-  if (req.method !== 'GET' && !await enforceRateLimit(req, res, { scope: 'admin-snapshots', limit: 10, windowSeconds: 3600 })) return;
-  const workspace = String((req.method === 'GET' ? req.query.workspace : req.body?.workspace) || 'zarechie') === 'nkperf' ? 'nkperf' : 'zarechie';
-  const indexKey = `${pfx(workspace)}:ops_snapshots`;
-  res.setHeader('Cache-Control', 'no-store');
-
-  if (req.method === 'GET') {
-    const ids = await redis('zrevrange', indexKey, '0', '13').catch(() => []);
-    const rows = ids.length ? await redisPipeline(ids.map(id => ['GET', operationsSnapshotKey(workspace, id)])).catch(() => []) : [];
-    return res.status(200).json({ snapshots: rows.map(parse).filter(Boolean).map(item => ({ id: item.id, createdAt: item.createdAt, keyCount: item.keyCount, release: item.release })) });
+  if (!['GET', 'POST', 'PUT'].includes(req.method)) {
+    res.setHeader('Allow', 'GET, POST, PUT');
+    return res.status(405).json({ error: 'Method not allowed' });
   }
+  if (req.method !== 'GET' && !await enforceRateLimit(req, res, { scope: 'admin-snapshots', limit: 6, windowSeconds: 3600, failClosed: true })) return;
+  const workspace = workspaceFrom(req);
 
-  if (req.method === 'POST') {
-    const keys = await snapshotKeys(workspace);
-    const values = keys.length ? await redisPipeline(keys.map(key => ['GET', key])).catch(() => []) : [];
-    const entries = keys.map((key, index) => ({ key, value: values[index] })).filter(entry => entry.value != null);
-    const id = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-    const snapshot = {
-      id,
-      workspace,
-      createdAt: new Date().toISOString(),
-      release: process.env.VERCEL_GIT_COMMIT_SHA || 'local',
-      keyCount: entries.length,
-      entries,
-    };
-    await redisPipeline([
-      ['SET', operationsSnapshotKey(workspace, id), JSON.stringify(snapshot), 'EX', '2592000'],
-      ['ZADD', indexKey, String(Date.now()), id],
-      ['ZREMRANGEBYRANK', indexKey, '0', '-15'],
-    ]);
-    await recordPlatformEvent({ workspace, area: 'backup', status: 'ok', message: `Создана контрольная точка: ${entries.length} ключей`, meta: { id } }).catch(() => {});
-    return res.status(200).json({ snapshot: { id, createdAt: snapshot.createdAt, keyCount: entries.length, release: snapshot.release } });
+  try {
+    if (req.method === 'GET') {
+      return res.status(200).json({ snapshots: await listEncryptedBackups(workspace, 14) });
+    }
+
+    if (req.method === 'POST') {
+      const snapshot = await createEncryptedBackup(workspace);
+      await recordPlatformEvent({ workspace, area: 'backup', status: 'ok', message: `Зашифрованная резервная копия: ${snapshot.keyCount} ключей`, meta: { id: snapshot.id, storage: snapshot.storage } });
+      return res.status(200).json({ snapshot });
+    }
+
+    const { pathname, confirmation } = req.body || {};
+    const id = String(pathname || '').split('/').pop()?.replace(/\.backup$/, '') || '';
+    if (!pathname || confirmation !== `RESTORE ${id}`) {
+      return res.status(400).json({ error: `Для восстановления требуется confirmation: RESTORE ${id || '<id>'}` });
+    }
+    const restored = await restoreEncryptedBackup(workspace, pathname);
+    await recordPlatformEvent({ workspace, area: 'restore', status: 'warning', message: `Восстановлена зашифрованная копия ${restored.id}`, meta: { keys: restored.keyCount, release: restored.release } });
+    return res.status(200).json(restored);
+  } catch (error) {
+    const failure = safeError(error);
+    await recordPlatformEvent({ workspace, area: req.method === 'PUT' ? 'restore' : 'backup', status: 'error', message: failure.message, meta: { reason: String(error?.message || '').slice(0, 120) } });
+    return res.status(failure.status).json({ error: failure.message });
   }
-
-  if (req.method === 'PUT') {
-    const { id, confirmation } = req.body || {};
-    if (!id || confirmation !== 'RESTORE') return res.status(400).json({ error: 'id and RESTORE confirmation required' });
-    const snapshot = parse(await redis('get', operationsSnapshotKey(workspace, id)).catch(() => null));
-    if (!snapshot?.entries?.length) return res.status(404).json({ error: 'Snapshot not found' });
-    const allowedPrefix = `${pfx(workspace)}:`;
-    const entries = snapshot.entries.filter(entry => String(entry.key).startsWith(allowedPrefix) && entry.value != null);
-    await redisPipeline(entries.map(entry => ['SET', entry.key, entry.value]));
-    await recordPlatformEvent({ workspace, area: 'restore', status: 'warning', message: `Восстановлена контрольная точка ${id}`, meta: { keys: entries.length } }).catch(() => {});
-    return res.status(200).json({ restored: true, keyCount: entries.length, release: snapshot.release });
-  }
-
-  return res.status(405).json({ error: 'Method not allowed' });
 }
