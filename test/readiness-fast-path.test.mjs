@@ -7,9 +7,15 @@ import {
   TEAM_READINESS_CACHE_STALE_MS,
 } from '../lib/teamReadinessCache.js';
 import {
+  READINESS_LATENCY_HISTOGRAM_BOUNDS_MS,
   READINESS_LATENCY_MIN_HEALTH_SAMPLES,
   readinessLatencyKey,
+  readinessLatencyRollupKey,
+  readinessLatencyRollupKeys,
+  recordReadinessLatency,
   summarizeReadinessLatency,
+  summarizeReadinessRollups,
+  summarizeReadinessTelemetry,
 } from '../lib/readinessTelemetry.js';
 
 const now = Date.parse('2026-08-28T12:00:00.000Z');
@@ -189,6 +195,77 @@ test('readiness telemetry cannot mix Preview, local and Production samples', () 
   assert.notEqual(previewA, previewB);
   assert.notEqual(previewA, production);
   assert.notEqual(local, production);
+  assert.match(readinessLatencyRollupKey('zarechie', { environment: 'production', now }), /readiness-rollup:production:2026-08-28$/);
+  assert.equal(readinessLatencyRollupKeys('zarechie', { environment: 'production', now }).length, 2);
+});
+
+test('readiness recording atomically updates a bounded minute histogram', async () => {
+  let commands;
+  const sample = await recordReadinessLatency({
+    workspace: 'zarechie', durationMs: 1750, cache: 'hit', now,
+    environment: 'production', redisPipelineImpl: async value => { commands = value; return value.map(() => 'OK'); },
+  });
+  const minute = Math.floor(now / 60000);
+  assert.equal(sample.durationMs, 1750);
+  assert.deepEqual(commands.slice(0, 2).map(command => command[0]), ['LPUSH', 'LTRIM']);
+  const rollup = commands.find(command => command[0] === 'EVAL');
+  assert.match(rollup[1], /hincrby/);
+  assert.equal(rollup[4], String(minute));
+  assert.deepEqual(rollup.slice(5), ['1', '1', '1750', '12', String(3 * 24 * 60 * 60)]);
+});
+
+test('rolling histogram keeps a true high-volume 24-hour SLO without raw sample growth', () => {
+  const minute = Math.floor(now / 60000);
+  const healthy = summarizeReadinessRollups([{
+    [`${minute}:n`]: '10000',
+    [`${minute}:c`]: '9500',
+    [`${minute}:o`]: '500',
+    [`${minute}:s`]: '10500000',
+    [`${minute}:b9`]: '9500',
+    [`${minute}:b12`]: '500',
+  }], { now });
+  assert.equal(healthy.sampleCount, 10000);
+  assert.equal(healthy.p95Ms, 1000);
+  assert.equal(healthy.averageMs, 1050);
+  assert.equal(healthy.cacheHitRate, 95);
+  assert.equal(healthy.targetViolationRate, 5);
+  assert.equal(healthy.healthy, true);
+  assert.equal(healthy.telemetrySource, 'rolling_histogram');
+
+  const degraded = summarizeReadinessRollups([{
+    [`${minute}:n`]: '10000',
+    [`${minute}:c`]: '9400',
+    [`${minute}:o`]: '600',
+    [`${minute}:s`]: '11200000',
+    [`${minute}:b9`]: '9400',
+    [`${minute}:b12`]: '600',
+  }], { now });
+  assert.equal(degraded.p95Ms, 2000);
+  assert.equal(degraded.targetViolationRate, 6);
+  assert.equal(degraded.healthy, false);
+});
+
+test('rolling histogram excludes expired minutes and warms up from recent raw samples', () => {
+  const minute = Math.floor(now / 60000);
+  const expiredMinute = Math.floor((now - 25 * 60 * 60 * 1000) / 60000);
+  const rolling = summarizeReadinessRollups([{
+    [`${expiredMinute}:n`]: '999',
+    [`${expiredMinute}:b18`]: '999',
+    [`${minute}:n`]: '19',
+    [`${minute}:c`]: '19',
+    [`${minute}:s`]: '1900',
+    [`${minute}:b1`]: '19',
+  }], { now });
+  assert.equal(rolling.sampleCount, 19);
+  const recentRows = Array.from({ length: 20 }, (_, index) => JSON.stringify({
+    at: new Date(now - index * 1000).toISOString(), durationMs: 120, cache: 'hit',
+  }));
+  const selected = summarizeReadinessTelemetry(recentRows, [{
+    [`${minute}:n`]: '19', [`${minute}:c`]: '19', [`${minute}:s`]: '1900', [`${minute}:b1`]: '19',
+  }], { now });
+  assert.equal(selected.sampleCount, 20);
+  assert.equal(selected.telemetrySource, 'recent_samples');
+  assert.equal(READINESS_LATENCY_HISTOGRAM_BOUNDS_MS.at(-1), 60000);
 });
 
 test('readiness API validates date, normalizes workspace and exposes cache state', () => {
@@ -205,4 +282,5 @@ test('readiness API validates date, normalizes workspace and exposes cache state
   assert.match(dashboard, /workspace=\$\{workspace\}&refresh=1/);
   assert.match(dashboard, /readinessData\?\.cache === 'stale'/);
   assert.match(dashboard, /Readiness p95/);
+  assert.match(dashboard, /24ч rollup/);
 });

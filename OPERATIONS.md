@@ -107,7 +107,8 @@ after every production deployment.
 - Once the soft 60-second TTL expires, a validated response is returned immediately as `stale-while-revalidate`; `@vercel/functions` `waitUntil` keeps the invocation alive until the cache refresh completes. This removes periodic cold waits during active coaching without unbounded fire-and-forget work.
 - Concurrent misses inside one function instance are coalesced. A validated cached response may be served for no more than five minutes. Refresh failures mark the record as `stale`, emit a structured error, and never extend the hard age boundary.
 - `X-Readiness-Cache` reports `hit`, `miss`, `refresh`, `stale-while-revalidate`, or `stale`; `X-Readiness-Cache-Age` reports milliseconds and `Server-Timing` exposes request duration. An authenticated `refresh=1` request forces synchronous recomputation.
-- The last 200 request durations are stored in environment- and release-scoped operational Redis keys, so Preview and local tests cannot contaminate Production health. System Health reports rolling 24-hour p50/p95/p99, cache-hit rate, and raises a warning only after at least 20 samples when p95 exceeds 1,500 ms.
+- The last 200 raw request durations remain available for deployment warm-up and diagnostics. In parallel, atomic per-minute Redis histograms retain a bounded, environment-scoped rolling 24-hour window across Production releases; Preview and local data remain release-isolated. Two daily hashes cap key growth while a three-day TTL cleans obsolete buckets automatically.
+- System Health reports 24-hour p50/p95/p99, average latency, cache-hit and target-violation rates. It raises a warning only after at least 20 samples when more than 5% of requests exceed 1,500 ms. The dashboard explicitly identifies warm-up data versus the full 24-hour rollup.
 - Invalid or impossible dates are rejected with HTTP 400, and unknown workspace values are normalized to `zarechie` to prevent cross-workspace reads.
 
 ## Known Notes
