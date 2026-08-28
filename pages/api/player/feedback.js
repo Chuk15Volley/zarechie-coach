@@ -19,6 +19,7 @@ import {
 } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
+import { exerciseId } from '../../../lib/exerciseIdentity.mjs';
 
 function targetSetReps(value) {
   const multiple = String(value || '').match(/^(\d+)\s*[x×]\s*(\d+)$/i);
@@ -129,6 +130,7 @@ export default async function handler(req, res) {
           }
           if (ex.name) {
             actualExercises.push({
+              exerciseId: exerciseId(ex),
               block: block.label || '',
               name: ex.name,
               plannedKg,
@@ -142,10 +144,11 @@ export default async function handler(req, res) {
             });
           }
           if (!kg || kg <= 0 || !ex.name) continue;
-          const exerciseKey = exweightKey(workspace, playerId, normExName(ex.name));
-          actualSessionCmds.push(['HSET', exerciseKey, 'kg', String(kg), 'date', String(date), 'rpe', String(rpeNum), 'loadUnits', String(loadUnits), 'source', loggedWeights.length ? 'player_log' : 'planned_feedback']);
+          const identity = exerciseId(ex) || normExName(ex.name);
+          const exerciseKey = exweightKey(workspace, playerId, identity);
+          actualSessionCmds.push(['HSET', exerciseKey, 'kg', String(kg), 'date', String(date), 'rpe', String(rpeNum), 'loadUnits', String(loadUnits), 'completedSets', String(completedSetCount), 'plannedSets', String(targetSets.length), 'source', loggedWeights.length ? 'player_log' : 'planned_feedback']);
           if (loggedWeights.length) {
-            actualSessionCmds.push(['HSET', exhistKey(workspace, playerId, normExName(ex.name)), String(date), String(kg)]);
+            actualSessionCmds.push(['HSET', exhistKey(workspace, playerId, identity), String(date), String(kg)]);
           }
         }
       }

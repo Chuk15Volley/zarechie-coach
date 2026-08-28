@@ -641,7 +641,7 @@ function InstallHint() {
   );
 }
 
-function SyncBadge({ status }) {
+function SyncBadge({ status, savedAt }) {
   const meta = {
     saved: ['Сохранено', 'is-saved'],
     syncing: ['Синхронизация', 'is-syncing'],
@@ -649,10 +649,13 @@ function SyncBadge({ status }) {
     error: ['Повторим синхронизацию', 'is-offline'],
     local: ['Сохранено на устройстве', 'is-local'],
   }[status] || ['Сохранено', 'is-saved'];
+  const time = savedAt && Number.isFinite(new Date(savedAt).getTime())
+    ? new Date(savedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    : '';
   return (
-    <span className={`player-sync-badge ${meta[1]}`} role="status" aria-live="polite">
+    <span className={`player-sync-badge ${meta[1]}`} role="status" aria-live="polite" title={time ? `Последняя синхронизация: ${time}` : undefined}>
       <span className="player-sync-dot" />
-      {meta[0]}
+      {meta[0]}{status === 'saved' && time ? ` · ${time}` : ''}
     </span>
   );
 }
@@ -769,6 +772,13 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   // Cross-device state is seeded from Redis, with a local offline fallback.
   const [done, setDone] = useState(initialDone);
   const [weights, setWeights] = useState(serverLog?.weights || {});
+  const [setUpdatedAt, setSetUpdatedAt] = useState(serverLog?.setUpdatedAt || {});
+  const [weightUpdatedAt, setWeightUpdatedAt] = useState(serverLog?.weightUpdatedAt || {});
+  const [serverRevision, setServerRevision] = useState(Number(serverLog?.revision) || 0);
+  const [deviceId, setDeviceId] = useState('');
+  const [lastActionAt, setLastActionAt] = useState(serverLog?.lastActionAt || null);
+  const [restUntil, setRestUntil] = useState(serverLog?.restUntil || null);
+  const [serverSavedAt, setServerSavedAt] = useState(serverLog?.savedAt || null);
   const initialBlock = firstIncompleteBlock(session, initialDone);
   const [activeBlock, setActiveBlock] = useState(initialBlock?.bi ?? (initialAllDone ? -1 : 0));
   const [focusMode, setFocusMode] = useState(true);
@@ -788,6 +798,16 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
   // Load progress on mount: prefer server log, fall back to localStorage.
   useEffect(() => {
+    try {
+      const key = 'nk-player-device-id';
+      const existing = localStorage.getItem(key);
+      const next = existing || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      if (!existing) localStorage.setItem(key, next);
+      setDeviceId(next);
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
     if (!token || !sessionDate) return;
     if (serverLog && (serverLog.done || serverLog.weights)) return; // already seeded from server
     try {
@@ -796,6 +816,11 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
         const parsed = JSON.parse(saved);
         if (parsed.done) setDone(parsed.done);
         if (parsed.weights) setWeights(parsed.weights);
+        if (parsed.setUpdatedAt) setSetUpdatedAt(parsed.setUpdatedAt);
+        if (parsed.weightUpdatedAt) setWeightUpdatedAt(parsed.weightUpdatedAt);
+        if (parsed.serverRevision) setServerRevision(Number(parsed.serverRevision) || 0);
+        if (parsed.lastActionAt) setLastActionAt(parsed.lastActionAt);
+        if (parsed.restUntil) setRestUntil(parsed.restUntil);
         if (parsed.startedAt) { setStartedAt(parsed.startedAt); setWorkoutStarted(true); }
         if (parsed.completedAt) setCompletedAt(parsed.completedAt);
         if (parsed.elapsedSeconds) setElapsedSeconds(Number(parsed.elapsedSeconds) || 0);
@@ -810,15 +835,32 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   useEffect(() => {
     if (!token || !sessionDate) return;
     try {
-      localStorage.setItem(`gym:${token}:${sessionDate}`, JSON.stringify({ done, weights, startedAt, completedAt, elapsedSeconds }));
+      localStorage.setItem(`gym:${token}:${sessionDate}`, JSON.stringify({ done, weights, setUpdatedAt, weightUpdatedAt, serverRevision, startedAt, completedAt, elapsedSeconds, lastActionAt, restUntil }));
     } catch (_) {}
-  }, [done, weights, startedAt, completedAt, elapsedSeconds, token, sessionDate]);
+  }, [done, weights, setUpdatedAt, weightUpdatedAt, serverRevision, startedAt, completedAt, elapsedSeconds, lastActionAt, restUntil, token, sessionDate]);
 
   // Auto-sync with an offline queue. The latest payload is retried when connectivity returns.
   useEffect(() => {
     if (!token || !sessionDate || !session || progressRevision === 0) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    const payload = { token, date: sessionDate, done, weights, startedAt, completedAt, elapsedSeconds };
+    const payload = {
+      token,
+      date: sessionDate,
+      done,
+      weights,
+      setUpdatedAt,
+      weightUpdatedAt,
+      startedAt,
+      completedAt,
+      elapsedSeconds,
+      activeBlock,
+      restUntil,
+      lastActionAt,
+      clientRevision: serverRevision,
+      clientId: deviceId,
+      deviceLabel: typeof navigator !== 'undefined' ? `${navigator.platform || 'Mobile'} · ${navigator.standalone ? 'PWA' : 'Browser'}` : 'Mobile',
+      requestId: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    };
     const pendingKey = `gym:pending:${token}:${sessionDate}`;
     try { localStorage.setItem(pendingKey, JSON.stringify(payload)); } catch (_) {}
     if (!navigator.onLine) { setSyncStatus('offline'); return; }
@@ -831,13 +873,23 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
           body: JSON.stringify(payload),
         });
         if (!response.ok) throw new Error('sync failed');
+        const body = await response.json();
         try { localStorage.removeItem(pendingKey); } catch (_) {}
+        setServerRevision(Number(body.revision) || 0);
+        setServerSavedAt(body.savedAt || new Date().toISOString());
         setSyncStatus('saved');
       } catch (_) {
         setSyncStatus(navigator.onLine ? 'error' : 'offline');
+        if (navigator.onLine) fetch('/api/system/telemetry', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, area: 'player_sync', status: 'error', message: 'Автосинхронизация не выполнена' }),
+        }).catch(() => {});
       }
     }, 900);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  // Every user mutation increments progressRevision; keeping this dependency
+  // narrow prevents a successful server revision from scheduling another save.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progressRevision, token, sessionDate, session]);
 
   useEffect(() => {
@@ -854,9 +906,18 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
           body: raw,
         });
         if (!response.ok) throw new Error('sync failed');
+        const body = await response.json();
         localStorage.removeItem(pendingKey);
+        setServerRevision(Number(body.revision) || 0);
+        setServerSavedAt(body.savedAt || new Date().toISOString());
         setSyncStatus('saved');
-      } catch (_) { setSyncStatus(navigator.onLine ? 'error' : 'offline'); }
+      } catch (_) {
+        setSyncStatus(navigator.onLine ? 'error' : 'offline');
+        if (navigator.onLine) fetch('/api/system/telemetry', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, area: 'player_sync_retry', status: 'error', message: 'Повторная синхронизация не выполнена' }),
+        }).catch(() => {});
+      }
     };
     const goOffline = () => setSyncStatus('offline');
     window.addEventListener('online', flushPending);
@@ -943,6 +1004,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     setWorkoutStarted(true);
     setStartedAt(current => current || now);
     setCompletedAt(null);
+    setLastActionAt(now);
     setProgressRevision(value => value + 1);
     if (first) {
       setActiveBlock(first.bi);
@@ -951,11 +1013,16 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   }
 
   function toggleSet(key, context) {
+    const actionAt = new Date().toISOString();
     const wasDone = Boolean(done[key]);
     setDone(prev => ({ ...prev, [key]: !prev[key] }));
+    setSetUpdatedAt(prev => ({ ...prev, [key]: actionAt }));
+    setLastActionAt(actionAt);
     setProgressRevision(value => value + 1);
     if (wasDone) {
       setRestTimer(null);
+      setRestUntil(null);
+      setCompletedAt(null);
       setUndoSet(null);
       setFocusMode(true);
       setActiveBlock(context.bi);
@@ -978,6 +1045,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
         notified: false,
         label: context.block?.rest_note || `После ${context.ex?.code || 'подхода'}`,
       });
+      setRestUntil(new Date(Date.now() + seconds * 1000).toISOString());
     }
 
     if (blockIsComplete(context.block, context.bi, newDone)) {
@@ -993,10 +1061,15 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
   function undoLastSet() {
     if (!undoSet?.key) return;
+    const actionAt = new Date().toISOString();
     setDone(prev => ({ ...prev, [undoSet.key]: false }));
+    setSetUpdatedAt(prev => ({ ...prev, [undoSet.key]: actionAt }));
+    setLastActionAt(actionAt);
+    setCompletedAt(null);
     setProgressRevision(value => value + 1);
     setUndoSet(null);
     setRestTimer(null);
+    setRestUntil(null);
     setFocusMode(true);
     if (Number.isInteger(undoSet.bi)) setActiveBlock(undoSet.bi);
     if (undoTimer.current) clearTimeout(undoTimer.current);
@@ -1005,6 +1078,9 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
   function changeWeight(key, value) {
     setWeights(prev => ({ ...prev, [key]: value }));
+    const actionAt = new Date().toISOString();
+    setWeightUpdatedAt(prev => ({ ...prev, [key]: actionAt }));
+    setLastActionAt(actionAt);
     setProgressRevision(current => current + 1);
   }
 
@@ -1130,7 +1206,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
             )}
 
             <div className="player-workout-tools">
-              <SyncBadge status={syncStatus} />
+              <SyncBadge status={syncStatus} savedAt={serverSavedAt} />
               <button className="player-focus-toggle" type="button" onClick={() => setFocusMode(value => !value)} aria-pressed={focusMode}>
                 {focusMode ? 'Текущий блок' : 'Все блоки'}
               </button>
@@ -1445,7 +1521,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
             <span className="h-1 w-1 rounded-full bg-emerald-400/70" />
             NK Performance
           </span>
-          {session && <SyncBadge status={syncStatus} />}
+          {session && <SyncBadge status={syncStatus} savedAt={serverSavedAt} />}
         </div>
       </div>
 

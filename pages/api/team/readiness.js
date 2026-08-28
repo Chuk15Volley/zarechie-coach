@@ -14,6 +14,7 @@ import { rosterKey } from '../../../lib/workspacePrefix';
 import { performanceKpis } from '../../../lib/performanceKpis.mjs';
 import { getReadySixTeamReadiness, usesReadySix } from '../../../lib/readySixClient';
 import { normalizeReadySixTeamReadiness } from '../../../lib/readySixSnapshotAdapter';
+import { recordPlatformEvent } from '../../../lib/platformTelemetry';
 
 function num(v) {
   if (v == null || v === '') return null;
@@ -216,6 +217,13 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ players });
   } catch (e) {
+    await recordPlatformEvent({
+      workspace,
+      area: String(e?.code || '').startsWith('READYSIX_') ? 'readysix' : 'readiness',
+      status: 'error',
+      message: e.message,
+      meta: { code: e?.code || 'READINESS_FAILED', date },
+    }).catch(() => {});
     return res.status(500).json({ error: e.message });
   }
 }

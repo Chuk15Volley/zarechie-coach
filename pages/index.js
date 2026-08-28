@@ -57,6 +57,7 @@ import {
 } from '../lib/seasonPolicy.mjs';
 import { usesSeasonCalendar } from '../lib/workspacePolicy.mjs';
 import { exerciseDescription } from '../lib/tempoDescription.mjs';
+import { canonicalExerciseId } from '../lib/exerciseIdentity.mjs';
 
 // Map a camp focus phase to a representative training week (for auto-weight %).
 function weekFromFocus(focus) {
@@ -841,6 +842,13 @@ function getFocusLabel(period, focusValue) {
 
 function todayISO() {
   return new Date().toISOString().split('T')[0];
+}
+
+function compactTime(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '—';
+  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
 function addDaysToStr(dateStr, n) {
@@ -2123,6 +2131,11 @@ export default function Home() {
   // Left panel tabs
   const [leftTab, setLeftTab] = useState('players'); // 'players' | 'day'
   const [teamStatus, setTeamStatus] = useState({});
+  const [liveUpdatedAt, setLiveUpdatedAt] = useState(null);
+  const [healthData, setHealthData] = useState(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [accessAction, setAccessAction] = useState('');
+  const [accessConfirm, setAccessConfirm] = useState('');
   const [matchLoads, setMatchLoads] = useState({});
   const [matchLoadSaving, setMatchLoadSaving] = useState(false);
 
@@ -2606,15 +2619,15 @@ export default function Home() {
   // Load per-exercise progression hints and weight history whenever the current session changes.
   useEffect(() => {
     if (!session || !playerId || !apiKey) { setProgressionMap({}); setExHistoryMap({}); return; }
-    const names = (session.blocks || []).flatMap(b => (b.exercises || []).map(e => e.name)).filter(Boolean);
-    if (!names.length) return;
-    const opts = { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ playerId, names, workspace }) };
+    const exercises = (session.blocks || []).flatMap(b => (b.exercises || []).map(e => ({ ...e, exerciseId: e.exerciseId || canonicalExerciseId(e.name) }))).filter(e => e.name);
+    if (!exercises.length) return;
+    const opts = { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ playerId, exercises, workspace }) };
     Promise.all([
       fetch('/api/players/progression', opts).then(r => r.json()).catch(() => ({})),
       fetch('/api/players/ex-history', opts).then(r => r.json()).catch(() => ({})),
     ]).then(([prog, hist]) => {
-      setProgressionMap(prog.progression || {});
-      setExHistoryMap(hist.histories || {});
+      setProgressionMap({ ...(prog.progression || {}), ...(prog.progressionById || {}) });
+      setExHistoryMap({ ...(hist.histories || {}), ...(hist.historiesById || {}) });
     });
   }, [session, playerId, apiKey, workspace]);
 
@@ -2674,6 +2687,20 @@ export default function Home() {
     if (mainSection === 'tonnage' && tonnageTab === 'status' && players.length > 0 && apiKey) loadTeamStatus();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainSection, tonnageTab]);
+
+  // Floor command centre: keep the team view current without manual reloads.
+  useEffect(() => {
+    if (mainSection !== 'live' || !apiKey || players.length === 0) return undefined;
+    loadTeamStatus(todayISO());
+    const timer = setInterval(() => loadTeamStatus(todayISO(), true), 8000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainSection, apiKey, workspace, players.length]);
+
+  useEffect(() => {
+    if (mainSection === 'health' && apiKey) loadPlatformHealth();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainSection, apiKey, workspace]);
 
   // Load team readiness when switching to readiness section or changing date.
   useEffect(() => {
@@ -2784,6 +2811,14 @@ export default function Home() {
   }, [filteredPlayers, playerIndex]);
 
   const keyConnected = apiKey && !playersError;
+  const liveRows = useMemo(() => players.map(player => ({ player, status: teamStatus[player.id] || {} })), [players, teamStatus]);
+  const liveSummary = useMemo(() => liveRows.reduce((summary, row) => {
+    if (row.status.live?.started) summary.started += 1;
+    if (row.status.live?.completed) summary.completed += 1;
+    if ((row.status.live?.alerts || []).length) summary.alerts += 1;
+    if (row.status.hasSession) summary.planned += 1;
+    return summary;
+  }, { planned: 0, started: 0, completed: 0, alerts: 0 }), [liveRows]);
 
   // Session volume: total sets + estimated tonnage
   const sessionVolume = useMemo(() => {
@@ -2799,6 +2834,18 @@ export default function Home() {
     const exCount = (session.blocks || []).reduce((s, b) => s + (b.exercises || []).length, 0);
     return { sets, exCount, tonnes: kgTotal > 0 ? (kgTotal / 1000).toFixed(1) : null };
   }, [session]);
+
+  const continuitySummary = useMemo(() => {
+    if (!session) return { known: 0, recommendations: 0, pain: 0 };
+    return (session.blocks || []).flatMap(block => block.exercises || []).reduce((summary, ex) => {
+      const record = progressionMap[ex.exerciseId || canonicalExerciseId(ex.name)] || progressionMap[ex.name];
+      if (!record) return summary;
+      summary.known += 1;
+      if (record.pain) summary.pain += 1;
+      if (record.suggestedKg && !record.pain) summary.recommendations += 1;
+      return summary;
+    }, { known: 0, recommendations: 0, pain: 0 });
+  }, [session, progressionMap]);
 
   const methodViolations = useMemo(() => {
     if (!session) return [];
@@ -3035,18 +3082,60 @@ export default function Home() {
     }
   }
 
-  async function loadTeamStatus() {
+  async function loadTeamStatus(statusDate = date, quiet = false) {
     if (!apiKey || !players.length) return;
-    setTeamStatusLoading(true);
+    if (!quiet) setTeamStatusLoading(true);
     try {
       const res = await fetch('/api/programs/team-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ playerIds: players.map(p => p.id), date, workspace }),
+        body: JSON.stringify({ playerIds: players.map(p => p.id), date: statusDate, workspace }),
       });
-      if (res.ok) { const d = await res.json(); setTeamStatus(d.status || {}); }
+      if (res.ok) {
+        const d = await res.json();
+        setTeamStatus(d.status || {});
+        setLiveUpdatedAt(new Date().toISOString());
+      }
     } catch (_) {}
-    setTeamStatusLoading(false);
+    if (!quiet) setTeamStatusLoading(false);
+  }
+
+  async function loadPlatformHealth() {
+    if (!apiKey) return;
+    setHealthLoading(true);
+    try {
+      const response = await fetch(`/api/system/health?workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } });
+      const body = await response.json();
+      if (response.ok) setHealthData(body);
+    } catch (_) {
+      setHealthData(null);
+    } finally {
+      setHealthLoading(false);
+    }
+  }
+
+  async function managePlayerAccess(action) {
+    if (!playerId || accessAction) return;
+    setAccessAction(action);
+    try {
+      const response = await fetch('/api/players/share-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ playerId, workspace, action }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Не удалось изменить доступ');
+      if (body.token) {
+        await navigator.clipboard.writeText(`${window.location.origin}/player/${body.token}`);
+        setLinkCopied(playerId);
+        setTimeout(() => setLinkCopied(null), 2500);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAccessAction('');
+      setAccessConfirm('');
+    }
   }
 
   async function loadMatchLoads() {
@@ -3725,6 +3814,26 @@ export default function Home() {
     }));
   }
 
+  function applyProgressionRecommendations() {
+    setSession(previous => ({
+      ...previous,
+      blocks: (previous.blocks || []).map(block => ({
+        ...block,
+        exercises: (block.exercises || []).map(ex => {
+          const identity = ex.exerciseId || canonicalExerciseId(ex.name);
+          const recommendation = progressionMap[identity] || progressionMap[ex.name];
+          if (!recommendation?.suggestedKg || recommendation.pain) return { ...ex, exerciseId: identity };
+          return {
+            ...ex,
+            exerciseId: identity,
+            weightKg: recommendation.suggestedKg,
+            weightNote: `${recommendation.suggestedKg} кг`,
+          };
+        }),
+      })),
+    }));
+  }
+
   function updateBlock(blockIdx, patch) {
     setSession(prev => ({
       ...prev,
@@ -3952,6 +4061,10 @@ export default function Home() {
                   { id: 'calendar', label: 'Неделя',   icon: <CalendarDays size={14} />, tone: 'tone-rose', activeClass: 'border-rose-300/25 bg-rose-300/[0.13] text-rose-200 shadow-[0_8px_22px_-16px_rgba(251,113,133,0.9)]' },
                   { id: 'planner',  label: 'Месяц',    icon: <CalendarRange size={14} />, tone: 'tone-blue', activeClass: 'border-blue-300/25 bg-blue-300/[0.13] text-blue-200 shadow-[0_8px_22px_-16px_rgba(96,165,250,0.9)]' },
                   { id: 'library', label: 'База', ariaLabel: 'Библиотека упражнений', icon: <BookOpen size={14} />, tone: 'tone-pink', activeClass: '' },
+                ],
+                [
+                  { id: 'live', label: 'LIVE', ariaLabel: 'Командная тренировка LIVE', icon: <Users size={14} />, tone: 'tone-emerald', activeClass: 'border-emerald-300/30 bg-gradient-to-br from-emerald-300/[0.18] to-cyan-300/[0.08] text-emerald-100 shadow-[0_8px_22px_-16px_rgba(52,211,153,0.95)]' },
+                  { id: 'health', label: 'Система', ariaLabel: 'Здоровье платформы', icon: <Shield size={14} />, tone: 'tone-blue', activeClass: 'border-blue-300/25 bg-blue-300/[0.13] text-blue-100 shadow-[0_8px_22px_-16px_rgba(96,165,250,0.9)]' },
                 ],
               ].map((row, ri) => (
                 <div key={ri} className="sidebar-nav-row">
@@ -5269,6 +5382,100 @@ export default function Home() {
             </div>
           )}
 
+          {/* ── Team floor command centre ── */}
+          {mainSection === 'live' && (
+            <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
+              <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <div className="mb-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300/70">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-300" /> Floor command centre
+                  </div>
+                  <h2 className="text-2xl font-black tracking-tight text-white">Тренировка команды LIVE</h2>
+                  <p className="mt-1 text-[12px] text-slate-500">Сегодня · обновление каждые 8 секунд · последнее {compactTime(liveUpdatedAt)}</p>
+                </div>
+                <button type="button" onClick={() => loadTeamStatus(todayISO())} className="min-h-11 rounded-xl border border-white/[0.09] bg-white/[0.035] px-4 text-[12px] font-bold text-slate-300 transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50">
+                  {teamStatusLoading ? 'Обновление…' : 'Обновить сейчас'}
+                </button>
+              </div>
+
+              <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {[
+                  ['Программы', liveSummary.planned, 'text-cyan-200'],
+                  ['В работе', liveSummary.started - liveSummary.completed, 'text-amber-200'],
+                  ['Завершили', liveSummary.completed, 'text-emerald-200'],
+                  ['Требуют внимания', liveSummary.alerts, liveSummary.alerts ? 'text-rose-200' : 'text-slate-300'],
+                ].map(([label, value, color]) => (
+                  <div key={label} className="rounded-2xl border border-white/[0.075] bg-white/[0.028] p-4 backdrop-blur-xl">
+                    <div className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-600">{label}</div>
+                    <div className={`mt-2 text-3xl font-black ${color}`}>{Math.max(0, value)}</div>
+                  </div>
+                ))}
+              </div>
+
+              {teamStatusLoading && !liveUpdatedAt ? (
+                <div className="flex items-center justify-center py-24 text-sm text-slate-500"><Loader2 size={18} className="mr-2 animate-spin" /> Загружаю команду…</div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {liveRows.map(({ player, status }) => {
+                    const live = status.live;
+                    const tone = !status.hasSession ? 'border-white/[0.07]' : live?.completed ? 'border-emerald-300/20' : live?.started ? 'border-cyan-300/20' : 'border-amber-300/15';
+                    return (
+                      <article key={player.id} className={`rounded-2xl border ${tone} bg-gradient-to-br from-white/[0.04] to-white/[0.018] p-4 backdrop-blur-xl`}>
+                        <div className="flex items-start gap-3">
+                          {player.photo ? <img src={player.photo} alt="" className="h-11 w-11 rounded-xl object-cover object-top ring-1 ring-white/10" /> : <div className="grid h-11 w-11 place-items-center rounded-xl bg-white/[0.07] text-xs font-black text-slate-300">{initials(player.name)}</div>}
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[14px] font-bold text-white">{player.name}</div>
+                            <div className="mt-0.5 truncate text-[10px] text-slate-600">{status.trainingLabel || player.position || 'Нет программы'}</div>
+                          </div>
+                          <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wide ${
+                            !status.hasSession ? 'bg-white/[0.05] text-slate-600' : live?.completed ? 'bg-emerald-300/10 text-emerald-200' : live?.started ? 'bg-cyan-300/10 text-cyan-200' : 'bg-amber-300/10 text-amber-200'
+                          }`}>{!status.hasSession ? 'Нет плана' : live?.completed ? 'Готово' : live?.started ? `Блок ${live.activeBlock || '—'}` : 'Ожидает'}</span>
+                        </div>
+
+                        {status.hasSession && live && (
+                          <>
+                            <div className="mt-4 flex items-end justify-between text-[11px]">
+                              <span className="text-slate-500">{live.completedSets}/{live.totalSets} подходов</span>
+                              <span className="font-black text-slate-200">{live.progress}%</span>
+                            </div>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300 transition-all" style={{ width: `${live.progress}%` }} /></div>
+                            <div className="mt-3 flex flex-wrap gap-1.5">
+                              {(live.blockStats || []).map(block => <span key={block.label} className={`grid h-8 min-w-8 place-items-center rounded-lg border px-2 text-[10px] font-black ${block.complete ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200' : block.label === live.activeBlock ? 'border-cyan-300/25 bg-cyan-300/12 text-cyan-100' : 'border-white/[0.06] text-slate-600'}`}>{block.label}{block.complete ? '✓' : ''}</span>)}
+                            </div>
+                            <div className="mt-3 flex items-center justify-between text-[10px] text-slate-600"><span>Синхр. {compactTime(live.lastSyncAt)}</span><span>{live.deviceCount || 0} устр.</span></div>
+                          </>
+                        )}
+
+                        {(live?.alerts || []).length > 0 && <div className="mt-3 space-y-1 rounded-xl border border-rose-300/15 bg-rose-300/[0.055] p-2.5">{live.alerts.map(alert => <div key={alert} className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-200"><AlertTriangle size={11} />{alert}</div>)}</div>}
+                        <button type="button" onClick={() => { selectPlayer(player); setDate(todayISO()); setMainSection('workouts'); }} className="mt-4 min-h-11 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] text-[11px] font-bold text-slate-300 transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50">Открыть программу</button>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Platform health ── */}
+          {mainSection === 'health' && (
+            <div className="mx-auto w-full max-w-[1180px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
+              <div className="mb-6 flex items-end justify-between gap-3">
+                <div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-300/60">Operations</div><h2 className="mt-1 text-2xl font-black tracking-tight text-white">Здоровье платформы</h2></div>
+                <button type="button" onClick={loadPlatformHealth} className="min-h-11 rounded-xl border border-white/[0.09] bg-white/[0.035] px-4 text-[12px] font-bold text-slate-300">{healthLoading ? 'Проверка…' : 'Проверить'}</button>
+              </div>
+              {healthLoading && !healthData ? <div className="py-24 text-center text-sm text-slate-500">Проверяю сервисы…</div> : healthData && (
+                <>
+                  <div className={`mb-5 rounded-2xl border p-5 ${healthData.status === 'healthy' ? 'border-emerald-300/20 bg-emerald-300/[0.055]' : healthData.status === 'warning' ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-rose-300/20 bg-rose-300/[0.055]'}`}>
+                    <div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Общий статус</div><div className="mt-1 text-xl font-black text-white">{healthData.status === 'healthy' ? 'Все системы работают' : healthData.status === 'warning' ? 'Есть предупреждения' : 'Требуется внимание'}</div></div><div className="text-right text-[10px] text-slate-500">{healthData.latencyMs} мс<br />{compactTime(healthData.checkedAt)}</div></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{Object.entries(healthData.services || {}).map(([name, ok]) => <div key={name} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className={`h-2 w-2 rounded-full ${ok ? 'bg-emerald-300' : 'bg-rose-300'}`} /><div className="mt-3 text-[12px] font-bold text-slate-200">{name === 'redis' ? 'Хранилище' : name === 'readySix' ? 'ReadySix' : name === 'ai' ? 'AI генерация' : 'Доступ тренера'}</div><div className="mt-1 text-[10px] text-slate-600">{ok ? 'Работает' : 'Не настроено'}</div></div>)}</div>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ошибки за 24 часа</div><div className="mt-2 text-3xl font-black text-rose-200">{healthData.errors24h}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Предупреждения за 24 часа</div><div className="mt-2 text-3xl font-black text-amber-200">{healthData.warnings24h}</div></div></div>
+                  <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Последние события</div><div className="space-y-2">{(healthData.events || []).length ? healthData.events.slice(0, 12).map((event, index) => <div key={`${event.at}-${index}`} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${event.status === 'error' ? 'bg-rose-300' : event.status === 'warning' ? 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{event.area}</div>{event.message && <div className="mt-0.5 truncate text-[10px] text-slate-600">{event.message}</div>}</div><span className="text-[9px] text-slate-700">{compactTime(event.at)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Событий пока нет</div>}</div></div>
+                </>
+              )}
+            </div>
+          )}
+
           {/* ── Tonnage dashboard ── */}
           {mainSection === 'tonnage' && (
             <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
@@ -5529,6 +5736,40 @@ export default function Home() {
                 </button>
               ))}
             </div>
+          )}
+
+          {playerId && selectedPlayer && workspaceTab === 'program' && (
+            <details className="mb-4 rounded-2xl border border-white/[0.07] bg-white/[0.02] print:hidden">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-3">
+                <Shield size={12} className="text-blue-300/70" />
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Доступ игрока</span>
+                <span className="ml-auto text-[10px] text-slate-700">управление ссылкой и устройствами</span>
+              </summary>
+              <div className="flex flex-wrap gap-2 border-t border-white/[0.05] px-4 py-3">
+                <button type="button" disabled={Boolean(accessAction)} onClick={() => managePlayerAccess('get')} className="min-h-11 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] px-3 text-[11px] font-bold text-cyan-200 disabled:opacity-40">
+                  {accessAction === 'get' ? 'Подготовка…' : linkCopied === playerId ? 'Ссылка скопирована ✓' : 'Скопировать ссылку'}
+                </button>
+                <button type="button" disabled={Boolean(accessAction)} onClick={() => setAccessConfirm('rotate')} className="min-h-11 rounded-xl border border-amber-300/15 bg-amber-300/[0.05] px-3 text-[11px] font-bold text-amber-200 disabled:opacity-40">
+                  {accessAction === 'rotate' ? 'Обновление…' : 'Обновить и скопировать'}
+                </button>
+                <button type="button" disabled={Boolean(accessAction)} onClick={() => setAccessConfirm('revoke')} className="min-h-11 rounded-xl border border-rose-300/15 bg-rose-300/[0.045] px-3 text-[11px] font-bold text-rose-200 disabled:opacity-40">
+                  {accessAction === 'revoke' ? 'Отключение…' : 'Отключить все устройства'}
+                </button>
+              </div>
+              {accessConfirm && (
+                <div className={`mx-4 mb-4 rounded-xl border p-3 ${accessConfirm === 'revoke' ? 'border-rose-300/15 bg-rose-300/[0.05]' : 'border-amber-300/15 bg-amber-300/[0.05]'}`}>
+                  <div className="text-[11px] font-semibold leading-relaxed text-slate-300">
+                    {accessConfirm === 'revoke'
+                      ? 'Отключить доступ на всех устройствах? Новую ссылку можно создать в любой момент.'
+                      : 'Старая ссылка перестанет работать на всех устройствах. Новая ссылка сразу скопируется.'}
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button type="button" onClick={() => managePlayerAccess(accessConfirm)} className={`min-h-10 rounded-lg px-3 text-[10px] font-black ${accessConfirm === 'revoke' ? 'bg-rose-300 text-[#21080f]' : 'bg-amber-300 text-[#211805]'}`}>Подтвердить</button>
+                    <button type="button" onClick={() => setAccessConfirm('')} className="min-h-10 rounded-lg border border-white/[0.08] px-3 text-[10px] font-bold text-slate-400">Отмена</button>
+                  </div>
+                </div>
+              )}
+            </details>
           )}
 
           {/* ── Player contraindications (only on program tab) ── */}
@@ -6733,6 +6974,32 @@ export default function Home() {
                 </div>
               )}
 
+              {continuitySummary.known > 0 && (
+                <section className="mb-5 rounded-2xl border border-cyan-300/[0.14] bg-gradient-to-r from-cyan-300/[0.065] to-emerald-300/[0.035] p-4 print:hidden" aria-label="Преемственность нагрузки">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-200/15 bg-cyan-300/10 text-cyan-200">
+                      <TrendingUp size={17} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/65">Преемственность нагрузки</div>
+                      <p className="mt-1 text-[12px] text-slate-300">
+                        История найдена для {continuitySummary.known} упражнений · рекомендаций {continuitySummary.recommendations}
+                        {continuitySummary.pain > 0 ? ` · ${continuitySummary.pain} с ограничением по боли` : ''}
+                      </p>
+                    </div>
+                    {continuitySummary.recommendations > 0 && (
+                      <button
+                        type="button"
+                        onClick={applyProgressionRecommendations}
+                        className="min-h-11 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-[11px] font-bold text-cyan-100 transition hover:bg-cyan-300/16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
+                      >
+                        Применить безопасные рекомендации
+                      </button>
+                    )}
+                  </div>
+                </section>
+              )}
+
               {/* Assessment */}
               {(session.assessment || session.periodization_note) && (
                 <div className="mb-5 grid gap-3 lg:grid-cols-2 print:hidden">
@@ -6871,7 +7138,11 @@ export default function Home() {
                     })()}
                     {!collapsedBlocks.has(block.label) && (
                     <div className="grid items-start gap-5 lg:grid-cols-2">
-                      {(block.exercises || []).map((ex, ei) => (
+                      {(block.exercises || []).map((ex, ei) => {
+                        const identity = ex.exerciseId || canonicalExerciseId(ex.name);
+                        const progression = progressionMap[identity] || progressionMap[ex.name] || {};
+                        const exerciseHistory = exHistoryMap[identity] || exHistoryMap[ex.name] || [];
+                        return (
                         <ExerciseCard
                           key={ex.code || ei}
                           apiKey={apiKey}
@@ -6890,18 +7161,18 @@ export default function Home() {
                           week={weekFromFocus(focus)}
                           oneRM={oneRM}
                           position={selectedPlayer?.position || null}
-                          prevKg={progressionMap[ex.name]?.kg || null}
-                          prevRpe={progressionMap[ex.name]?.rpe || null}
-                          prevPain={progressionMap[ex.name]?.pain || false}
-                          suggestedKg={progressionMap[ex.name]?.suggestedKg || null}
-                          progressionDecision={progressionMap[ex.name]?.decision || ''}
+                          prevKg={progression.kg || null}
+                          prevRpe={progression.rpe || null}
+                          prevPain={progression.pain || false}
+                          suggestedKg={progression.suggestedKg || null}
+                          progressionDecision={progression.decision || ''}
                           restrictions={restrictions}
-                          exHistory={exHistoryMap[ex.name] || []}
+                          exHistory={exerciseHistory}
                           actualKg={ex.actualKg ?? null}
                           onActualKgChange={pendingSaved ? (v => updateExercise(bi, ei, { actualKg: v })) : undefined}
                           actualRpe={ex.actualRpe ?? null}
                           onActualRpeChange={pendingSaved ? (v => updateExercise(bi, ei, { actualRpe: v })) : undefined}
-                          onChangeName={v => updateExercise(bi, ei, { name: v, descriptionOverride: undefined })}
+                          onChangeName={v => updateExercise(bi, ei, { name: v, exerciseId: canonicalExerciseId(v), descriptionOverride: undefined })}
                           onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
                           onAddSet={() => addSetRow(bi, ei)}
                           onRemoveSet={si => removeSetRow(bi, ei, si)}
@@ -6917,7 +7188,8 @@ export default function Home() {
                           onResetDescription={() => updateExercise(bi, ei, { descriptionOverride: undefined })}
                           onRegenerate={() => regenerateExercise(bi, ei)}
                         />
-                      ))}
+                        );
+                      })}
                     </div>
                     )}
                     {!collapsedBlocks.has(block.label) && pendingSaved && (

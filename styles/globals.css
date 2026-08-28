@@ -1808,6 +1808,37 @@ select {
   .premium-player-header {
     border-radius: 20px;
   }
+
+  .player-page-shell {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  .player-page-shell input,
+  .player-page-shell textarea,
+  .player-page-shell select {
+    font-size: 16px !important;
+  }
+
+  .player-page-shell button:not(.player-set-button):not(.player-block-chip),
+  .player-page-shell a:not(.player-exercise-media) {
+    min-height: 44px;
+  }
+
+  .player-page-shell .text-slate-600 {
+    color: rgba(148, 163, 184, 0.62);
+  }
+}
+
+@media (pointer: coarse) {
+  .app-shell button,
+  .app-shell [role='button'] {
+    touch-action: manipulation;
+  }
+
+  .app-shell button:not(.player-set-button):not(.player-block-chip) {
+    min-height: 40px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

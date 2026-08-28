@@ -15,6 +15,8 @@ import { normalizeSessionTempoDescriptions } from '../../../lib/tempoDescription
 import { OPENAI_SESSION_MODEL, SYSTEM_PROMPT, buildGenerationInputs, normalizeExerciseLanguage } from './generate';
 import { normExName } from '../players/progression';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
+import { ensureSessionExerciseIds, exerciseId } from '../../../lib/exerciseIdentity.mjs';
+import { recordPlatformEvent } from '../../../lib/platformTelemetry';
 import {
   isOutputTokenLimit,
   SESSION_OUTPUT_TOKENS,
@@ -61,7 +63,7 @@ function autoSaveCommands(record, workspace, playerId, date) {
       const kg = weightKgFromExercise(exercise);
       const reps = (exercise.targetSets || []).reduce((sum, target) => sum + targetSetReps(target), 0);
       if (kg > 0) {
-        const norm = normExName(exercise.name);
+        const norm = exerciseId(exercise) || normExName(exercise.name);
         commands.push(['HSET', exweightKey(workspace, playerId, norm), 'kg', String(kg), 'date', date, 'loadUnits', String(loadUnitsForExercise(exercise)), 'source', 'planned']);
         commands.push(['HSET', exhistKey(workspace, playerId, norm), date, String(kg)]);
         tonnage += kg * loadUnitsForExercise(exercise) * reps;
@@ -294,6 +296,7 @@ export default async function handler(req, res) {
         error: failureMessage,
         completedAt: new Date().toISOString(),
       }), 'EX', 3600).catch(() => {});
+      await recordPlatformEvent({ workspace, area: 'generation', status: 'error', message: failureMessage, meta: { playerId, batchId } }).catch(() => {});
       return res.status(502).json({ status: 'failed', error: failureMessage });
     }
 
@@ -304,6 +307,7 @@ export default async function handler(req, res) {
     session = normalizeExerciseLanguage(session, focus);
     session = sanitizeUnavailableEquipmentExercises(session);
     session = normalizeSessionTempoDescriptions(session);
+    session = ensureSessionExerciseIds(session);
 
     let quality = assessSessionQuality(session, {
       ...qualityContext,
@@ -355,6 +359,7 @@ export default async function handler(req, res) {
     // Re-sanitize compatibility candidates from older deployments too.
     session = sanitizeUnavailableEquipmentExercises(session);
     session = normalizeSessionTempoDescriptions(session);
+    session = ensureSessionExerciseIds(session);
     quality = advisorySessionQuality(assessSessionQuality(session, {
       ...qualityContext,
       focus: qualityContext.focus || focus,
@@ -410,6 +415,7 @@ export default async function handler(req, res) {
       saveWarning,
       completedAt: new Date().toISOString(),
     }), 'EX', 3600).catch(() => {});
+    await recordPlatformEvent({ workspace, area: 'generation', status: saveWarning ? 'warning' : 'ok', message: saveWarning, meta: { playerId, batchId, autoSaved } }).catch(() => {});
 
     return res.status(200).json({
       status: 'done',
@@ -426,6 +432,7 @@ export default async function handler(req, res) {
       strengthMode: qualityContext.strengthMode || null,
     });
   } catch (e) {
+    await recordPlatformEvent({ workspace: record?.workspace || 'zarechie', area: 'generation', status: 'error', message: e.message, meta: { batchId } }).catch(() => {});
     return res.status(500).json({ error: e.message });
   }
 }
