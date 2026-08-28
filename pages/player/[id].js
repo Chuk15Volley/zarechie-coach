@@ -4,7 +4,6 @@
 
 import { useState, useEffect, useRef, useMemo, Component } from 'react';
 import Head from 'next/head';
-import { createPortal } from 'react-dom';
 import { redis, redisPipeline } from '../../lib/redis';
 import { findExerciseUrl } from '../../lib/exerciseBank';
 import { getPlayerInfo } from '../../lib/playerData';
@@ -16,10 +15,10 @@ import { exerciseDescription } from '../../lib/tempoDescription.mjs';
 import { analyzeSessionDose } from '../../lib/sessionDose.mjs';
 import {
   completedTonnage,
-  exerciseIsComplete,
-  firstIncompleteExercise,
+  blockIsComplete,
+  firstIncompleteBlock,
   formatWorkoutDuration,
-  nextExercise,
+  nextIncompleteBlock,
   restSecondsFor,
   workoutExercises,
 } from '../../lib/playerWorkout.mjs';
@@ -247,56 +246,9 @@ function youtubeVideoId(url) {
   return null;
 }
 
-function PlayerVideoModal({ name, videoId, watchUrl, onClose }) {
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKey = event => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [onClose]);
-
-  const host = typeof document !== 'undefined'
-    ? document.querySelector('.player-page-shell') || document.body
-    : null;
-  if (!host) return null;
-
-  return createPortal(
-    <div className="player-video-modal" role="dialog" aria-modal="true" aria-label={`Техника упражнения: ${name}`}>
-      <button type="button" className="player-video-modal-backdrop" onClick={onClose} aria-label="Закрыть видео" />
-      <div className="player-video-modal-card">
-        <div className="player-video-modal-head">
-          <div className="min-w-0">
-            <div className="player-kicker">Техника упражнения</div>
-            <div className="mt-1 truncate text-[15px] font-bold text-white">{name}</div>
-          </div>
-          <button type="button" onClick={onClose} className="player-video-close" aria-label="Закрыть">×</button>
-        </div>
-        <div className="player-video-frame">
-          <iframe
-            src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1`}
-            title={`Техника: ${name}`}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
-        </div>
-        <div className="player-video-modal-actions">
-          <span>После просмотра вернись к текущему подходу.</span>
-          <a href={watchUrl} target="_blank" rel="noopener noreferrer">Открыть в YouTube ↗</a>
-        </div>
-      </div>
-    </div>,
-    host
-  );
-}
-
 function ExerciseMedia({ name, token }) {
   const bankUrl = findExerciseUrl(name);
   const [media, setMedia] = useState(null); // { video }
-  const [open, setOpen] = useState(false);
 
   // Fetch media meta (manual video URL)
   useEffect(() => {
@@ -316,9 +268,10 @@ function ExerciseMedia({ name, token }) {
   return (
     <>
       {videoId ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
+        <a
+          href={watchUrl}
+          target="_blank"
+          rel="noopener noreferrer"
           className="player-exercise-media relative block aspect-video w-full overflow-hidden rounded-[18px] border border-white/[0.09] bg-black text-left shadow-[0_10px_24px_rgba(0,0,0,0.28)]"
           aria-label={`Смотреть технику: ${name}`}
         >
@@ -340,7 +293,7 @@ function ExerciseMedia({ name, token }) {
           <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold text-white">
             Смотреть технику
           </span>
-        </button>
+        </a>
       ) : videoUrl ? (
         <>
           <div className="mt-1 flex items-center gap-2">
@@ -361,43 +314,18 @@ function ExerciseMedia({ name, token }) {
           <span className="text-[11px] font-semibold">Видео не добавлено</span>
         </div>
       )}
-      {open && videoId && (
-        <PlayerVideoModal name={name} videoId={videoId} watchUrl={watchUrl} onClose={() => setOpen(false)} />
-      )}
     </>
   );
 }
 
 // ── Single exercise card ──────────────────────────────────────────────────────
-function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, token, collapsed = false, onFocus }) {
+function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, token }) {
   const plannedWeight = plannedWeightLabel(ex);
   const plannedSetWeight = plannedWeightValue(ex);
   const weightNote = String(ex.weightNote || '').trim();
   const showWeightNote = weightNote && weightNote !== plannedWeight && !weightNote.includes(plannedWeight);
   const setCount = (ex.targetSets || []).length;
   const setGrid = setCount >= 4 ? 'grid-cols-4' : setCount === 3 ? 'grid-cols-3' : setCount === 2 ? 'grid-cols-2' : 'grid-cols-1';
-  const complete = setCount > 0 && (ex.targetSets || []).every((_, si) => done[`${bi}-${ei}-${si}`]);
-
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={onFocus}
-        className={`player-exercise-compact ${complete ? 'is-complete' : ''}`}
-        aria-label={`${complete ? 'Выполнено' : 'Открыть'}: ${ex.name}`}
-      >
-        <span className="player-exercise-code">{ex.code}</span>
-        <span className="min-w-0 flex-1 text-left">
-          <span className="block truncate text-[14px] font-bold text-slate-200">{ex.name}</span>
-          <span className="mt-0.5 block text-[10px] font-semibold text-slate-600">
-            {complete ? 'Все подходы выполнены' : `${setCount} подхода · нажми, чтобы открыть`}
-          </span>
-        </span>
-        <span className={complete ? 'text-emerald-300' : 'text-slate-600'}>{complete ? '✓' : '›'}</span>
-      </button>
-    );
-  }
-
   return (
     <article className="player-exercise-card overflow-hidden rounded-[20px] border border-white/[0.1] bg-[#0d1921] shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
       {/* Header */}
@@ -841,9 +769,8 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   // Cross-device state is seeded from Redis, with a local offline fallback.
   const [done, setDone] = useState(initialDone);
   const [weights, setWeights] = useState(serverLog?.weights || {});
-  const [activeBlock, setActiveBlock] = useState(0);
-  const initialExercise = firstIncompleteExercise(session, initialDone) || flatExercises[0] || null;
-  const [activeExercise, setActiveExercise] = useState(initialExercise ? { bi: initialExercise.bi, ei: initialExercise.ei } : { bi: 0, ei: 0 });
+  const initialBlock = firstIncompleteBlock(session, initialDone);
+  const [activeBlock, setActiveBlock] = useState(initialBlock?.bi ?? (initialAllDone ? -1 : 0));
   const [focusMode, setFocusMode] = useState(true);
   const [workoutStarted, setWorkoutStarted] = useState(Boolean(serverLog?.startedAt || Object.values(initialDone).some(Boolean)));
   const [startedAt, setStartedAt] = useState(serverLog?.startedAt || null);
@@ -872,8 +799,8 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
         if (parsed.startedAt) { setStartedAt(parsed.startedAt); setWorkoutStarted(true); }
         if (parsed.completedAt) setCompletedAt(parsed.completedAt);
         if (parsed.elapsedSeconds) setElapsedSeconds(Number(parsed.elapsedSeconds) || 0);
-        const next = firstIncompleteExercise(session, parsed.done || {});
-        if (next) setActiveExercise({ bi: next.bi, ei: next.ei });
+        const next = firstIncompleteBlock(session, parsed.done || {});
+        setActiveBlock(next?.bi ?? -1);
         setProgressRevision(value => value + 1);
       }
     } catch (_) {}
@@ -1012,13 +939,12 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
   function startWorkout() {
     const now = new Date().toISOString();
-    const first = firstIncompleteExercise(session, done) || flatExercises[0];
+    const first = firstIncompleteBlock(session, done);
     setWorkoutStarted(true);
     setStartedAt(current => current || now);
     setCompletedAt(null);
     setProgressRevision(value => value + 1);
     if (first) {
-      setActiveExercise({ bi: first.bi, ei: first.ei });
       setActiveBlock(first.bi);
     }
     if (navigator.vibrate) navigator.vibrate(20);
@@ -1031,12 +957,14 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     if (wasDone) {
       setRestTimer(null);
       setUndoSet(null);
+      setFocusMode(true);
+      setActiveBlock(context.bi);
       return;
     }
 
     if (navigator.vibrate) navigator.vibrate(16);
     if (undoTimer.current) clearTimeout(undoTimer.current);
-    setUndoSet({ key, setNumber: context.si + 1 });
+    setUndoSet({ key, setNumber: context.si + 1, bi: context.bi });
     undoTimer.current = setTimeout(() => setUndoSet(null), 5200);
 
     const newDone = { ...done, [key]: true };
@@ -1052,16 +980,14 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
       });
     }
 
-    const item = { bi: context.bi, ei: context.ei, exercise: context.ex };
-    if (exerciseIsComplete(item, newDone)) {
-      const next = nextExercise(session, context.bi, context.ei);
-      if (next) {
-        setTimeout(() => {
-          setActiveExercise({ bi: next.bi, ei: next.ei });
-          setActiveBlock(next.bi);
+    if (blockIsComplete(context.block, context.bi, newDone)) {
+      const next = nextIncompleteBlock(session, context.bi, newDone);
+      setTimeout(() => {
+        setActiveBlock(next?.bi ?? -1);
+        if (next) {
           blockRefs.current[next.bi]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 320);
-      }
+        }
+      }, 320);
     }
   }
 
@@ -1071,6 +997,8 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     setProgressRevision(value => value + 1);
     setUndoSet(null);
     setRestTimer(null);
+    setFocusMode(true);
+    if (Number.isInteger(undoSet.bi)) setActiveBlock(undoSet.bi);
     if (undoTimer.current) clearTimeout(undoTimer.current);
     if (navigator.vibrate) navigator.vibrate(10);
   }
@@ -1082,17 +1010,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
   function scrollToBlock(idx) {
     setActiveBlock(idx);
-    const target = flatExercises.find(item => item.bi === idx && !exerciseIsComplete(item, done))
-      || flatExercises.find(item => item.bi === idx);
-    if (target) setActiveExercise({ bi: target.bi, ei: target.ei });
     blockRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  function focusExercise(bi, ei) {
-    setFocusMode(true);
-    setActiveExercise({ bi, ei });
-    setActiveBlock(bi);
-    blockRefs.current[bi]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   useEffect(() => {
@@ -1105,6 +1023,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
   // Track active block on scroll
   useEffect(() => {
+    if (focusMode) return undefined;
     const observer = new IntersectionObserver(
       entries => {
         for (const e of entries) {
@@ -1118,7 +1037,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     );
     blockRefs.current.forEach(el => el && observer.observe(el));
     return () => observer.disconnect();
-  }, [blocks.length]);
+  }, [blocks.length, focusMode]);
 
   return (
     <ErrorBoundary>
@@ -1213,7 +1132,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
             <div className="player-workout-tools">
               <SyncBadge status={syncStatus} />
               <button className="player-focus-toggle" type="button" onClick={() => setFocusMode(value => !value)} aria-pressed={focusMode}>
-                {focusMode ? 'Фокус' : 'Все упражнения'}
+                {focusMode ? 'Текущий блок' : 'Все блоки'}
               </button>
             </div>
 
@@ -1324,43 +1243,67 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                   </div>
                 )}
 
-                {blocks.map((block, bi) => (
-                  <div
-                    key={bi}
-                    ref={el => (blockRefs.current[bi] = el)}
-                    className="player-block-section"
-                    style={{ scrollMarginTop: '190px' }}
-                  >
-                    <div className="player-block-heading mb-3 flex items-center gap-3">
-                      <span className="player-block-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e] shadow-[0_4px_14px_rgba(74,222,128,0.18)]">
-                        {block.label}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Блок {block.label}</div>
-                        {block.rest_note && <div className="mt-0.5 truncate text-[10px] text-slate-600">Отдых: {block.rest_note}</div>}
-                      </div>
-                    </div>
+                {blocks.map((block, bi) => {
+                  const blockTotal = (block.exercises || []).reduce((sum, ex) => sum + (ex.targetSets?.length || 0), 0);
+                  const blockDone = (block.exercises || []).reduce((sum, ex, ei) =>
+                    sum + (ex.targetSets || []).filter((_, si) => done[`${bi}-${ei}-${si}`]).length, 0);
+                  const blockComplete = blockTotal > 0 && blockDone === blockTotal;
+                  const blockCollapsed = focusMode && bi !== activeBlock;
 
-                    <div className="space-y-3.5">
-                      {(block.exercises || []).map((ex, ei) => (
-                        <ExCard
-                          key={ei}
-                          bi={bi}
-                          ei={ei}
-                          ex={ex}
-                          block={block}
-                          done={done}
-                          onToggle={toggleSet}
-                          weights={weights}
-                          onWeightChange={changeWeight}
-                          token={token}
-                          collapsed={focusMode && (activeExercise.bi !== bi || activeExercise.ei !== ei)}
-                          onFocus={() => focusExercise(bi, ei)}
-                        />
-                      ))}
+                  return (
+                    <div
+                      key={bi}
+                      ref={el => (blockRefs.current[bi] = el)}
+                      className="player-block-section"
+                      style={{ scrollMarginTop: '190px' }}
+                    >
+                      {blockCollapsed ? (
+                        <button
+                          type="button"
+                          className={`player-block-compact ${blockComplete ? 'is-complete' : ''}`}
+                          onClick={() => scrollToBlock(bi)}
+                          aria-label={`Открыть блок ${block.label}`}
+                        >
+                          <span className="player-block-badge">{block.label}</span>
+                          <span className="min-w-0 flex-1 text-left">
+                            <strong>Блок {block.label}</strong>
+                            <small>{blockComplete ? 'Выполнен' : 'Ожидает'} · {blockDone}/{blockTotal} подходов</small>
+                          </span>
+                          <span className="player-block-compact-action" aria-hidden="true">{blockComplete ? '✓' : '→'}</span>
+                        </button>
+                      ) : (
+                        <>
+                          <div className="player-block-heading mb-3 flex items-center gap-3">
+                            <span className="player-block-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e] shadow-[0_4px_14px_rgba(74,222,128,0.18)]">
+                              {block.label}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Блок {block.label}</div>
+                              {block.rest_note && <div className="mt-0.5 truncate text-[10px] text-slate-600">Отдых: {block.rest_note}</div>}
+                            </div>
+                          </div>
+
+                          <div className="space-y-3.5">
+                            {(block.exercises || []).map((ex, ei) => (
+                              <ExCard
+                                key={ei}
+                                bi={bi}
+                                ei={ei}
+                                ex={ex}
+                                block={block}
+                                done={done}
+                                onToggle={toggleSet}
+                                weights={weights}
+                                onWeightChange={changeWeight}
+                                token={token}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {totalSets > 0 && doneCount === totalSets && (
                   <div className="space-y-4">

@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  blockIsComplete,
   completedTonnage,
+  firstIncompleteBlock,
   firstIncompleteExercise,
   formatWorkoutDuration,
+  nextIncompleteBlock,
   nextExercise,
   restSecondsFor,
 } from '../lib/playerWorkout.mjs';
@@ -27,6 +30,20 @@ test('focus mode finds the first incomplete exercise and advances in program ord
   assert.deepEqual(firstIncompleteExercise(session, done)?.key, '0-1');
   assert.deepEqual(nextExercise(session, 0, 1)?.key, '1-0');
   assert.equal(nextExercise(session, 1, 0), null);
+});
+
+test('block focus stays open until every exercise set is complete, then advances', () => {
+  const partlyDone = { '0-0-0': true, '0-0-1': true, '0-1-0': false };
+  assert.equal(blockIsComplete(session.blocks[0], 0, partlyDone), false);
+  assert.equal(firstIncompleteBlock(session, partlyDone)?.bi, 0);
+
+  const blockADone = { ...partlyDone, '0-1-0': true };
+  assert.equal(blockIsComplete(session.blocks[0], 0, blockADone), true);
+  assert.equal(nextIncompleteBlock(session, 0, blockADone)?.bi, 1);
+
+  const allDone = { ...blockADone, '1-0-0': true };
+  assert.equal(firstIncompleteBlock(session, allDone), null);
+  assert.equal(nextIncompleteBlock(session, 1, allDone), null);
 });
 
 test('rest timer uses the longest block recovery and respects direct exercise values', () => {
