@@ -42,6 +42,12 @@ Configured in `production`, `preview`, and `development`:
 
 Do not commit secret values to GitHub.
 
+Optional external incident delivery:
+
+- `ALERT_WEBHOOK_URL` — credential-free HTTPS endpoint for the operations channel.
+- `ALERT_WEBHOOK_SECRET` — independent random signing secret of at least 32 bytes. Receivers must verify `X-Zarechie-Signature` against the exact raw request body.
+- Without both values, SLO incidents continue to be emitted as structured Production `error` logs for the existing Vercel alert rule. Preview and Development never deliver external notifications.
+
 ## Verification Checklist
 
 Run these checks after env or deploy changes:
@@ -83,7 +89,10 @@ after every production deployment.
 - Manual drill: authenticated `POST /api/system/recovery-drill` with `{ "workspace": "zarechie" }` or `{ "workspace": "nkperf" }`.
 - Health is fresh for eight days. An explicit drill failure or a check older than ten days raises the overall health state to `error`.
 - Backup failures are logged at `error`; recovery failures are logged at `critical`. Both Cron endpoints return HTTP 500 on partial or complete failure so Vercel alerting can detect the incident.
-- Keep the team default Vercel `error`/`critical` alert rule enabled. Add an external Slack or webhook destination when an operational channel is selected.
+- Every five minutes, authenticated SLO Cron evaluates both workspaces independently. It opens an incident when readiness p95 exceeds 1,500 ms after 20 samples or when at least three ReadySix/readiness-refresh errors occur within ten minutes.
+- Webhook incidents are HMAC-SHA256 signed, protected by a distributed delivery lock, deduplicated for six hours, reminded after six hours, and followed by one recovery event when the condition clears.
+- Delivery failures return HTTP 502 so Vercel alerting can detect them. New and six-hour reminder incidents emit structured Production `error` logs even when no external webhook is configured; unchanged incidents are deduplicated in Redis.
+- Keep the team default Vercel `error`/`critical` alert rule enabled. Configure the optional webhook when an operational channel is selected.
 
 ## Roster fast path
 

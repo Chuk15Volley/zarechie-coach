@@ -5,6 +5,7 @@ import { backupIsConfigured } from '../../../lib/platformBackup';
 import { pfx } from '../../../lib/workspacePrefix';
 import { readySixIntegrationMode } from '../../../lib/readySixClient';
 import { readinessLatencyKey, summarizeReadinessLatency } from '../../../lib/readinessTelemetry';
+import { operationalAlertStatus } from '../../../lib/operationalAlerts';
 
 function parseJson(raw) {
   if (!raw) return null;
@@ -81,6 +82,7 @@ export default async function handler(req, res) {
       readinessP95: readinessPerformance.enoughSamples ? readinessPerformance.healthy : null,
     },
     readinessPerformance,
+    alerting: operationalAlertStatus(),
     readySixMode,
     release: {
       commit: process.env.VERCEL_GIT_COMMIT_SHA || 'local',
