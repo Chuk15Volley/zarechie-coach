@@ -82,7 +82,8 @@ test('RTP evaluation surfaces due reviews and completed criteria', () => {
 test('coach application and batched API expose the complete Today workflow', () => {
   assert.match(coachPage, /Умный центр решений/);
   assert.match(coachPage, /Return-to-Play/);
-  assert.match(coachPage, /Применить рекомендацию/);
+  assert.match(coachPage, /Создать черновик/);
+  assert.match(coachPage, /Подтвердить и применить/);
   assert.match(teamStatusApi, /recommendNextLoad/);
   assert.match(teamStatusApi, /returnToPlayKey/);
   assert.match(rtpApi, /normalizeReturnToPlay/);

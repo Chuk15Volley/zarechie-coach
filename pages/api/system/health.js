@@ -5,7 +5,7 @@ import { backupIsConfigured } from '../../../lib/platformBackup';
 import { pfx } from '../../../lib/workspacePrefix';
 import { readySixIntegrationMode } from '../../../lib/readySixClient';
 import { readinessLatencyKey, readinessLatencyRollupKeys, summarizeReadinessTelemetry } from '../../../lib/readinessTelemetry';
-import { operationalAlertStatus } from '../../../lib/operationalAlerts';
+import { operationalAlertStatus, operationalNotificationKey } from '../../../lib/operationalAlerts';
 
 function parseJson(raw) {
   if (!raw) return null;
@@ -35,12 +35,13 @@ export default async function handler(req, res) {
     await redis('del', probeKey).catch(() => {});
   } catch (_) {}
   const readinessRollupKeys = readinessLatencyRollupKeys(workspace);
-  const [rawEvents, rawCounters, rawBackup, rawRecovery, rawReadinessLatency, ...rawReadinessRollups] = await redisPipeline([
+  const [rawEvents, rawCounters, rawBackup, rawRecovery, rawReadinessLatency, rawNotifications, ...rawReadinessRollups] = await redisPipeline([
     ['LRANGE', `${prefix}:platform:events`, '0', '199'],
     ['HGETALL', `${prefix}:platform:counters`],
     ['GET', `${prefix}:platform:backup:last`],
     ['GET', `${prefix}:platform:recovery:last`],
     ['LRANGE', readinessLatencyKey(workspace), '0', '199'],
+    ['LRANGE', operationalNotificationKey(workspace), '0', '49'],
     ...readinessRollupKeys.map(key => ['HGETALL', key]),
   ]).catch(() => [[], {}, null, null, []]);
   const events = parsePlatformEvents(rawEvents);
@@ -85,6 +86,7 @@ export default async function handler(req, res) {
     },
     readinessPerformance,
     alerting: operationalAlertStatus(),
+    notifications: (Array.isArray(rawNotifications) ? rawNotifications : []).map(parseJson).filter(Boolean).slice(0, 30),
     readySixMode,
     release: {
       commit: process.env.VERCEL_GIT_COMMIT_SHA || 'local',

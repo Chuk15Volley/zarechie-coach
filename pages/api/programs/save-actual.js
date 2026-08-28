@@ -3,10 +3,10 @@
 // Persists the "actual" (as-performed) side of a session for Plan vs Actual comparison.
 // Computes compliance (% of loaded exercises hit at >=80% of planned kg) and actual tonnage.
 
-import { redisPipeline } from '../../../lib/redis';
+import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { normExName } from '../players/progression';
-import { pfx, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey } from '../../../lib/workspacePrefix';
+import { adaptationHistoryKey, adaptationOutcomeKey, pfx, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey, sessionKey } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise } from '../../../lib/tonnage';
 import { exerciseId } from '../../../lib/exerciseIdentity.mjs';
 
@@ -54,9 +54,37 @@ export default async function handler(req, res) {
     savedAt: new Date().toISOString(),
   };
 
+  const sessionRecordRaw = await redis('get', sessionKey(workspace, playerId, date)).catch(() => null);
+  let sessionRecord = null;
+  try { sessionRecord = typeof sessionRecordRaw === 'string' ? JSON.parse(sessionRecordRaw) : sessionRecordRaw; } catch (_) {}
+  const adaptation = sessionRecord?.session?.adaptation?.status === 'applied' ? sessionRecord.session.adaptation : null;
+  const rpeValues = [
+    ...exercises.map(exercise => Number(exercise.actualRpe)),
+    ...Object.values(blockFeedback || {}).map(item => Number(item?.rpe)),
+  ].filter(Number.isFinite);
+  const pain = exercises.some(exercise => Boolean(exercise.pain)) || Object.values(blockFeedback || {}).some(item => Boolean(item?.pain));
+  const outcome = {
+    schema: 'zarechie.adaptation-outcome.v1',
+    playerId: String(playerId),
+    date,
+    status: 'measured',
+    measuredAt: record.savedAt,
+    draftId: adaptation?.draftId || null,
+    recommendation: adaptation?.recommendation || null,
+    outcome: {
+      compliance,
+      actualTonnage,
+      sessionRpe: rpeValues.length ? Math.max(...rpeValues) : null,
+      pain,
+    },
+  };
+
   const p = pfx(workspace);
   const cmds = [
     ['SET', `${p}:session:actual:${playerId}:${date}`, JSON.stringify(record)],
+    ['SET', adaptationOutcomeKey(workspace, playerId), JSON.stringify(outcome)],
+    ['LPUSH', adaptationHistoryKey(workspace, playerId), JSON.stringify(outcome)],
+    ['LTRIM', adaptationHistoryKey(workspace, playerId), '0', '19'],
   ];
   for (const ex of exercises) {
     const actualKg = parseFloat(ex.actualKg) || 0;
@@ -89,7 +117,7 @@ export default async function handler(req, res) {
 
   try {
     await redisPipeline(cmds);
-    return res.status(200).json({ ok: true, compliance, actualTonnage });
+    return res.status(200).json({ ok: true, compliance, actualTonnage, adaptationLoop: { status: outcome.status, draftId: outcome.draftId } });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

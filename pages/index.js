@@ -2219,6 +2219,11 @@ export default function Home() {
   const [rtpPlayer, setRtpPlayer] = useState(null);
   const [rtpDraft, setRtpDraft] = useState(null);
   const [rtpSaving, setRtpSaving] = useState(false);
+  const [adaptationDraft, setAdaptationDraft] = useState(null);
+  const [adaptationSaving, setAdaptationSaving] = useState(false);
+  const [versionPlayer, setVersionPlayer] = useState(null);
+  const [sessionVersions, setSessionVersions] = useState([]);
+  const [versionLoading, setVersionLoading] = useState(false);
 
   // Batch generation
   const [batchId, setBatchId] = useState(null);
@@ -3245,13 +3250,113 @@ export default function Home() {
     }
   }
 
-  function applyTodayRecommendation(player, recommendation) {
-    selectPlayer(player);
-    setDate(todayISO());
-    setRecoveryStatus(recommendation.mode === 'recover' || recommendation.mode === 'hold' ? 'red' : recommendation.mode === 'reduce' || recommendation.mode === 'rtp' ? 'yellow' : 'green');
-    const instruction = `Адаптация на сегодня: ${recommendation.label}. Объём ${recommendation.volumePercent}%, интенсивность ${recommendation.intensityPercent}%, RPE ≤ ${recommendation.rpeCap}. Причины: ${recommendation.reasons.join('; ')}.`;
-    setNotes(previous => previous.includes('Адаптация на сегодня:') ? instruction : [previous.trim(), instruction].filter(Boolean).join('\n'));
-    setMainSection('workouts');
+  async function applyTodayRecommendation(player, recommendation, hasSession) {
+    if (!hasSession) {
+      selectPlayer(player);
+      setDate(todayISO());
+      setRecoveryStatus(recommendation.mode === 'recover' || recommendation.mode === 'hold' ? 'red' : recommendation.mode === 'reduce' || recommendation.mode === 'rtp' ? 'yellow' : 'green');
+      const instruction = `Адаптация на сегодня: ${recommendation.label}. Объём ${recommendation.volumePercent}%, интенсивность ${recommendation.intensityPercent}%, RPE ≤ ${recommendation.rpeCap}. Причины: ${recommendation.reasons.join('; ')}.`;
+      setNotes(previous => previous.includes('Адаптация на сегодня:') ? instruction : [previous.trim(), instruction].filter(Boolean).join('\n'));
+      setMainSection('workouts');
+      return;
+    }
+    setAdaptationSaving(true);
+    try {
+      const response = await fetch('/api/programs/adaptation-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ action: 'create', playerId: player.id, date: todayISO(), workspace, recommendation }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось создать черновик адаптации');
+      setAdaptationDraft({ ...data.draft, player });
+    } catch (adaptationError) {
+      setError(adaptationError.message);
+    } finally {
+      setAdaptationSaving(false);
+    }
+  }
+
+  async function closeAdaptationDraft() {
+    const draft = adaptationDraft;
+    if (!draft || adaptationSaving) return;
+    setAdaptationSaving(true);
+    try {
+      await fetch(`/api/programs/adaptation-draft?playerId=${encodeURIComponent(draft.playerId)}&date=${encodeURIComponent(draft.date)}&workspace=${encodeURIComponent(workspace)}`, {
+        method: 'DELETE', headers: { 'x-api-key': apiKey },
+      });
+      setAdaptationDraft(null);
+    } finally {
+      setAdaptationSaving(false);
+    }
+  }
+
+  async function confirmAdaptationDraft() {
+    if (!adaptationDraft || adaptationSaving) return;
+    setAdaptationSaving(true);
+    try {
+      const response = await fetch('/api/programs/adaptation-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ action: 'commit', playerId: adaptationDraft.playerId, date: adaptationDraft.date, workspace, draftId: adaptationDraft.draftId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось применить адаптацию');
+      const player = adaptationDraft.player;
+      setAdaptationDraft(null);
+      selectPlayer(player);
+      setDate(todayISO());
+      setPendingSaved(data.record);
+      setMainSection('workouts');
+      await loadTeamStatus(todayISO(), true, readinessData?.players || []);
+    } catch (adaptationError) {
+      setError(adaptationError.message);
+    } finally {
+      setAdaptationSaving(false);
+    }
+  }
+
+  async function openSessionVersions(player) {
+    setVersionPlayer(player);
+    setSessionVersions([]);
+    setVersionLoading(true);
+    try {
+      const response = await fetch(`/api/programs/versions?playerId=${encodeURIComponent(player.id)}&date=${todayISO()}&workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось загрузить версии');
+      setSessionVersions(data.versions || []);
+    } catch (versionError) {
+      setError(versionError.message);
+      setVersionPlayer(null);
+    } finally {
+      setVersionLoading(false);
+    }
+  }
+
+  async function restoreSessionVersion(savedAt) {
+    if (!versionPlayer || versionLoading) return;
+    setVersionLoading(true);
+    try {
+      const response = await fetch('/api/programs/versions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ playerId: versionPlayer.id, date: todayISO(), workspace, savedAt }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось восстановить версию');
+      const player = versionPlayer;
+      setVersionPlayer(null);
+      setSessionVersions([]);
+      selectPlayer(player);
+      setDate(todayISO());
+      setPendingSaved(data.record);
+      setMainSection('workouts');
+      await loadTeamStatus(todayISO(), true, readinessData?.players || []);
+    } catch (versionError) {
+      setError(versionError.message);
+    } finally {
+      setVersionLoading(false);
+    }
   }
 
   async function loadPlatformHealth() {
@@ -5759,14 +5864,15 @@ export default function Home() {
                       return <article key={player.id} className={`rounded-2xl border ${borderTone} bg-gradient-to-br from-white/[0.04] to-white/[0.016] p-4`}>
                         <div className="flex flex-wrap items-start gap-3">
                           {player.photo ? <img src={player.photo} alt="" className="h-11 w-11 rounded-xl object-cover object-top ring-1 ring-white/10" /> : <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/[0.065] text-xs font-black text-slate-300">{initials(player.name)}</div>}
-                          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-[14px] font-black text-white">{player.name}</span>{priority >= 60 && <span className={`rounded-full px-2 py-0.5 text-[9px] font-black ${priority >= 85 ? 'bg-rose-300/10 text-rose-200' : 'bg-amber-300/10 text-amber-200'}`}>P{priority}</span>}</div><div className="mt-1 flex flex-wrap gap-1.5"><span className={`rounded-full px-2 py-1 text-[9px] font-black ${readinessTone}`}>{readiness.status ? `Готовность · ${readiness.status}` : 'Нет readiness'}</span><span className={`rounded-full px-2 py-1 text-[9px] font-black ${status.hasSession ? 'bg-cyan-300/10 text-cyan-200' : 'bg-white/[0.05] text-slate-600'}`}>{status.hasSession ? status.live?.completed ? 'Тренировка завершена' : status.live?.started ? `LIVE · ${progress}%` : 'План назначен' : 'Нет плана'}</span>{testReviewDue && <span className="rounded-full bg-blue-300/10 px-2 py-1 text-[9px] font-black text-blue-200">Обновить тесты</span>}{returnToPlay.active && <span className="rounded-full bg-violet-300/10 px-2 py-1 text-[9px] font-black text-violet-200">RTP · {returnToPlay.currentPhase}/5</span>}{status.developmentPlan?.review?.due && <span className="rounded-full bg-amber-300/10 px-2 py-1 text-[9px] font-black text-amber-200">Пересмотр плана</span>}</div></div>
+                          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-[14px] font-black text-white">{player.name}</span>{priority >= 60 && <span className={`rounded-full px-2 py-0.5 text-[9px] font-black ${priority >= 85 ? 'bg-rose-300/10 text-rose-200' : 'bg-amber-300/10 text-amber-200'}`}>P{priority}</span>}</div><div className="mt-1 flex flex-wrap gap-1.5"><span className={`rounded-full px-2 py-1 text-[9px] font-black ${readinessTone}`}>{readiness.status ? `Готовность · ${readiness.status}` : 'Нет readiness'}</span><span className={`rounded-full px-2 py-1 text-[9px] font-black ${status.hasSession ? 'bg-cyan-300/10 text-cyan-200' : 'bg-white/[0.05] text-slate-600'}`}>{status.hasSession ? status.live?.completed ? 'Тренировка завершена' : status.live?.started ? `LIVE · ${progress}%` : 'План назначен' : 'Нет плана'}</span>{status.previousAdaptationOutcome?.status === 'measured' && <span className="rounded-full bg-emerald-300/10 px-2 py-1 text-[9px] font-black text-emerald-200">Факт учтён</span>}{testReviewDue && <span className="rounded-full bg-blue-300/10 px-2 py-1 text-[9px] font-black text-blue-200">Обновить тесты</span>}{returnToPlay.active && <span className="rounded-full bg-violet-300/10 px-2 py-1 text-[9px] font-black text-violet-200">RTP · {returnToPlay.currentPhase}/5</span>}{status.developmentPlan?.review?.due && <span className="rounded-full bg-amber-300/10 px-2 py-1 text-[9px] font-black text-amber-200">Пересмотр плана</span>}</div></div>
                           <div className="min-w-[160px] rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2"><div className="text-[8px] font-black uppercase tracking-wider text-slate-700">Следующая нагрузка</div><div className="mt-1 text-[11px] font-black text-slate-200">{recommendation.label}</div><div className="mt-1 text-[9px] text-slate-600">Объём {recommendation.volumePercent}% · RPE ≤ {recommendation.rpeCap}</div></div>
                         </div>
                         {progress > 0 && <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300" style={{ width: `${progress}%` }} /></div>}
-                        <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+                        <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
                           <div className="rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2"><div className="text-[9px] leading-relaxed text-slate-500">{recommendation.reasons.slice(0, 2).join(' · ')}</div>{recommendation.safeguards?.[0] && <div className="mt-1 text-[9px] font-semibold text-cyan-200/60">{recommendation.safeguards[0]}</div>}</div>
                           <button type="button" onClick={() => openReturnToPlay(player, returnToPlay)} className="min-h-10 rounded-xl border border-violet-300/15 bg-violet-300/[0.045] px-3 text-[10px] font-bold text-violet-200">{returnToPlay.active ? 'Открыть RTP' : '+ Return-to-Play'}</button>
-                          <button type="button" onClick={() => applyTodayRecommendation(player, recommendation)} className="min-h-10 rounded-xl border border-cyan-300/18 bg-cyan-300/[0.065] px-3 text-[10px] font-black text-cyan-100">Применить рекомендацию</button>
+                          {status.hasSession && <button type="button" onClick={() => openSessionVersions(player)} className="min-h-10 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-[10px] font-bold text-slate-400">Версии</button>}
+                          <button type="button" disabled={adaptationSaving} onClick={() => applyTodayRecommendation(player, recommendation, status.hasSession)} className="min-h-10 rounded-xl border border-cyan-300/18 bg-cyan-300/[0.065] px-3 text-[10px] font-black text-cyan-100 disabled:opacity-50">{status.hasSession ? 'Создать черновик' : 'Настроить план'}</button>
                         </div>
                       </article>;
                     })}</div>
@@ -5791,6 +5897,23 @@ export default function Home() {
               )}
 
               {rtpPlayer && <ReturnToPlayModal player={rtpPlayer} plan={rtpDraft} saving={rtpSaving} onChange={setRtpDraft} onSave={saveReturnToPlay} onClose={() => { setRtpPlayer(null); setRtpDraft(null); }} />}
+              {adaptationDraft && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#02060d]/85 p-4 backdrop-blur-md" role="dialog" aria-modal="true" aria-label="Подтверждение адаптации">
+                  <div className="w-full max-w-xl rounded-3xl border border-cyan-300/15 bg-[#0b1421] p-5 shadow-2xl sm:p-6">
+                    <div className="flex items-start justify-between gap-4"><div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/60">Безопасный черновик</div><h3 className="mt-1 text-xl font-black text-white">{adaptationDraft.player?.name}</h3><p className="mt-1 text-[11px] text-slate-500">Исходная программа не изменена. Применение требует явного решения тренера.</p></div><button type="button" onClick={closeAdaptationDraft} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/[0.08] text-slate-500"><X size={16} /></button></div>
+                    <div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-2xl border border-white/[0.07] bg-black/15 p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">До</div><div className="mt-2 text-lg font-black text-white">{adaptationDraft.before?.sets || 0} подходов</div><div className="mt-1 text-[10px] text-slate-600">Нагрузка {adaptationDraft.before?.loadKgSets || 0} кг·подх.</div></div><div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.045] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-cyan-200/50">После</div><div className="mt-2 text-lg font-black text-cyan-100">{adaptationDraft.after?.sets || 0} подходов</div><div className="mt-1 text-[10px] text-cyan-200/45">Нагрузка {adaptationDraft.after?.loadKgSets || 0} кг·подх.</div></div></div>
+                    <div className="mt-4 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[12px] font-black text-white">{adaptationDraft.recommendation?.label}</div><div className="mt-1 text-[10px] text-slate-500">Объём {adaptationDraft.recommendation?.volumePercent}% · Интенсивность {adaptationDraft.recommendation?.intensityPercent}% · RPE ≤ {adaptationDraft.recommendation?.rpeCap}</div><div className="mt-3 text-[10px] leading-relaxed text-slate-500">{adaptationDraft.recommendation?.reasons?.join(' · ')}</div>{adaptationDraft.recommendation?.safeguards?.length > 0 && <div className="mt-2 text-[10px] font-semibold leading-relaxed text-emerald-200/65">{adaptationDraft.recommendation.safeguards.join(' · ')}</div>}</div>
+                    <div className="mt-5 grid grid-cols-2 gap-3"><button type="button" disabled={adaptationSaving} onClick={closeAdaptationDraft} className="min-h-12 rounded-xl border border-white/[0.09] bg-white/[0.03] text-[11px] font-bold text-slate-400">Отменить</button><button type="button" disabled={adaptationSaving} onClick={confirmAdaptationDraft} className="min-h-12 rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 text-[11px] font-black text-[#06121a] disabled:opacity-50">{adaptationSaving ? 'Применяю…' : 'Подтвердить и применить'}</button></div>
+                  </div>
+                </div>, document.body
+              )}
+              {versionPlayer && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#02060d]/85 p-4 backdrop-blur-md" role="dialog" aria-modal="true" aria-label="Версии программы">
+                  <div className="w-full max-w-lg rounded-3xl border border-white/[0.1] bg-[#0b1421] p-5 shadow-2xl"><div className="flex items-start justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">Откат программы</div><h3 className="mt-1 text-lg font-black text-white">{versionPlayer.name}</h3></div><button type="button" onClick={() => setVersionPlayer(null)} className="grid h-10 w-10 place-items-center rounded-xl border border-white/[0.08] text-slate-500"><X size={16} /></button></div>
+                    <div className="mt-5 space-y-2">{versionLoading ? <div className="py-10 text-center text-[11px] text-slate-500"><Loader2 size={17} className="mx-auto mb-2 animate-spin" />Загружаю версии…</div> : sessionVersions.length === 0 ? <div className="rounded-2xl border border-white/[0.07] py-9 text-center text-[11px] text-slate-600">Предыдущих версий пока нет</div> : sessionVersions.map(version => <div key={version.id} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="min-w-0 flex-1"><div className="truncate text-[11px] font-black text-slate-200">{version.adaptation?.label || version.label}</div><div className="mt-1 text-[9px] text-slate-600">{version.savedAt ? new Date(version.savedAt).toLocaleString('ru') : 'Без даты'} · {version.stats?.sets || 0} подходов</div></div><button type="button" onClick={() => restoreSessionVersion(version.savedAt)} className="min-h-10 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.05] px-3 text-[10px] font-black text-cyan-200">Восстановить</button></div>)}</div>
+                  </div>
+                </div>, document.body
+              )}
             </div>
           )}
 
@@ -5917,9 +6040,10 @@ export default function Home() {
                   <div className={`mb-5 rounded-2xl border p-5 ${healthData.status === 'healthy' ? 'border-emerald-300/20 bg-emerald-300/[0.055]' : healthData.status === 'warning' ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-rose-300/20 bg-rose-300/[0.055]'}`}>
                     <div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Общий статус</div><div className="mt-1 text-xl font-black text-white">{healthData.status === 'healthy' ? 'Все системы работают' : healthData.status === 'warning' ? 'Есть предупреждения' : 'Требуется внимание'}</div></div><div className="text-right text-[10px] text-slate-500">{healthData.latencyMs} мс<br />{compactTime(healthData.checkedAt)}</div></div>
                   </div>
-                  <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Production release</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{String(healthData.release?.commit || 'local').slice(0, 12)}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Readiness p95 · 24 часа</div><div className={`mt-2 font-mono text-[12px] font-bold ${healthData.readinessPerformance?.healthy ? 'text-emerald-200' : 'text-amber-200'}`}>{healthData.readinessPerformance?.p95Ms != null ? `${healthData.readinessPerformance.p95Ms} мс` : 'Сбор данных'}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.readinessPerformance?.sampleCount || 0} замеров · кеш {healthData.readinessPerformance?.cacheHitRate ?? '—'}% · {healthData.readinessPerformance?.telemetrySource === 'rolling_histogram' && healthData.readinessPerformance?.enoughSamples ? '24ч rollup' : 'разогрев'} · {healthData.alerting?.configured ? 'webhook подключён' : 'Vercel logs'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя резервная копия</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.id || healthData.latestSnapshotId || 'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} ключей · зашифровано` : healthData.backup ? `${healthData.backup.keyCount} ключей · ${healthData.backup.ageHours} ч назад` : 'Ежедневное защищённое копирование'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Контроль восстановления</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-cyan-200">{latestRecoveryDrill?.id || healthData.recovery?.id || 'Ещё не выполнялся'}</div><div className="mt-1 text-[10px] text-slate-600">{latestRecoveryDrill ? `${latestRecoveryDrill.sampledKeyCount} ключей · очищено` : healthData.recovery ? `${healthData.recovery.sampledKeyCount} ключей · ${healthData.recovery.ageHours} ч назад` : 'Еженедельная DR-проверка'}</div></div></div>
+                  <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Production release</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{String(healthData.release?.commit || 'local').slice(0, 12)}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Readiness p95 · тёплый / холодный</div><div className={`mt-2 font-mono text-[12px] font-bold ${healthData.readinessPerformance?.healthy ? 'text-emerald-200' : 'text-amber-200'}`}>{healthData.readinessPerformance?.warm?.p95Ms ?? healthData.readinessPerformance?.p95Ms ?? '—'} мс <span className="text-slate-700">/</span> {healthData.readinessPerformance?.cold?.p95Ms ?? '—'} мс</div><div className="mt-1 text-[10px] text-slate-600">Цели ≤ {healthData.readinessPerformance?.warm?.targetP95Ms || 750} / {healthData.readinessPerformance?.cold?.targetP95Ms || 5000} мс · кеш {healthData.readinessPerformance?.cacheHitRate ?? '—'}% · {healthData.alerting?.channel === 'in-app' ? 'встроенный канал' : healthData.alerting?.channel || 'канал неизвестен'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя резервная копия</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.id || healthData.latestSnapshotId || 'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} ключей · зашифровано` : healthData.backup ? `${healthData.backup.keyCount} ключей · ${healthData.backup.ageHours} ч назад` : 'Ежедневное защищённое копирование'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Контроль восстановления</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-cyan-200">{latestRecoveryDrill?.id || healthData.recovery?.id || 'Ещё не выполнялся'}</div><div className="mt-1 text-[10px] text-slate-600">{latestRecoveryDrill ? `${latestRecoveryDrill.sampledKeyCount} ключей · очищено` : healthData.recovery ? `${healthData.recovery.sampledKeyCount} ключей · ${healthData.recovery.ageHours} ч назад` : 'Еженедельная DR-проверка'}</div></div></div>
                   <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">{Object.entries(healthData.services || {}).map(([name, ok]) => <div key={name} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className={`h-2 w-2 rounded-full ${ok ? 'bg-emerald-300' : 'bg-rose-300'}`} /><div className="mt-3 text-[12px] font-bold text-slate-200">{name === 'redis' ? 'Хранилище' : name === 'readySix' ? 'ReadySix' : name === 'ai' ? 'AI генерация' : name === 'backup' ? 'Резервные копии' : name === 'recovery' ? 'DR-проверка' : 'Доступ тренера'}</div><div className="mt-1 text-[10px] text-slate-600">{ok ? 'Работает' : name === 'backup' ? 'Нет свежей копии' : name === 'recovery' ? 'Нет свежей проверки' : 'Не настроено'}</div></div>)}</div>
                   <div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ошибки за 24 часа</div><div className="mt-2 text-3xl font-black text-rose-200">{healthData.errors24h}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Предупреждения за 24 часа</div><div className="mt-2 text-3xl font-black text-amber-200">{healthData.warnings24h}</div></div></div>
+                  <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 flex items-center justify-between"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Канал SLO-инцидентов</div><span className="rounded-full border border-cyan-300/12 px-2 py-1 text-[9px] font-bold text-cyan-200">{healthData.alerting?.channel === 'in-app' ? 'Встроенный inbox' : healthData.alerting?.channel}</span></div><div className="space-y-2">{(healthData.notifications || []).length ? healthData.notifications.slice(0, 10).map(notification => <div key={notification.eventId} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${notification.status === 'firing' ? notification.severity === 'critical' || notification.severity === 'error' ? 'bg-rose-300' : 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{notification.title}</div><div className="mt-0.5 text-[10px] leading-relaxed text-slate-600">{notification.message}</div></div><span className="shrink-0 text-[9px] text-slate-700">{compactTime(notification.occurredAt)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Активных SLO-событий нет</div>}</div></div>
                   <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Последние события</div><div className="space-y-2">{(healthData.events || []).length ? healthData.events.slice(0, 12).map((event, index) => <div key={`${event.at}-${index}`} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${event.status === 'error' ? 'bg-rose-300' : event.status === 'warning' ? 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{event.area}</div>{event.message && <div className="mt-0.5 truncate text-[10px] text-slate-600">{event.message}</div>}</div><span className="text-[9px] text-slate-700">{compactTime(event.at)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Событий пока нет</div>}</div></div>
                 </>
               )}

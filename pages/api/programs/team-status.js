@@ -5,7 +5,7 @@
 
 import { redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
-import { developmentPlanKey, feedbackKey, injuryLogKey, liveCommandsKey, pfx, restrictionsKey, returnToPlayKey, sessionKey } from '../../../lib/workspacePrefix';
+import { adaptationOutcomeKey, developmentPlanKey, feedbackKey, injuryLogKey, liveCommandsKey, pfx, restrictionsKey, returnToPlayKey, sessionKey } from '../../../lib/workspacePrefix';
 import { summarizePlayerWorkout } from '../../../lib/workoutProgress.mjs';
 import { parseSavedSession, sessionTrainingLabel } from '../../../lib/sessionLabel';
 import { sessionPlanFact } from '../../../lib/floorOperations.mjs';
@@ -49,12 +49,13 @@ export default async function handler(req, res) {
       ['GET', returnToPlayKey(workspace, sid)],
       ['GET', workspace === 'nkperf' ? injuryLogKey(workspace, sid) : `injury:log:${sid}`],
       ['GET', workspace === 'nkperf' ? injuryLogKey(workspace, `whoop_${sid.replace(/^whoop_/, '')}`) : `injury:log:whoop_${sid.replace(/^whoop_/, '')}`],
+      ['GET', adaptationOutcomeKey(workspace, sid)],
     ];
   })).catch(() => []);
   playerIds.forEach((id, index) => {
     const sid = String(id);
-    const offset = index * 10;
-    const [rawSession, rawFeedback, rawLog, rawActual, rawCommands, rawRestrictions, rawDevelopmentPlan, rawReturnToPlay, rawInjuryLog, rawAlternateInjuryLog] = results.slice(offset, offset + 10);
+    const offset = index * 11;
+    const [rawSession, rawFeedback, rawLog, rawActual, rawCommands, rawRestrictions, rawDevelopmentPlan, rawReturnToPlay, rawInjuryLog, rawAlternateInjuryLog, rawAdaptationOutcome] = results.slice(offset, offset + 11);
 
     let hasSession = false;
     let savedAt = null;
@@ -107,6 +108,7 @@ export default async function handler(req, res) {
       } : null,
       returnToPlay,
       activeInjuries,
+      previousAdaptationOutcome: parseJSON(rawAdaptationOutcome),
     };
     playerStatus.adaptation = recommendNextLoad({
       readiness: readinessById.get(sid) || {},

@@ -16,11 +16,13 @@
     "pages/api/team/readiness.js": { "maxDuration": 15 },
     "pages/api/cron/backup.js": { "maxDuration": 60 },
     "pages/api/cron/recovery-drill.js": { "maxDuration": 60 },
-    "pages/api/cron/slo-alerts.js": { "maxDuration": 15 }
+    "pages/api/cron/slo-alerts.js": { "maxDuration": 15 },
+    "pages/api/cron/readiness-warm.js": { "maxDuration": 15 }
   },
   "crons": [
     { "path": "/api/cron/backup", "schedule": "30 2 * * *" },
     { "path": "/api/cron/recovery-drill", "schedule": "30 3 * * 0" },
-    { "path": "/api/cron/slo-alerts", "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/slo-alerts", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/readiness-warm", "schedule": "* * * * *" }
   ]
 }
