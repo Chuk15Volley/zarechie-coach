@@ -5,10 +5,11 @@
 
 import { redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
-import { feedbackKey, liveCommandsKey, pfx, sessionKey } from '../../../lib/workspacePrefix';
+import { developmentPlanKey, feedbackKey, injuryLogKey, liveCommandsKey, pfx, restrictionsKey, returnToPlayKey, sessionKey } from '../../../lib/workspacePrefix';
 import { summarizePlayerWorkout } from '../../../lib/workoutProgress.mjs';
 import { parseSavedSession, sessionTrainingLabel } from '../../../lib/sessionLabel';
 import { sessionPlanFact } from '../../../lib/floorOperations.mjs';
+import { evaluateReturnToPlay, recommendNextLoad } from '../../../lib/todayDecisionCenter.mjs';
 
 function parseCommands(raw) {
   if (!raw) return [];
@@ -18,12 +19,21 @@ function parseCommands(raw) {
   }).filter(command => command?.status === 'pending').sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 
+function parseJSON(raw, fallback = null) {
+  if (raw == null) return fallback;
+  if (typeof raw === 'object') return raw;
+  try { return JSON.parse(raw); } catch (_) { return fallback; }
+}
+
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { playerIds, date, workspace = 'zarechie' } = req.body || {};
+  const { playerIds, date, workspace = 'zarechie', readinessPlayers = [] } = req.body || {};
   if (!Array.isArray(playerIds) || !date) return res.status(400).json({ error: 'playerIds and date required' });
+  if (playerIds.length > 100 || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return res.status(400).json({ error: 'Invalid request' });
+
+  const readinessById = new Map((Array.isArray(readinessPlayers) ? readinessPlayers : []).map(player => [String(player.id), player]));
 
   const status = {};
   const results = await redisPipeline(playerIds.flatMap(id => {
@@ -34,12 +44,17 @@ export default async function handler(req, res) {
       ['GET', `${pfx(workspace)}:log:${sid}:${date}`],
       ['GET', `${pfx(workspace)}:session:actual:${sid}:${date}`],
       ['HGETALL', liveCommandsKey(workspace, sid, date)],
+      ['GET', restrictionsKey(workspace, sid)],
+      ['GET', developmentPlanKey(workspace, sid)],
+      ['GET', returnToPlayKey(workspace, sid)],
+      ['GET', workspace === 'nkperf' ? injuryLogKey(workspace, sid) : `injury:log:${sid}`],
+      ['GET', workspace === 'nkperf' ? injuryLogKey(workspace, `whoop_${sid.replace(/^whoop_/, '')}`) : `injury:log:whoop_${sid.replace(/^whoop_/, '')}`],
     ];
   })).catch(() => []);
   playerIds.forEach((id, index) => {
     const sid = String(id);
-    const offset = index * 5;
-    const [rawSession, rawFeedback, rawLog, rawActual, rawCommands] = results.slice(offset, offset + 5);
+    const offset = index * 10;
+    const [rawSession, rawFeedback, rawLog, rawActual, rawCommands, rawRestrictions, rawDevelopmentPlan, rawReturnToPlay, rawInjuryLog, rawAlternateInjuryLog] = results.slice(offset, offset + 10);
 
     let hasSession = false;
     let savedAt = null;
@@ -70,7 +85,12 @@ export default async function handler(req, res) {
     if (rawActual) {
       try { actual = typeof rawActual === 'string' ? JSON.parse(rawActual) : rawActual; } catch (_) {}
     }
-    status[id] = {
+    const restrictions = parseJSON(rawRestrictions, []);
+    const developmentPlan = parseJSON(rawDevelopmentPlan);
+    const returnToPlay = evaluateReturnToPlay(parseJSON(rawReturnToPlay, {}), date);
+    const injuryLog = parseJSON(rawInjuryLog, null) || parseJSON(rawAlternateInjuryLog, []) || [];
+    const activeInjuries = (Array.isArray(injuryLog) ? injuryLog : []).filter(item => item?.status === 'active' || item?.status === 'monitoring').slice(0, 6);
+    const playerStatus = {
       hasSession,
       savedAt,
       feedback,
@@ -78,7 +98,25 @@ export default async function handler(req, res) {
       live: hasSession ? summarizePlayerWorkout(session, log || {}, feedback) : null,
       planFact: hasSession ? sessionPlanFact(session, actual, log) : null,
       pendingCommands: parseCommands(rawCommands),
+      restrictions: Array.isArray(restrictions) ? restrictions : [],
+      developmentPlan: developmentPlan ? {
+        cycleStart: developmentPlan.cycleStart || null,
+        reviewDate: developmentPlan.reviewDate || null,
+        goalCount: Array.isArray(developmentPlan.goals) ? developmentPlan.goals.length : 0,
+        review: { due: Boolean(developmentPlan.reviewDate && date >= developmentPlan.reviewDate), coachDecisionRequired: developmentPlan.reviewDecision === 'pending' },
+      } : null,
+      returnToPlay,
+      activeInjuries,
     };
+    playerStatus.adaptation = recommendNextLoad({
+      readiness: readinessById.get(sid) || {},
+      status: playerStatus,
+      restrictions: playerStatus.restrictions,
+      developmentPlan: playerStatus.developmentPlan,
+      returnToPlay,
+      activeInjuries,
+    });
+    status[id] = playerStatus;
   });
 
   return res.status(200).json({ status });

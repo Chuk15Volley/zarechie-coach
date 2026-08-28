@@ -59,6 +59,7 @@ import { usesSeasonCalendar } from '../lib/workspacePolicy.mjs';
 import { exerciseDescription } from '../lib/tempoDescription.mjs';
 import { canonicalExerciseId } from '../lib/exerciseIdentity.mjs';
 import { buildAttentionQueue, buildStationRotation } from '../lib/floorOperations.mjs';
+import { buildTodayDecisionCenter, normalizeReturnToPlay, RTP_PHASES } from '../lib/todayDecisionCenter.mjs';
 
 // Map a camp focus phase to a representative training week (for auto-weight %).
 function weekFromFocus(focus) {
@@ -2107,6 +2108,59 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
   );
 }
 
+function ReturnToPlayModal({ player, plan, saving, onChange, onSave, onClose }) {
+  if (!player) return null;
+  const normalized = normalizeReturnToPlay(plan || {}, todayISO());
+  const current = { ...normalized, criteria: Array.isArray(plan?.criteria) ? plan.criteria : normalized.criteria };
+  const update = patch => onChange({ ...current, ...patch });
+  const addCriterion = () => update({ criteria: [...(current.criteria || []), { id: `criterion-${Date.now()}`, label: '', complete: false }] });
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#02060b]/85 px-4 py-6 backdrop-blur-xl" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+      <div className="max-h-full w-full max-w-2xl overflow-y-auto rounded-[30px] border border-white/[0.11] bg-gradient-to-br from-[#111d22] via-[#09131c] to-[#151326] p-5 shadow-2xl sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-300/70">Return-to-Play</div><h3 className="mt-1 text-xl font-black text-white">{player.name}</h3><p className="mt-1 text-[11px] text-slate-500">Этапный возврат с ограничителями объёма, интенсивности и RPE.</p></div>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/[0.08] text-slate-500 transition hover:text-white"><X size={15} /></button>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Статус
+            <PremiumSelect value={current.status} onChange={value => update({ status: value })} options={[{ value: 'inactive', label: 'Не активен' }, { value: 'active', label: 'Активен' }, { value: 'paused', label: 'Приостановлен' }, { value: 'cleared', label: 'Допущен' }]} className="mt-1.5 min-h-11 w-full rounded-xl border border-white/[0.08] bg-[#101a1d] px-3 text-[12px] normal-case text-slate-200 outline-none" compact />
+          </label>
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Название кейса
+            <input value={current.title} onChange={event => update({ title: event.target.value })} maxLength={120} placeholder="Например: правый голеностоп" className="mt-1.5 min-h-11 w-full rounded-xl border border-white/[0.08] bg-black/20 px-3 text-[12px] normal-case text-white outline-none placeholder:text-slate-700" />
+          </label>
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Зона
+            <input value={current.bodyPart} onChange={event => update({ bodyPart: event.target.value })} maxLength={80} placeholder="Колено, плечо…" className="mt-1.5 min-h-11 w-full rounded-xl border border-white/[0.08] bg-black/20 px-3 text-[12px] normal-case text-white outline-none placeholder:text-slate-700" />
+          </label>
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Следующий контроль
+            <input type="date" value={current.nextReviewDate || ''} onChange={event => update({ nextReviewDate: event.target.value || null })} className="mt-1.5 min-h-11 w-full rounded-xl border border-white/[0.08] bg-black/20 px-3 text-[12px] normal-case text-white outline-none" />
+          </label>
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Диагноз / причина
+            <input value={current.diagnosis} onChange={event => update({ diagnosis: event.target.value })} maxLength={180} placeholder="Рабочая формулировка" className="mt-1.5 min-h-11 w-full rounded-xl border border-white/[0.08] bg-black/20 px-3 text-[12px] normal-case text-white outline-none placeholder:text-slate-700" />
+          </label>
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Ответственный
+            <input value={current.owner} onChange={event => update({ owner: event.target.value })} maxLength={100} placeholder="Врач / физиотерапевт" className="mt-1.5 min-h-11 w-full rounded-xl border border-white/[0.08] bg-black/20 px-3 text-[12px] normal-case text-white outline-none placeholder:text-slate-700" />
+          </label>
+        </div>
+
+        <div className="mt-5">
+          <div className="mb-2 flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Фаза возврата</span><span className="text-[10px] font-bold text-violet-200">Боль {current.painScore}/10</span></div>
+          <div className="grid grid-cols-5 gap-1.5">{RTP_PHASES.map(phase => <button key={phase.id} type="button" onClick={() => update({ currentPhase: phase.id })} className={`min-h-14 rounded-xl border px-1.5 py-2 text-center ${current.currentPhase === phase.id ? 'border-violet-300/35 bg-violet-300/[0.14] text-violet-100' : 'border-white/[0.06] bg-white/[0.02] text-slate-600'}`}><div className="text-[11px] font-black">{phase.id}</div><div className="mt-0.5 hidden text-[8px] font-bold sm:block">{phase.label}</div></button>)}</div>
+          <input type="range" min="0" max="10" step="1" value={current.painScore} onChange={event => update({ painScore: Number(event.target.value) })} className="mt-4 w-full accent-violet-300" aria-label="Уровень боли" />
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-white/[0.07] bg-black/15 p-4">
+          <div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Критерии перехода</div><div className="mt-1 text-[10px] text-slate-700">Отметьте объективные критерии текущей фазы.</div></div><button type="button" onClick={addCriterion} className="rounded-lg border border-white/[0.08] px-2.5 py-1.5 text-[10px] font-bold text-slate-400">+ Критерий</button></div>
+          <div className="mt-3 space-y-2">{(current.criteria || []).map((criterion, index) => <div key={criterion.id} className="flex items-center gap-2"><button type="button" onClick={() => update({ criteria: current.criteria.map((item, itemIndex) => itemIndex === index ? { ...item, complete: !item.complete } : item) })} className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border ${criterion.complete ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-200' : 'border-white/[0.07] text-slate-700'}`}>{criterion.complete ? <Check size={13} /> : <Square size={13} />}</button><input value={criterion.label} onChange={event => update({ criteria: current.criteria.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) })} maxLength={160} placeholder="Например: прыжки без боли на следующий день" className="min-h-9 flex-1 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 text-[11px] text-white outline-none placeholder:text-slate-700" /><button type="button" onClick={() => update({ criteria: current.criteria.filter((_, itemIndex) => itemIndex !== index) })} className="grid h-9 w-9 place-items-center text-slate-700 hover:text-rose-300"><X size={12} /></button></div>)}</div>
+        </div>
+
+        <textarea value={current.notes} onChange={event => update({ notes: event.target.value })} maxLength={600} placeholder="Ограничения, наблюдения, условия допуска" className="mt-4 min-h-[88px] w-full resize-none rounded-xl border border-white/[0.08] bg-black/20 p-3 text-[12px] text-white outline-none placeholder:text-slate-700" />
+        <button type="button" onClick={onSave} disabled={saving} className="mt-4 min-h-12 w-full rounded-2xl bg-gradient-to-r from-violet-300 via-cyan-300 to-emerald-300 text-[12px] font-black text-[#071018] disabled:opacity-50">{saving ? 'Сохраняю…' : 'Сохранить Return-to-Play'}</button>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [apiKey, setApiKey] = useState('');
   const [authChecking, setAuthChecking] = useState(true);
@@ -2133,7 +2187,7 @@ export default function Home() {
   const genTimers = useRef([]);
 
   // Main section navigation
-  const [mainSection, setMainSection] = useState('workouts'); // 'workouts' | 'warmup'
+  const [mainSection, setMainSection] = useState('today');
 
   // Left panel tabs
   const [leftTab, setLeftTab] = useState('players'); // 'players' | 'day'
@@ -2162,6 +2216,9 @@ export default function Home() {
   const [warmupError, setWarmupError] = useState('');
   const [warmupHistory, setWarmupHistory] = useState([]);
   const [teamStatusLoading, setTeamStatusLoading] = useState(false);
+  const [rtpPlayer, setRtpPlayer] = useState(null);
+  const [rtpDraft, setRtpDraft] = useState(null);
+  const [rtpSaving, setRtpSaving] = useState(false);
 
   // Batch generation
   const [batchId, setBatchId] = useState(null);
@@ -2723,6 +2780,32 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainSection, apiKey, workspace, players.length]);
 
+  // Daily operating loop: readiness is resolved first, then combined with plan,
+  // live, pain, development-plan and RTP context in the batched status request.
+  useEffect(() => {
+    if (mainSection !== 'today' || !apiKey || players.length === 0) return undefined;
+    let cancelled = false;
+    const load = async (quiet = false) => {
+      if (!quiet) setReadinessLoading(true);
+      try {
+        const response = await fetch(`/api/team/readiness?date=${todayISO()}&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } });
+        const data = response.ok ? await response.json() : { players: [] };
+        if (cancelled) return;
+        setReadinessData(data);
+        await loadTeamStatus(todayISO(), quiet, data.players || []);
+      } catch (_) {
+        if (!cancelled) setReadinessData({ players: [] });
+      } finally {
+        if (!cancelled && !quiet) setReadinessLoading(false);
+      }
+    };
+    load(false);
+    loadPlatformHealth();
+    const timer = setInterval(() => load(true), 30000);
+    return () => { cancelled = true; clearInterval(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainSection, apiKey, workspace, players.length]);
+
   useEffect(() => {
     if (mainSection === 'health' && apiKey) loadPlatformHealth();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2847,6 +2930,10 @@ export default function Home() {
   }, { planned: 0, started: 0, completed: 0, alerts: 0 }), [liveRows]);
   const stationRotation = useMemo(() => buildStationRotation(liveRows), [liveRows]);
   const attentionQueue = useMemo(() => buildAttentionQueue(liveRows, readinessData?.players || []), [liveRows, readinessData]);
+  const todayCenter = useMemo(
+    () => buildTodayDecisionCenter(liveRows, readinessData?.players || [], healthData),
+    [liveRows, readinessData, healthData]
+  );
 
   // Session volume: total sets + estimated tonnage
   const sessionVolume = useMemo(() => {
@@ -3110,14 +3197,14 @@ export default function Home() {
     }
   }
 
-  async function loadTeamStatus(statusDate = date, quiet = false) {
+  async function loadTeamStatus(statusDate = date, quiet = false, readinessPlayers = readinessData?.players || []) {
     if (!apiKey || !players.length) return;
     if (!quiet) setTeamStatusLoading(true);
     try {
       const res = await fetch('/api/programs/team-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ playerIds: players.map(p => p.id), date: statusDate, workspace }),
+        body: JSON.stringify({ playerIds: players.map(p => p.id), date: statusDate, workspace, readinessPlayers }),
       });
       if (res.ok) {
         const d = await res.json();
@@ -3126,6 +3213,45 @@ export default function Home() {
       }
     } catch (_) {}
     if (!quiet) setTeamStatusLoading(false);
+  }
+
+  function openReturnToPlay(player, plan = null) {
+    setRtpPlayer(player);
+    setRtpDraft(normalizeReturnToPlay(plan || {}, todayISO()));
+  }
+
+  async function saveReturnToPlay() {
+    if (!rtpPlayer || rtpSaving) return;
+    setRtpSaving(true);
+    try {
+      const response = await fetch('/api/players/return-to-play', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ playerId: rtpPlayer.id, workspace, plan: rtpDraft }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось сохранить RTP');
+      setTeamStatus(previous => ({
+        ...previous,
+        [rtpPlayer.id]: { ...(previous[rtpPlayer.id] || {}), returnToPlay: data.plan },
+      }));
+      setRtpPlayer(null);
+      setRtpDraft(null);
+      await loadTeamStatus(todayISO(), true, readinessData?.players || []);
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setRtpSaving(false);
+    }
+  }
+
+  function applyTodayRecommendation(player, recommendation) {
+    selectPlayer(player);
+    setDate(todayISO());
+    setRecoveryStatus(recommendation.mode === 'recover' || recommendation.mode === 'hold' ? 'red' : recommendation.mode === 'reduce' || recommendation.mode === 'rtp' ? 'yellow' : 'green');
+    const instruction = `Адаптация на сегодня: ${recommendation.label}. Объём ${recommendation.volumePercent}%, интенсивность ${recommendation.intensityPercent}%, RPE ≤ ${recommendation.rpeCap}. Причины: ${recommendation.reasons.join('; ')}.`;
+    setNotes(previous => previous.includes('Адаптация на сегодня:') ? instruction : [previous.trim(), instruction].filter(Boolean).join('\n'));
+    setMainSection('workouts');
   }
 
   async function loadPlatformHealth() {
@@ -4242,6 +4368,9 @@ export default function Home() {
           {keyConnected && (
             <div className="sidebar-nav-grid border-b border-white/[0.06] px-3 py-2.5">
               {[
+                [
+                  { id: 'today', label: 'Сегодня', ariaLabel: 'Сегодня — умный центр решений', icon: <Target size={14} />, tone: 'tone-cyan', activeClass: 'border-cyan-300/30 bg-gradient-to-r from-cyan-300/[0.18] to-emerald-300/[0.1] text-cyan-100 shadow-[0_8px_24px_-15px_rgba(34,211,238,0.95)]' },
+                ],
                 [
                   { id: 'readiness', label: 'Готовность', icon: <Activity size={14} />, tone: 'tone-emerald', activeClass: 'border-emerald-300/25 bg-emerald-300/[0.13] text-emerald-200 shadow-[0_8px_22px_-16px_rgba(52,211,153,0.9)]' },
                   { id: 'workouts',  label: 'Зал',        icon: <Dumbbell size={14} />, tone: 'tone-cyan', activeClass: 'border-cyan-300/25 bg-cyan-300/[0.13] text-cyan-100 shadow-[0_8px_22px_-16px_rgba(34,211,238,0.9)]' },
@@ -5570,6 +5699,98 @@ export default function Home() {
               <p className="mt-4 text-center text-[11px] text-slate-700">
                 Клик по дню — выбор типа · клик по тренировочному дню — открыть сессию
               </p>
+            </div>
+          )}
+
+          {/* ── Today · smart decision centre ── */}
+          {mainSection === 'today' && (
+            <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
+              <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300/70"><span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.85)]" /> Daily operating system</div>
+                  <h2 className="mt-1 text-3xl font-black tracking-tight text-white">Сегодня</h2>
+                  <p className="mt-1 max-w-2xl text-[12px] leading-relaxed text-slate-500">Умный центр решений: ReadySix, готовность, план, LIVE, боль, тесты, Return-to-Play и безопасная адаптация следующей нагрузки.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-[11px] font-bold text-slate-400">{todayISO().split('-').reverse().join('.')}</span>
+                  <button type="button" onClick={async () => {
+                    setReadinessLoading(true);
+                    try {
+                      const response = await fetch(`/api/team/readiness?date=${todayISO()}&workspace=${workspace}&refresh=1`, { headers: { 'x-api-key': apiKey } });
+                      const data = response.ok ? await response.json() : { players: [] };
+                      setReadinessData(data);
+                      await Promise.all([loadTeamStatus(todayISO(), false, data.players || []), loadPlatformHealth()]);
+                    } finally { setReadinessLoading(false); }
+                  }} className="flex min-h-11 items-center gap-2 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.055] px-4 text-[11px] font-black text-cyan-100 transition hover:bg-cyan-300/[0.1]"><RefreshCw size={13} className={readinessLoading || teamStatusLoading ? 'animate-spin' : ''} /> Обновить контур</button>
+                </div>
+              </div>
+
+              <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                {[
+                  ['Решения', todayCenter.summary.decisions, todayCenter.summary.decisions ? 'text-amber-200' : 'text-emerald-200', 'Приоритет ≥ 60'],
+                  ['Красная зона', todayCenter.summary.red, todayCenter.summary.red ? 'text-rose-200' : 'text-slate-300', `${todayCenter.summary.yellow} жёлтых`],
+                  ['Планы', `${todayCenter.summary.planned}/${todayCenter.summary.total}`, 'text-cyan-200', `Тесты к обновлению: ${todayCenter.summary.testsDue}`],
+                  ['В работе', Math.max(0, todayCenter.summary.started - todayCenter.summary.completed), 'text-amber-200', `${todayCenter.summary.completed} завершили`],
+                  ['Return-to-Play', todayCenter.summary.rtp, todayCenter.summary.rtp ? 'text-violet-200' : 'text-slate-300', 'Активных кейсов'],
+                  ['Readiness p95', todayCenter.platform.p95Ms != null ? `${todayCenter.platform.p95Ms} мс` : 'Разогрев', todayCenter.platform.sloHealthy ? 'text-emerald-200' : 'text-blue-200', todayCenter.platform.healthy ? 'Платформа штатно' : 'Проверить SLO'],
+                ].map(([label, value, color, detail]) => <div key={label} className="rounded-2xl border border-white/[0.075] bg-gradient-to-br from-white/[0.045] to-white/[0.018] p-4 backdrop-blur-xl"><div className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-600">{label}</div><div className={`mt-2 text-2xl font-black ${color}`}>{value}</div><div className="mt-1 text-[9px] text-slate-700">{detail}</div></div>)}
+              </div>
+
+              <div className="mb-5 grid grid-cols-4 gap-2 rounded-2xl border border-white/[0.065] bg-black/15 p-2 sm:gap-3">
+                {[
+                  ['1', 'Собрать сигналы', 'ReadySix · тесты · боль'],
+                  ['2', 'Принять решение', 'Очередь · RTP · SLO'],
+                  ['3', 'Дозировать работу', 'План · авторегуляция'],
+                  ['4', 'Закрыть день', 'LIVE · факт · RPE'],
+                ].map(([step, label, detail]) => <div key={step} className="rounded-xl border border-white/[0.05] bg-white/[0.022] p-2.5 sm:p-3"><div className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-cyan-300/10 text-[9px] font-black text-cyan-200">{step}</span><span className="text-[9px] font-black text-slate-300 sm:text-[11px]">{label}</span></div><div className="mt-1.5 hidden text-[9px] text-slate-700 sm:block">{detail}</div></div>)}
+              </div>
+
+              {players.length === 0 || readinessLoading || (teamStatusLoading && !liveUpdatedAt) ? (
+                <div className="rounded-3xl border border-white/[0.07] bg-white/[0.02] py-24 text-center text-sm text-slate-500"><Loader2 size={20} className="mx-auto mb-3 animate-spin text-cyan-300" />Собираю ежедневный контекст…</div>
+              ) : (
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+                  <section>
+                    <div className="mb-3 flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-300/60">Умный центр решений</div><h3 className="mt-1 text-lg font-black text-white">Команда по приоритету действия</h3></div><span className="rounded-full border border-white/[0.08] px-3 py-1 text-[10px] font-bold text-slate-500">{todayCenter.athletes.length} игроков</span></div>
+                    <div className="space-y-3">{todayCenter.athletes.map(item => {
+                      const { player, status, readiness, returnToPlay, recommendation, testReviewDue, priority } = item;
+                      const readinessTone = readiness.status === 'red' ? 'bg-rose-300/10 text-rose-200' : readiness.status === 'yellow' ? 'bg-amber-300/10 text-amber-200' : readiness.status === 'green' ? 'bg-emerald-300/10 text-emerald-200' : 'bg-white/[0.05] text-slate-600';
+                      const borderTone = priority >= 85 ? 'border-rose-300/18' : priority >= 60 ? 'border-amber-300/16' : 'border-white/[0.07]';
+                      const progress = status.live?.progress || 0;
+                      return <article key={player.id} className={`rounded-2xl border ${borderTone} bg-gradient-to-br from-white/[0.04] to-white/[0.016] p-4`}>
+                        <div className="flex flex-wrap items-start gap-3">
+                          {player.photo ? <img src={player.photo} alt="" className="h-11 w-11 rounded-xl object-cover object-top ring-1 ring-white/10" /> : <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/[0.065] text-xs font-black text-slate-300">{initials(player.name)}</div>}
+                          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-[14px] font-black text-white">{player.name}</span>{priority >= 60 && <span className={`rounded-full px-2 py-0.5 text-[9px] font-black ${priority >= 85 ? 'bg-rose-300/10 text-rose-200' : 'bg-amber-300/10 text-amber-200'}`}>P{priority}</span>}</div><div className="mt-1 flex flex-wrap gap-1.5"><span className={`rounded-full px-2 py-1 text-[9px] font-black ${readinessTone}`}>{readiness.status ? `Готовность · ${readiness.status}` : 'Нет readiness'}</span><span className={`rounded-full px-2 py-1 text-[9px] font-black ${status.hasSession ? 'bg-cyan-300/10 text-cyan-200' : 'bg-white/[0.05] text-slate-600'}`}>{status.hasSession ? status.live?.completed ? 'Тренировка завершена' : status.live?.started ? `LIVE · ${progress}%` : 'План назначен' : 'Нет плана'}</span>{testReviewDue && <span className="rounded-full bg-blue-300/10 px-2 py-1 text-[9px] font-black text-blue-200">Обновить тесты</span>}{returnToPlay.active && <span className="rounded-full bg-violet-300/10 px-2 py-1 text-[9px] font-black text-violet-200">RTP · {returnToPlay.currentPhase}/5</span>}{status.developmentPlan?.review?.due && <span className="rounded-full bg-amber-300/10 px-2 py-1 text-[9px] font-black text-amber-200">Пересмотр плана</span>}</div></div>
+                          <div className="min-w-[160px] rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2"><div className="text-[8px] font-black uppercase tracking-wider text-slate-700">Следующая нагрузка</div><div className="mt-1 text-[11px] font-black text-slate-200">{recommendation.label}</div><div className="mt-1 text-[9px] text-slate-600">Объём {recommendation.volumePercent}% · RPE ≤ {recommendation.rpeCap}</div></div>
+                        </div>
+                        {progress > 0 && <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300" style={{ width: `${progress}%` }} /></div>}
+                        <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+                          <div className="rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2"><div className="text-[9px] leading-relaxed text-slate-500">{recommendation.reasons.slice(0, 2).join(' · ')}</div>{recommendation.safeguards?.[0] && <div className="mt-1 text-[9px] font-semibold text-cyan-200/60">{recommendation.safeguards[0]}</div>}</div>
+                          <button type="button" onClick={() => openReturnToPlay(player, returnToPlay)} className="min-h-10 rounded-xl border border-violet-300/15 bg-violet-300/[0.045] px-3 text-[10px] font-bold text-violet-200">{returnToPlay.active ? 'Открыть RTP' : '+ Return-to-Play'}</button>
+                          <button type="button" onClick={() => applyTodayRecommendation(player, recommendation)} className="min-h-10 rounded-xl border border-cyan-300/18 bg-cyan-300/[0.065] px-3 text-[10px] font-black text-cyan-100">Применить рекомендацию</button>
+                        </div>
+                      </article>;
+                    })}</div>
+                  </section>
+
+                  <aside className="space-y-4">
+                    <div className="rounded-3xl border border-white/[0.08] bg-gradient-to-br from-cyan-300/[0.055] to-violet-300/[0.03] p-5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/60">Правила безопасности</div><h3 className="mt-1 text-[15px] font-black text-white">Адаптация с тренером в контуре</h3>
+                      <div className="mt-4 space-y-3">{['RTP, боль и ограничения всегда сильнее алгоритма.', 'Без свежих данных прогрессия блокируется.', 'Изменения сначала попадают в параметры программы.', 'Рост нагрузки ограничен 2–3% за экспозицию.'].map((text, index) => <div key={text} className="flex gap-2.5"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-emerald-300/10 text-[9px] font-black text-emerald-200">{index + 1}</span><p className="pt-1 text-[10px] leading-relaxed text-slate-500">{text}</p></div>)}</div>
+                    </div>
+                    <div className="rounded-3xl border border-white/[0.08] bg-white/[0.025] p-5">
+                      <div className="flex items-center justify-between"><div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">Закрытие дня</div><CheckCircle2 size={16} className={todayCenter.summary.completed === todayCenter.summary.planned && todayCenter.summary.planned > 0 ? 'text-emerald-300' : 'text-slate-700'} /></div>
+                      <div className="mt-4 space-y-3">{[
+                        ['Программы назначены', todayCenter.summary.planned, todayCenter.summary.total],
+                        ['Тренировки завершены', todayCenter.summary.completed, todayCenter.summary.planned],
+                        ['RTP под контролем', todayCenter.summary.rtp ? todayCenter.summary.rtp - todayCenter.athletes.filter(item => item.returnToPlay.reviewDue).length : 0, todayCenter.summary.rtp],
+                      ].map(([label, value, total]) => <div key={label}><div className="flex justify-between text-[10px]"><span className="text-slate-500">{label}</span><span className="font-black text-slate-300">{value}/{total}</span></div><div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300" style={{ width: `${total ? Math.max(0, Math.min(100, value / total * 100)) : 0}%` }} /></div></div>)}</div>
+                      <button type="button" onClick={() => setMainSection('live')} className="mt-5 min-h-11 w-full rounded-xl border border-emerald-300/15 bg-emerald-300/[0.05] text-[10px] font-black text-emerald-200">Открыть командный LIVE</button>
+                    </div>
+                  </aside>
+                </div>
+              )}
+
+              {rtpPlayer && <ReturnToPlayModal player={rtpPlayer} plan={rtpDraft} saving={rtpSaving} onChange={setRtpDraft} onSave={saveReturnToPlay} onClose={() => { setRtpPlayer(null); setRtpDraft(null); }} />}
             </div>
           )}
 
