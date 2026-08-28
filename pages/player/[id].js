@@ -791,10 +791,49 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   const [progressRevision, setProgressRevision] = useState(0);
   const [restTimer, setRestTimer] = useState(null);
   const [undoSet, setUndoSet] = useState(null);
+  const [coachCommands, setCoachCommands] = useState([]);
+  const [commandAcknowledging, setCommandAcknowledging] = useState(false);
   const [splashVisible, setSplashVisible] = useState(true);
   const blockRefs = useRef([]);
   const saveTimer = useRef(null);
   const undoTimer = useRef(null);
+  const activeCoachCommand = coachCommands[0] || null;
+
+  useEffect(() => {
+    if (!token || !sessionDate) return undefined;
+    let active = true;
+    const loadCommands = async () => {
+      try {
+        const response = await fetch(`/api/player/commands?token=${encodeURIComponent(token)}&date=${encodeURIComponent(sessionDate)}`, { cache: 'no-store' });
+        const body = await response.json();
+        if (active && response.ok) setCoachCommands(body.commands || []);
+      } catch (_) {}
+    };
+    loadCommands();
+    const timer = setInterval(loadCommands, 6000);
+    return () => { active = false; clearInterval(timer); };
+  }, [token, sessionDate]);
+
+  async function acknowledgeCoachCommand(command) {
+    if (!command || commandAcknowledging) return;
+    setCommandAcknowledging(true);
+    if (command.type === 'rest' && Number(command.payload?.seconds) > 0) {
+      const seconds = Number(command.payload.seconds);
+      setRestTimer({ total: seconds, remaining: seconds, running: true, notified: false, label: 'Изменение тренера' });
+      setRestUntil(new Date(Date.now() + seconds * 1000).toISOString());
+      setLastActionAt(new Date().toISOString());
+      setProgressRevision(value => value + 1);
+    }
+    try {
+      const response = await fetch('/api/player/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, date: sessionDate, commandId: command.id }),
+      });
+      if (response.ok) setCoachCommands(current => current.filter(item => item.id !== command.id));
+    } catch (_) {}
+    setCommandAcknowledging(false);
+  }
 
   // Load progress on mount: prefer server log, fall back to localStorage.
   useEffect(() => {
@@ -1090,7 +1129,14 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   }
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
+    if (!('serviceWorker' in navigator)) return;
+    if (process.env.NODE_ENV !== 'production') {
+      navigator.serviceWorker.getRegistrations()
+        .then(registrations => Promise.all(registrations
+          .filter(registration => registration.scope.includes('/player/'))
+          .map(registration => registration.unregister())))
+        .catch(() => {});
+    } else {
       navigator.serviceWorker.register('/sw.js', { scope: '/player/' })
         .then(registration => registration.update())
         .catch(() => {});
@@ -1186,6 +1232,21 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
             </div>
           </div>
         </header>
+
+        {activeCoachCommand && (
+          <div className={`${activeCoachCommand.type === 'pause' || activeCoachCommand.type === 'stop_exercise' ? 'fixed inset-0 z-[70] flex items-center justify-center bg-[#03070d]/90 px-5 backdrop-blur-xl' : 'relative z-40 px-4 pb-3'}`} role="alertdialog" aria-live="assertive">
+            <div className="w-full max-w-md overflow-hidden rounded-[24px] border border-amber-300/25 bg-gradient-to-br from-[#1b1d18] via-[#111a1c] to-[#0a131b] p-5 shadow-[0_28px_90px_-30px_rgba(251,191,36,0.5)]">
+              <div className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-300/70">Сообщение тренера · LIVE</div>
+              <div className="mt-3 text-[20px] font-black leading-tight text-white">
+                {activeCoachCommand.type === 'pause' ? 'Пауза тренировки' : activeCoachCommand.type === 'stop_exercise' ? 'Остановить упражнение' : activeCoachCommand.type === 'adjust_load' ? 'Изменить рабочий вес' : activeCoachCommand.type === 'replace_exercise' ? 'Замена упражнения' : activeCoachCommand.type === 'rest' ? 'Новое время отдыха' : 'Важно'}
+              </div>
+              <p className="mt-2 text-[13px] leading-relaxed text-slate-300">{activeCoachCommand.message || (activeCoachCommand.type === 'rest' ? `Отдых ${activeCoachCommand.payload?.seconds || 0} секунд` : 'Обратись к тренеру перед продолжением.')}</p>
+              {activeCoachCommand.payload?.percent && <div className="mt-3 inline-flex rounded-xl bg-amber-300/10 px-3 py-2 text-[12px] font-black text-amber-200">Вес {activeCoachCommand.payload.percent > 0 ? '+' : ''}{activeCoachCommand.payload.percent}%</div>}
+              {activeCoachCommand.payload?.replacement && <div className="mt-3 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-[12px] font-bold text-cyan-100">Новое: {activeCoachCommand.payload.replacement}</div>}
+              <button type="button" disabled={commandAcknowledging} onClick={() => acknowledgeCoachCommand(activeCoachCommand)} className="mt-5 min-h-12 w-full rounded-2xl bg-gradient-to-r from-amber-300 to-emerald-300 text-[12px] font-black text-[#11150c] disabled:opacity-50">{commandAcknowledging ? 'Сохраняю…' : activeCoachCommand.type === 'rest' ? 'Принять и запустить таймер' : 'Понятно, подтвердить'}</button>
+            </div>
+          </div>
+        )}
 
         {/* ── Compact sticky workout control ── */}
         {activeTab === 'workout' && session && workoutStarted && (

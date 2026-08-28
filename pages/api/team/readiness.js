@@ -81,6 +81,12 @@ function latestLsiFromNeuro(neuro) {
   return { lsi: null, lsiDate: null };
 }
 
+function ageDays(date, targetDate) {
+  if (!date || !targetDate) return null;
+  const age = Math.floor((new Date(`${targetDate}T12:00:00Z`) - new Date(`${date}T12:00:00Z`)) / 86400000);
+  return Number.isFinite(age) ? Math.max(0, age) : null;
+}
+
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -186,6 +192,14 @@ export default async function handler(req, res) {
         lsi: lsi != null,
       };
       const dataCompleteness = Math.round(Object.values(dataQuality).filter(Boolean).length / 4 * 100);
+      const sourceFreshness = {
+        whoop: { date: whoop.date || null, ageDays: ageDays(whoop.date, date), fresh: ageDays(whoop.date, date) != null && ageDays(whoop.date, date) <= 1 },
+        survey: { date: survey.date || null, ageDays: ageDays(survey.date, date), fresh: ageDays(survey.date, date) != null && ageDays(survey.date, date) <= 1 },
+        neuro: { date: freshKpis[0]?.date || null, ageDays: freshKpis[0]?.ageDays ?? null, fresh: freshKpis.length > 0 },
+        lsi: { date: lsiDate || null, ageDays: ageDays(lsiDate, date), fresh: ageDays(lsiDate, date) != null && ageDays(lsiDate, date) <= 14 },
+      };
+      const missingSources = Object.entries(dataQuality).filter(([, present]) => !present).map(([source]) => source);
+      const staleSources = Object.entries(sourceFreshness).filter(([, item]) => item.date && !item.fresh).map(([source]) => source);
 
       let status = 'green';
       if (redCount >= 2 || extremeRed) status = 'red';
@@ -212,6 +226,14 @@ export default async function handler(req, res) {
         },
         lsi, lsiDate,
         status, domains, attentionScore, dataQuality, dataCompleteness,
+        dataProvenance: {
+          source: readySixTeam ? 'ReadySix' : 'Legacy Redis',
+          generatedAt: snapshot.readySixMeta?.generatedAt || null,
+          revision: snapshot.readySixMeta?.revision || null,
+          sourceFreshness,
+          missingSources,
+          staleSources,
+        },
       };
     });
 

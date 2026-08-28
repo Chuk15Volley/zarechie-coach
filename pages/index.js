@@ -58,6 +58,7 @@ import {
 import { usesSeasonCalendar } from '../lib/workspacePolicy.mjs';
 import { exerciseDescription } from '../lib/tempoDescription.mjs';
 import { canonicalExerciseId } from '../lib/exerciseIdentity.mjs';
+import { buildAttentionQueue, buildStationRotation } from '../lib/floorOperations.mjs';
 
 // Map a camp focus phase to a representative training week (for auto-weight %).
 function weekFromFocus(focus) {
@@ -1371,6 +1372,8 @@ function ExerciseCard({
   prevPain,
   suggestedKg,
   progressionDecision,
+  progressionConfidence,
+  progressionTrend,
   restrictions,
   exHistory,
   actualKg,
@@ -1700,6 +1703,7 @@ function ExerciseCard({
             {progressionDecision && (
               <div className="w-full text-[10px] text-slate-500">{progressionDecision}</div>
             )}
+            {progressionConfidence && <div className="w-full text-[9px] font-bold uppercase tracking-wider text-slate-700">Уверенность: {progressionConfidence === 'high' ? 'высокая' : progressionConfidence === 'medium' ? 'средняя' : 'низкая'} · {progressionTrend === 'increase' ? 'прогрессия' : progressionTrend === 'reduce' ? 'снижение' : 'сохранить'}</div>}
           </div>
         ) : (
           /* 1RM hint when no previous session data */
@@ -2136,6 +2140,13 @@ export default function Home() {
   const [healthLoading, setHealthLoading] = useState(false);
   const [accessAction, setAccessAction] = useState('');
   const [accessConfirm, setAccessConfirm] = useState('');
+  const [liveCommandPlayer, setLiveCommandPlayer] = useState(null);
+  const [liveCommandType, setLiveCommandType] = useState('message');
+  const [liveCommandText, setLiveCommandText] = useState('');
+  const [liveReplacement, setLiveReplacement] = useState('');
+  const [liveCommandSending, setLiveCommandSending] = useState(false);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [latestSnapshot, setLatestSnapshot] = useState(null);
   const [matchLoads, setMatchLoads] = useState({});
   const [matchLoadSaving, setMatchLoadSaving] = useState(false);
 
@@ -2690,7 +2701,7 @@ export default function Home() {
 
   // Floor command centre: keep the team view current without manual reloads.
   useEffect(() => {
-    if (mainSection !== 'live' || !apiKey || players.length === 0) return undefined;
+    if (!['live', 'attention'].includes(mainSection) || !apiKey || players.length === 0) return undefined;
     loadTeamStatus(todayISO());
     const timer = setInterval(() => loadTeamStatus(todayISO(), true), 8000);
     return () => clearInterval(timer);
@@ -2704,7 +2715,7 @@ export default function Home() {
 
   // Load team readiness when switching to readiness section or changing date.
   useEffect(() => {
-    if (mainSection !== 'readiness' || !apiKey) return;
+    if (!['readiness', 'attention'].includes(mainSection) || !apiKey) return;
     setReadinessLoading(true);
     fetch(`/api/team/readiness?date=${readinessDate}&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
       .then(r => r.json())
@@ -2819,6 +2830,8 @@ export default function Home() {
     if (row.status.hasSession) summary.planned += 1;
     return summary;
   }, { planned: 0, started: 0, completed: 0, alerts: 0 }), [liveRows]);
+  const stationRotation = useMemo(() => buildStationRotation(liveRows), [liveRows]);
+  const attentionQueue = useMemo(() => buildAttentionQueue(liveRows, readinessData?.players || []), [liveRows, readinessData]);
 
   // Session volume: total sets + estimated tonnage
   const sessionVolume = useMemo(() => {
@@ -3111,6 +3124,66 @@ export default function Home() {
       setHealthData(null);
     } finally {
       setHealthLoading(false);
+    }
+  }
+
+  async function sendLiveCommand() {
+    if (!liveCommandPlayer || liveCommandSending) return;
+    const defaults = {
+      pause: 'Остановись и подойди к тренеру перед продолжением.',
+      rest: 'Увеличь отдых и продолжай только после полного восстановления.',
+      adjust_load: 'Снизь рабочий вес на 10% в текущем упражнении.',
+      stop_exercise: 'Закончи текущее упражнение. Следующий шаг согласуй с тренером.',
+      replace_exercise: liveReplacement ? `Замени текущее упражнение на: ${liveReplacement}.` : 'Замени текущее упражнение по указанию тренера.',
+      message: 'Подойди к тренеру после текущего подхода.',
+    };
+    setLiveCommandSending(true);
+    try {
+      const response = await fetch('/api/programs/live-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({
+          playerId: liveCommandPlayer.id,
+          date: todayISO(),
+          workspace,
+          type: liveCommandType,
+          message: liveCommandText.trim() || defaults[liveCommandType],
+          payload: {
+            percent: liveCommandType === 'adjust_load' ? -10 : null,
+            seconds: liveCommandType === 'rest' ? 90 : null,
+            replacement: liveCommandType === 'replace_exercise' ? liveReplacement : '',
+          },
+        }),
+      });
+      if (!response.ok) throw new Error('Команда не отправлена');
+      setLiveCommandPlayer(null);
+      setLiveCommandText('');
+      setLiveReplacement('');
+      await loadTeamStatus(todayISO(), true);
+    } catch (commandError) {
+      setError(commandError.message);
+    } finally {
+      setLiveCommandSending(false);
+    }
+  }
+
+  async function createOperationsSnapshot() {
+    if (snapshotLoading) return;
+    setSnapshotLoading(true);
+    try {
+      const response = await fetch('/api/system/snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ workspace }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Не удалось создать контрольную точку');
+      setLatestSnapshot(body.snapshot);
+      await loadPlatformHealth();
+    } catch (snapshotError) {
+      setError(snapshotError.message);
+    } finally {
+      setSnapshotLoading(false);
     }
   }
 
@@ -4064,6 +4137,7 @@ export default function Home() {
                 ],
                 [
                   { id: 'live', label: 'LIVE', ariaLabel: 'Командная тренировка LIVE', icon: <Users size={14} />, tone: 'tone-emerald', activeClass: 'border-emerald-300/30 bg-gradient-to-br from-emerald-300/[0.18] to-cyan-300/[0.08] text-emerald-100 shadow-[0_8px_22px_-16px_rgba(52,211,153,0.95)]' },
+                  { id: 'attention', label: 'Внимание', ariaLabel: 'Центр внимания тренера', icon: <AlertTriangle size={14} />, tone: 'tone-amber', activeClass: 'border-amber-300/25 bg-amber-300/[0.13] text-amber-100 shadow-[0_8px_22px_-16px_rgba(251,191,36,0.9)]' },
                   { id: 'health', label: 'Система', ariaLabel: 'Здоровье платформы', icon: <Shield size={14} />, tone: 'tone-blue', activeClass: 'border-blue-300/25 bg-blue-300/[0.13] text-blue-100 shadow-[0_8px_22px_-16px_rgba(96,165,250,0.9)]' },
                 ],
               ].map((row, ri) => (
@@ -5099,6 +5173,7 @@ export default function Home() {
                                   <div className={`mt-0.5 text-[9px] font-semibold ${p.dataCompleteness < 50 ? 'text-amber-500/70' : 'text-slate-600'}`}>
                                     Данные: {p.dataCompleteness ?? 0}%
                                   </div>
+                                  {p.dataProvenance && <div className="mt-0.5 text-[8px] text-slate-700">{p.dataProvenance.source}{p.dataProvenance.generatedAt ? ` · ${compactTime(p.dataProvenance.generatedAt)}` : ''}{p.dataProvenance.missingSources?.length ? ` · нет: ${p.dataProvenance.missingSources.join(', ')}` : ''}</div>}
                                 </div>
                                 {p.attentionScore != null && (
                                   <div className="flex shrink-0 items-baseline gap-1 leading-none">
@@ -5412,6 +5487,15 @@ export default function Home() {
                 ))}
               </div>
 
+              {stationRotation.length > 0 && (
+                <div className="mb-6 rounded-3xl border border-cyan-300/10 bg-gradient-to-br from-cyan-300/[0.055] to-violet-300/[0.025] p-4 backdrop-blur-xl">
+                  <div className="mb-3 flex items-center justify-between gap-3"><div><div className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-200/60">Автоматическая разводка</div><div className="mt-1 text-[14px] font-black text-white">Станции и ротация групп</div></div><span className="rounded-full border border-cyan-300/15 px-2.5 py-1 text-[9px] font-bold text-cyan-200">до 3 игроков</span></div>
+                  <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                    {stationRotation.map(group => <div key={group.id} className="rounded-2xl border border-white/[0.07] bg-black/15 p-3"><div className="text-[11px] font-black text-white">{group.label}</div><div className="mt-1 truncate text-[10px] text-slate-500">{group.members.map(member => member.name.split(' ')[0]).join(' · ')}</div><div className="mt-3 flex gap-1.5 overflow-x-auto">{group.rotation.map(item => <div key={item.round} className="min-w-[96px] rounded-xl border border-white/[0.06] bg-white/[0.025] px-2.5 py-2"><div className="text-[9px] font-black text-cyan-200">{item.round}. Блок {item.block}</div><div className="mt-0.5 text-[9px] leading-tight text-slate-600">{item.station}</div></div>)}</div></div>)}
+                  </div>
+                </div>
+              )}
+
               {teamStatusLoading && !liveUpdatedAt ? (
                 <div className="flex items-center justify-center py-24 text-sm text-slate-500"><Loader2 size={18} className="mr-2 animate-spin" /> Загружаю команду…</div>
               ) : (
@@ -5443,16 +5527,44 @@ export default function Home() {
                               {(live.blockStats || []).map(block => <span key={block.label} className={`grid h-8 min-w-8 place-items-center rounded-lg border px-2 text-[10px] font-black ${block.complete ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200' : block.label === live.activeBlock ? 'border-cyan-300/25 bg-cyan-300/12 text-cyan-100' : 'border-white/[0.06] text-slate-600'}`}>{block.label}{block.complete ? '✓' : ''}</span>)}
                             </div>
                             <div className="mt-3 flex items-center justify-between text-[10px] text-slate-600"><span>Синхр. {compactTime(live.lastSyncAt)}</span><span>{live.deviceCount || 0} устр.</span></div>
+                            {status.planFact && (status.planFact.completedSets > 0 || status.planFact.actualTonnage > 0) && <div className="mt-3 grid grid-cols-3 gap-1.5 rounded-xl border border-white/[0.05] bg-black/10 p-2"><div><div className="text-[8px] uppercase text-slate-700">План-факт</div><div className="text-[11px] font-black text-slate-300">{status.planFact.completionPercent}%</div></div><div><div className="text-[8px] uppercase text-slate-700">Тоннаж</div><div className="text-[11px] font-black text-slate-300">{status.planFact.tonnagePercent == null ? '—' : `${status.planFact.tonnagePercent}%`}</div></div><div><div className="text-[8px] uppercase text-slate-700">RPE</div><div className="text-[11px] font-black text-slate-300">{status.planFact.sessionRpe || '—'}</div></div></div>}
                           </>
                         )}
 
                         {(live?.alerts || []).length > 0 && <div className="mt-3 space-y-1 rounded-xl border border-rose-300/15 bg-rose-300/[0.055] p-2.5">{live.alerts.map(alert => <div key={alert} className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-200"><AlertTriangle size={11} />{alert}</div>)}</div>}
-                        <button type="button" onClick={() => { selectPlayer(player); setDate(todayISO()); setMainSection('workouts'); }} className="mt-4 min-h-11 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] text-[11px] font-bold text-slate-300 transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50">Открыть программу</button>
+                        {(status.pendingCommands || []).length > 0 && <div className="mt-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.055] px-3 py-2 text-[10px] font-bold text-amber-200">Ожидает подтверждения: {status.pendingCommands[0].message}</div>}
+                        <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => setLiveCommandPlayer(player)} disabled={!status.hasSession} className="min-h-11 rounded-xl border border-amber-300/15 bg-amber-300/[0.055] text-[11px] font-bold text-amber-200 transition hover:bg-amber-300/[0.1] disabled:opacity-30">Команда LIVE</button><button type="button" onClick={() => { selectPlayer(player); setDate(todayISO()); setMainSection('workouts'); }} className="min-h-11 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[11px] font-bold text-slate-300 transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50">Программа</button></div>
                       </article>
                     );
                   })}
                 </div>
               )}
+
+              {liveCommandPlayer && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#03070d]/80 px-4 backdrop-blur-xl" onMouseDown={event => event.target === event.currentTarget && setLiveCommandPlayer(null)}>
+                  <div className="w-full max-w-lg rounded-[28px] border border-white/[0.1] bg-gradient-to-br from-[#121d22] via-[#0b141d] to-[#101326] p-5 shadow-2xl">
+                    <div className="flex items-start justify-between gap-3"><div><div className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-300/65">LIVE-вмешательство</div><div className="mt-1 text-xl font-black text-white">{liveCommandPlayer.name}</div></div><button type="button" onClick={() => setLiveCommandPlayer(null)} className="grid h-10 w-10 place-items-center rounded-xl border border-white/[0.08] text-slate-500"><X size={15} /></button></div>
+                    <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">{[
+                      ['message', 'Сообщение'], ['pause', 'Пауза'], ['rest', 'Отдых 90 с'], ['adjust_load', 'Вес −10%'], ['stop_exercise', 'Стоп упражнения'], ['replace_exercise', 'Замена'],
+                    ].map(([type, label]) => <button key={type} type="button" onClick={() => setLiveCommandType(type)} className={`min-h-11 rounded-xl border px-2 text-[10px] font-bold ${liveCommandType === type ? 'border-amber-300/30 bg-amber-300/[0.12] text-amber-100' : 'border-white/[0.07] bg-white/[0.025] text-slate-500'}`}>{label}</button>)}</div>
+                    {liveCommandType === 'replace_exercise' && <input value={liveReplacement} onChange={event => setLiveReplacement(event.target.value)} placeholder="Название нового упражнения" className="mt-3 min-h-12 w-full rounded-xl border border-cyan-300/15 bg-black/20 px-3 text-[12px] text-white outline-none focus:border-cyan-300/40" />}
+                    <textarea value={liveCommandText} onChange={event => setLiveCommandText(event.target.value)} placeholder="Комментарий игроку — необязательно" className="mt-3 min-h-[92px] w-full resize-none rounded-xl border border-white/[0.08] bg-black/20 p-3 text-[12px] text-white outline-none focus:border-amber-300/30" />
+                    <button type="button" disabled={liveCommandSending || (liveCommandType === 'replace_exercise' && !liveReplacement.trim())} onClick={sendLiveCommand} className="mt-4 min-h-12 w-full rounded-2xl bg-gradient-to-r from-amber-300 to-emerald-300 text-[12px] font-black text-[#10150b] disabled:opacity-40">{liveCommandSending ? 'Отправляю…' : 'Отправить игроку'}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Coach attention centre ── */}
+          {mainSection === 'attention' && (
+            <div className="mx-auto w-full max-w-[1180px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
+              <div className="mb-6 flex items-end justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300/60">Priority inbox</div><h2 className="mt-1 text-2xl font-black tracking-tight text-white">Центр внимания тренера</h2><p className="mt-1 text-[12px] text-slate-500">Готовность, боль, качество данных, LIVE и итоговые оценки — в одной очереди.</p></div><div className="rounded-full border border-amber-300/15 bg-amber-300/[0.06] px-3 py-1.5 text-[11px] font-black text-amber-200">{attentionQueue.length}</div></div>
+              {readinessLoading || (teamStatusLoading && !liveUpdatedAt) ? <div className="py-24 text-center text-sm text-slate-500"><Loader2 size={18} className="mx-auto mb-2 animate-spin" />Собираю сигналы…</div> : attentionQueue.length === 0 ? <div className="rounded-3xl border border-emerald-300/15 bg-emerald-300/[0.045] p-10 text-center"><CheckCircle2 size={26} className="mx-auto text-emerald-300" /><div className="mt-3 text-lg font-black text-white">Критических сигналов нет</div><div className="mt-1 text-[12px] text-slate-500">Команда готова к плановой работе.</div></div> : <div className="space-y-2.5">{attentionQueue.map((item, index) => {
+                const player = players.find(candidate => String(candidate.id) === String(item.playerId));
+                const tone = item.priority >= 85 ? 'border-rose-300/20 bg-rose-300/[0.055]' : item.priority >= 60 ? 'border-amber-300/18 bg-amber-300/[0.045]' : 'border-cyan-300/12 bg-cyan-300/[0.035]';
+                return <button key={`${item.playerId}-${item.code}-${index}`} type="button" onClick={() => { if (player) { selectPlayer(player); setMainSection('workouts'); } }} className={`flex min-h-[74px] w-full items-center gap-3 rounded-2xl border ${tone} p-3.5 text-left transition hover:bg-white/[0.06]`}><div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl text-[12px] font-black ${item.priority >= 85 ? 'bg-rose-300/12 text-rose-200' : item.priority >= 60 ? 'bg-amber-300/12 text-amber-200' : 'bg-cyan-300/10 text-cyan-200'}`}>{item.priority}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2"><span className="text-[13px] font-black text-white">{item.playerName}</span><span className="text-[10px] font-bold text-slate-500">{item.title}</span></div><div className="mt-1 text-[11px] leading-relaxed text-slate-500">{item.detail}</div></div><ChevronRight size={15} className="text-slate-700" /></button>;
+              })}</div>}
             </div>
           )}
 
@@ -5461,13 +5573,14 @@ export default function Home() {
             <div className="mx-auto w-full max-w-[1180px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <div className="mb-6 flex items-end justify-between gap-3">
                 <div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-300/60">Operations</div><h2 className="mt-1 text-2xl font-black tracking-tight text-white">Здоровье платформы</h2></div>
-                <button type="button" onClick={loadPlatformHealth} className="min-h-11 rounded-xl border border-white/[0.09] bg-white/[0.035] px-4 text-[12px] font-bold text-slate-300">{healthLoading ? 'Проверка…' : 'Проверить'}</button>
+                <div className="flex gap-2"><button type="button" onClick={createOperationsSnapshot} className="min-h-11 rounded-xl border border-emerald-300/15 bg-emerald-300/[0.055] px-4 text-[11px] font-bold text-emerald-200">{snapshotLoading ? 'Сохраняю…' : 'Контрольная точка'}</button><button type="button" onClick={loadPlatformHealth} className="min-h-11 rounded-xl border border-white/[0.09] bg-white/[0.035] px-4 text-[12px] font-bold text-slate-300">{healthLoading ? 'Проверка…' : 'Проверить'}</button></div>
               </div>
               {healthLoading && !healthData ? <div className="py-24 text-center text-sm text-slate-500">Проверяю сервисы…</div> : healthData && (
                 <>
                   <div className={`mb-5 rounded-2xl border p-5 ${healthData.status === 'healthy' ? 'border-emerald-300/20 bg-emerald-300/[0.055]' : healthData.status === 'warning' ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-rose-300/20 bg-rose-300/[0.055]'}`}>
                     <div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Общий статус</div><div className="mt-1 text-xl font-black text-white">{healthData.status === 'healthy' ? 'Все системы работают' : healthData.status === 'warning' ? 'Есть предупреждения' : 'Требуется внимание'}</div></div><div className="text-right text-[10px] text-slate-500">{healthData.latencyMs} мс<br />{compactTime(healthData.checkedAt)}</div></div>
                   </div>
+                  <div className="mb-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Production release</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{String(healthData.release?.commit || 'local').slice(0, 12)}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя контрольная точка</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.id || healthData.latestSnapshotId || 'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} записей` : 'Восстановление доступно через защищённый API'}</div></div></div>
                   <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{Object.entries(healthData.services || {}).map(([name, ok]) => <div key={name} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className={`h-2 w-2 rounded-full ${ok ? 'bg-emerald-300' : 'bg-rose-300'}`} /><div className="mt-3 text-[12px] font-bold text-slate-200">{name === 'redis' ? 'Хранилище' : name === 'readySix' ? 'ReadySix' : name === 'ai' ? 'AI генерация' : 'Доступ тренера'}</div><div className="mt-1 text-[10px] text-slate-600">{ok ? 'Работает' : 'Не настроено'}</div></div>)}</div>
                   <div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ошибки за 24 часа</div><div className="mt-2 text-3xl font-black text-rose-200">{healthData.errors24h}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Предупреждения за 24 часа</div><div className="mt-2 text-3xl font-black text-amber-200">{healthData.warnings24h}</div></div></div>
                   <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Последние события</div><div className="space-y-2">{(healthData.events || []).length ? healthData.events.slice(0, 12).map((event, index) => <div key={`${event.at}-${index}`} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${event.status === 'error' ? 'bg-rose-300' : event.status === 'warning' ? 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{event.area}</div>{event.message && <div className="mt-0.5 truncate text-[10px] text-slate-600">{event.message}</div>}</div><span className="text-[9px] text-slate-700">{compactTime(event.at)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Событий пока нет</div>}</div></div>
@@ -7166,6 +7279,8 @@ export default function Home() {
                           prevPain={progression.pain || false}
                           suggestedKg={progression.suggestedKg || null}
                           progressionDecision={progression.decision || ''}
+                          progressionConfidence={progression.confidence || ''}
+                          progressionTrend={progression.trend || ''}
                           restrictions={restrictions}
                           exHistory={exerciseHistory}
                           actualKg={ex.actualKg ?? null}

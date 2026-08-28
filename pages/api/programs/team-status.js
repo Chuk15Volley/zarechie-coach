@@ -3,11 +3,20 @@
 // Returns: hasSession, savedAt, feedback (RPE/feel from player self-report).
 // Auth: trainer API key. Does NOT duplicate HRV/recovery — that's in the main dashboard.
 
-import { redis } from '../../../lib/redis';
+import { redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
-import { feedbackKey, pfx, sessionKey } from '../../../lib/workspacePrefix';
+import { feedbackKey, liveCommandsKey, pfx, sessionKey } from '../../../lib/workspacePrefix';
 import { summarizePlayerWorkout } from '../../../lib/workoutProgress.mjs';
 import { parseSavedSession, sessionTrainingLabel } from '../../../lib/sessionLabel';
+import { sessionPlanFact } from '../../../lib/floorOperations.mjs';
+
+function parseCommands(raw) {
+  if (!raw) return [];
+  const values = Array.isArray(raw) ? raw.filter((_, index) => index % 2 === 1) : Object.values(raw);
+  return values.map(value => {
+    try { return typeof value === 'string' ? JSON.parse(value) : value; } catch (_) { return null; }
+  }).filter(command => command?.status === 'pending').sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+}
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
@@ -17,13 +26,20 @@ export default async function handler(req, res) {
   if (!Array.isArray(playerIds) || !date) return res.status(400).json({ error: 'playerIds and date required' });
 
   const status = {};
-  await Promise.all(playerIds.map(async id => {
+  const results = await redisPipeline(playerIds.flatMap(id => {
     const sid = String(id);
-    const [rawSession, rawFeedback, rawLog] = await Promise.all([
-      redis('get', sessionKey(workspace, sid, date)).catch(() => null),
-      redis('get', feedbackKey(workspace, sid, date)).catch(() => null),
-      redis('get', `${pfx(workspace)}:log:${sid}:${date}`).catch(() => null),
-    ]);
+    return [
+      ['GET', sessionKey(workspace, sid, date)],
+      ['GET', feedbackKey(workspace, sid, date)],
+      ['GET', `${pfx(workspace)}:log:${sid}:${date}`],
+      ['GET', `${pfx(workspace)}:session:actual:${sid}:${date}`],
+      ['HGETALL', liveCommandsKey(workspace, sid, date)],
+    ];
+  })).catch(() => []);
+  playerIds.forEach((id, index) => {
+    const sid = String(id);
+    const offset = index * 5;
+    const [rawSession, rawFeedback, rawLog, rawActual, rawCommands] = results.slice(offset, offset + 5);
 
     let hasSession = false;
     let savedAt = null;
@@ -50,14 +66,20 @@ export default async function handler(req, res) {
     if (rawLog) {
       try { log = typeof rawLog === 'string' ? JSON.parse(rawLog) : rawLog; } catch (_) {}
     }
+    let actual = null;
+    if (rawActual) {
+      try { actual = typeof rawActual === 'string' ? JSON.parse(rawActual) : rawActual; } catch (_) {}
+    }
     status[id] = {
       hasSession,
       savedAt,
       feedback,
       trainingLabel,
       live: hasSession ? summarizePlayerWorkout(session, log || {}, feedback) : null,
+      planFact: hasSession ? sessionPlanFact(session, actual, log) : null,
+      pendingCommands: parseCommands(rawCommands),
     };
-  }));
+  });
 
   return res.status(200).json({ status });
 }

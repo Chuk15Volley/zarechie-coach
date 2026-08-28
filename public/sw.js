@@ -1,4 +1,4 @@
-const CACHE = 'nk-coach-v3';
+const CACHE = 'nk-coach-v4';
 const STATIC_PATHS = new Set(['/nk-logo.jpg', '/favicon.svg']);
 
 self.addEventListener('install', event => {

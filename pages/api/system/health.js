@@ -11,11 +11,19 @@ export default async function handler(req, res) {
   const prefix = pfx(workspace);
   const started = Date.now();
   let redisOk = false;
-  try { redisOk = (await redis('ping')) === 'PONG'; } catch (_) {}
-  const [rawEvents, rawCounters] = await redisPipeline([
+  let redisReadWrite = false;
+  try {
+    redisOk = (await redis('ping')) === 'PONG';
+    const probeKey = `${prefix}:platform:health-probe`;
+    await redis('set', probeKey, started, 'EX', '30');
+    redisReadWrite = String(await redis('get', probeKey)) === String(started);
+    await redis('del', probeKey).catch(() => {});
+  } catch (_) {}
+  const [rawEvents, rawCounters, latestSnapshots] = await redisPipeline([
     ['LRANGE', `${prefix}:platform:events`, '0', '79'],
     ['HGETALL', `${prefix}:platform:counters`],
-  ]).catch(() => [[], {}]);
+    ['ZREVRANGE', `${prefix}:ops_snapshots`, '0', '0'],
+  ]).catch(() => [[], {}, []]);
   const events = parsePlatformEvents(rawEvents);
   const since = Date.now() - 24 * 60 * 60 * 1000;
   const recent = events.filter(event => new Date(event.at).getTime() >= since);
@@ -30,14 +38,21 @@ export default async function handler(req, res) {
     ai: Boolean(process.env.OPENAI_API_KEY),
     trainerKey: Boolean(process.env.TRAINER_API_KEY),
   };
-  const status = !redisOk || !config.redis ? 'error' : errors24h > 0 || !config.readySix || !config.ai ? 'warning' : 'healthy';
+  const status = !redisOk || !redisReadWrite || !config.redis ? 'error' : errors24h > 0 || !config.readySix || !config.ai ? 'warning' : 'healthy';
   res.setHeader('Cache-Control', 'no-store');
   return res.status(200).json({
     status,
     checkedAt: new Date().toISOString(),
     latencyMs: Date.now() - started,
-    services: { redis: redisOk, readySix: config.readySix, ai: config.ai, trainerAuth: config.trainerKey },
+    services: { redis: redisOk && redisReadWrite, readySix: config.readySix, ai: config.ai, trainerAuth: config.trainerKey },
+    checks: { redisPing: redisOk, redisReadWrite },
     readySixMode,
+    release: {
+      commit: process.env.VERCEL_GIT_COMMIT_SHA || 'local',
+      deploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
+      environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
+    },
+    latestSnapshotId: Array.isArray(latestSnapshots) ? latestSnapshots[0] || null : null,
     errors24h,
     warnings24h,
     counters: rawCounters || {},
