@@ -853,6 +853,13 @@ function compactTime(value) {
   return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
+function compactLoad(value) {
+  const number = Number(value) || 0;
+  if (!number) return '—';
+  if (number >= 1000) return `${(number / 1000).toFixed(number >= 10000 ? 0 : 1)} т`;
+  return `${Math.round(number)} кг`;
+}
+
 function addDaysToStr(dateStr, n) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + n);
@@ -2390,6 +2397,11 @@ export default function Home() {
   const [calWeekStart, setCalWeekStart] = useState(() => getMondayOf(todayISO()));
   const [calData, setCalData] = useState(null);
   const [calLoading, setCalLoading] = useState(false);
+  const calendarRequestRef = useRef(0);
+  const [weekBatchSelected, setWeekBatchSelected] = useState(new Set());
+  const [weekBatchDraft, setWeekBatchDraft] = useState(null);
+  const [weekBatchSaving, setWeekBatchSaving] = useState(false);
+  const [weekRollbackBatch, setWeekRollbackBatch] = useState(null);
 
   // Monthly planner
   const [plannerMonth, setPlannerMonth] = useState(() => todayISO().slice(0, 7));
@@ -2828,16 +2840,12 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainSection, apiKey, readinessDate, workspace]);
 
-  // Load team calendar when switching to calendar section or changing week.
+  // Load the week after resolving today's decision inputs. This keeps the load
+  // budget and batch-adaptation preview on the same recommendation snapshot.
   useEffect(() => {
     if (mainSection !== 'calendar' || !apiKey) return;
-    setCalLoading(true);
-    setCalData(null);
-    fetch(`/api/schedule/week?start=${calWeekStart}&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
-      .then(r => r.json())
-      .then(d => setCalData(d))
-      .catch(() => setCalData({ players: [], sessions: {}, dates: [] }))
-      .finally(() => setCalLoading(false));
+    setWeekBatchSelected(new Set());
+    loadCalendarWeek(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainSection, apiKey, calWeekStart, workspace]);
 
@@ -3203,8 +3211,9 @@ export default function Home() {
   }
 
   async function loadTeamStatus(statusDate = date, quiet = false, readinessPlayers = readinessData?.players || []) {
-    if (!apiKey || !players.length) return;
+    if (!apiKey || !players.length) return {};
     if (!quiet) setTeamStatusLoading(true);
+    let loadedStatus = {};
     try {
       const res = await fetch('/api/programs/team-status', {
         method: 'POST',
@@ -3213,11 +3222,132 @@ export default function Home() {
       });
       if (res.ok) {
         const d = await res.json();
-        setTeamStatus(d.status || {});
+        loadedStatus = d.status || {};
+        setTeamStatus(loadedStatus);
         setLiveUpdatedAt(new Date().toISOString());
       }
     } catch (_) {}
     if (!quiet) setTeamStatusLoading(false);
+    return loadedStatus;
+  }
+
+  async function loadCalendarWeek(quiet = false) {
+    if (!apiKey) return;
+    const requestId = ++calendarRequestRef.current;
+    const requestedWorkspace = workspace;
+    const requestedWeek = calWeekStart;
+    if (!quiet) setCalLoading(true);
+    try {
+      const readinessResponse = await fetch(`/api/team/readiness?date=${todayISO()}&workspace=${requestedWorkspace}`, { headers: { 'x-api-key': apiKey } });
+      const readiness = readinessResponse.ok ? await readinessResponse.json() : { players: [] };
+      const statusResponse = await fetch('/api/programs/team-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ playerIds: players.map(player => player.id), date: todayISO(), workspace: requestedWorkspace, readinessPlayers: readiness.players || [] }),
+      });
+      const statusBody = statusResponse.ok ? await statusResponse.json() : { status: {} };
+      const statuses = statusBody.status || {};
+      const recommendations = Object.fromEntries(Object.entries(statuses || {}).filter(([, status]) => status?.adaptation).map(([id, status]) => [id, status.adaptation]));
+      const response = await fetch('/api/schedule/week', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ start: requestedWeek, workspace: requestedWorkspace, recommendations }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось загрузить неделю');
+      if (requestId !== calendarRequestRef.current) return;
+      setReadinessData(readiness);
+      setTeamStatus(statuses);
+      setLiveUpdatedAt(new Date().toISOString());
+      setCalData(data);
+    } catch (calendarError) {
+      if (requestId === calendarRequestRef.current) {
+        if (!quiet) setCalData({ players: [], sessions: {}, athletes: [], dates: [], summary: {}, latestBatch: null });
+        setError(calendarError.message);
+      }
+    } finally {
+      if (!quiet && requestId === calendarRequestRef.current) setCalLoading(false);
+    }
+  }
+
+  function toggleWeekBatch(playerId, date) {
+    const key = `${playerId}:${date}`;
+    setWeekBatchSelected(previous => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  async function createWeekAdaptationBatch() {
+    if (!weekBatchSelected.size || weekBatchSaving) return;
+    const items = Array.from(weekBatchSelected).map(key => {
+      const separator = key.lastIndexOf(':');
+      const playerIdValue = key.slice(0, separator);
+      const dateValue = key.slice(separator + 1);
+      const athlete = calData?.athletes?.find(item => String(item.player.id) === playerIdValue);
+      return {
+        playerId: playerIdValue,
+        playerName: athlete?.player?.name || '',
+        date: dateValue,
+        recommendation: teamStatus[playerIdValue]?.adaptation,
+      };
+    }).filter(item => item.playerId && item.recommendation);
+    if (!items.length) return;
+    setWeekBatchSaving(true);
+    try {
+      const response = await fetch('/api/programs/adaptation-batch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ action: 'create', workspace, items }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось собрать пакет адаптации');
+      setWeekBatchDraft(data.batch);
+    } catch (batchError) {
+      setError(batchError.message);
+    } finally {
+      setWeekBatchSaving(false);
+    }
+  }
+
+  async function confirmWeekAdaptationBatch() {
+    if (!weekBatchDraft || weekBatchSaving) return;
+    setWeekBatchSaving(true);
+    try {
+      const response = await fetch('/api/programs/adaptation-batch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ action: 'commit', workspace, batchId: weekBatchDraft.batchId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Пакет не применён');
+      setWeekBatchDraft(null);
+      setWeekBatchSelected(new Set());
+      await loadCalendarWeek(true);
+    } catch (batchError) {
+      setError(batchError.message);
+    } finally {
+      setWeekBatchSaving(false);
+    }
+  }
+
+  async function rollbackWeekAdaptationBatch() {
+    if (!weekRollbackBatch || weekBatchSaving) return;
+    setWeekBatchSaving(true);
+    try {
+      const response = await fetch('/api/programs/adaptation-batch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ action: 'rollback', workspace, batchId: weekRollbackBatch.batchId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Пакет не удалось откатить');
+      setWeekRollbackBatch(null);
+      await loadCalendarWeek(true);
+    } catch (batchError) {
+      setError(batchError.message);
+    } finally {
+      setWeekBatchSaving(false);
+    }
   }
 
   function openReturnToPlay(player, plan = null) {
@@ -5597,15 +5727,16 @@ export default function Home() {
           {/* ── Team calendar ── */}
           {mainSection === 'calendar' && (
             <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
-              {/* Header */}
-              <div className="mb-6 flex items-center justify-between">
+              <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <div>
-                  <h2 className="text-xl font-black tracking-tight text-white">Неделя команды</h2>
-                  <p className="mt-0.5 text-[12px] text-slate-600">
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200/45">План → факт → решение</div>
+                  <h2 className="mt-1 text-2xl font-black tracking-tight text-white">Неделя команды</h2>
+                  <p className="mt-1 text-[12px] text-slate-500">
                     {calWeekStart && `${calWeekStart.slice(5).replace('-', '/')} — ${addDaysToStr(calWeekStart, 6).slice(5).replace('-', '/')}`}
+                    {' · '}персональный бюджет строится по медиане последних недель
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {calLoading && <Loader2 size={14} className="animate-spin text-slate-600" />}
                   <button
                     type="button"
@@ -5628,22 +5759,51 @@ export default function Home() {
                   >
                     <ChevronRight size={15} />
                   </button>
+                  <button type="button" onClick={() => loadCalendarWeek(false)} disabled={calLoading} className="grid h-9 w-9 place-items-center rounded-xl border border-white/[0.08] text-slate-500 transition hover:bg-white/[0.05] hover:text-white disabled:opacity-40" title="Обновить неделю">
+                    <RefreshCw size={14} className={calLoading ? 'animate-spin' : ''} />
+                  </button>
+                  {calData?.latestBatch?.rollbackAvailable && (
+                    <button type="button" onClick={() => setWeekRollbackBatch(calData.latestBatch)} className="min-h-9 rounded-xl border border-amber-300/15 bg-amber-300/[0.05] px-3 text-[10px] font-black text-amber-100 transition hover:bg-amber-300/[0.1]">
+                      <span className="inline-flex items-center gap-1.5"><RotateCcw size={12} /> Откатить последний пакет</span>
+                    </button>
+                  )}
+                  <button type="button" onClick={createWeekAdaptationBatch} disabled={!weekBatchSelected.size || weekBatchSaving} className="min-h-9 rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 px-4 text-[11px] font-black text-[#071013] shadow-[0_10px_30px_rgba(94,234,212,0.12)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35">
+                    {weekBatchSaving ? <Loader2 size={13} className="inline animate-spin" /> : <SlidersHorizontal size={13} className="inline" />} {weekBatchSelected.size ? `Адаптировать пакет · ${weekBatchSelected.size}` : 'Выберите программы сегодня'}
+                  </button>
                 </div>
               </div>
 
+              {calData?.summary && (
+                <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  {[
+                    { label: 'Сессии', value: calData.summary.sessions || 0, sub: `${calData.summary.completed || 0} завершено`, tone: 'text-white' },
+                    { label: 'Плановый объём', value: compactLoad(calData.summary.plannedTonnage), sub: `${calData.summary.plannedSets || 0} подходов`, tone: 'text-cyan-100' },
+                    { label: 'Бюджет команды', value: `${calData.summary.utilizationPercent || 0}%`, sub: compactLoad(calData.summary.budgetTonnage), tone: calData.summary.utilizationPercent > 103 ? 'text-rose-300' : calData.summary.utilizationPercent >= 90 ? 'text-amber-200' : 'text-emerald-200' },
+                    { label: 'Конфликты', value: calData.summary.conflicts || 0, sub: calData.summary.overBudget ? `${calData.summary.overBudget} выше бюджета` : `${calData.summary.calibrating || 0} калибруются`, tone: calData.summary.conflicts ? 'text-amber-200' : 'text-emerald-200' },
+                  ].map(card => (
+                    <div key={card.label} className="rounded-2xl border border-white/[0.07] bg-gradient-to-br from-white/[0.035] to-transparent p-4">
+                      <div className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-600">{card.label}</div>
+                      <div className={`mt-2 text-2xl font-black tabular-nums ${card.tone}`}>{card.value}</div>
+                      <div className="mt-1 text-[10px] text-slate-600">{card.sub}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {calData && calData.players.length > 0 ? (
-                <div className="overflow-x-auto rounded-2xl border border-white/[0.07] bg-white/[0.02]">
-                  <table className="w-full min-w-[580px] border-collapse">
+                <>
+                <div className="overflow-x-auto rounded-2xl border border-white/[0.07] bg-[#091116]/80 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+                  <table className="w-full min-w-[1180px] border-collapse">
                     <thead>
                       <tr className="border-b border-white/[0.06]">
-                        <th className="w-44 px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-700">Игрок</th>
+                        <th className="w-64 px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-600">Игрок · бюджет</th>
                         {(calData.dates || []).map(d => {
                           const dow = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][new Date(d + 'T12:00:00Z').getUTCDay()];
                           const isToday = d === todayISO();
                           return (
-                            <th key={d} className={`px-1 py-3 text-center ${isToday ? 'text-accent' : 'text-slate-700'}`}>
+                            <th key={d} className={`min-w-[128px] px-2 py-3 text-left ${isToday ? 'bg-cyan-300/[0.035] text-cyan-200' : 'text-slate-600'}`}>
                               <div className="text-[10px] font-black uppercase tracking-wide">{dow}</div>
-                              <div className={`mt-0.5 text-[9px] font-semibold ${isToday ? 'text-accent/60' : 'text-slate-800'}`}>
+                              <div className={`mt-0.5 text-[9px] font-semibold ${isToday ? 'text-cyan-200/50' : 'text-slate-700'}`}>
                                 {d.slice(5).replace('-', '/')}
                               </div>
                             </th>
@@ -5652,28 +5812,54 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody>
-                      {calData.players.map((p, pi) => (
-                        <tr key={p.id} className={`border-b border-white/[0.03] transition hover:bg-white/[0.02] ${pi % 2 !== 0 ? 'bg-white/[0.01]' : ''}`}>
-                          <td className="px-4 py-2">
+                      {(calData.athletes || []).map((athlete, pi) => {
+                        const p = athlete.player;
+                        const budgetTone = athlete.budget.status === 'over' ? 'bg-rose-300' : athlete.budget.status === 'near' ? 'bg-amber-300' : athlete.budget.status === 'calibrating' ? 'bg-slate-500' : 'bg-emerald-300';
+                        return (
+                        <tr key={p.id} className={`border-b border-white/[0.035] align-top transition hover:bg-white/[0.018] ${pi % 2 !== 0 ? 'bg-white/[0.008]' : ''}`}>
+                          <td className="px-4 py-3">
                             <button
                               type="button"
                               onClick={() => { const fp = players.find(x => x.id === p.id); if (fp) { selectPlayer(fp); setMainSection('workouts'); } }}
-                              className="flex items-center gap-2.5 text-left transition hover:opacity-80"
+                              className="flex w-full items-center gap-2.5 text-left transition hover:opacity-80"
                             >
-                              <div className={`h-7 w-7 shrink-0 flex items-center justify-center rounded-lg text-[10px] font-black ${
+                              <div className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-xl text-[10px] font-black ${
                                 playerId === p.id ? 'bg-accent text-[#060a0e]' : 'bg-white/[0.07] text-slate-500'
                               }`}>{initials(p.name)}</div>
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <div className="text-[12px] font-semibold text-slate-300 truncate">{p.name}</div>
-                                <div className="text-[9px] text-slate-700 truncate">{p.position}</div>
+                                <div className="text-[9px] text-slate-700 truncate">{p.position || 'Игрок'}</div>
                               </div>
                             </button>
+                            <div className="mt-3">
+                              <div className="flex items-center justify-between text-[9px]"><span className="font-bold text-slate-600">Бюджет</span><span className={`font-black tabular-nums ${athlete.budget.status === 'over' ? 'text-rose-300' : athlete.budget.status === 'near' ? 'text-amber-200' : 'text-slate-400'}`}>{athlete.budget.utilizationPercent}%</span></div>
+                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.05]"><div className={`h-full rounded-full ${budgetTone}`} style={{ width: `${Math.min(100, athlete.budget.utilizationPercent)}%` }} /></div>
+                              <div className="mt-1.5 flex items-center justify-between text-[8px] text-slate-700"><span>{athlete.budget.source}</span><span>{compactLoad(athlete.budget.tonnage)}</span></div>
+                              {athlete.budget.rtp && <div className="mt-1 text-[8px] font-bold text-violet-300/60">RTP {athlete.budget.rtp.phase} · лимит {athlete.budget.rtp.volumeCap}%</div>}
+                            </div>
                           </td>
-                          {(calData.dates || []).map(d => {
-                            const hasSesh = (calData.sessions[p.id] || []).includes(d);
+                          {(athlete.days || []).map(day => {
+                            const d = day.date;
                             const isToday = d === todayISO();
+                            const dayConflicts = (athlete.conflicts || []).filter(conflict => conflict.date === d);
+                            const generalConflict = (athlete.conflicts || []).some(conflict => !conflict.date);
+                            const recommendation = teamStatus[p.id]?.adaptation;
+                            const selectable = isToday && day.hasSession && !day.started && !day.completed && Boolean(recommendation);
+                            const selectionKey = `${p.id}:${d}`;
+                            const selected = weekBatchSelected.has(selectionKey);
                             return (
-                              <td key={d} className={`px-1 py-2 text-center ${isToday ? 'bg-accent/[0.025]' : ''}`}>
+                              <td key={d} className={`border-l border-white/[0.025] px-2 py-3 ${isToday ? 'bg-cyan-300/[0.025]' : ''}`}>
+                                {day.hasSession ? <div className={`min-h-[94px] rounded-xl border p-2.5 transition ${selected ? 'border-cyan-300/35 bg-cyan-300/[0.08]' : dayConflicts.length || generalConflict ? 'border-amber-300/15 bg-amber-300/[0.025]' : 'border-white/[0.055] bg-white/[0.018]'}`}>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <button type="button" onClick={() => { const fp = players.find(x => x.id === p.id); if (fp) { selectPlayer(fp); setDate(d); setMainSection('workouts'); } }} className="min-w-0 flex-1 text-left">
+                                      <div className="truncate text-[10px] font-black text-slate-300">{day.label}</div>
+                                    </button>
+                                    {selectable && <button type="button" onClick={() => toggleWeekBatch(String(p.id), d)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg border transition ${selected ? 'border-cyan-200/40 bg-cyan-200 text-[#071013]' : 'border-white/[0.09] text-slate-600 hover:text-cyan-200'}`} title="Добавить в пакет адаптации">{selected ? <Check size={12} strokeWidth={3} /> : <Square size={12} />}</button>}
+                                  </div>
+                                  <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-600"><span>{day.plannedSets} подх.</span><span>·</span><span>{compactLoad(day.plannedTonnage)}</span></div>
+                                  {day.completed ? <div className="mt-2"><div className="flex items-center justify-between text-[8px]"><span className="font-bold text-emerald-200/60">Факт</span><span className="text-slate-500">{day.completionPercent}%</span></div><div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-emerald-300" style={{ width: `${Math.min(100, day.completionPercent)}%` }} /></div></div> : <div className={`mt-2 text-[8px] font-semibold ${day.started ? 'text-cyan-200/60' : 'text-slate-700'}`}>{day.started ? 'Выполняется сейчас' : 'Запланировано'}</div>}
+                                  {(dayConflicts.length > 0 || generalConflict) && <div className="mt-2 flex items-center gap-1 text-[8px] font-bold text-amber-200/70"><AlertTriangle size={9} /> {dayConflicts[0]?.title || 'Проверьте бюджет недели'}</div>}
+                                </div> : (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -5681,22 +5867,32 @@ export default function Home() {
                                     if (fp) { selectPlayer(fp); setDate(d); setMainSection('workouts'); }
                                   }}
                                   title={`${p.name} · ${d}`}
-                                  className={`mx-auto flex h-8 w-8 items-center justify-center rounded-xl transition ${
-                                    hasSesh
-                                      ? 'bg-emerald-500/[0.15] text-emerald-400 hover:bg-emerald-500/[0.25]'
-                                      : 'text-slate-800 hover:bg-white/[0.05] hover:text-slate-500'
-                                  }`}
+                                  className="flex min-h-[94px] w-full items-center justify-center rounded-xl border border-dashed border-white/[0.035] text-slate-800 transition hover:border-white/[0.08] hover:bg-white/[0.02] hover:text-slate-600"
                                 >
-                                  {hasSesh ? <Check size={13} strokeWidth={2.5} /> : <span className="text-[10px]">·</span>}
-                                </button>
+                                  <Plus size={13} />
+                                </button>)}
                               </td>
                             );
                           })}
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
+                {(calData.summary?.conflicts || 0) > 0 && (
+                  <div className="mt-5 rounded-2xl border border-amber-300/10 bg-amber-300/[0.025] p-4">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100/70"><AlertTriangle size={13} /> Контрольные точки недели</div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {(calData.athletes || []).flatMap(athlete => (athlete.conflicts || []).map(conflict => ({ ...conflict, player: athlete.player }))).slice(0, 9).map((conflict, index) => (
+                        <div key={`${conflict.player.id}-${conflict.code}-${conflict.date || index}`} className="rounded-xl border border-white/[0.055] bg-black/10 px-3 py-2.5">
+                          <div className="text-[10px] font-black text-slate-300">{conflict.player.name} · {conflict.title}</div>
+                          <div className="mt-1 text-[9px] leading-relaxed text-slate-600">{conflict.date ? `${conflict.date.slice(5).replace('-', '/')} · ` : ''}{conflict.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                </>
               ) : !calLoading ? (
                 <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
                   <CalendarDays size={40} className="text-slate-800" />
@@ -5704,6 +5900,21 @@ export default function Home() {
                   <p className="text-[12px] text-slate-700">Сначала добавь игроков и сохрани тренировки</p>
                 </div>
               ) : null}
+
+              {weekBatchDraft && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#020609]/85 p-4 backdrop-blur-md">
+                  <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-cyan-300/15 bg-[#0a141a] p-6 shadow-[0_40px_120px_rgba(0,0,0,0.6)]">
+                    <div className="flex items-start justify-between gap-4"><div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/55">Атомарный пакет · {weekBatchDraft.members.length} программ</div><h3 className="mt-1 text-xl font-black text-white">Проверка командной адаптации</h3><p className="mt-1 text-[11px] leading-relaxed text-slate-500">Все изменения применятся одной транзакцией. Если хотя бы одна программа изменилась, пакет целиком будет остановлен.</p></div><button type="button" onClick={() => setWeekBatchDraft(null)} disabled={weekBatchSaving} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/[0.08] text-slate-500"><X size={16} /></button></div>
+                    <div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-2xl border border-white/[0.07] bg-black/15 p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">До</div><div className="mt-2 text-xl font-black text-white">{weekBatchDraft.members.reduce((sum, member) => sum + (member.before?.sets || 0), 0)} подходов</div><div className="mt-1 text-[10px] text-slate-600">{weekBatchDraft.members.reduce((sum, member) => sum + (member.before?.loadKgSets || 0), 0)} кг·подх.</div></div><div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.045] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-cyan-200/50">После</div><div className="mt-2 text-xl font-black text-cyan-100">{weekBatchDraft.members.reduce((sum, member) => sum + (member.after?.sets || 0), 0)} подходов</div><div className="mt-1 text-[10px] text-cyan-200/45">{weekBatchDraft.members.reduce((sum, member) => sum + (member.after?.loadKgSets || 0), 0)} кг·подх.</div></div></div>
+                    <div className="mt-4 space-y-2">{weekBatchDraft.members.map(member => <div key={`${member.playerId}:${member.date}`} className="flex items-center gap-3 rounded-2xl border border-white/[0.065] bg-white/[0.02] p-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/[0.06] text-[10px] font-black text-slate-400">{initials(member.playerName)}</div><div className="min-w-0 flex-1"><div className="truncate text-[11px] font-black text-slate-200">{member.playerName}</div><div className="mt-0.5 text-[9px] text-slate-600">{member.recommendation?.label} · {member.recommendation?.volumePercent}% объёма</div></div><div className="shrink-0 text-right text-[9px] text-slate-600"><div>{member.before?.sets || 0} → <span className="font-black text-cyan-200">{member.after?.sets || 0}</span></div><div className="mt-0.5">подходов</div></div></div>)}</div>
+                    <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setWeekBatchDraft(null)} disabled={weekBatchSaving} className="min-h-11 rounded-xl border border-white/[0.08] px-5 text-[11px] font-black text-slate-400">Отменить</button><button type="button" onClick={confirmWeekAdaptationBatch} disabled={weekBatchSaving} className="min-h-11 rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 px-6 text-[11px] font-black text-[#071013] disabled:opacity-50">{weekBatchSaving ? <Loader2 size={14} className="inline animate-spin" /> : <Shield size={14} className="inline" />} Подтвердить весь пакет</button></div>
+                  </div>
+                </div>, document.body
+              )}
+
+              {weekRollbackBatch && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#020609]/85 p-4 backdrop-blur-md"><div className="w-full max-w-md rounded-[26px] border border-amber-300/15 bg-[#0a141a] p-6 shadow-2xl"><div className="grid h-11 w-11 place-items-center rounded-2xl border border-amber-300/15 bg-amber-300/[0.06] text-amber-200"><RotateCcw size={19} /></div><h3 className="mt-4 text-xl font-black text-white">Откатить пакет?</h3><p className="mt-2 text-[11px] leading-relaxed text-slate-500">Будут восстановлены {weekRollbackBatch.members?.length || 0} исходных программ. Откат выполнится целиком и только если после применения ни одна программа не менялась.</p><div className="mt-5 flex gap-2"><button type="button" onClick={() => setWeekRollbackBatch(null)} disabled={weekBatchSaving} className="min-h-11 flex-1 rounded-xl border border-white/[0.08] text-[11px] font-black text-slate-400">Оставить</button><button type="button" onClick={rollbackWeekAdaptationBatch} disabled={weekBatchSaving} className="min-h-11 flex-1 rounded-xl border border-amber-300/20 bg-amber-300/[0.08] text-[11px] font-black text-amber-100 disabled:opacity-50">{weekBatchSaving ? <Loader2 size={14} className="inline animate-spin" /> : 'Откатить пакет'}</button></div></div></div>, document.body
+              )}
             </div>
           )}
 
