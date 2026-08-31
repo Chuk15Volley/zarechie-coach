@@ -8,6 +8,7 @@ import {
   verifySessionToken,
 } from '../lib/auth.js';
 import loginHandler from '../pages/api/auth/login.js';
+import sessionHandler from '../pages/api/auth/session.js';
 
 function request({ method = 'GET', headers = {} } = {}) {
   return { method, headers, socket: { remoteAddress: '127.0.0.1' } };
@@ -103,4 +104,27 @@ test('login exchanges the trainer key for a hardened HttpOnly production cookie'
   restoreEnv('NODE_ENV', previousNodeEnv);
   restoreEnv('KV_REST_API_URL', previousRedisUrl);
   restoreEnv('KV_REST_API_TOKEN', previousRedisToken);
+});
+
+test('authenticated session heartbeat rotates the HttpOnly cookie', () => {
+  const previousKey = process.env.TRAINER_API_KEY;
+  const previousSecret = process.env.SESSION_SECRET;
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.TRAINER_API_KEY = 'trainer-key-for-heartbeat';
+  process.env.SESSION_SECRET = 'fedcba9876543210fedcba9876543210';
+  process.env.NODE_ENV = 'production';
+  const token = createSessionToken({ ttlSeconds: 3600 });
+  const response = responseMock();
+
+  sessionHandler(request({ headers: { cookie: `${SESSION_COOKIE}=${encodeURIComponent(token)}` } }), response);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.payload.authenticated, true);
+  assert.match(response.headers['set-cookie'], /^kps_session=/);
+  assert.match(response.headers['set-cookie'], /; HttpOnly; Secure; SameSite=Strict;/);
+  assert.doesNotMatch(response.headers['set-cookie'], new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  restoreEnv('TRAINER_API_KEY', previousKey);
+  restoreEnv('SESSION_SECRET', previousSecret);
+  restoreEnv('NODE_ENV', previousNodeEnv);
 });

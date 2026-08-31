@@ -61,6 +61,8 @@ import { canonicalExerciseId } from '../lib/exerciseIdentity.mjs';
 import { buildAttentionQueue, buildStationRotation } from '../lib/floorOperations.mjs';
 import { buildTodayDecisionCenter, normalizeReturnToPlay, RTP_PHASES } from '../lib/todayDecisionCenter.mjs';
 
+const SESSION_HEARTBEAT_MS = 5 * 60 * 1000;
+
 // Map a camp focus phase to a representative training week (for auto-weight %).
 function weekFromFocus(focus) {
   const f = String(focus || '');
@@ -2173,7 +2175,9 @@ export default function Home() {
   const [authChecking, setAuthChecking] = useState(true);
   const [loginSecret, setLoginSecret] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [reauthNotice, setReauthNotice] = useState('');
   const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const pendingAuthRetryRef = useRef(null);
   const [players, setPlayers] = useState([]);
   const [playersError, setPlayersError] = useState('');
   const [playerId, setPlayerId] = useState('');
@@ -2333,6 +2337,33 @@ export default function Home() {
   useEffect(() => {
     setSidebarCollapsed(window.localStorage.getItem('kps-sidebar-collapsed') === '1');
   }, []);
+
+  // Keep long-running coaching sessions valid and re-check immediately when a
+  // suspended Safari tab becomes active again. Network failures do not sign the
+  // coach out; only an authoritative 401 requests re-authentication.
+  useEffect(() => {
+    if (apiKey !== 'session') return undefined;
+    let cancelled = false;
+    const renew = async () => {
+      try {
+        const response = await fetch('/api/auth/session', { cache: 'no-store' });
+        if (!cancelled && response.status === 401) {
+          requestReauthentication(null, 'Сессия истекла. Войдите снова — текущая программа останется на экране.');
+        }
+      } catch (_) {}
+    };
+    const onVisibility = () => { if (document.visibilityState === 'visible') renew(); };
+    const timer = setInterval(renew, SESSION_HEARTBEAT_MS);
+    window.addEventListener('focus', renew);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener('focus', renew);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey]);
 
   function toggleDesktopSidebar() {
     setSidebarCollapsed(current => {
@@ -4010,7 +4041,12 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
         body: JSON.stringify({ playerId, date: item.date, session: item.session, player: item.player, dataSummary: '', dayGoal: item.label, focus: item.focus, trainingType: item.trainingType, trainingLabel: item.label, quality: item.quality, workspace }),
       });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+      if (res.status === 401) {
+        setWeekPlan(prev => prev.map((p, i) => i === idx ? { ...p, saving: false } : p));
+        requestReauthentication(() => handleSaveWeekSession(idx), 'Сессия истекла. Войдите снова — тренировка будет сохранена автоматически.');
+        return;
+      }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `Ошибка сохранения (${res.status})`); }
       setWeekPlan(prev => prev.map((p, i) => i === idx ? { ...p, saving: false, saved: true } : p));
       // Refresh volume stats
       fetch(`/api/players/volume?playerId=${encodeURIComponent(playerId)}&days=7&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
@@ -4062,8 +4098,14 @@ export default function Home() {
           workspace,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        requestReauthentication(() => handleSave(), 'Сессия истекла. Войдите снова — программа будет сохранена автоматически.');
+        return;
+      }
       if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
+      pendingAuthRetryRef.current = null;
+      setReauthNotice('');
       setError('');
       const savedQuality = data.quality || meta.quality || null;
       if (data.quality) setMeta(prev => prev ? { ...prev, quality: data.quality } : prev);
@@ -4425,6 +4467,8 @@ export default function Home() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || `Ошибка авторизации (${response.status})`);
       setLoginSecret('');
+      setLoginError('');
+      setReauthNotice('');
       setApiKey('session');
     } catch (loginFailure) {
       setLoginError(loginFailure.message || 'Не удалось войти');
@@ -4435,11 +4479,28 @@ export default function Home() {
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    pendingAuthRetryRef.current = null;
+    setReauthNotice('');
     setApiKey('');
     setPlayers([]);
     setPlayerId('');
     setSession(null);
   }
+
+  function requestReauthentication(retry = null, message = 'Сессия истекла. Войдите снова, чтобы продолжить.') {
+    if (retry) pendingAuthRetryRef.current = retry;
+    setReauthNotice(message);
+    setLoginError('');
+    setApiKey('');
+  }
+
+  useEffect(() => {
+    if (apiKey !== 'session' || !pendingAuthRetryRef.current) return undefined;
+    const retry = pendingAuthRetryRef.current;
+    pendingAuthRetryRef.current = null;
+    const timer = setTimeout(() => Promise.resolve(retry()).catch(error => setError(error.message || 'Не удалось повторить сохранение')), 0);
+    return () => clearTimeout(timer);
+  }, [apiKey]);
 
   if (authChecking) {
     return (
@@ -4480,6 +4541,11 @@ export default function Home() {
               <p className="mt-1.5 text-[12px] leading-relaxed text-slate-500">Введите ключ тренера. Он используется один раз и не сохраняется в браузере.</p>
             </div>
             <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500" htmlFor="trainer-key">Ключ доступа</label>
+            {reauthNotice && (
+              <div className="mb-3 mt-2 flex items-start gap-2 rounded-xl border border-amber-300/20 bg-amber-300/[0.07] px-3 py-2.5 text-[12px] leading-relaxed text-amber-100">
+                <Shield size={14} className="mt-0.5 shrink-0" /> {reauthNotice}
+              </div>
+            )}
             <input
               id="trainer-key"
               type="password"
