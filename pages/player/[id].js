@@ -1172,10 +1172,10 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content={player?.name || 'Тренировка'} />
-        <link rel="manifest" href={`/api/player-manifest/${token}`} />
-        <link rel="apple-touch-icon" href="/nk-logo.jpg" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/nk-logo.jpg" />
+        <meta key="application-name" name="application-name" content="NK TEAM SYSTEM" />
+        <meta key="apple-title" name="apple-mobile-web-app-title" content="NK TEAM SYSTEM" />
+        <link key="manifest" rel="manifest" href={`/api/player-manifest/${token}`} />
+        <link key="apple-icon" rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
       </Head>
 
       {/* Branded ambient background */}
