@@ -33,6 +33,50 @@ test('ReadySix stays legacy until primary mode is explicitly enabled', () => {
   assert.equal(readySixIntegrationMode('nkperf', { ...environment, READYSIX_NK_MODE: 'legacy' }), 'legacy');
 });
 
+test('unknown workspaces never select another team or make a request', async () => {
+  for (const workspace of [undefined, null, '', 'NK', 'other-team', '__proto__', 'constructor', {}, ['nkperf']]) {
+    assert.throws(() => readySixIntegrationMode(workspace, environment), error => error.code === 'READYSIX_WORKSPACE_INVALID');
+    let calls = 0;
+    await assert.rejects(getReadySixRoster(workspace, '2026-09-07', {
+      environment, fetchImpl: async () => { calls++; },
+    }), error => error.code === 'READYSIX_WORKSPACE_INVALID');
+    assert.equal(calls, 0);
+  }
+});
+
+test('mistyped explicit modes cannot silently fall back to legacy data', () => {
+  for (const mode of ['', 'primray', 'disabled', false]) {
+    assert.throws(() => readySixIntegrationMode('nkperf', {...environment, READYSIX_NK_MODE: mode}), error => error.code === 'READYSIX_MODE_INVALID');
+    assert.throws(() => readySixIntegrationMode('zarechie', {READYSIX_INTEGRATION_MODE: mode}), error => error.code === 'READYSIX_MODE_INVALID');
+  }
+  assert.equal(readySixIntegrationMode('nkperf', {...environment, READYSIX_NK_MODE: ' PRIMARY '}), 'primary');
+  assert.equal(readySixIntegrationMode('nkperf', {READYSIX_NK_MODE:'legacy', READYSIX_INTEGRATION_MODE:'bad'}), 'legacy');
+});
+
+test('credential-bearing and ambiguous URLs fail before network access', async () => {
+  for (const READYSIX_URL of ['https://user:secret@readysix.example', 'https://readysix.example?key=secret', 'https://readysix.example#secret', 'file:///tmp/example']) {
+    let calls = 0;
+    await assert.rejects(getReadySixRoster('nkperf', '2026-09-07', {
+      environment: {...environment, READYSIX_URL}, fetchImpl: async () => { calls++; },
+    }), error => error.code === 'READYSIX_URL_INVALID' && !error.message.includes('secret'));
+    assert.equal(calls, 0);
+  }
+});
+
+test('transport forbids redirects and never includes upstream secrets in its errors', async () => {
+  let calls = 0;
+  await assert.rejects(getReadySixRoster('nkperf', '2026-09-07', {
+    environment,
+    fetchImpl: async (_url, options) => {
+      calls++;
+      assert.equal(options.redirect, 'error');
+      assert.equal(options.headers['x-api-key'], 'nk-secret');
+      throw new TypeError('redirect failed: nk-secret');
+    },
+  }), error => error.code === 'READYSIX_UNAVAILABLE' && !error.message.includes('nk-secret'));
+  assert.equal(calls, 1, 'failed transport must not retry with another team credential');
+});
+
 test('workspace credentials are selected server-side and organization mismatch fails closed', async () => {
   let observedKey = null;
   await getReadySixRoster('nkperf', '2026-08-27', {
