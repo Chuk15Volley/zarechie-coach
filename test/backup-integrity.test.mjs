@@ -27,3 +27,10 @@ test('latest archive is selected across ALL Blob pages before applying limit', a
 test('broken pagination fails instead of silently selecting an old archive', async () => {
   await assert.rejects(newestBackupBlobs(async () => ({ blobs: [], hasMore: true }), 'backups/', 1));
 });
+test('exercise disappearance is detected even when other cards are added', () => {
+  const baseline = sessionInventory({...snapshot, entries: [...snapshot.entries, {key:'ex:lib:archived',type:'hash',ttlMs:-1}]});
+  assert.deepEqual(baseline.libraryIds,['archived']);
+  assert.equal(compareSessionInventory(baseline,{...baseline,libraryIds:['new']}).ok,false);
+  assert.equal(compareSessionInventory(baseline,{...baseline,libraryIds:['new','archived']}).ok,true);
+  assert.deepEqual(sessionInventory({...snapshot,workspace:'nkperf'}).libraryIds,[]);
+});
