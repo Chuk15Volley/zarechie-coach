@@ -1,7 +1,7 @@
 import { isAuthorized } from '../../../lib/auth';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { parsePlatformEvents } from '../../../lib/platformTelemetry';
-import { backupIsConfigured } from '../../../lib/platformBackup';
+import { backupIsConfigured, checkHistoryIntegrity } from '../../../lib/platformBackup';
 import { pfx } from '../../../lib/workspacePrefix';
 import { readySixIntegrationMode } from '../../../lib/readySixClient';
 import { readinessLatencyKey, readinessLatencyRollupKeys, summarizeReadinessTelemetry } from '../../../lib/readinessTelemetry';
@@ -60,6 +60,7 @@ export default async function handler(req, res) {
     backup: backupIsConfigured(),
   };
   const latestBackup = parseJson(rawBackup);
+  const historyIntegrity = await checkHistoryIntegrity(workspace).catch(() => ({ ok: false, reason: 'verification_failed' }));
   const backupAgeHours = latestBackup?.createdAt ? Math.max(0, (Date.now() - new Date(latestBackup.createdAt).getTime()) / 3600000) : null;
   const backupFresh = config.backup && backupAgeHours != null && backupAgeHours <= 36;
   const latestRecovery = parseJson(rawRecovery);
@@ -67,7 +68,7 @@ export default async function handler(req, res) {
   const recoveryFresh = latestRecovery?.status === 'ok' && recoveryAgeHours != null && recoveryAgeHours <= 8 * 24;
   const recoveryCritical = latestRecovery?.status === 'error' || (recoveryAgeHours != null && recoveryAgeHours > 10 * 24);
   const readinessPerformance = summarizeReadinessTelemetry(rawReadinessLatency, rawReadinessRollups);
-  const status = !redisOk || !redisReadWrite || !config.redis || (backupAgeHours != null && backupAgeHours > 72) || recoveryCritical
+  const status = !historyIntegrity.ok || !redisOk || !redisReadWrite || !config.redis || (backupAgeHours != null && backupAgeHours > 72) || recoveryCritical
     ? 'error'
     : errors24h > 0 || !config.readySix || !config.ai || !backupFresh || !recoveryFresh || !readinessPerformance.healthy ? 'warning' : 'healthy';
   res.setHeader('Cache-Control', 'no-store');
@@ -82,9 +83,11 @@ export default async function handler(req, res) {
       backupConfigured: config.backup,
       backupFresh,
       recoveryFresh,
+      historyIntegrity: historyIntegrity.ok,
       readinessP95: readinessPerformance.enoughSamples ? readinessPerformance.healthy : null,
     },
     readinessPerformance,
+    historyIntegrity,
     alerting: operationalAlertStatus(),
     notifications: (Array.isArray(rawNotifications) ? rawNotifications : []).map(parseJson).filter(Boolean).slice(0, 30),
     readySixMode,

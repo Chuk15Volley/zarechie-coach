@@ -1,5 +1,21 @@
 import { cronAuthorizationStatus } from '../../../lib/cronAuth';
 import { evaluateOperationalSlo } from '../../../lib/operationalSlo';
+import { checkHistoryIntegrity } from '../../../lib/platformBackup';
+import { dispatchOperationalAlert } from '../../../lib/operationalAlerts';
+
+async function checkWorkspace(workspace) {
+  const history = await checkHistoryIntegrity(workspace).catch(() => ({ ok: false, reason: 'verification_failed' }));
+  const alert = await dispatchOperationalAlert({
+    workspace, kind: 'training_history_integrity', active: !history.ok,
+    severity: 'critical', fingerprint: 'training_history_integrity',
+    title: 'Нарушена сохранность истории тренировок',
+    message: history.missingCount != null ? `Не найдены ${history.missingCount} дат и ${history.missingRecords || 0} сохранённых тренировок. Требуется проверка восстановления.` : 'Не удалось подтвердить полноту истории тренировок.',
+    resolvedMessage: 'Полнота истории тренировок подтверждена',
+    meta: history,
+  });
+  const slo = await evaluateOperationalSlo(workspace);
+  return { ...slo, ok: slo.ok && alert.status !== 'failed', history, alerts: [...slo.alerts, alert] };
+}
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store, max-age=0');
@@ -10,7 +26,7 @@ export default async function handler(req, res) {
   const authorization = cronAuthorizationStatus(req);
   if (!authorization.ok) return res.status(authorization.status).json({ error: authorization.error });
 
-  const results = await Promise.allSettled(['zarechie', 'nkperf'].map(workspace => evaluateOperationalSlo(workspace)));
+  const results = await Promise.allSettled(['zarechie', 'nkperf'].map(checkWorkspace));
   const checks = results.map((result, index) => result.status === 'fulfilled'
     ? result.value
     : { workspace: index === 0 ? 'zarechie' : 'nkperf', ok: false, error: String(result.reason?.message || 'slo_check_failed').slice(0, 160) });
