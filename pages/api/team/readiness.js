@@ -1,3 +1,4 @@
+import { readySixGymState, recommendGymSession } from '../../../lib/readySixGym.mjs';
 // pages/api/team/readiness.js
 // GET ?date=YYYY-MM-DD → morning team-readiness snapshot for every rostered player.
 //
@@ -287,7 +288,9 @@ async function buildTeamReadiness(workspace, date) {
       else if (redCount === 1 || yellowCount >= 2) status = 'yellow';
       else if (dataCompleteness < 50) status = 'yellow';
 
-      const attentionScore = dataCompleteness === 0
+      const upstreamState = readySixTeam ? readySixGymState(snapshot.readySixDecision) : null;
+      if (upstreamState) status = upstreamState.level;
+      const attentionScore = upstreamState || dataCompleteness === 0
         ? null
         : computeAttentionScore({ recovery, hrvZ, kpiDrop: worstKpiChange, lsi, readiness, doms });
 
@@ -307,6 +310,8 @@ async function buildTeamReadiness(workspace, date) {
         },
         lsi, lsiDate,
         status, domains, attentionScore, dataQuality, dataCompleteness,
+        readySixState: upstreamState,
+        gymRecommendation: readySixTeam ? recommendGymSession({ snapshot, targetDate: date }) : null,
         dataProvenance: {
           source: readySixTeam ? 'ReadySix' : 'Legacy Redis',
           generatedAt: snapshot.readySixMeta?.generatedAt || null,

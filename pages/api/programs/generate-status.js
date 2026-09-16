@@ -1,3 +1,4 @@
+import { preferVarietyCorrection } from '../../../lib/exerciseVariety.mjs';
 // pages/api/programs/generate-status.js
 // GET ?batchId=xxx -> polls a queued OpenAI background Responses API session.
 // While processing: { status: 'pending', processing_status }.
@@ -337,16 +338,16 @@ export default async function handler(req, res) {
       playerRestrictions,
     });
 
-    // The strength methodology gets one automatic repair attempt. If the
+    // Strength methodology and exercise variety get one shared repair attempt. If the
     // deterministic structure/dose audit still fails after that attempt, the
     // original or corrected candidate is returned with a specific warning and
     // remains available for an explicit manual save.
-    if (quality.strength && !quality.valid && !record.correctionAttempted) {
+    if (((quality.strength && !quality.valid) || quality.variety?.needsCorrection) && !record.correctionAttempted) {
       const correctionPrompt = qualityCorrectionPrompt(userPrompt, session, quality);
       const corrected = await createOpenAIBackgroundResponse(apiKey, correctionPrompt, systemPrompt, sessionTool, {
         maxOutputTokens: SESSION_RETRY_OUTPUT_TOKENS,
         reasoningEffort: 'low',
-      });
+      }).catch(() => ({ error: 'Не удалось исправить повторы' }));
       if (!corrected.error && corrected.response?.id) {
         await redis('set', `coach:batch:${batchId}`, JSON.stringify({
           ...record,
@@ -368,9 +369,7 @@ export default async function handler(req, res) {
     // the better complete version.
     if (record.correctionAttempted && record.candidateSession && record.candidateQuality) {
       const candidateQuality = record.candidateQuality;
-      const correctedIsBetter = (quality.valid && !candidateQuality.valid)
-        || (quality.valid === candidateQuality.valid && quality.score > candidateQuality.score)
-        || (quality.score === candidateQuality.score && quality.valid && !candidateQuality.valid);
+      const correctedIsBetter = preferVarietyCorrection(quality, candidateQuality);
       if (!correctedIsBetter) {
         session = record.candidateSession;
         quality = candidateQuality;

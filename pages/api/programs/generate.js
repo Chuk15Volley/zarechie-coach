@@ -1,3 +1,4 @@
+import { recommendGymSession, formatReadySixGymContext, applyReadySixGymDose, readySixGenerationIssue } from '../../../lib/readySixGym.mjs';
 // pages/api/programs/generate.js
 // POST { playerId, date, dayGoal, focus, notes, days=7 } → AI-generated gym session for one
 // specific day. The model receives: player bio-metrics for the target date, a trend window,
@@ -5,12 +6,13 @@
 // logic (load distribution, anchor progression, systematic variation and autoregulation).
 
 import { getPlayerSnapshot, todayISO } from '../../../lib/playerData';
-import { countPreviousConsecutiveMatchDaySessions, getRecentSessionSummaries, getRecentStrengthAnchors } from '../../../lib/sessionHistory';
+import { countPreviousConsecutiveMatchDaySessions, getRecentSessionRecords, formatSummary, getRecentStrengthAnchors } from '../../../lib/sessionHistory';
 import { isAuthorized } from '../../../lib/auth';
 import { enforceRateLimit } from '../../../lib/rateLimit';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { restrictionsToPrompt } from '../../../lib/exerciseRestrictions';
-import { assessSessionQuality } from '../../../lib/sessionValidator';
+import { assessSessionQuality, qualityCorrectionPrompt } from '../../../lib/sessionValidator';
+import { buildExerciseVarietyContext, formatExerciseVarietyForPrompt, preferVarietyCorrection } from '../../../lib/exerciseVariety.mjs';
 import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
 import { getExerciseMemory, formatMemoryForPrompt } from '../../../lib/exerciseMemory';
@@ -95,10 +97,10 @@ function formatMatchLoadForPrompt(playerId, targetDate, rawToday, rawPrev) {
   return '\n' + lines.join('\n');
 }
 
-async function getRecentActualSummaries(playerId, workspace = 'zarechie', limit = 5) {
+async function getRecentActualSummaries(playerId, workspace = 'zarechie', limit = 5, targetDate = todayISO()) {
   const wp = pfx(workspace);
-  const dates = await redis('zrange', sessionsKey(workspace, playerId), -12, -1).catch(() => []);
-  const recentDates = (dates || []).slice(-limit).reverse();
+  const dates = await redis('zrevrangebyscore', sessionsKey(workspace, playerId), String(Number(targetDate.replace(/-/g, '')) - 1), '-inf', 'LIMIT', 0, limit).catch(() => []);
+  const recentDates = (dates || []).filter(date => date < targetDate).sort().slice(-limit).reverse();
   if (!recentDates.length) return [];
   const raws = await redisPipeline(
     recentDates.map(d => ['get', `${wp}:session:actual:${playerId}:${d}`])
@@ -1548,10 +1550,10 @@ export async function buildGenerationInputs(body) {
 
   const prevDate = shiftDateStr(targetDate, -1);
   const manualMatchDayRequested = isManualMatchDayFocus(focus);
-  const [snapshot, sessionSummaries, actualSummaries, rawSchedule, raw1RM, raw1RMHistory, strengthAnchors, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan, previousManualMatchDays] = await Promise.all([
+  const [snapshot, recentSessionRecords, actualSummaries, rawSchedule, raw1RM, raw1RMHistory, strengthAnchors, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan, previousManualMatchDays] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, Number(days) || 7, workspace),
-    getRecentSessionSummaries(String(playerId), 6, workspace).catch(() => []),
-    getRecentActualSummaries(String(playerId), workspace, 5).catch(() => []),
+    getRecentSessionRecords(String(playerId), 12, workspace, targetDate).catch(() => []),
+    getRecentActualSummaries(String(playerId), workspace, 5, targetDate).catch(() => []),
     usesSeasonCalendar(workspace) ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
     redis('get', `${wpfx}:1rm:${String(playerId)}`).catch(() => null),
     redis('get', rmHistoryKey(workspace, String(playerId))).catch(() => null),
@@ -1580,6 +1582,10 @@ export async function buildGenerationInputs(body) {
   ]);
 
   if (!snapshot) return { error: 'Player not found', status: 404 };
+  const sessionSummaries = recentSessionRecords.map(formatSummary).filter(Boolean);
+  const gymRecommendation = snapshot.readySixMeta ? recommendGymSession({ snapshot, targetDate, recentSessions: recentSessionRecords }) : null;
+  const readySixIssue = readySixGenerationIssue(gymRecommendation, focus);
+  if (readySixIssue) return readySixIssue;
 
   // Per-player exercise-response memory + LSI (jump symmetry) — appended to prompt.
   const exMemory = await getExerciseMemory(String(playerId), workspace).catch(() => ({}));
@@ -1630,7 +1636,7 @@ export async function buildGenerationInputs(body) {
   }
   let focusDowngradeNote = '';
   let powerKpiRecovery = 'green';
-  if (workspace === 'zarechie' && effectiveFocus === 'inseason_power') {
+  if (!snapshot.readySixMeta && workspace === 'zarechie' && effectiveFocus === 'inseason_power') {
     const kpis = performanceKpis(snapshot.neuro, targetDate);
     const depressed = [kpis.rsi, kpis.cmj, kpis.sprint10m]
       .filter(metric => metric.value != null && !metric.stale && metric.meaningfulDecline);
@@ -1666,7 +1672,7 @@ export async function buildGenerationInputs(body) {
     seasonDecision,
     position: snapshot.player?.position || '',
     recoveryStatus: effectiveRecovery,
-    requestedMode: powerMode,
+    requestedMode: gymRecommendation?.calendar.daysToGame === 2 || gymRecommendation?.calendar.congested ? 'microdose' : powerMode,
   });
   const oneRmHistory = parseJSONSafe(raw1RMHistory, []);
   const oneRmFreshness = assessOneRmFreshness(oneRmHistory, targetDate);
@@ -1678,7 +1684,7 @@ export async function buildGenerationInputs(body) {
     focus: effectiveFocus,
     position: snapshot.player?.position || '',
     recoveryStatus: effectiveRecovery,
-    requestedMode: strengthMode,
+    requestedMode: gymRecommendation?.calendar.daysToGame != null && gymRecommendation.calendar.daysToGame <= 2 ? 'maintenance' : strengthMode,
     anchorContext: strengthAnchors,
     oneRmFreshness,
     shoulderConcern: freshShoulderConcern,
@@ -1732,6 +1738,12 @@ export async function buildGenerationInputs(body) {
     actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType: effectiveTrainingType, notes, warmupSummary, teamUsedExercises, coachRecovery, microcycleSlot,
     playbookText, workspace, seasonDecision,
   });
+  const varietyContext = buildExerciseVarietyContext(recentSessionRecords, {
+    targetDate, focus: effectiveFocus, trainingType: effectiveTrainingType, seasonDecision,
+  });
+  const varietyText = formatExerciseVarietyForPrompt(varietyContext);
+  userPrompt += varietyText;
+  dataSummary += varietyText;
   const seasonDecisionText = formatSeasonDecisionForPrompt(seasonDecision);
   if (seasonDecisionText) {
     userPrompt += seasonDecisionText;
@@ -1752,7 +1764,7 @@ export async function buildGenerationInputs(body) {
     userPrompt += strengthMethodText;
     dataSummary += strengthMethodText;
   }
-  const dosePrescription = buildDosePrescription({
+  let dosePrescription = buildDosePrescription({
     focus: effectiveFocus,
     trainingType: effectiveTrainingType,
     coachRecovery: effectiveRecovery,
@@ -1761,6 +1773,12 @@ export async function buildGenerationInputs(body) {
     powerContext,
     strengthContext,
   });
+  if (gymRecommendation) {
+    dosePrescription = applyReadySixGymDose(dosePrescription, gymRecommendation);
+    const gymText = formatReadySixGymContext(gymRecommendation);
+    userPrompt += gymText;
+    dataSummary += gymText;
+  }
   const doseText = formatDosePrescriptionForPrompt(dosePrescription);
   userPrompt += doseText;
   dataSummary += doseText;
@@ -1826,7 +1844,8 @@ export async function buildGenerationInputs(body) {
     dataSummary,
     targetDate,
     dayGoal,
-    systemPrompt: systemPromptForGeneration(effectiveFocus, workspace),
+    systemPrompt: systemPromptForGeneration(effectiveFocus, workspace) + (snapshot.readySixMeta
+      ? '\nПРИОРИТЕТ ИСТОЧНИКА: состояние, допуск и ограничения определяет только ReadySix. Не пересчитывай статус по порогам Recovery/HRV/DOMS/CMJ из общих инструкций выше. Аналитические показатели — контекст, не отдельный алгоритм допуска. Составляй только программу зала по выбранному методу в переданном бюджете и ограничениях календаря. Более строгие ограничения тренера сохраняются.' : ''),
     effectiveFocus,
     effectiveTrainingType,
     seasonDecision,
@@ -1841,6 +1860,9 @@ export async function buildGenerationInputs(body) {
       focus: effectiveFocus,
       trainingType: effectiveTrainingType,
       recentSessionSummaries: sessionSummaries,
+      varietyContext,
+      readySixState: gymRecommendation?.state || null,
+      gymRecommendation,
       dosePrescription,
       powerContext,
       strengthContext,
@@ -1954,12 +1976,23 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'Модель не вернула структурированную тренировку' });
     }
 
-    // Deterministic audit remains visible to the coach but never triggers a
-    // second paid model call or discards a usable response.
+    // Audit the actual result; allow one targeted repair for repeated exercises.
     session = normalizeExerciseLanguage(session, focus);
     session = sanitizeUnavailableEquipmentExercises(session);
     session = normalizeSessionTempoDescriptions(session);
-    const quality = advisorySessionQuality(assessSessionQuality(session, { ...qualityContext, playerRestrictions }));
+    let quality = advisorySessionQuality(assessSessionQuality(session, { ...qualityContext, playerRestrictions }));
+    if (quality.variety?.needsCorrection) {
+      // A failed repair must not discard the complete initial session.
+      const repaired = await callOpenAIForSession(apiKey, qualityCorrectionPrompt(userPrompt, session, quality), systemPrompt).catch(() => null);
+      if (repaired?.session) {
+        const candidate = normalizeSessionTempoDescriptions(sanitizeUnavailableEquipmentExercises(normalizeExerciseLanguage(repaired.session, effectiveFocus)));
+        const candidateQuality = advisorySessionQuality(assessSessionQuality(candidate, { ...qualityContext, playerRestrictions }));
+        if (preferVarietyCorrection(candidateQuality, quality)) {
+          session = candidate;
+          quality = candidateQuality;
+        }
+      }
+    }
 
     console.log('GEN blocks:', session.blocks?.length,
       'ex per block:', session.blocks?.map(b => b.exercises?.length),
@@ -2337,7 +2370,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
 
   const historyBlock =
     sessionSummaries.length > 0
-      ? `ИСТОРИЯ ПОСЛЕДНИХ ${sessionSummaries.length} СОХРАНЁННЫХ ТРЕНИРОВОК ИГРОКА:\n${sessionSummaries.join('\n\n')}\n\nНА ОСНОВЕ ИСТОРИИ — перед составлением определи:\n1. Какие векторы/паттерны получили нагрузку в последние 48–72 ч — дозируй их с учётом восстановления.\n2. Какие A1/B1/C1 подходят как измеримые якоря текущего метода — сохрани 1-2 из них и прогрессируй вес, RPE, скорость или технику.\n3. Какие аксессуары и второстепенные варианты повторялись в последних двух сессиях — ротируй их, сохраняя нужный паттерн и позиционную задачу.\n4. Не меняй вручную выбранный метод тренера из-за истории; история определяет дозировку и конкретную реализацию метода.\n5. Если есть фактический weightNote/вес/RPE — явно применяй правило прогрессии или объяснимого удержания/регрессии.`
+      ? `ИСТОРИЯ ПОСЛЕДНИХ ${sessionSummaries.length} СОХРАНЁННЫХ ТРЕНИРОВОК ИГРОКА:\n${sessionSummaries.join('\n\n')}\n\nНА ОСНОВЕ ИСТОРИИ — перед составлением определи:\n1. Какие векторы/паттерны получили нагрузку в последние 48–72 ч — дозируй их с учётом восстановления.\n2. Для силовых/мощностных методов определи максимум два A1/B1/C1 как измеримые якоря — сохрани их и прогрессируй вес, RPE, скорость или технику.\n3. Какие аксессуары и второстепенные варианты встречались в последних двух сессиях — не повторяй их, сохраняя нужный паттерн и позиционную задачу.\n4. Не меняй вручную выбранный метод тренера из-за истории; история определяет дозировку и конкретную реализацию метода.\n5. Если есть фактический weightNote/вес/RPE — явно применяй правило прогрессии или объяснимого удержания/регрессии.`
       : 'ИСТОРИЯ ТРЕНИРОВОК: нет сохранённых сессий для этого игрока — составь первую тренировку без привязки к предыдущим.';
 
   const actualHistoryBlock = actualSummaries.length > 0
