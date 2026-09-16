@@ -885,6 +885,16 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     setCommandAcknowledging(false);
   }
 
+  useEffect(() => {
+    const fallback = crypto.randomUUID();
+    try {
+      const stored = localStorage.getItem('nk-player-device-id');
+      const id = stored || fallback;
+      if (!stored) localStorage.setItem('nk-player-device-id', id);
+      setDeviceId(id);
+    } catch (_) { setDeviceId(fallback); }
+  }, []);
+
   // Merge offline edits with the server using per-set timestamps before writing locally.
   useEffect(() => {
     if (!token || !sessionDate) return;
@@ -910,7 +920,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   }, [token, sessionDate, serverLog, session]);
 
   const restPausedSeconds = restTimer && !restTimer.running ? restTimer.remaining : 0;
-  const progressSnapshot = { restPausedSeconds, done, weights, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, activeBlock, restUntil, lastActionAt, clientRevision: serverRevision, clientId: deviceId };
+  const progressSnapshot = { restPausedSeconds, done, weights, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, activeBlock, restUntil, lastActionAt, clientRevision: serverRevision, clientId: deviceId, deviceLabel: typeof navigator === 'undefined' ? 'Устройство игрока' : `${navigator.platform || 'Mobile'} · ${navigator.standalone ? 'PWA' : 'Browser'}` };
   useEffect(() => {
     if (!progressReady || !token || !sessionDate) return;
     try { localStorage.setItem(`gym:${token}:${sessionDate}`, JSON.stringify(progressSnapshot)); }
