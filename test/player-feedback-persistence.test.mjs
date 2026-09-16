@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { normalizeSkips } from '../lib/playerExperience.mjs';
 import { FINISH_REASONS, actualRepsFromTarget } from '../lib/playerWorkout.mjs';
 
 function fixture({ failWrite = false, failRead = false } = {}) {
@@ -24,7 +25,7 @@ function fixture({ failWrite = false, failRead = false } = {}) {
     loadUnitsForExercise: () => 1, weightKgFromExercise: ex => ex.weightKg || 0,
     sanitizeUnavailableEquipmentExercises: value => value,
     updateExerciseMemory: async (...args) => memories.push(args), linkPainToExercises: async () => {},
-    FINISH_REASONS, actualRepsFromTarget,
+    FINISH_REASONS, actualRepsFromTarget, normalizeSkips,
   };
   const source = readFileSync(new URL('../pages/api/player/feedback.js', import.meta.url), 'utf8')
     .replace(/^import[\s\S]*?from\s+['"][^'"]+['"];\s*/gm, '')
@@ -56,4 +57,20 @@ test('failed actuals write returns retryable error instead of a feedback-only su
 test('unavailable session storage cannot produce a false successful submission', async () => {
   const f = fixture({ failRead: true }); await f.handler(f.request, f.response);
   assert.equal(f.response.statusCode, 503); assert.equal(f.writes.length, 0);
+});
+
+
+test('skipped exercises retain their reason without counting unfinished sets or planned weight', async () => {
+  const f = fixture();
+  f.request.body.skipped = { '0-0': 'Нет оборудования', '0-1': 'Решение тренера' };
+  f.request.body.finishReason = null;
+  await f.handler(f.request, f.response);
+  assert.equal(f.response.statusCode, 200);
+  const actual = JSON.parse(f.writes.find(cmd => cmd[1] === 'nkperf:session:actual:synthetic:2026-09-17')[2]);
+  assert.deepEqual(actual.skipped, f.request.body.skipped);
+  assert.equal(actual.exercises[0].skippedReason, 'Нет оборудования');
+  assert.equal(actual.exercises[0].completedSets, 1);
+  assert.equal(actual.exercises[0].completed, false);
+  assert.equal(actual.exercises[1].completedSets, 0);
+  assert.equal(actual.actualTonnage, 125);
 });

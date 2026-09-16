@@ -29,6 +29,7 @@ function environment(t) {
   t.mock.method(globalThis, 'clearInterval', id => timers.delete(id));
   for (const [name, value] of Object.entries({
     localStorage: { getItem: k => storage.get(k) || null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
+    document: { visibilityState: 'visible', addEventListener: (n, fn) => events.set(n, fn), removeEventListener: n => events.delete(n) },
     window: { addEventListener: (n, fn) => events.set(n, fn), removeEventListener: n => events.delete(n) },
   })) { const prior = Object.getOwnPropertyDescriptor(globalThis, name); Object.defineProperty(globalThis, name, { configurable: true, value }); t.after(() => prior ? Object.defineProperty(globalThis, name, prior) : delete globalThis[name]); }
   const previous = Object.getOwnPropertyDescriptor(navigator, 'onLine');
@@ -84,4 +85,30 @@ test('offline feedback draft restores and sends only after connectivity returns'
   assert.equal(restored.rpe, 6); assert.equal(sent, 0);
   navigator.onLine = true; env.events.get('online')(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.render().submitted, true); assert.equal(sent, 1);
+});
+
+
+test('hold clock restores after reload, counts both sides, and never marks a set complete', async t => {
+  const env = environment(t); let now = 100000;
+  t.mock.method(Date, 'now', () => now);
+  const h = harness('../lib/useHoldTimer.js', 'useHoldTimer'); env.cleanups.push(() => h.stop());
+  h.render('hold:test').start({ key: '0-1-0', seconds: 30, sides: 2, name: 'Side Plank' });
+  h.render(); now += 31000; await env.tick();
+  let state = h.render(); assert.equal(state.remaining, 0); assert.equal(state.hold.side, 1);
+  state.nextSide(); state = h.render(); assert.equal(state.hold.side, 2); assert.equal(state.remaining, 30);
+  now += 10000; await env.tick(); state = h.render(); state.toggle(); h.render();
+  const restored = harness('../lib/useHoldTimer.js', 'useHoldTimer'); env.cleanups.push(() => restored.stop());
+  const paused = restored.render('hold:test'); assert.equal(paused.hold.deadline, null); assert.equal(paused.remaining, 20);
+  now += 60000; await env.tick(); assert.equal(restored.render().remaining, 20);
+  restored.render().cancel(); assert.equal(restored.render().hold, null);
+});
+
+test('wake lock is opt-in and released on completion', async t => {
+  const env = environment(t); let requests = 0, releases = 0;
+  Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => { requests++; return { release: async () => { releases++; }, addEventListener() {} }; } } });
+  env.cleanups.push(() => delete navigator.wakeLock);
+  const h = harness('../lib/usePlayerWakeLock.js', 'usePlayerWakeLock'); env.cleanups.unshift(() => h.stop());
+  let state = h.render(true); assert.equal(requests, 0);
+  state.toggle(); h.render(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests, 1); h.render(false); assert.equal(releases, 1);
 });

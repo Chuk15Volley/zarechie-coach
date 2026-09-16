@@ -4,6 +4,10 @@
 
 import { useState, useEffect, useRef, useMemo, Component } from 'react';
 import Head from 'next/head';
+import OfflineProgram from '../../components/player/OfflineProgram';
+import { useHoldTimer } from '../../lib/useHoldTimer';
+import { usePlayerWakeLock } from '../../lib/usePlayerWakeLock';
+import { SKIP_REASONS, skippedSetCount, selectSessionDate, holdPrescription, performanceKey, previousPerformances } from '../../lib/playerExperience.mjs';
 import { usePlayerFeedback } from '../../lib/usePlayerFeedback';
 import { usePlayerProgressSync } from '../../lib/usePlayerProgressSync';
 import { mergeWorkoutProgress } from '../../lib/workoutProgress.mjs';
@@ -76,9 +80,10 @@ class ErrorBoundary extends Component {
   }
 }
 
-export async function getServerSideProps({ params }) {
+export async function getServerSideProps({ params, query = {} }) {
   const token = params.id;
   const date = todayISO();
+  const requestedDate = typeof query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(query.date) ? query.date : null;
 
   // Resolve token → playerId + workspace (never expose playerId to the client)
   const resolved = await resolveShareToken(token);
@@ -119,19 +124,12 @@ export async function getServerSideProps({ params }) {
     };
   });
 
-  let record = null;
-  const rawToday = await redis('get', sessionKey(workspace, playerId, date)).catch(() => null);
-
-  if (rawToday) {
-    record = parseSavedSession(rawToday).record;
-  }
+  const chosenDate = selectSessionDate(sessionDates, date, requestedDate);
+  let record = chosenDate ? historyRecords.get(chosenDate) || null : null;
+  if (chosenDate && !record) record = parseSavedSession(await redis('get', sessionKey(workspace, playerId, chosenDate)).catch(() => null)).record;
 
   if (!record) {
-    record = sessionDates.map(sessionDate => historyRecords.get(sessionDate)).find(Boolean) || null;
-  }
-
-  if (!record) {
-    return { props: { token, session: null, sessionLabel: '', player: playerProfile, sessionDate: null, dayGoal: '', isToday: false, notFound: false, sessionDates, sessionHistory, playerPhoto: playerPhoto || null, serverLog: null } };
+    return { props: { token, session: null, sessionLabel: '', player: playerProfile, sessionDate: requestedDate, dayGoal: '', isToday: false, notFound: false, sessionDates, sessionHistory, playerPhoto: playerPhoto || null, serverLog: null } };
   }
 
   const activeSession = parseSavedSession(record).session;
@@ -142,7 +140,17 @@ export async function getServerSideProps({ params }) {
     position: recordPlayer.position || '',
   } : null);
 
-  const resolvedDate = record.date || date;
+  const resolvedDate = record.date || chosenDate || date;
+  const previousDates = sessionDates.filter(value => value < resolvedDate).slice(0, 12);
+  const previousRaw = await redisPipeline(previousDates.flatMap(value => [
+    ['get', `${pfx(workspace)}:log:${playerId}:${value}`],
+    ['get', `${pfx(workspace)}:session:actual:${playerId}:${value}`],
+    ['get', feedbackKey(workspace, playerId, value)],
+  ])).catch(() => []);
+  const previousResults = previousPerformances(previousDates.map((value, index) => ({
+    date: value, session: parseSavedSession(historyRecords.get(value)).session,
+    log: parsePlayerLog(previousRaw[index * 3]), actual: parsePlayerLog(previousRaw[index * 3 + 1]), feedback: parsePlayerLog(previousRaw[index * 3 + 2]),
+  })), resolvedDate);
   const logRaw = await redis('get', `${pfx(workspace)}:log:${playerId}:${resolvedDate}`).catch(() => null);
   const serverLog = parsePlayerLog(logRaw);
   const serverFeedback = parsePlayerLog(await redis('get', feedbackKey(workspace, playerId, resolvedDate)).catch(() => null));
@@ -162,6 +170,7 @@ export async function getServerSideProps({ params }) {
       playerPhoto: playerPhoto || null,
       serverLog: serverLog || null,
       serverFeedback: serverFeedback || null,
+      previousResults,
       isMatchDayPrimer: record.quality?.seasonDecision?.key === 'match_day',
     },
   };
@@ -325,7 +334,7 @@ function ExerciseMedia({ name, token }) {
           </div>
         </>
       ) : (
-        <div className="mt-2 flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-xl border border-white/[0.06] bg-black/20 text-slate-600">
+        <div className="mt-1 flex items-center gap-2 text-slate-500">
           {YT_ICON_SMALL}
           <span className="text-[11px] font-semibold">Видео не добавлено</span>
         </div>
@@ -335,7 +344,9 @@ function ExerciseMedia({ name, token }) {
 }
 
 // ── Single exercise card ──────────────────────────────────────────────────────
-function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, token, readOnly = false }) {
+function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, token, readOnly = false, skipReason, onSkip, onHold, previousResult }) {
+  const [skipOpen, setSkipOpen] = useState(false);
+  const [reason, setReason] = useState('');
   const plannedWeight = plannedWeightLabel(ex);
   const plannedSetWeight = plannedWeightValue(ex);
   const weightNote = String(ex.weightNote || '').trim();
@@ -359,24 +370,20 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, to
         </div>
       )}
 
-      {/* Image + video */}
-      <div className="px-3.5 pt-3">
-        <ExerciseMedia name={ex.name} token={token} />
-      </div>
-
       {/* Sets row */}
       <div className={`grid ${setGrid} gap-2 px-3.5 pt-3`}>
         {(ex.targetSets || []).map((s, si) => {
           const key = `${bi}-${ei}-${si}`;
-          if (readOnly) return (
+          if (readOnly || (skipReason && !done?.[key])) return (
             <div key={si} className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-center">
               <div className="text-[11px] text-slate-500">Подход {si + 1}</div>
               <div className="mt-1 text-sm font-bold text-slate-200">{s}</div>
+              {skipReason && <div className="mt-1 text-xs text-amber-200">Пропущен</div>}
             </div>
           );
           return (
+            <div key={si}>
             <SetBtn
-              key={si}
               setKey={key}
               previousWeight={si > 0 ? weights?.[`${bi}-${ei}-${si - 1}`] : null}
               label={`${si + 1}`}
@@ -389,12 +396,33 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, to
               plannedWeightValue={plannedSetWeight}
               requiresWeight={!!plannedSetWeight}
             />
+            {!done[key] && holdPrescription(s, ex) && <button type="button" onClick={() => onHold({ key, bi, ei, si, name: ex.name, ...holdPrescription(s, ex) })} className="mt-2 w-full rounded-lg border border-emerald-400/25 px-1 py-2 text-xs text-emerald-200">Начать {holdPrescription(s, ex).seconds} сек{holdPrescription(s, ex).sides === 2 ? ' × 2 стороны' : ''}</button>}
+            </div>
           );
         })}
       </div>
 
       {/* Details */}
       <div className="space-y-2.5 px-3.5 pb-3.5 pt-3">
+        {previousResult && <div className="rounded-xl bg-white/[0.035] p-3 text-xs text-slate-300">
+          <p>Последний факт · {formatDate(previousResult.date)}</p>
+          <p className="mt-1">{previousResult.sets.map((set, index) => `${index + 1}: ${set.kg ? `${set.kg} кг · ` : ''}${set.target}`).join(' / ')}</p>
+          {previousResult.rpe && <p>RPE сессии: {previousResult.rpe}</p>}
+        </div>}
+        {!readOnly && (skipReason || (ex.targetSets || []).some((_, si) => !done[`${bi}-${ei}-${si}`])) && <div className="text-xs text-slate-400">
+          {skipReason ? <><p className="text-amber-200">Оставшиеся подходы пропущены: {skipReason}</p><button type="button" onClick={() => onSkip(bi, ei, null)} className="mt-1 min-h-10 underline">Вернуть упражнение</button></> : <>
+            <button type="button" onClick={() => setSkipOpen(open => !open)} className="min-h-10 underline">Пропустить оставшиеся подходы</button>
+            {skipOpen && <div className="space-y-2">
+              <label className="block">Причина пропуска<select aria-label="Причина пропуска" value={reason} onChange={event => setReason(event.target.value)} className="mt-1 w-full rounded-lg bg-slate-800 p-3"><option value="">Выбери причину</option>{SKIP_REASONS.map(value => <option key={value}>{value}</option>)}</select></label>
+              {reason === 'Дискомфорт' && <p className="text-amber-200">Прекрати это упражнение и сообщи тренеру о дискомфорте.</p>}
+              <button type="button" disabled={!reason} onClick={() => { onSkip(bi, ei, reason); setSkipOpen(false); }} className="rounded-lg border border-white/20 px-3 py-2 text-slate-200 disabled:opacity-40">Подтвердить пропуск</button>
+            </div>}
+          </>}
+        </div>}
+        <details><summary className="cursor-pointer py-2 text-sm font-semibold text-slate-300">Техника и видео</summary>
+          <ExerciseMedia name={ex.name} token={token} />
+          <p className="mt-2 text-sm leading-relaxed text-slate-400">{exerciseDescription(ex)}</p>
+        </details>
         {showWeightNote && (
           <div className="text-[14px] font-semibold text-slate-200">{weightNote}</div>
         )}
@@ -404,9 +432,7 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, to
             <span className="text-[13px] leading-snug text-amber-300/90">{ex.autoReg}</span>
           </div>
         )}
-        {(typeof ex.descriptionOverride === 'string' || ex.cue || ex.tempo) && (
-          <p className="text-[14px] leading-relaxed text-slate-400">{exerciseDescription(ex)}</p>
-        )}
+
       </div>
     </article>
   );
@@ -420,7 +446,7 @@ const FEEL_OPTIONS = [
   { value: 'very_hard', emoji: '🤕', label: 'Очень тяжело' },
 ];
 
-function FeedbackForm({ token, sessionDate, session, done, weights, finishReason, lastActionAt, initialFeedback, isMatchDayPrimer = false, onRpeChange, onSubmitted }) {
+function FeedbackForm({ token, sessionDate, session, done, weights, finishReason, skipped, lastActionAt, initialFeedback, isMatchDayPrimer = false, onRpeChange, onSubmitted }) {
   const [rpe, setRpe] = useState(null);
   const [fatigue, setFatigue] = useState(null);
   const [feel, setFeel] = useState(null);
@@ -446,7 +472,7 @@ function FeedbackForm({ token, sessionDate, session, done, weights, finishReason
       setSpeedFeel(saved.speedFeel || null); setLegFeel(saved.legFeel || null); setShoulderFeel(saved.shoulderFeel || null);
       onRpeChange?.(saved.rpe || null);
     },
-    payload: { token, date: sessionDate, rpe, fatigue, feel, note, done, weights, finishReason,
+    payload: { token, date: sessionDate, rpe, fatigue, feel, note, done, weights, finishReason, skipped,
       primerFeedback: isMatchDayPrimer ? { speed: speedFeel, legs: legFeel, shoulder: shoulderFeel } : null },
     onSubmitted: () => onSubmitted?.({ rpe, fatigue, feel }),
   });
@@ -455,7 +481,7 @@ function FeedbackForm({ token, sessionDate, session, done, weights, finishReason
     return (
       <div className="player-feedback-success rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.09] px-4 py-8 text-center">
         <div className="mb-2 text-3xl">💪</div>
-        <div className="text-base font-black text-emerald-300">{finishReason ? 'Тренировка завершена раньше' : 'Тренировка завершена!'}</div>
+        <div className="text-base font-black text-emerald-300">{finishReason ? 'Тренировка завершена раньше' : Object.values(skipped || {}).some(Boolean) ? 'Тренировка завершена с пропусками' : 'Тренировка завершена!'}</div>
         <div className="mt-2 text-sm text-emerald-300">Оценка получена сервером и доступна тренеру</div>
         <button type="button" onClick={edit} className="mt-3 rounded-xl border border-white/15 p-3 text-sm text-slate-300">Изменить оценку</button>
       </div>
@@ -466,7 +492,7 @@ function FeedbackForm({ token, sessionDate, session, done, weights, finishReason
     <div className="player-feedback space-y-4">
       <div className="player-feedback-success rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.09] px-4 py-5 text-center">
         <div className="mb-1 text-3xl">💪</div>
-        <div className="text-base font-black text-emerald-300">{finishReason ? 'Тренировка завершена раньше' : 'Тренировка завершена!'}</div>
+        <div className="text-base font-black text-emerald-300">{finishReason ? 'Тренировка завершена раньше' : Object.values(skipped || {}).some(Boolean) ? 'Тренировка завершена с пропусками' : 'Тренировка завершена!'}</div>
         <div className="mt-0.5 text-xs text-emerald-600">Оцени нагрузку для тренера</div>
       </div>
 
@@ -687,7 +713,7 @@ function SyncBadge({ status, savedAt }) {
   );
 }
 
-function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, isUpcoming, dose, onStart, token }) {
+function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, isUpcoming, dose, onStart, token, previousResults = {} }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const warnings = athleteSessionWarning(session?.warnings);
   return (
@@ -727,7 +753,7 @@ function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, is
               <h3 className="font-bold text-slate-200">Блок {block.label}</h3>
               {block.rest_note && <p className="text-sm text-slate-400">Отдых: {block.rest_note}</p>}
               {(block.exercises || []).map((ex, ei) => (
-                <ExCard key={ei} bi={bi} ei={ei} ex={ex} block={block} token={token} readOnly />
+                <ExCard key={ei} bi={bi} ei={ei} ex={ex} block={block} token={token} previousResult={previousResults[performanceKey(ex)]} readOnly />
               ))}
             </section>
           ))}
@@ -775,13 +801,13 @@ function UndoSetToast({ undo, onUndo, onDismiss }) {
   );
 }
 
-function CompletionSummary({ totalSets, elapsedSeconds, tonnage, rpe, finishReason }) {
+function CompletionSummary({ totalSets, elapsedSeconds, tonnage, rpe, finishReason, skippedCount = 0 }) {
   return (
     <section className="player-completion-summary">
       <div className="player-completion-mark">✓</div>
-      <div className="player-kicker">{finishReason ? 'Завершена раньше' : 'Сессия выполнена'}</div>
+      <div className="player-kicker">{finishReason ? 'Завершена раньше' : skippedCount ? 'Завершена с пропусками' : 'Сессия выполнена'}</div>
       <h2>Отличная работа</h2>
-      <p>{finishReason ? `Причина: ${finishReason}. Учтены только отмеченные подходы.` : 'Все запланированные подходы отмечены.'} Оцени нагрузку — тренер получит итог вместе с фактическими весами.</p>
+      <p>{finishReason ? `Причина: ${finishReason}. Учтены только отмеченные подходы.` : skippedCount ? `Пропущено подходов: ${skippedCount}. Учтено только выполненное.` : 'Все запланированные подходы отмечены.'} Оцени нагрузку — тренер получит итог вместе с фактическими весами.</p>
       <div className="player-completion-metrics">
         <div><strong>{totalSets}</strong><span>подходов</span></div>
         <div><strong>{formatWorkoutDuration(elapsedSeconds)}</strong><span>время</span></div>
@@ -805,7 +831,7 @@ function PlayerSplash({ visible }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog, serverFeedback, isMatchDayPrimer = false }) {
+function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog, serverFeedback, previousResults = {}, isMatchDayPrimer = false }) {
   const isUpcoming = !isToday && sessionDate > todayISO();
   const initialDone = serverLog?.done || {};
   const blocks = Array.isArray(session?.blocks) ? session.blocks : [];
@@ -817,6 +843,9 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
   // Cross-device state is seeded from Redis, with a local offline fallback.
   const [done, setDone] = useState(initialDone);
+  const [skipped, setSkipped] = useState(serverLog?.skipped || {});
+  const [skipUpdatedAt, setSkipUpdatedAt] = useState(serverLog?.skipUpdatedAt || {});
+  const [lastContact, setLastContact] = useState(null);
   const [weights, setWeights] = useState(serverLog?.weights || {});
   const [setUpdatedAt, setSetUpdatedAt] = useState(serverLog?.setUpdatedAt || {});
   const [weightUpdatedAt, setWeightUpdatedAt] = useState(serverLog?.weightUpdatedAt || {});
@@ -825,7 +854,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   const [lastActionAt, setLastActionAt] = useState(serverLog?.lastActionAt || null);
   const [restUntil, setRestUntil] = useState(serverLog?.restUntil || null);
   const [serverSavedAt, setServerSavedAt] = useState(serverLog?.savedAt || null);
-  const initialBlock = firstIncompleteBlock(session, initialDone);
+  const initialBlock = firstIncompleteBlock(session, initialDone, serverLog?.skipped);
   const [activeBlock, setActiveBlock] = useState(initialBlock?.bi ?? (initialAllDone ? -1 : 0));
   const [focusMode, setFocusMode] = useState(true);
   const [workoutStarted, setWorkoutStarted] = useState(Boolean(serverLog?.startedAt || Object.values(initialDone).some(Boolean)));
@@ -848,6 +877,9 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
   const undoTimer = useRef(null);
   const activeCoachCommand = coachCommands[0] || null;
+  const holdTimer = useHoldTimer(`gym:hold:${token}:${sessionDate}`);
+  const wakeLock = usePlayerWakeLock(workoutStarted && !completedAt);
+  const skippedCount = skippedSetCount(session, done, skipped);
 
   useEffect(() => {
     if (!token || !sessionDate) return undefined;
@@ -856,8 +888,9 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
       try {
         const response = await fetch(`/api/player/commands?token=${encodeURIComponent(token)}&date=${encodeURIComponent(sessionDate)}`, { cache: 'no-store' });
         const body = await response.json();
-        if (active && response.ok) setCoachCommands(body.commands || []);
-      } catch (_) {}
+        if (active && response.ok) { setCoachCommands(body.commands || []); setLastContact(Date.now()); }
+        else if (active) setLastContact(null);
+      } catch (_) { if (active) setLastContact(null); }
     };
     loadCommands();
     const timer = setInterval(loadCommands, 6000);
@@ -903,13 +936,14 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
       const pending = JSON.parse(localStorage.getItem(`gym:pending:${token}:${sessionDate}`) || 'null');
       const merged = mergeWorkoutProgress(serverLog || {}, pending || local || {});
       setDone(merged.done); setWeights(merged.weights);
+      setSkipped(merged.skipped || {}); setSkipUpdatedAt(merged.skipUpdatedAt || {});
       setSetUpdatedAt(merged.setUpdatedAt); setWeightUpdatedAt(merged.weightUpdatedAt);
       setServerRevision(merged.revision);
       setStartedAt(merged.startedAt); setCompletedAt(merged.completedAt);
       setFinishReason(merged.finishReason || null);
       setLastActionAt(merged.lastActionAt); setElapsedSeconds(merged.elapsedSeconds);
       setWorkoutStarted(Boolean(merged.startedAt || Object.values(merged.done).some(Boolean)));
-      setActiveBlock(firstIncompleteBlock(session, merged.done)?.bi ?? -1);
+      setActiveBlock(firstIncompleteBlock(session, merged.done, merged.skipped)?.bi ?? -1);
       if (merged.completedAt) setFocusMode(false);
       setRestUntil(merged.restUntil);
       if (merged.restPausedSeconds > 0) setRestTimer({ total: merged.restPausedSeconds, remaining: merged.restPausedSeconds, running: false, label: 'Отдых · пауза' });
@@ -920,12 +954,12 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   }, [token, sessionDate, serverLog, session]);
 
   const restPausedSeconds = restTimer && !restTimer.running ? restTimer.remaining : 0;
-  const progressSnapshot = { restPausedSeconds, done, weights, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, activeBlock, restUntil, lastActionAt, clientRevision: serverRevision, clientId: deviceId, deviceLabel: typeof navigator === 'undefined' ? 'Устройство игрока' : `${navigator.platform || 'Mobile'} · ${navigator.standalone ? 'PWA' : 'Browser'}` };
+  const progressSnapshot = { skipped, skipUpdatedAt, restPausedSeconds, done, weights, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, activeBlock, restUntil, lastActionAt, clientRevision: serverRevision, clientId: deviceId, deviceLabel: typeof navigator === 'undefined' ? 'Устройство игрока' : `${navigator.platform || 'Mobile'} · ${navigator.standalone ? 'PWA' : 'Browser'}` };
   useEffect(() => {
     if (!progressReady || !token || !sessionDate) return;
     try { localStorage.setItem(`gym:${token}:${sessionDate}`, JSON.stringify(progressSnapshot)); }
     catch (_) { setSyncStatus('storage-error'); }
-  }, [progressReady, done, weights, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, restUntil, restPausedSeconds, lastActionAt, token, sessionDate]);
+  }, [progressReady, done, weights, skipped, skipUpdatedAt, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, restUntil, restPausedSeconds, lastActionAt, token, sessionDate]);
 
   usePlayerProgressSync({ token, sessionDate, ready: progressReady, revision: progressRevision, snapshot: progressSnapshot,
     onStatus: setSyncStatus,
@@ -933,6 +967,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
       setServerRevision(Number(body.revision) || 0); setServerSavedAt(body.savedAt);
       const merged = mergeWorkoutProgress(progressSnapshot, body);
       setDone(merged.done); setWeights(merged.weights);
+      setSkipped(merged.skipped || {}); setSkipUpdatedAt(merged.skipUpdatedAt || {});
       setSetUpdatedAt(merged.setUpdatedAt); setWeightUpdatedAt(merged.weightUpdatedAt);
     },
   });
@@ -981,7 +1016,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   }, [restTimer?.remaining, restTimer?.notified]);
 
   useEffect(() => {
-    if (!progressReady || !workoutStarted || totalSets === 0 || doneCount !== totalSets || completedAt) return;
+    if (!progressReady || !workoutStarted || totalSets === 0 || doneCount + skippedCount !== totalSets || completedAt) return;
     const now = new Date();
     const start = startedAt ? new Date(startedAt) : now;
     const seconds = Math.max(1, Math.round((now.getTime() - start.getTime()) / 1000));
@@ -993,9 +1028,14 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     setProgressRevision(value => value + 1);
     setRestTimer(null);
     if (navigator.vibrate) navigator.vibrate([35, 60, 35, 60, 80]);
-  }, [progressReady, workoutStarted, totalSets, doneCount, completedAt, startedAt]);
+  }, [progressReady, workoutStarted, totalSets, doneCount, skippedCount, completedAt, startedAt]);
 
-  const upcomingSet = completedAt ? null : nextWorkoutSet(session, done);
+  const upcomingSet = completedAt ? null : nextWorkoutSet(session, done, skipped);
+  useEffect(() => {
+    const item = holdTimer.hold;
+    if (item && (completedAt || done[item.key] || skipped[`${item.bi}-${item.ei}`] || !blocks[item.bi]?.exercises?.[item.ei]?.targetSets?.[item.si])) holdTimer.cancel();
+  }, [completedAt, done, skipped, holdTimer.hold]);
+
   function changeRest(action) {
     if (!restTimer) return;
     const remaining = restTimer.running ? restRemaining(restUntil) : restTimer.remaining;
@@ -1038,7 +1078,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
   function startWorkout() {
     const now = new Date().toISOString();
-    const first = firstIncompleteBlock(session, done);
+    const first = firstIncompleteBlock(session, done, skipped);
     setWorkoutStarted(true);
     setStartedAt(current => current || now);
     setCompletedAt(null);
@@ -1050,7 +1090,34 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     if (navigator.vibrate) navigator.vibrate(20);
   }
 
+  function skipExercise(bi, ei, reason) {
+    if (reason && !SKIP_REASONS.includes(reason)) return;
+    const key = `${bi}-${ei}`;
+    const next = { ...skipped, [key]: reason };
+    setSkipped(next); setSkipUpdatedAt(current => ({ ...current, [key]: new Date().toISOString() }));
+    setCompletedAt(null); setFinishReason(null); setUndoSet(null);
+    holdTimer.cancel(); setRestTimer(null); setRestUntil(null); setRestPausedSeconds(0);
+    setActiveBlock(firstIncompleteBlock(session, done, next)?.bi ?? -1);
+    setLastActionAt(new Date().toISOString()); setProgressRevision(value => value + 1);
+  }
+
+  function startHold(item) {
+    if (holdTimer.hold || skipped[`${item.bi}-${item.ei}`]) return;
+    setRestTimer(null); setRestUntil(null); setRestPausedSeconds(0);
+    setLastActionAt(new Date().toISOString()); setProgressRevision(value => value + 1);
+    holdTimer.start(item);
+  }
+
+  function confirmHold() {
+    const item = holdTimer.hold;
+    if (!item || holdTimer.remaining > 0 || item.side !== item.sides) return;
+    holdTimer.cancel();
+    const block = blocks[item.bi], ex = block?.exercises?.[item.ei];
+    if (ex && !done[item.key] && !skipped[`${item.bi}-${item.ei}`]) toggleSet(item.key, { ...item, block, ex });
+  }
+
   function toggleSet(key, context) {
+    if (holdTimer.hold?.key === key) holdTimer.cancel();
     const actionAt = new Date().toISOString();
     if (completedAt) { setCompletedAt(null); setFinishReason(null); }
     const wasDone = Boolean(done[key]);
@@ -1076,7 +1143,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     const newDone = { ...done, [key]: true };
     const allFinished = totalSets > 0 && Object.values(newDone).filter(Boolean).length === totalSets;
     if (!allFinished) {
-      const seconds = restSecondsFor(context.block, context.ex, { ...context, next: nextWorkoutSet(session, newDone) });
+      const seconds = restSecondsFor(context.block, context.ex, { ...context, next: nextWorkoutSet(session, newDone, skipped) });
       setRestTimer({
         total: seconds,
         remaining: seconds,
@@ -1087,8 +1154,8 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
       setRestUntil(new Date(Date.now() + seconds * 1000).toISOString());
     }
 
-    if (blockIsComplete(context.block, context.bi, newDone)) {
-      const next = nextIncompleteBlock(session, context.bi, newDone);
+    if (blockIsComplete(context.block, context.bi, newDone, skipped)) {
+      const next = nextIncompleteBlock(session, context.bi, newDone, skipped);
       setTimeout(() => {
         setActiveBlock(next?.bi ?? -1);
         if (next) {
@@ -1166,7 +1233,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     <>
       <Head>
         <title>{player?.name ? `${player.name} · NK Coach` : 'NK Coach'}</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#050b12" />
         {/* PWA */}
         <meta name="mobile-web-app-capable" content="yes" />
@@ -1279,7 +1346,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                 const blockTotal = (block.exercises || []).reduce((s, ex) => s + (ex.targetSets?.length || 0), 0);
                 const blockDone = (block.exercises || []).reduce((s, ex, ei) =>
                   s + (ex.targetSets || []).filter((_, si) => done[`${bi}-${ei}-${si}`]).length, 0);
-                const blockComplete = blockTotal > 0 && blockDone === blockTotal;
+                const blockComplete = blockIsComplete(block, bi, done, skipped);
                 return (
                   <button
                     key={bi}
@@ -1325,6 +1392,14 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
           </nav>
         )}
 
+        {!notFound && <div className="mx-3.5 mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-300">
+          <a className="rounded-xl border border-white/15 px-3 py-2" href={`/player/${encodeURIComponent(token)}?date=${todayISO()}`}>Сегодня</a>
+          {sessionDates.filter(date => date > todayISO()).sort()[0] && <a className="rounded-xl border border-white/15 px-3 py-2" href={`/player/${encodeURIComponent(token)}?date=${sessionDates.filter(date => date > todayISO()).sort()[0]}`}>Ближайшая программа</a>}
+          <label className="flex items-center gap-2">Дата<select aria-label="Дата программы" value={sessionDate || ''} onChange={event => { if (event.target.value) window.location.assign(`/player/${encodeURIComponent(token)}?date=${event.target.value}`); }} className="min-w-0 rounded-lg bg-slate-800 p-2"><option value="">Выбери дату</option>{sessionDate && !sessionDates.includes(sessionDate) && <option value={sessionDate}>{sessionDate} · нет программы</option>}{sessionDates.map(date => <option key={date} value={date}>{date}</option>)}</select></label>
+          {isUpcoming && !sessionDates.includes(todayISO()) && <p className="w-full text-xs text-slate-400">На сегодня программы нет. Открыта запланированная тренировка.</p>}
+        </div>}
+        {!notFound && session && <OfflineProgram token={token} date={sessionDate} session={session} lastContact={lastContact} />}
+        {session && wakeLock.supported && <div className="mx-3.5 mt-3 text-xs text-slate-400"><label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={wakeLock.enabled} onChange={wakeLock.toggle} />Не гасить экран во время тренировки</label>{wakeLock.status && <p role="status">{wakeLock.status}</p>}</div>}
         {/* ── Invalid token ── */}
         {notFound && (
           <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
@@ -1342,7 +1417,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
             <div className="mb-4 text-5xl">🏋️</div>
             <h2 className="mb-2 text-lg font-bold text-slate-200">Тренировка не готова</h2>
             <p className="text-sm leading-relaxed text-slate-500">
-              Тренер ещё не загрузил программу на сегодня.<br />
+              На выбранную дату программа пока не назначена.<br />
               Загляни позже или уточни у тренера.
             </p>
           </div>
@@ -1350,7 +1425,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
         {/* ── Session content ── */}
         {!notFound && session && activeTab === 'workout' && (
-          <main className={`player-workout-content space-y-6 px-3.5 pt-4 ${restTimer ? 'pb-64' : 'pb-24'}`}>
+          <main className={`player-workout-content space-y-6 px-3.5 pt-4 ${restTimer || holdTimer.hold ? 'pb-72' : 'pb-24'}`}>
             {!workoutStarted ? (
               <WorkoutIntro
                 sessionLabel={sessionLabel}
@@ -1362,6 +1437,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                 dose={dose}
                 onStart={startWorkout}
                 token={token}
+                previousResults={previousResults}
               />
             ) : (
               <>
@@ -1382,6 +1458,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                   </div>
                 )}
 
+                {skippedCount > 0 && <p className="text-sm text-amber-200">Пропущено подходов: {skippedCount}. Они не засчитываются как выполненные.</p>}
                 {upcomingSet && <div className="rounded-xl border border-emerald-400/25 p-4 text-slate-200" role="status">
                   Далее: <strong>{upcomingSet.exercise.code} · {upcomingSet.exercise.name}</strong><br />
                   Подход {upcomingSet.si + 1} · {upcomingSet.target}
@@ -1390,7 +1467,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                   const blockTotal = (block.exercises || []).reduce((sum, ex) => sum + (ex.targetSets?.length || 0), 0);
                   const blockDone = (block.exercises || []).reduce((sum, ex, ei) =>
                     sum + (ex.targetSets || []).filter((_, si) => done[`${bi}-${ei}-${si}`]).length, 0);
-                  const blockComplete = blockTotal > 0 && blockDone === blockTotal;
+                  const blockComplete = blockIsComplete(block, bi, done, skipped);
                   const blockCollapsed = focusMode && bi !== activeBlock;
 
                   return (
@@ -1410,7 +1487,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                           <span className="player-block-badge">{block.label}</span>
                           <span className="min-w-0 flex-1 text-left">
                             <strong>Блок {block.label}</strong>
-                            <small>{blockComplete ? 'Выполнен' : 'Ожидает'} · {blockDone}/{blockTotal} подходов</small>
+                            <small>{blockComplete ? (blockDone === blockTotal ? 'Выполнен' : 'Закрыт с пропусками') : 'Ожидает'} · {blockDone}/{blockTotal} подходов</small>
                           </span>
                           <span className="player-block-compact-action" aria-hidden="true">{blockComplete ? '✓' : '→'}</span>
                         </button>
@@ -1435,6 +1512,10 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                                 ex={ex}
                                 block={block}
                                 done={done}
+                                skipReason={skipped[`${bi}-${ei}`]}
+                                onSkip={skipExercise}
+                                onHold={startHold}
+                                previousResult={previousResults[performanceKey(ex)]}
                                 onToggle={toggleSet}
                                 weights={weights}
                                 onWeightChange={changeWeight}
@@ -1463,11 +1544,12 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                 </div>}
                 {completedAt && (
                   <div className="space-y-4">
-                    {doneCount < totalSets && <button type="button" onClick={startWorkout} className="rounded-xl border border-white/15 px-4 py-3 text-sm text-slate-300">Вернуться к выполнению</button>}
-                    <CompletionSummary finishReason={finishReason} totalSets={doneCount} elapsedSeconds={elapsedSeconds} tonnage={tonnage} rpe={sessionRpe} />
+                    {doneCount + skippedCount < totalSets && <button type="button" onClick={startWorkout} className="rounded-xl border border-white/15 px-4 py-3 text-sm text-slate-300">Вернуться к выполнению</button>}
+                    <CompletionSummary skippedCount={skippedCount} finishReason={finishReason} totalSets={doneCount} elapsedSeconds={elapsedSeconds} tonnage={tonnage} rpe={sessionRpe} />
                     <FeedbackForm
                       key={completedAt}
                       finishReason={finishReason}
+                      skipped={skipped}
                       lastActionAt={lastActionAt}
                       initialFeedback={serverFeedback}
                       token={token}
@@ -1573,7 +1655,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                                 <div key={si} className="flex min-w-[58px] flex-col items-center rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
                                   <span className="text-[10px] font-bold mb-0.5 text-slate-600">{si + 1}</span>
                                   <span className="text-sm font-black leading-none text-slate-400">{s}</span>
-                                  <span className="mt-2 text-[11px] text-emerald-300">{histMeta?.log?.done?.[`${bi}-${ei}-${si}`] || histMeta?.actual?.exercises?.find(item => item.name === ex.name && item.block === (block.label || ''))?.setActuals?.[si]?.completed ? '✓ Выполнен' : 'Не отмечен'}</span>
+                                  <span className="mt-2 text-[11px] text-emerald-300">{histMeta?.log?.done?.[`${bi}-${ei}-${si}`] || histMeta?.actual?.exercises?.find(item => item.name === ex.name && item.block === (block.label || ''))?.setActuals?.[si]?.completed ? '✓ Выполнен' : (histMeta?.log?.skipped?.[`${bi}-${ei}`] || histMeta?.feedback?.skipped?.[`${bi}-${ei}`] || histMeta?.actual?.skipped?.[`${bi}-${ei}`]) ? `Пропущен: ${histMeta?.log?.skipped?.[`${bi}-${ei}`] || histMeta?.feedback?.skipped?.[`${bi}-${ei}`] || histMeta?.actual?.skipped?.[`${bi}-${ei}`]}` : 'Не отмечен'}</span>
                                   {Number(String(histMeta?.log?.weights?.[`${bi}-${ei}-${si}`] || histMeta?.actual?.exercises?.find(item => item.name === ex.name && item.block === (block.label || ''))?.setActuals?.[si]?.kg || '').replace(',', '.')) > 0 && <span className="mt-1 text-[11px] text-slate-200">Факт: {histMeta?.log?.weights?.[`${bi}-${ei}-${si}`] || histMeta?.actual?.exercises?.find(item => item.name === ex.name && item.block === (block.label || ''))?.setActuals?.[si]?.kg} кг</span>}
                                   {/^\d/.test(plannedWeightLabel(ex)) && <span className="mt-1 text-[9px] font-semibold leading-none text-slate-600">план {plannedWeightLabel(ex)}</span>}
                                 </div>
@@ -1601,7 +1683,17 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
           </main>
         )}
 
-        {workoutStarted && !finishOpen && activeTab === 'workout' && (
+        {workoutStarted && !finishOpen && activeTab === 'workout' && holdTimer.hold && <section className="player-rest-timer" aria-label="Таймер удержания">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-emerald-300">Удержание · {holdTimer.hold.name}{holdTimer.hold.sides === 2 ? ` · сторона ${holdTimer.hold.side} из 2` : ''}</p>
+            <p className="my-2 text-3xl font-black text-white">{holdTimer.remaining} сек</p>
+            <div className="flex flex-wrap gap-2 text-xs text-slate-200">
+              {holdTimer.remaining > 0 ? <button type="button" className="rounded-lg border border-white/20 p-3" onClick={holdTimer.toggle}>{holdTimer.hold.deadline ? 'Пауза удержания' : 'Продолжить удержание'}</button> : holdTimer.hold.side < holdTimer.hold.sides ? <button type="button" className="rounded-lg bg-emerald-400 p-3 text-slate-950" onClick={holdTimer.nextSide}>Начать другую сторону</button> : <button type="button" className="rounded-lg bg-emerald-400 p-3 text-slate-950" onClick={confirmHold}>Подтвердить выполненный подход</button>}
+              <button type="button" className="rounded-lg border border-white/20 p-3" onClick={holdTimer.cancel}>Отменить удержание</button>
+            </div>
+          </div>
+        </section>}
+        {workoutStarted && !finishOpen && !holdTimer.hold && activeTab === 'workout' && (
           <RestTimer
             timer={restTimer ? { ...restTimer, label: upcomingSet ? `Далее ${upcomingSet.exercise.code || upcomingSet.exercise.name} · подход ${upcomingSet.si + 1} · ${upcomingSet.target}` : restTimer.label } : null}
             onToggle={() => changeRest('toggle')}
@@ -1626,4 +1718,9 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     </>
     </ErrorBoundary>
   );
+}
+
+// Changing a selected date must create a separate state/queue for that workout.
+export default function PlayerPageByDate(props) {
+  return <PlayerPage key={`${props.token}:${props.sessionDate || 'empty'}`} {...props} />;
 }
