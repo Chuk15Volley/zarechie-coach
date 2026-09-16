@@ -19,18 +19,13 @@ import {
 } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import { sanitizeUnavailableEquipmentExercises } from '../../../lib/equipmentRestrictions.mjs';
+import { FINISH_REASONS, actualRepsFromTarget } from '../../../lib/playerWorkout.mjs';
 import { exerciseId } from '../../../lib/exerciseIdentity.mjs';
 
-function targetSetReps(value) {
-  const multiple = String(value || '').match(/^(\d+)\s*[x×]\s*(\d+)$/i);
-  if (multiple) return parseInt(multiple[1], 10) * parseInt(multiple[2], 10);
-  const simple = String(value || '').trim().match(/^(\d+)$/);
-  return simple ? parseInt(simple[1], 10) : 0;
-}
-
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).end();
-  const { token, date, rpe, fatigue, feel, note, doms, soreness, painAreas = [], done: submittedDone, weights: submittedWeights, primerFeedback } = req.body || {};
+  const { token, date, rpe, fatigue, feel, note, doms, soreness, painAreas = [], done: submittedDone, weights: submittedWeights, primerFeedback, finishReason } = req.body || {};
   if (!token || !date || rpe == null) {
     return res.status(400).json({ error: 'token, date and rpe required' });
   }
@@ -47,12 +42,16 @@ export default async function handler(req, res) {
 
   // Load the session for this date to find which exercises had weight data.
   // Add RPE to each exercise's progression record so suggestKg can use it next time.
-  const [sessionRaw, logRaw] = await Promise.all([
-    redis('get', sessionKey(workspace, playerId, date)).catch(() => null),
-    redis('get', `${pfx(workspace)}:log:${playerId}:${date}`).catch(() => null),
-  ]);
+  let sessionRaw, logRaw;
+  try {
+    [sessionRaw, logRaw] = await Promise.all([
+      redis('get', sessionKey(workspace, playerId, date)),
+      redis('get', `${pfx(workspace)}:log:${playerId}:${date}`),
+    ]);
+  } catch (_) { return res.status(503).json({ error: 'Не удалось загрузить программу. Повторите отправку.' }); }
   let sessionRecord = null;
   try { sessionRecord = sessionRaw ? (typeof sessionRaw === 'string' ? JSON.parse(sessionRaw) : sessionRaw) : null; } catch (_) {}
+  if (!sessionRecord?.session) return res.status(404).json({ error: 'Программа не найдена' });
   const isMatchDayPrimer = sessionRecord?.quality?.seasonDecision?.key === 'match_day';
   const fatigueNum = fatigue == null ? null : Number(fatigue);
   if (!isMatchDayPrimer && (!Number.isInteger(fatigueNum) || fatigueNum < 1 || fatigueNum > 5)) {
@@ -70,11 +69,12 @@ export default async function handler(req, res) {
   const key = feedbackKey(workspace, playerId, date);
   const previousRaw = await redis('get', key).catch(() => null);
   const record = {
+    finishReason: FINISH_REASONS.includes(finishReason) ? finishReason : null,
     date: String(date),
     rpe: rpeNum,
     fatigue: isMatchDayPrimer ? null : fatigueNum,
     feel: isMatchDayPrimer ? null : (feel || null),
-    note: isMatchDayPrimer ? '' : (note || '').trim().slice(0, 300),
+    note: String(note || '').trim().slice(0, 300),
     primerFeedback: normalizedPrimerFeedback,
     submittedAt: new Date().toISOString(),
   };
@@ -94,7 +94,6 @@ export default async function handler(req, res) {
       if (rec?.session) rec.session = sanitizeUnavailableEquipmentExercises(rec.session);
       for (const [blockIndex, block] of (rec.session?.blocks || []).entries()) {
         for (const [exerciseIndex, ex] of (block.exercises || []).entries()) {
-          if (ex.name) allExercises.push(ex);
           const targetSets = Array.isArray(ex.targetSets) ? ex.targetSets : [];
           const setActuals = targetSets.map((target, setIndex) => {
               const setKey = `${blockIndex}-${exerciseIndex}-${setIndex}`;
@@ -103,7 +102,7 @@ export default async function handler(req, res) {
               return {
                 set: setIndex + 1,
                 target: String(target ?? ''),
-                reps: targetSetReps(target),
+                reps: actualRepsFromTarget(target),
                 completed: !!completedSets[setKey],
                 kg: Number.isFinite(kg) && kg > 0 ? kg : 0,
               };
@@ -115,6 +114,7 @@ export default async function handler(req, res) {
           const plannedKg = weightKgFromExercise(ex);
           const loadUnits = loadUnitsForExercise(ex);
           const completedSetCount = setActuals.filter(set => set.completed).length;
+          if (ex.name && completedSetCount > 0) allExercises.push(ex);
           const allSetsCompleted = targetSets.length > 0 && completedSetCount === targetSets.length;
           const averageLoggedKg = loggedWeights.length
             ? loggedWeights.reduce((sum, value) => sum + value, 0) / loggedWeights.length
@@ -152,7 +152,7 @@ export default async function handler(req, res) {
           }
         }
       }
-    } catch (_) {}
+    } catch (_) { return res.status(503).json({ error: 'Не удалось обработать выполнение' }); }
   }
 
   actualTonnage = Math.round(actualTonnage);
@@ -167,7 +167,8 @@ export default async function handler(req, res) {
       fatigue: isMatchDayPrimer ? null : fatigueNum,
       feel: isMatchDayPrimer ? null : (feel || null),
       primerFeedback: normalizedPrimerFeedback,
-      note: record.note,
+      finishReason: record.finishReason,
+      note: [record.finishReason ? `Завершена раньше: ${record.finishReason}.` : '', record.note].filter(Boolean).join(' '),
       compliance,
       actualTonnage,
       source: 'player_feedback',
@@ -178,25 +179,23 @@ export default async function handler(req, res) {
       `${pfx(workspace)}:session:actual:${playerId}:${date}`,
       JSON.stringify(actualRecord),
     ]);
-    if (actualTonnage > 0) {
-      actualSessionCmds.push(['SET', `${pfx(workspace)}:gym_tonnage_actual:${playerId}:${date}`, String(actualTonnage)]);
-      actualSessionCmds.push(['SET', gymTonnageKey(workspace, playerId, date), String(actualTonnage)]);
-      actualSessionCmds.push(['ZADD', gymTonnageDatesKey(workspace, playerId), parseInt(String(date).replace(/-/g, ''), 10), String(date)]);
-    }
+    actualSessionCmds.push(['SET', `${pfx(workspace)}:gym_tonnage_actual:${playerId}:${date}`, String(actualTonnage)]);
+    actualSessionCmds.push(['SET', gymTonnageKey(workspace, playerId, date), String(actualTonnage)]);
+    actualSessionCmds.push(['ZADD', gymTonnageDatesKey(workspace, playerId), parseInt(String(date).replace(/-/g, ''), 10), String(date)]);
+  }
+
+  try {
+    // Publish the acknowledgement only after all actuals have been saved.
+    await redisPipeline(actualSessionCmds);
+    await redis('set', key, JSON.stringify(record));
+  } catch (_) {
+    return res.status(503).json({ error: 'Не удалось сохранить результат. Повторите отправку.' });
   }
 
   // Per-player exercise-response memory (avg RPE / feel per exercise).
   if (allExercises.length && !previousRaw) {
     await updateExerciseMemory(playerId, allExercises, rpeNum, feel, date, workspace).catch(() => {});
   }
-
-  const cmds = [
-    ['SET', key, JSON.stringify(record)],
-    ...actualSessionCmds,
-  ];
-  await redisPipeline(cmds).catch(() =>
-    redis('set', key, JSON.stringify(record))
-  );
 
   // #13 — Link evening pain/DOMS back onto yesterday's exercises (fire-and-forget).
   linkPainToExercises(playerId, painAreas || [], Number(doms ?? soreness ?? 0) || 0, date, workspace).catch(() => {});

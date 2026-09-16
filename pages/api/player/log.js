@@ -51,6 +51,7 @@ export default async function handler(req, res) {
       weights: log?.weights || {},
       startedAt: log?.startedAt || null,
       completedAt: log?.completedAt || null,
+      finishReason: log?.finishReason || null,
       elapsedSeconds: Number(log?.elapsedSeconds) || 0,
       savedAt: log?.savedAt || null,
       setUpdatedAt: log?.setUpdatedAt || {},
@@ -58,6 +59,7 @@ export default async function handler(req, res) {
       revision: Number(log?.revision) || 0,
       activeBlock: Number.isInteger(log?.activeBlock) ? log.activeBlock : null,
       restUntil: log?.restUntil || null,
+      restPausedSeconds: log?.restPausedSeconds || 0,
       lastActionAt: log?.lastActionAt || null,
     });
   }
