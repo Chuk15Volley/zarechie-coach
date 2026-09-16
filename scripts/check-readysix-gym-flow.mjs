@@ -48,7 +48,7 @@ const backend = http.createServer(async (req, res) => {
     const mode = selected ? 'player-context' : url.searchParams.get('view') === 'readiness' ? 'team-readiness' : 'roster';
     const decision = { recommendation: scenario === 'stop' ? 'load_stop' : 'full', capPercent: scenario === 'stop' ? 0 : 100, confidence: 'high', reasons: [], restrictions: [], targets: [] };
     const monitoring = { whoop: [{ date: requestedDate, recovery: 5 }], morning: [{ date: requestedDate, readiness: 5 }], evening: [], postMorning: [], postEvening: [] };
-    const calendar = { date: requestedDate, events: scenario === 'rest' ? [{ date: requestedDate, type: 'rest' }] : [{ date: '2026-09-20', type: 'match' }], conflicts: [] };
+    const calendar = { date: requestedDate, events: scenario === 'matches' ? [{ date: '2026-09-15', type: 'match' }, { date, type: 'match' }] : scenario === 'rest' ? [{ date: requestedDate, type: 'rest' }] : [{ date: '2026-09-20', type: 'match' }], conflicts: [] };
     res.end(JSON.stringify({ schema: 'readysix.program-generator-context', schemaVersion: 1, mode,
       organizationId: req.headers['x-api-key'] === 'qa-nk' ? 'nk-performance' : 'zarechie-odintsovo',
       date: requestedDate, revision: 'qa-revision', generatedAt: new Date().toISOString(), calendar,
@@ -117,6 +117,13 @@ try {
   const changed = await request(`/api/programs/generate-status?batchId=${queued.body.batchId}`);
   assert.ok(changed.status >= 400 || changed.body.status === 'failed', JSON.stringify(changed.body));
   assert.equal(modelCalls, 0, 'a new stop before polling must prevent the model call');
+  scenario = 'matches';
+  const matchQueued = await request('/api/programs/generate-async', { ...input, focus: 'inseason_match_day_primer', trainingType: 'activation_power' });
+  assert.equal(matchQueued.status, 200);
+  const matchContext = JSON.parse(records.get(`coach:batch:${matchQueued.body.batchId}`)).qualityContext;
+  assert.equal(matchContext.dosePrescription.matchDayPrimer.seriesDay, 2, 'series comes from ReadySix even with no saved gym history');
+  assert.equal(matchContext.dosePrescription.loadedHardSetsMax, undefined, 'match day is not an inferred recovery day');
+  console.log('PASS: ReadySix consecutive-match series reaches the actual generator');
   scenario = 'normal';
   const generated = await request('/api/programs/generate', input);
   assert.equal(generated.status, 200, liveModel ? 'Live model request failed; check the local credential or retry in the deployed environment' : JSON.stringify(generated.body));
