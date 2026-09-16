@@ -65,3 +65,12 @@ test('workout duration is formatted for compact completion summaries', () => {
   assert.equal(formatWorkoutDuration(754), '12 мин');
   assert.equal(formatWorkoutDuration(7380), '2 ч 3 мин');
 });
+
+test('athlete notes omit planning analytics but retain exercise safety instructions', async () => {
+  const { athleteSessionWarning } = await import('../lib/playerWorkout.mjs');
+  assert.equal(athleteSessionWarning('Предварительный план: подтвердить свежие данные в ReadySix. При новых ограничениях ReadySix снизить объём; жим:тяга 15:18.'), '');
+  assert.equal(athleteSessionWarning('Предварительный план: проверить ReadySix.\nПри боли в плече остановить жим.'), 'При боли в плече остановить жим.');
+  assert.equal(athleteSessionWarning('Предварительный план: проверить ReadySix. При боли прекрати подход.'), 'При боли прекрати подход.');
+  assert.equal(athleteSessionWarning('ReadySix: прыжки запрещены.'), 'ReadySix: прыжки запрещены.');
+  assert.equal(athleteSessionWarning('При боли прекрати подход и сообщи тренеру.'), 'При боли прекрати подход и сообщи тренеру.');
+});
