@@ -196,6 +196,7 @@ function DatePicker({ value, onChange, maxDate, minDate, size = 'default', class
                   key={i}
                   type="button"
                   disabled={dis}
+                  aria-label={s}
                   onClick={() => { onChange(s); setOpen(false); }}
                   className={`h-9 w-full rounded-xl text-[12px] font-semibold transition-all focus:outline-none
                     ${sel
@@ -1863,16 +1864,20 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery, onApply })
           <span className="text-xs font-bold text-cyan-300">ReadySix · состояние и расписание</span>
           <a href="https://zarechie-odintsovo.vercel.app/dashboard" target="_blank" rel="noreferrer" className="text-xs text-slate-400 underline">Открыть аналитику</a>
         </div>
+        {rec?.planning?.preliminary && <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
+          <p className="font-semibold">Предварительный план на {data.targetDate}</p>
+          <p className="mt-1">Аналитика на {rec.planning.assessmentDate}. Последние наблюдения: {rec.planning.latestObservationDate || 'пока нет'}. Анкеты на дату тренировки не обязательны для подготовки программы. Перед выполнением проверьте новые данные.</p>
+        </div>}
         <div className={`rounded-xl border p-3 ${tone(state?.level)}`}>
           <p className="text-sm font-semibold">{state?.label || 'Нет решения ReadySix'}</p>
           <p className="mt-1 text-xs opacity-80">{state?.detail}</p>
-          {state?.capPercent != null && <p className="mt-1 text-xs">Лимит объёма ReadySix: {state.capPercent}% · не процент от 1ПМ</p>}
+          {state?.capPercent != null && !state?.dataInsufficient && <p className="mt-1 text-xs">Лимит объёма ReadySix: {state.capPercent}% · не процент от 1ПМ</p>}
         </div>
         {rec && <div className="space-y-2">
           <p className="text-xs text-slate-400">{data.targetDate} · {rec.calendar?.todayEvent?.type === 'game' ? 'День матча' : rec.calendar?.nextGame ? `Следующая игра ${rec.calendar.nextGame} · MD−${rec.calendar.daysToGame}` : 'Дата ближайшей игры не передана'}</p>
           <p className="text-sm font-semibold text-white">Предложение: {rec.label}</p>
           {rec.reasons.map((reason, index) => <p key={index} className="text-xs text-slate-300">{reason}</p>)}
-          {rec.warnings.map((warning, index) => <p key={index} className="text-xs text-amber-300">{warning}</p>)}
+          {rec.warnings.filter(warning => !warning.startsWith('Предварительная программа на ')).map((warning, index) => <p key={index} className="text-xs text-amber-300">{warning}</p>)}
           {rec.canApply && <button type="button" onClick={() => onApply?.(rec)} className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-xs font-semibold text-cyan-200">Применить вариант для зала</button>}
           <p className="text-[11px] text-slate-500">Применение меняет настройки программы. Генерация и сохранение — отдельным действием тренера.</p>
         </div>}
@@ -7680,6 +7685,10 @@ export default function Home() {
           {session && meta && (
             <div className="premium-session-card mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
 
+              {meta.quality?.dose?.prescription?.readySix?.planning?.preliminary && <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200 print:text-black">
+                <p className="font-semibold">Предварительная программа</p>
+                <p className="mt-1">Составлена по аналитике ReadySix на {meta.quality.dose.prescription.readySix.planning.assessmentDate}. Перед тренировкой проверьте актуальные анкеты и ограничения; при изменениях скорректируйте программу.</p>
+              </div>}
               {/* Result toolbar */}
               <div className="mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden">
                 <div className="flex flex-wrap items-center gap-2.5">

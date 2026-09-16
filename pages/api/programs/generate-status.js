@@ -405,7 +405,8 @@ export default async function handler(req, res) {
     };
     let autoSaved = false;
     let saveWarning = '';
-    const manualSaveRequired = quality.seasonDecision?.primer?.manualSaveRequired === true;
+    const preliminary = quality.dose?.prescription?.readySix?.planning?.preliminary === true;
+    const manualSaveRequired = preliminary || quality.seasonDecision?.primer?.manualSaveRequired === true;
     if (autoSave && !quality.blocking && !quality.medicalReviewRequired && !manualSaveRequired) {
       try {
         await redisPipeline(autoSaveCommands(record2, workspace, playerId, date));
@@ -417,7 +418,9 @@ export default async function handler(req, res) {
         console.error('Redis save session failed:', error.message);
       }
     } else if (autoSave && (quality.blocking || quality.medicalReviewRequired || manualSaveRequired)) {
-      saveWarning = manualSaveRequired
+      saveWarning = preliminary
+        ? 'Предварительная программа готова. Проверьте и сохраните её вручную; перед тренировкой учтите новые данные ReadySix.'
+        : manualSaveRequired
         ? 'Игровой праймер не автосохранён: откройте игрока, визуально проверьте программу и сохраните вручную.'
         : quality.blocking
         ? quality.reviewMessage || 'Тренировка не автосохранена: нарушен лимит безопасности.'

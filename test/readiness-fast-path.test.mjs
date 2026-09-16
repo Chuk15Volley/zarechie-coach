@@ -62,7 +62,7 @@ test('readiness cache miss stores a schema-isolated record across releases for t
   });
   assert.equal(result.cache, 'miss');
   assert.equal(stored[2], 600);
-  assert.match(stored[0], /team-readiness:v3:2026-08-28$/);
+  assert.match(stored[0], /team-readiness:v4:2026-08-28$/);
   assert.deepEqual(JSON.parse(stored[1]).payload, payload);
 });
 
