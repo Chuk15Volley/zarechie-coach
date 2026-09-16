@@ -1,5 +1,6 @@
 // Isolated release smoke: built coach + synthetic ReadySix/Redis/OpenAI only.
-// No production credentials, writes or model requests. Run after npm run build.
+// No production athlete writes. Default: no model requests. --live-model explicitly
+// uses the configured model key with synthetic inputs. Run after npm run build.
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
@@ -8,6 +9,12 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+const liveModel = process.argv.includes('--live-model');
+if (liveModel && !process.env.OPENAI_API_KEY) {
+  const { default: { loadEnvConfig } } = await import('@next/env');
+  loadEnvConfig(process.cwd(), true, { info() {}, error() {} });
+}
+if (liveModel && !process.env.OPENAI_API_KEY) throw new Error('Live model credential is missing');
 const directory = await mkdtemp(path.join(tmpdir(), 'gym-flow-'));
 const records = new Map();
 let scenario = 'normal';
@@ -30,6 +37,7 @@ function command([op, key, ...args]) {
 const backend = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   res.setHeader('content-type', 'application/json');
+  if (url.pathname === '/model-observed') { modelCalls++; res.end('{}'); return; }
   if (url.pathname === '/responses') {
     modelCalls++;
     res.end(JSON.stringify({ id: 'response-qa', status: 'completed', output: [{ type: 'function_call', name: 'build_session', arguments: JSON.stringify(session) }] })); return;
@@ -59,9 +67,12 @@ await new Promise(resolve => reservation.close(resolve));
 const base = `http://127.0.0.1:${port}`;
 await writeFile(path.join(directory, 'fetch.cjs'), `
 const original = globalThis.fetch;
-globalThis.fetch = (input, options) => {
+globalThis.fetch = async (input, options) => {
   const url = new URL(String(input?.url || input));
-  if (url.origin === 'https://api.openai.com') return original(${JSON.stringify(fixtureUrl + '/responses')}, options);
+  if (url.origin === 'https://api.openai.com') {
+    if (${JSON.stringify(liveModel)}) { await original(${JSON.stringify(fixtureUrl + '/model-observed')}); return original(input, options); }
+    return original(${JSON.stringify(fixtureUrl + '/responses')}, options);
+  }
   if (url.origin === 'https://readysix.test') return original(${JSON.stringify(fixtureUrl)} + url.pathname + url.search, options);
   if (!['127.0.0.1', 'localhost'].includes(url.hostname)) throw new Error('External network disabled in gym QA');
   return original(input, options);
@@ -69,14 +80,14 @@ globalThis.fetch = (input, options) => {
 const child = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)], {
   cwd: process.cwd(), env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: 'production',
     NODE_OPTIONS: `--require=${path.join(directory, 'fetch.cjs')}`, TRAINER_API_KEY: 'qa-trainer-only',
-    OPENAI_API_KEY: 'qa-model-only', KV_REST_API_URL: fixtureUrl, KV_REST_API_TOKEN: 'qa-redis',
+    OPENAI_API_KEY: liveModel ? process.env.OPENAI_API_KEY : 'qa-model-only', KV_REST_API_URL: fixtureUrl, KV_REST_API_TOKEN: 'qa-redis',
     READYSIX_URL: 'https://readysix.test', READYSIX_ZARECHIE_API_KEY: 'qa-z', READYSIX_NK_API_KEY: 'qa-nk',
     READYSIX_ZARECHIE_MODE: 'primary', READYSIX_NK_MODE: 'primary',
   }, stdio: ['ignore', 'pipe', 'pipe'],
 });
 let log = ''; child.stdout.on('data', data => { log += data; }); child.stderr.on('data', data => { log += data; });
 const request = async (route, body) => {
-  const response = await fetch(base + route, { method: body ? 'POST' : 'GET', headers: { 'x-api-key': 'qa-trainer-only', 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(30000) });
+  const response = await fetch(base + route, { method: body ? 'POST' : 'GET', headers: { 'x-api-key': 'qa-trainer-only', 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(liveModel ? 150000 : 30000) });
   return { status: response.status, body: await response.json() };
 };
 try {
@@ -108,9 +119,13 @@ try {
   assert.equal(modelCalls, 0, 'a new stop before polling must prevent the model call');
   scenario = 'normal';
   const generated = await request('/api/programs/generate', input);
-  assert.equal(generated.status, 200, JSON.stringify(generated.body));
+  assert.equal(generated.status, 200, liveModel ? 'Live model request failed; check the local credential or retry in the deployed environment' : JSON.stringify(generated.body));
   assert.ok(generated.body.session.blocks.length);
   assert.equal(generated.body.quality.dose.prescription.readySix.revision, 'qa-revision');
+  if (liveModel) {
+    console.log(JSON.stringify({ liveModel: true, calls: modelCalls, score: generated.body.quality.score, blocking: generated.body.quality.blocking, failedChecks: generated.body.quality.checks.filter(check => !check.ok).map(check => check.id) }));
+    assert.equal(generated.body.quality.blocking, false, 'Live generated program exceeded a deterministic safety/dose ceiling');
+  }
   if (process.env.QA_BROWSER_MODULE) {
     const { chromium } = await import(pathToFileURL(process.env.QA_BROWSER_MODULE));
     const browser = await chromium.launch({ headless: true });
@@ -126,7 +141,7 @@ try {
       console.log('PASS: real browser source card and apply action');
     } finally { await browser.close(); }
   }
-  console.log('PASS: real HTTP readiness, sync/async safety, poll-time refresh, generation context; synthetic services only');
+  console.log(`PASS: real HTTP readiness, sync/async safety, poll-time refresh, generation context; ${liveModel ? 'live model with synthetic player and local storage' : 'synthetic services only'}`);
 } finally {
   child.kill('SIGTERM');
   await Promise.race([once(child, 'exit'), new Promise(resolve => setTimeout(resolve, 5000))]);
