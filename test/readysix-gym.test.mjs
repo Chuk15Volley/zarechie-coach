@@ -71,3 +71,14 @@ test('post-match recovery permits light coded work but blocks external loading',
   const loaded = { blocks: [{ code: 'A', exercises: [{ ...exercise, weightKg: 40 }] }] };
   assert.equal(auditDose(loaded, p).safe, false);
 });
+
+test('ReadySix-resolved calendar discrepancies do not block neighbouring match days', () => {
+  const s = snapshot([{ date, type: 'match', source: 'reports' }, { date: '2026-09-15', type: 'rest', source: 'reports' }]);
+  s.readySixCalendar.conflicts = [{ date: '2026-09-15', reportType: 'rest', scheduleType: 'recovery' }];
+  assert.equal(rec(s).key, 'match_day');
+  assert.equal(rec(s).calendar.conflicts.length, 0);
+  assert.equal(rec(s).warnings.length, 1);
+  s.readySixCalendar.events = [{ date, type: 'rest', source: 'reports' }];
+  s.readySixCalendar.conflicts = [{ date, reportType: 'rest', scheduleType: 'recovery' }];
+  assert.equal(rec(s).key, 'no_gym', 'Resolved rest remains a day without gym');
+});
