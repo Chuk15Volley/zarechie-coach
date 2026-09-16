@@ -126,6 +126,18 @@ try {
     console.log(JSON.stringify({ liveModel: true, calls: modelCalls, score: generated.body.quality.score, blocking: generated.body.quality.blocking, failedChecks: generated.body.quality.checks.filter(check => !check.ok).map(check => check.id) }));
     assert.equal(generated.body.quality.blocking, false, 'Live generated program exceeded a deterministic safety/dose ceiling');
   }
+  // Explicit manual save in the isolated store, then reopen through the real API.
+  const saved = await request('/api/programs/save', { ...input, ...generated.body, playerId: player.id, workspace: 'zarechie' });
+  assert.equal(saved.status, 200, 'Synthetic program save failed');
+  const reopened = await request(`/api/programs/get?playerId=${player.id}&date=${date}&workspace=zarechie`);
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.body.record.date, date);
+  assert.equal(reopened.body.record.quality.dose.prescription.readySix.revision, 'qa-revision');
+  assert.deepEqual(reopened.body.record.session.blocks.flatMap(block => block.exercises.map(ex => ex.name)),
+    generated.body.session.blocks.flatMap(block => block.exercises.map(ex => ex.name)));
+  const otherWorkspace = await request(`/api/programs/get?playerId=${player.id}&date=${date}&workspace=nkperf`);
+  assert.equal(otherWorkspace.body.record, null, 'A program must not cross workspace boundaries');
+  console.log('PASS: save, reopen, ReadySix revision and workspace isolation in local storage');
   if (process.env.QA_BROWSER_MODULE) {
     const { chromium } = await import(pathToFileURL(process.env.QA_BROWSER_MODULE));
     const browser = await chromium.launch({ headless: true });
