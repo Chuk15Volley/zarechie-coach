@@ -1,3 +1,4 @@
+import { normalizeSkips } from '../../../lib/playerExperience.mjs';
 // pages/api/player/feedback.js
 // POST regular: { token, date, rpe, fatigue, feel, note }.
 // POST match-day primer: { token, date, rpe, primerFeedback: { speed, legs, shoulder } }.
@@ -25,7 +26,7 @@ import { exerciseId } from '../../../lib/exerciseIdentity.mjs';
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).end();
-  const { token, date, rpe, fatigue, feel, note, doms, soreness, painAreas = [], done: submittedDone, weights: submittedWeights, primerFeedback, finishReason } = req.body || {};
+  const { token, date, rpe, fatigue, feel, note, doms, soreness, painAreas = [], done: submittedDone, weights: submittedWeights, primerFeedback, finishReason, skipped: submittedSkipped } = req.body || {};
   if (!token || !date || rpe == null) {
     return res.status(400).json({ error: 'token, date and rpe required' });
   }
@@ -69,6 +70,7 @@ export default async function handler(req, res) {
   const key = feedbackKey(workspace, playerId, date);
   const previousRaw = await redis('get', key).catch(() => null);
   const record = {
+    skipped: normalizeSkips(submittedSkipped),
     finishReason: FINISH_REASONS.includes(finishReason) ? finishReason : null,
     date: String(date),
     rpe: rpeNum,
@@ -86,6 +88,7 @@ export default async function handler(req, res) {
   let completedLoadedExercises = 0;
   let log = null;
   try { log = logRaw ? (typeof logRaw === 'string' ? JSON.parse(logRaw) : logRaw) : null; } catch (_) {}
+  if (submittedSkipped === undefined) record.skipped = normalizeSkips(log?.skipped);
   const completedSets = submittedDone && typeof submittedDone === 'object' ? submittedDone : log?.done || {};
   const actualWeights = submittedWeights && typeof submittedWeights === 'object' ? submittedWeights : log?.weights || {};
   if (sessionRecord) {
@@ -130,6 +133,7 @@ export default async function handler(req, res) {
           }
           if (ex.name) {
             actualExercises.push({
+              skippedReason: record.skipped[`${blockIndex}-${exerciseIndex}`] || null,
               exerciseId: exerciseId(ex),
               block: block.label || '',
               name: ex.name,
@@ -167,6 +171,7 @@ export default async function handler(req, res) {
       fatigue: isMatchDayPrimer ? null : fatigueNum,
       feel: isMatchDayPrimer ? null : (feel || null),
       primerFeedback: normalizedPrimerFeedback,
+      skipped: record.skipped,
       finishReason: record.finishReason,
       note: [record.finishReason ? `Завершена раньше: ${record.finishReason}.` : '', record.note].filter(Boolean).join(' '),
       compliance,

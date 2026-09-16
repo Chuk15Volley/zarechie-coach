@@ -1,4 +1,4 @@
-const CACHE = 'nk-team-system-v5';
+const CACHE = 'nk-team-system-v6';
 const STATIC_PATHS = new Set([
   '/nk-logo.jpg',
   '/favicon.svg',
@@ -16,7 +16,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))
+      .then(keys => Promise.all(keys.filter(key => key.startsWith('nk-team-system-') && key !== CACHE).map(key => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
@@ -34,7 +34,9 @@ async function saveToCache(request, response) {
 
   try {
     const cache = await caches.open(CACHE);
-    await cache.put(request, response.clone());
+    const headers = new Headers(response.headers);
+    headers.set('X-Player-Cached-At', new Date().toISOString());
+    await cache.put(request, new Response(await response.clone().arrayBuffer(), { status: response.status, statusText: response.statusText, headers }));
   } catch (_) {
     // A failed cache write (quota, private mode, aborted request) must never
     // turn a successful network response into a failed page load.
@@ -129,7 +131,52 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  event.respondWith(
-    isStaticAsset(url) ? cacheFirst(request, url) : networkFirst(request, url)
-  );
+  // Live commands and API data must never be replayed from an old cache.
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(request).catch(() => offlineResponse(request, url)));
+    return;
+  }
+  event.respondWith(isStaticAsset(url) ? cacheFirst(request, url) : networkFirst(request, url));
+});
+
+
+function pageMatches(html, expected) {
+  try {
+    const script = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    const props = JSON.parse(script[1]).props.pageProps;
+    return props.token === expected.token && props.sessionDate === expected.date && JSON.stringify(props.session) === expected.session;
+  } catch (_) { return false; }
+}
+
+self.addEventListener('message', event => {
+  const data = event.data || {};
+  if (!['CHECK_PLAYER_CACHE', 'PREPARE_PLAYER_CACHE'].includes(data.type)) return;
+  event.waitUntil((async () => {
+    const reply = result => event.ports?.[0]?.postMessage(result);
+    try {
+      const url = new URL(data.url);
+      const source = new URL(event.source.url);
+      if (url.origin !== self.location.origin || url.href !== source.href || !url.pathname.startsWith('/player/')) return reply({ ready: false });
+      const assets = [...new Set(data.assets || [])].filter(asset => {
+        const parsed = new URL(asset); return parsed.origin === url.origin && isStaticAsset(parsed);
+      }).slice(0, 100);
+      if (!assets.length) return reply({ ready: false });
+      if (data.type === 'PREPARE_PLAYER_CACHE') {
+        const response = await fetch(url.href, { credentials: 'same-origin', cache: 'no-store' });
+        if (!response.ok || !pageMatches(await response.clone().text(), data.expected)) return reply({ ready: false, changed: true });
+        await saveToCache(new Request(url.href), response);
+        await Promise.all(assets.map(async asset => {
+          if (await cachedResponse(asset)) return;
+          const response = await fetch(asset);
+          if (response.ok) {
+            const cache = await caches.open(CACHE); await cache.put(asset, response);
+          }
+        }));
+      }
+      const cached = await cachedResponse(url.href);
+      const matching = cached && pageMatches(await cached.clone().text(), data.expected);
+      const resourcesReady = (await Promise.all(assets.map(cachedResponse))).every(Boolean);
+      reply({ ready: Boolean(matching && resourcesReady), savedAt: matching ? cached.headers.get('X-Player-Cached-At') : null });
+    } catch (_) { reply({ ready: false }); }
+  })());
 });

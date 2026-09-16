@@ -50,6 +50,7 @@ function loadWorker({ networkResponse, cachedResponse, cachePut } = {}) {
     JSON,
     Promise,
     Response,
+    Request,
     Set,
     URL,
   });
@@ -67,7 +68,12 @@ function loadWorker({ networkResponse, cachedResponse, cachePut } = {}) {
     return response;
   }
 
-  return { dispatchFetch, puts };
+  async function dispatchMessage(data) {
+    let task, result;
+    listeners.message({ data, source: { url: 'https://zarechie-sc.vercel.app/player/test' }, ports: [{ postMessage: value => { result = value; } }], waitUntil: value => { task = value; } });
+    await task; return result;
+  }
+  return { dispatchFetch, dispatchMessage, puts };
 }
 
 test('returns a real offline page when navigation has no network or cache', async () => {
@@ -117,4 +123,35 @@ test('does not intercept non-GET, range, or cross-origin requests', async () => 
   assert.equal(await worker.dispatchFetch(createRequest('/api/player/log', { method: 'POST' })), undefined);
   assert.equal(await worker.dispatchFetch(createRequest('/video.mp4', { headers: new Headers({ range: 'bytes=0-99' }) })), undefined);
   assert.equal(await worker.dispatchFetch({ ...createRequest('/image.jpg'), url: 'https://images.example.com/image.jpg' }), undefined);
+});
+
+
+test('live commands never replay an old cached API response', async () => {
+  const worker = loadWorker({ networkResponse: new Error('offline'), cachedResponse: new Response('{"commands":[{"type":"stop_exercise"}]}') });
+  const response = await worker.dispatchFetch(createRequest('/api/player/commands?token=test&date=2026-09-17'));
+  assert.equal(response.status, 503);
+  assert.equal(worker.puts.length, 0);
+});
+
+test('fresh API responses are not persisted in the offline page cache', async () => {
+  const worker = loadWorker({ networkResponse: new Response('{"commands":[]}') });
+  await worker.dispatchFetch(createRequest('/api/player/commands?token=test'));
+  assert.equal(worker.puts.length, 0);
+});
+
+test('offline readiness requires matching page data and cached application assets', async () => {
+  const session = { blocks: [] };
+  const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { token: 'test', sessionDate: '2026-09-17', session } } })}</script>`;
+  const worker = loadWorker({ cachedResponse: new Response(html, { headers: { 'X-Player-Cached-At': '2026-09-17T10:00:00Z' } }) });
+  const args = { type: 'CHECK_PLAYER_CACHE', url: 'https://zarechie-sc.vercel.app/player/test', assets: ['https://zarechie-sc.vercel.app/_next/static/page.js'], expected: { token: 'test', date: '2026-09-17', session: JSON.stringify(session) } };
+  assert.equal((await worker.dispatchMessage(args)).ready, true);
+  assert.equal((await worker.dispatchMessage({ ...args, assets: [] })).ready, false);
+  assert.equal((await worker.dispatchMessage({ ...args, expected: { ...args.expected, date: '2026-09-18' } })).ready, false);
+  assert.equal((await worker.dispatchMessage({ ...args, url: 'https://zarechie-sc.vercel.app/player/another-token' })).ready, false);
+});
+
+test('preparing an updated program cannot silently replace the displayed version', async () => {
+  const worker = loadWorker({ networkResponse: new Response('<script id="__NEXT_DATA__">{"props":{"pageProps":{"token":"test","sessionDate":"2026-09-17","session":{"blocks":[{}]}}}}</script>') });
+  const result = await worker.dispatchMessage({ type: 'PREPARE_PLAYER_CACHE', url: 'https://zarechie-sc.vercel.app/player/test', assets: ['https://zarechie-sc.vercel.app/_next/static/page.js'], expected: { token: 'test', date: '2026-09-17', session: '{"blocks":[]}' } });
+  assert.equal(result.changed, true); assert.equal(result.ready, false); assert.equal(worker.puts.length, 0);
 });

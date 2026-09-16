@@ -40,8 +40,8 @@ test('exercise technique opens the original video externally without an embedded
 });
 
 test('focus mode keeps every exercise in the active block expanded', () => {
-  assert.match(playerPage, /blockIsComplete\(context\.block, context\.bi, newDone\)/);
-  assert.match(playerPage, /nextIncompleteBlock\(session, context\.bi, newDone\)/);
+  assert.match(playerPage, /blockIsComplete\(context\.block, context\.bi, newDone, skipped\)/);
+  assert.match(playerPage, /nextIncompleteBlock\(session, context\.bi, newDone, skipped\)/);
   assert.match(playerPage, /className=\{`player-block-compact/);
   assert.doesNotMatch(playerPage, /collapsed=\{focusMode && \(activeExercise/);
 });

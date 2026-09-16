@@ -47,6 +47,8 @@ export default async function handler(req, res) {
     const raw = await redis('get', `${pfx(workspace)}:log:${playerId}:${date}`).catch(() => null);
     const log = parseStoredLog(raw);
     return res.status(200).json({
+      skipped: log?.skipped || {},
+      skipUpdatedAt: log?.skipUpdatedAt || {},
       done: log?.done || {},
       weights: log?.weights || {},
       startedAt: log?.startedAt || null,
@@ -90,6 +92,8 @@ export default async function handler(req, res) {
       await recordPlatformEvent({ workspace, area: 'player_sync', status: 'ok', durationMs: Date.now() - started }).catch(() => {});
       return res.status(200).json({
         ok: true,
+        skipped: payload.skipped,
+        skipUpdatedAt: payload.skipUpdatedAt,
         done: payload.done,
         weights: payload.weights,
         setUpdatedAt: payload.setUpdatedAt,
