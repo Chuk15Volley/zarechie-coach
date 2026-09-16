@@ -86,8 +86,26 @@ test('coach application exposes live operations, continuity, access and health s
 test('player synchronization sends per-field clocks and mobile accessibility safeguards', () => {
   assert.match(playerPage, /setUpdatedAt/);
   assert.match(playerPage, /weightUpdatedAt/);
-  assert.match(playerPage, /requestId/);
+  assert.match(readFileSync(new URL('../lib/usePlayerProgressSync.js', import.meta.url), 'utf8'), /requestId/);
   assert.match(styles, /@media \(pointer: coarse\)/);
   assert.match(styles, /font-size: 16px !important/);
   assert.match(styles, /prefers-reduced-motion/);
+});
+
+
+test('early completion survives stale devices and suppresses live overdue alerts', () => {
+  const log = mergeWorkoutProgress({}, {
+    startedAt: '2026-09-17T10:00:00Z', completedAt: '2026-09-17T10:10:00Z',
+    lastActionAt: '2026-09-17T10:10:00Z', finishReason: 'Нет оборудования', done: { '0-0-0': true },
+  });
+  const stale = mergeWorkoutProgress(log, { lastActionAt: '2026-09-17T10:05:00Z', completedAt: null });
+  assert.equal(stale.finishReason, 'Нет оборудования');
+  assert.equal(stale.completedAt, log.completedAt);
+  const summary = summarizePlayerWorkout(session, log, null, '2026-09-17T12:00:00Z');
+  assert.equal(summary.completed, false);
+  assert.equal(summary.endedEarly, true);
+  assert.equal(summary.activeBlock, null);
+  assert.deepEqual(summary.alerts, []);
+  const resumed = mergeWorkoutProgress(log, { lastActionAt: '2026-09-17T10:15:00Z', completedAt: null, finishReason: null });
+  assert.equal(resumed.finishReason, null);
 });

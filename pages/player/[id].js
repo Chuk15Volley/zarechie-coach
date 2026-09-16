@@ -4,16 +4,22 @@
 
 import { useState, useEffect, useRef, useMemo, Component } from 'react';
 import Head from 'next/head';
+import { usePlayerFeedback } from '../../lib/usePlayerFeedback';
+import { usePlayerProgressSync } from '../../lib/usePlayerProgressSync';
+import { mergeWorkoutProgress } from '../../lib/workoutProgress.mjs';
 import { redis, redisPipeline } from '../../lib/redis';
 import { findExerciseUrl } from '../../lib/exerciseBank';
 import { getPlayerInfo } from '../../lib/playerData';
 import { resolveShareToken } from '../../lib/shareToken';
 import { parseSavedSession, sessionDayGoal, sessionTrainingLabel } from '../../lib/sessionLabel';
-import { pfx, playerPhotoKey, sessionKey, sessionsKey } from '../../lib/workspacePrefix';
+import { pfx, playerPhotoKey, sessionKey, sessionsKey, feedbackKey } from '../../lib/workspacePrefix';
 import { loadUnitsForExercise } from '../../lib/tonnage';
 import { exerciseDescription } from '../../lib/tempoDescription.mjs';
 import { analyzeSessionDose } from '../../lib/sessionDose.mjs';
 import {
+  FINISH_REASONS,
+  nextWorkoutSet,
+  restRemaining,
   athleteSessionWarning,
   completedTonnage,
   blockIsComplete,
@@ -139,6 +145,7 @@ export async function getServerSideProps({ params }) {
   const resolvedDate = record.date || date;
   const logRaw = await redis('get', `${pfx(workspace)}:log:${playerId}:${resolvedDate}`).catch(() => null);
   const serverLog = parsePlayerLog(logRaw);
+  const serverFeedback = parsePlayerLog(await redis('get', feedbackKey(workspace, playerId, resolvedDate)).catch(() => null));
 
   return {
     props: {
@@ -154,6 +161,7 @@ export async function getServerSideProps({ params }) {
       sessionHistory,
       playerPhoto: playerPhoto || null,
       serverLog: serverLog || null,
+      serverFeedback: serverFeedback || null,
       isMatchDayPrimer: record.quality?.seasonDecision?.key === 'match_day',
     },
   };
@@ -185,8 +193,9 @@ function plannedWeightValue(ex) {
 }
 
 // ── Set button — tappable, turns green when done, shows weight input ──────────
-function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedWeight, plannedWeightValue, requiresWeight }) {
+function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedWeight, plannedWeightValue, requiresWeight, previousWeight, setKey }) {
   return (
+    <div className="min-w-0">
     <button
       type="button"
       onClick={onToggle}
@@ -202,8 +211,11 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedW
       <span className={`text-[15px] font-black leading-none ${done ? 'text-emerald-200' : 'text-slate-100'}`}>
         {value}
       </span>
+    </button>
       {done && requiresWeight && (
+        <div className="mt-2 space-y-1">
         <input
+          id={`weight-${setKey}`}
           type="text"
           inputMode="decimal"
           value={weight || ''}
@@ -214,8 +226,11 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedW
           className="player-weight-input mt-1.5 w-full rounded-md border border-emerald-400/20 bg-black/25 px-1 py-0.5 text-center text-[10px] text-emerald-100 placeholder-emerald-800 outline-none focus:border-emerald-400/50"
           maxLength={6}
         />
+        <button type="button" className="w-full rounded-lg border border-white/15 py-2 text-[11px] text-slate-300" onClick={() => onWeightChange(String(plannedWeightValue))}>План {plannedWeightValue} кг</button>
+        {previousWeight && <button type="button" className="w-full rounded-lg border border-white/15 py-2 text-[11px] text-slate-300" onClick={() => onWeightChange(previousWeight)}>Как раньше: {previousWeight} кг</button>}
+        </div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -362,6 +377,8 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, to
           return (
             <SetBtn
               key={si}
+              setKey={key}
+              previousWeight={si > 0 ? weights?.[`${bi}-${ei}-${si - 1}`] : null}
               label={`${si + 1}`}
               value={s}
               done={!!done[key]}
@@ -403,7 +420,7 @@ const FEEL_OPTIONS = [
   { value: 'very_hard', emoji: '🤕', label: 'Очень тяжело' },
 ];
 
-function FeedbackForm({ token, sessionDate, session, done, weights, isMatchDayPrimer = false, onRpeChange, onSubmitted }) {
+function FeedbackForm({ token, sessionDate, session, done, weights, finishReason, lastActionAt, initialFeedback, isMatchDayPrimer = false, onRpeChange, onSubmitted }) {
   const [rpe, setRpe] = useState(null);
   const [fatigue, setFatigue] = useState(null);
   const [feel, setFeel] = useState(null);
@@ -411,8 +428,6 @@ function FeedbackForm({ token, sessionDate, session, done, weights, isMatchDayPr
   const [speedFeel, setSpeedFeel] = useState(null);
   const [legFeel, setLegFeel] = useState(null);
   const [shoulderFeel, setShoulderFeel] = useState(null);
-  const [submitted, setSubmitted] = useState(false);
-  const [sending, setSending] = useState(false);
   const missingWeightCount = (session?.blocks || []).reduce((missing, block, bi) =>
     missing + (block.exercises || []).reduce((exerciseMissing, ex, ei) => {
       if (!plannedWeightValue(ex)) return exerciseMissing;
@@ -422,32 +437,27 @@ function FeedbackForm({ token, sessionDate, session, done, weights, isMatchDayPr
       }).length;
     }, 0), 0);
 
-  async function submit() {
-    const primerComplete = speedFeel && legFeel && shoulderFeel;
-    if (!rpe || (!isMatchDayPrimer && !fatigue) || (isMatchDayPrimer && !primerComplete) || sending || missingWeightCount > 0) return;
-    setSending(true);
-    try {
-      const response = await fetch('/api/player/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token, date: sessionDate, rpe, fatigue, feel, note, done, weights,
-          primerFeedback: isMatchDayPrimer ? { speed: speedFeel, legs: legFeel, shoulder: shoulderFeel } : null,
-        }),
-      });
-      if (!response.ok) throw new Error('Feedback failed');
-      setSubmitted(true);
-      onSubmitted?.({ rpe, fatigue, feel });
-    } catch (_) {}
-    setSending(false);
-  }
+  const draft = { rpe, fatigue, feel, note, speedFeel, legFeel, shoulderFeel };
+  const { ready, queued, sending, submitted, message, submit, edit } = usePlayerFeedback({
+    token, date: sessionDate, draft,
+    initialFeedback: initialFeedback?.submittedAt >= (lastActionAt || '') ? initialFeedback : null,
+    restore: saved => {
+      setRpe(saved.rpe || null); setFatigue(saved.fatigue || null); setFeel(saved.feel || null); setNote(saved.note || '');
+      setSpeedFeel(saved.speedFeel || null); setLegFeel(saved.legFeel || null); setShoulderFeel(saved.shoulderFeel || null);
+      onRpeChange?.(saved.rpe || null);
+    },
+    payload: { token, date: sessionDate, rpe, fatigue, feel, note, done, weights, finishReason,
+      primerFeedback: isMatchDayPrimer ? { speed: speedFeel, legs: legFeel, shoulder: shoulderFeel } : null },
+    onSubmitted: () => onSubmitted?.({ rpe, fatigue, feel }),
+  });
 
   if (submitted) {
     return (
       <div className="player-feedback-success rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.09] px-4 py-8 text-center">
         <div className="mb-2 text-3xl">💪</div>
-        <div className="text-base font-black text-emerald-300">Тренировка завершена!</div>
-        <div className="mt-2 text-sm text-emerald-600">Оценка отправлена тренеру</div>
+        <div className="text-base font-black text-emerald-300">{finishReason ? 'Тренировка завершена раньше' : 'Тренировка завершена!'}</div>
+        <div className="mt-2 text-sm text-emerald-300">Оценка получена сервером и доступна тренеру</div>
+        <button type="button" onClick={edit} className="mt-3 rounded-xl border border-white/15 p-3 text-sm text-slate-300">Изменить оценку</button>
       </div>
     );
   }
@@ -456,11 +466,11 @@ function FeedbackForm({ token, sessionDate, session, done, weights, isMatchDayPr
     <div className="player-feedback space-y-4">
       <div className="player-feedback-success rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.09] px-4 py-5 text-center">
         <div className="mb-1 text-3xl">💪</div>
-        <div className="text-base font-black text-emerald-300">Тренировка завершена!</div>
+        <div className="text-base font-black text-emerald-300">{finishReason ? 'Тренировка завершена раньше' : 'Тренировка завершена!'}</div>
         <div className="mt-0.5 text-xs text-emerald-600">Оцени нагрузку для тренера</div>
       </div>
 
-      <div className="player-feedback-card rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 space-y-4">
+      <fieldset disabled={!ready || sending || queued} className="player-feedback-card rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 space-y-4">
         {/* RPE */}
         <div>
           <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
@@ -580,6 +590,13 @@ function FeedbackForm({ token, sessionDate, session, done, weights, isMatchDayPr
         {missingWeightCount > 0 && (
           <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2.5 text-[12px] font-semibold text-amber-300">
             Укажи фактический вес во всех выполненных подходах с отягощением: осталось {missingWeightCount}.
+            <button type="button" className="mt-2 block underline" onClick={() => {
+              for (const [bi, block] of (session.blocks || []).entries()) for (const [ei, ex] of (block.exercises || []).entries()) {
+                if (!plannedWeightValue(ex)) continue;
+                const si = (ex.targetSets || []).findIndex((_, index) => done[`${bi}-${ei}-${index}`] && !formatKgValue(String(weights[`${bi}-${ei}-${index}`] || '').replace(',', '.')));
+                if (si >= 0) { document.getElementById(`weight-${bi}-${ei}-${si}`)?.focus(); return; }
+              }
+            }}>Перейти к пропущенному весу</button>
           </div>
         )}
 
@@ -589,9 +606,11 @@ function FeedbackForm({ token, sessionDate, session, done, weights, isMatchDayPr
           disabled={!rpe || (!isMatchDayPrimer && !fatigue) || (isMatchDayPrimer && (!speedFeel || !legFeel || !shoulderFeel)) || sending || missingWeightCount > 0}
           className="w-full rounded-xl bg-[#4ade80] py-3 text-[13px] font-black text-[#060a0e] transition disabled:opacity-40 active:scale-[0.98]"
         >
-          {sending ? 'Отправка...' : 'Отправить тренеру'}
+          {sending ? 'Отправка...' : queued ? 'Ожидает отправки' : 'Отправить тренеру'}
         </button>
-      </div>
+      </fieldset>
+      <p role="status" className="text-sm text-slate-300">{message || 'Черновик оценки сохраняется на устройстве.'}</p>
+      {queued && !sending && <button type="button" onClick={edit} className="rounded-xl border border-white/15 p-3 text-sm text-slate-300">Изменить перед отправкой</button>}
     </div>
   );
 }
@@ -652,7 +671,8 @@ function SyncBadge({ status, savedAt }) {
   const meta = {
     saved: ['Сохранено', 'is-saved'],
     syncing: ['Синхронизация', 'is-syncing'],
-    offline: ['Без сети · сохранено здесь', 'is-offline'],
+    offline: ['Без сети · ожидает отправки', 'is-offline'],
+    'storage-error': ['Не закрывай страницу · нет локальной копии', 'is-offline'],
     error: ['Повторим синхронизацию', 'is-offline'],
     local: ['Сохранено на устройстве', 'is-local'],
   }[status] || ['Сохранено', 'is-saved'];
@@ -755,13 +775,13 @@ function UndoSetToast({ undo, onUndo, onDismiss }) {
   );
 }
 
-function CompletionSummary({ totalSets, elapsedSeconds, tonnage, rpe }) {
+function CompletionSummary({ totalSets, elapsedSeconds, tonnage, rpe, finishReason }) {
   return (
     <section className="player-completion-summary">
       <div className="player-completion-mark">✓</div>
-      <div className="player-kicker">Сессия выполнена</div>
+      <div className="player-kicker">{finishReason ? 'Завершена раньше' : 'Сессия выполнена'}</div>
       <h2>Отличная работа</h2>
-      <p>Все запланированные подходы отмечены. Оцени нагрузку — тренер получит итог вместе с фактическими весами.</p>
+      <p>{finishReason ? `Причина: ${finishReason}. Учтены только отмеченные подходы.` : 'Все запланированные подходы отмечены.'} Оцени нагрузку — тренер получит итог вместе с фактическими весами.</p>
       <div className="player-completion-metrics">
         <div><strong>{totalSets}</strong><span>подходов</span></div>
         <div><strong>{formatWorkoutDuration(elapsedSeconds)}</strong><span>время</span></div>
@@ -785,7 +805,7 @@ function PlayerSplash({ visible }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog, isMatchDayPrimer = false }) {
+export default function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog, serverFeedback, isMatchDayPrimer = false }) {
   const isUpcoming = !isToday && sessionDate > todayISO();
   const initialDone = serverLog?.done || {};
   const blocks = Array.isArray(session?.blocks) ? session.blocks : [];
@@ -810,18 +830,22 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   const [focusMode, setFocusMode] = useState(true);
   const [workoutStarted, setWorkoutStarted] = useState(Boolean(serverLog?.startedAt || Object.values(initialDone).some(Boolean)));
   const [startedAt, setStartedAt] = useState(serverLog?.startedAt || null);
+  const [finishReason, setFinishReason] = useState(serverLog?.finishReason || null);
+  const [finishOpen, setFinishOpen] = useState(false);
+  const [selectedFinishReason, setSelectedFinishReason] = useState('');
+  const [progressReady, setProgressReady] = useState(false);
   const [completedAt, setCompletedAt] = useState(serverLog?.completedAt || (initialAllDone ? serverLog?.savedAt || null : null));
   const [elapsedSeconds, setElapsedSeconds] = useState(Number(serverLog?.elapsedSeconds) || (initialAllDone ? dose.estimatedMinutes * 60 : 0));
   const [sessionRpe, setSessionRpe] = useState(null);
   const [syncStatus, setSyncStatus] = useState(serverLog?.savedAt ? 'saved' : 'local');
   const [progressRevision, setProgressRevision] = useState(0);
-  const [restTimer, setRestTimer] = useState(null);
+  const [restTimer, setRestTimer] = useState(() => serverLog?.restUntil ? { total: Math.max(1, restRemaining(serverLog.restUntil)), remaining: restRemaining(serverLog.restUntil), running: true, label: 'Отдых' } : null);
   const [undoSet, setUndoSet] = useState(null);
   const [coachCommands, setCoachCommands] = useState([]);
   const [commandAcknowledging, setCommandAcknowledging] = useState(false);
   const [splashVisible, setSplashVisible] = useState(true);
   const blockRefs = useRef([]);
-  const saveTimer = useRef(null);
+
   const undoTimer = useRef(null);
   const activeCoachCommand = coachCommands[0] || null;
 
@@ -861,142 +885,54 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     setCommandAcknowledging(false);
   }
 
-  // Load progress on mount: prefer server log, fall back to localStorage.
-  useEffect(() => {
-    try {
-      const key = 'nk-player-device-id';
-      const existing = localStorage.getItem(key);
-      const next = existing || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
-      if (!existing) localStorage.setItem(key, next);
-      setDeviceId(next);
-    } catch (_) {}
-  }, []);
-
+  // Merge offline edits with the server using per-set timestamps before writing locally.
   useEffect(() => {
     if (!token || !sessionDate) return;
-    if (serverLog && (serverLog.done || serverLog.weights)) return; // already seeded from server
     try {
-      const saved = localStorage.getItem(`gym:${token}:${sessionDate}`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.done) setDone(parsed.done);
-        if (parsed.weights) setWeights(parsed.weights);
-        if (parsed.setUpdatedAt) setSetUpdatedAt(parsed.setUpdatedAt);
-        if (parsed.weightUpdatedAt) setWeightUpdatedAt(parsed.weightUpdatedAt);
-        if (parsed.serverRevision) setServerRevision(Number(parsed.serverRevision) || 0);
-        if (parsed.lastActionAt) setLastActionAt(parsed.lastActionAt);
-        if (parsed.restUntil) setRestUntil(parsed.restUntil);
-        if (parsed.startedAt) { setStartedAt(parsed.startedAt); setWorkoutStarted(true); }
-        if (parsed.completedAt) setCompletedAt(parsed.completedAt);
-        if (parsed.elapsedSeconds) setElapsedSeconds(Number(parsed.elapsedSeconds) || 0);
-        const next = firstIncompleteBlock(session, parsed.done || {});
-        setActiveBlock(next?.bi ?? -1);
-        setProgressRevision(value => value + 1);
-      }
+      const local = JSON.parse(localStorage.getItem(`gym:${token}:${sessionDate}`) || 'null');
+      const pending = JSON.parse(localStorage.getItem(`gym:pending:${token}:${sessionDate}`) || 'null');
+      const merged = mergeWorkoutProgress(serverLog || {}, pending || local || {});
+      setDone(merged.done); setWeights(merged.weights);
+      setSetUpdatedAt(merged.setUpdatedAt); setWeightUpdatedAt(merged.weightUpdatedAt);
+      setServerRevision(merged.revision);
+      setStartedAt(merged.startedAt); setCompletedAt(merged.completedAt);
+      setFinishReason(merged.finishReason || null);
+      setLastActionAt(merged.lastActionAt); setElapsedSeconds(merged.elapsedSeconds);
+      setWorkoutStarted(Boolean(merged.startedAt || Object.values(merged.done).some(Boolean)));
+      setActiveBlock(firstIncompleteBlock(session, merged.done)?.bi ?? -1);
+      if (merged.completedAt) setFocusMode(false);
+      setRestUntil(merged.restUntil);
+      if (merged.restPausedSeconds > 0) setRestTimer({ total: merged.restPausedSeconds, remaining: merged.restPausedSeconds, running: false, label: 'Отдых · пауза' });
+      if (merged.restUntil) setRestTimer({ total: Math.max(1, restRemaining(merged.restUntil)), remaining: restRemaining(merged.restUntil), running: true, label: 'Отдых' });
+      if (local || pending) setProgressRevision(value => value + 1);
     } catch (_) {}
+    setProgressReady(true);
   }, [token, sessionDate, serverLog, session]);
 
-  // Persist the complete in-progress workout locally, including offline metadata.
+  const restPausedSeconds = restTimer && !restTimer.running ? restTimer.remaining : 0;
+  const progressSnapshot = { restPausedSeconds, done, weights, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, activeBlock, restUntil, lastActionAt, clientRevision: serverRevision, clientId: deviceId };
   useEffect(() => {
-    if (!token || !sessionDate) return;
-    try {
-      localStorage.setItem(`gym:${token}:${sessionDate}`, JSON.stringify({ done, weights, setUpdatedAt, weightUpdatedAt, serverRevision, startedAt, completedAt, elapsedSeconds, lastActionAt, restUntil }));
-    } catch (_) {}
-  }, [done, weights, setUpdatedAt, weightUpdatedAt, serverRevision, startedAt, completedAt, elapsedSeconds, lastActionAt, restUntil, token, sessionDate]);
+    if (!progressReady || !token || !sessionDate) return;
+    try { localStorage.setItem(`gym:${token}:${sessionDate}`, JSON.stringify(progressSnapshot)); }
+    catch (_) { setSyncStatus('storage-error'); }
+  }, [progressReady, done, weights, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, restUntil, restPausedSeconds, lastActionAt, token, sessionDate]);
 
-  // Auto-sync with an offline queue. The latest payload is retried when connectivity returns.
-  useEffect(() => {
-    if (!token || !sessionDate || !session || progressRevision === 0) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    const payload = {
-      token,
-      date: sessionDate,
-      done,
-      weights,
-      setUpdatedAt,
-      weightUpdatedAt,
-      startedAt,
-      completedAt,
-      elapsedSeconds,
-      activeBlock,
-      restUntil,
-      lastActionAt,
-      clientRevision: serverRevision,
-      clientId: deviceId,
-      deviceLabel: typeof navigator !== 'undefined' ? `${navigator.platform || 'Mobile'} · ${navigator.standalone ? 'PWA' : 'Browser'}` : 'Mobile',
-      requestId: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    };
-    const pendingKey = `gym:pending:${token}:${sessionDate}`;
-    try { localStorage.setItem(pendingKey, JSON.stringify(payload)); } catch (_) {}
-    if (!navigator.onLine) { setSyncStatus('offline'); return; }
-    setSyncStatus('syncing');
-    saveTimer.current = setTimeout(async () => {
-      try {
-        const response = await fetch('/api/player/log', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) throw new Error('sync failed');
-        const body = await response.json();
-        try { localStorage.removeItem(pendingKey); } catch (_) {}
-        setServerRevision(Number(body.revision) || 0);
-        setServerSavedAt(body.savedAt || new Date().toISOString());
-        setSyncStatus('saved');
-      } catch (_) {
-        setSyncStatus(navigator.onLine ? 'error' : 'offline');
-        if (navigator.onLine) fetch('/api/system/telemetry', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, area: 'player_sync', status: 'error', message: 'Автосинхронизация не выполнена' }),
-        }).catch(() => {});
-      }
-    }, 900);
-    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  // Every user mutation increments progressRevision; keeping this dependency
-  // narrow prevents a successful server revision from scheduling another save.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progressRevision, token, sessionDate, session]);
-
-  useEffect(() => {
-    if (!token || !sessionDate) return undefined;
-    const pendingKey = `gym:pending:${token}:${sessionDate}`;
-    const flushPending = async () => {
-      setSyncStatus('syncing');
-      try {
-        const raw = localStorage.getItem(pendingKey);
-        if (!raw) { setSyncStatus('saved'); return; }
-        const response = await fetch('/api/player/log', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: raw,
-        });
-        if (!response.ok) throw new Error('sync failed');
-        const body = await response.json();
-        localStorage.removeItem(pendingKey);
-        setServerRevision(Number(body.revision) || 0);
-        setServerSavedAt(body.savedAt || new Date().toISOString());
-        setSyncStatus('saved');
-      } catch (_) {
-        setSyncStatus(navigator.onLine ? 'error' : 'offline');
-        if (navigator.onLine) fetch('/api/system/telemetry', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, area: 'player_sync_retry', status: 'error', message: 'Повторная синхронизация не выполнена' }),
-        }).catch(() => {});
-      }
-    };
-    const goOffline = () => setSyncStatus('offline');
-    window.addEventListener('online', flushPending);
-    window.addEventListener('offline', goOffline);
-    return () => {
-      window.removeEventListener('online', flushPending);
-      window.removeEventListener('offline', goOffline);
-    };
-  }, [token, sessionDate]);
+  usePlayerProgressSync({ token, sessionDate, ready: progressReady, revision: progressRevision, snapshot: progressSnapshot,
+    onStatus: setSyncStatus,
+    onSaved: body => {
+      setServerRevision(Number(body.revision) || 0); setServerSavedAt(body.savedAt);
+      const merged = mergeWorkoutProgress(progressSnapshot, body);
+      setDone(merged.done); setWeights(merged.weights);
+      setSetUpdatedAt(merged.setUpdatedAt); setWeightUpdatedAt(merged.weightUpdatedAt);
+    },
+  });
 
   const [activeTab, setActiveTab] = useState('workout');
   const [selectedHistDate, setSelectedHistDate] = useState(null);
   const [histSession, setHistSession] = useState(null);
   const [histMeta, setHistMeta] = useState(null);
+  const historyRequest = useRef(0);
+  const [histError, setHistError] = useState('');
   const [histLoading, setHistLoading] = useState(false);
 
   const doneCount = Object.values(done).filter(Boolean).length;
@@ -1020,12 +956,13 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   }, []);
 
   useEffect(() => {
-    if (!restTimer?.running || restTimer.remaining <= 0) return undefined;
-    const timer = setInterval(() => {
-      setRestTimer(current => current ? { ...current, remaining: Math.max(0, current.remaining - 1) } : null);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [restTimer?.running, restTimer?.remaining]);
+    if (!restTimer?.running || !restUntil) return undefined;
+    const tick = () => setRestTimer(current => current ? { ...current, remaining: restRemaining(restUntil) } : null);
+    tick();
+    const timer = setInterval(tick, 500);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
+  }, [restTimer?.running, restUntil]);
 
   useEffect(() => {
     if (restTimer?.remaining !== 0 || restTimer?.notified) return;
@@ -1034,33 +971,59 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
   }, [restTimer?.remaining, restTimer?.notified]);
 
   useEffect(() => {
-    if (!workoutStarted || totalSets === 0 || doneCount !== totalSets || completedAt) return;
+    if (!progressReady || !workoutStarted || totalSets === 0 || doneCount !== totalSets || completedAt) return;
     const now = new Date();
     const start = startedAt ? new Date(startedAt) : now;
     const seconds = Math.max(1, Math.round((now.getTime() - start.getTime()) / 1000));
     setCompletedAt(now.toISOString());
+    setFocusMode(false); setUndoSet(null);
+    setLastActionAt(now.toISOString());
+    setRestUntil(null);
     setElapsedSeconds(seconds);
     setProgressRevision(value => value + 1);
     setRestTimer(null);
     if (navigator.vibrate) navigator.vibrate([35, 60, 35, 60, 80]);
-  }, [workoutStarted, totalSets, doneCount, completedAt, startedAt]);
+  }, [progressReady, workoutStarted, totalSets, doneCount, completedAt, startedAt]);
+
+  const upcomingSet = completedAt ? null : nextWorkoutSet(session, done);
+  function changeRest(action) {
+    if (!restTimer) return;
+    const remaining = restTimer.running ? restRemaining(restUntil) : restTimer.remaining;
+    const running = action === 'add' || (action === 'toggle' && !restTimer.running);
+    const seconds = remaining + (action === 'add' ? 15 : 0);
+    setRestTimer(action === 'skip' ? null : { ...restTimer, running, remaining: seconds, total: Math.max(restTimer.total, seconds), notified: false });
+    setRestUntil(running && action !== 'skip' ? new Date(Date.now() + seconds * 1000).toISOString() : null);
+    setLastActionAt(new Date().toISOString()); setProgressRevision(value => value + 1);
+  }
+
+  function finishEarly() {
+    if (!FINISH_REASONS.includes(selectedFinishReason)) return;
+    const now = new Date();
+    setUndoSet(null);
+    setFinishReason(selectedFinishReason); setCompletedAt(now.toISOString());
+    setElapsedSeconds(Math.max(0, Math.round((now - new Date(startedAt || now)) / 1000)));
+    setRestTimer(null); setRestUntil(null); setLastActionAt(now.toISOString());
+    setFinishOpen(false); setFocusMode(false); setProgressRevision(value => value + 1);
+  }
 
   useEffect(() => {
     if (window.location.hash === '#history') setActiveTab('history');
   }, []);
 
   async function loadHistSession(date) {
-    setHistLoading(true);
+    const request = ++historyRequest.current;
+    setHistLoading(true); setHistSession(null); setHistMeta(null); setHistError('');
     setSelectedHistDate(date);
     try {
       const r = await fetch(`/api/player/session-detail?token=${encodeURIComponent(token)}&date=${date}`);
       if (r.ok) {
         const d = await r.json();
+        if (request !== historyRequest.current) return;
         setHistSession(d.session || null);
-        setHistMeta({ label: d.label || 'Тренировка в зале', dayGoal: d.dayGoal || '' });
-      }
-    } catch (_) {}
-    setHistLoading(false);
+        setHistMeta({ label: d.label || 'Тренировка в зале', dayGoal: d.dayGoal || '', log: d.log, feedback: d.feedback, actual: d.actual });
+      } else throw new Error('history unavailable');
+    } catch (_) { if (request === historyRequest.current) setHistError('Не удалось загрузить программу. Попробуй ещё раз.'); }
+    if (request === historyRequest.current) setHistLoading(false);
   }
 
   function startWorkout() {
@@ -1069,16 +1032,17 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     setWorkoutStarted(true);
     setStartedAt(current => current || now);
     setCompletedAt(null);
+    setFinishReason(null);
+    try { localStorage.removeItem(`gym:feedback:${token}:${sessionDate}`); } catch (_) {}
     setLastActionAt(now);
     setProgressRevision(value => value + 1);
-    if (first) {
-      setActiveBlock(first.bi);
-    }
+    if (first) { setActiveBlock(first.bi); setFocusMode(true); }
     if (navigator.vibrate) navigator.vibrate(20);
   }
 
   function toggleSet(key, context) {
     const actionAt = new Date().toISOString();
+    if (completedAt) { setCompletedAt(null); setFinishReason(null); }
     const wasDone = Boolean(done[key]);
     setDone(prev => ({ ...prev, [key]: !prev[key] }));
     setSetUpdatedAt(prev => ({ ...prev, [key]: actionAt }));
@@ -1102,7 +1066,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
     const newDone = { ...done, [key]: true };
     const allFinished = totalSets > 0 && Object.values(newDone).filter(Boolean).length === totalSets;
     if (!allFinished) {
-      const seconds = restSecondsFor(context.block, context.ex);
+      const seconds = restSecondsFor(context.block, context.ex, { ...context, next: nextWorkoutSet(session, newDone) });
       setRestTimer({
         total: seconds,
         remaining: seconds,
@@ -1376,7 +1340,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
         {/* ── Session content ── */}
         {!notFound && session && activeTab === 'workout' && (
-          <main className="player-workout-content space-y-6 px-3.5 pb-24 pt-4">
+          <main className={`player-workout-content space-y-6 px-3.5 pt-4 ${restTimer ? 'pb-64' : 'pb-24'}`}>
             {!workoutStarted ? (
               <WorkoutIntro
                 sessionLabel={sessionLabel}
@@ -1408,6 +1372,10 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                   </div>
                 )}
 
+                {upcomingSet && <div className="rounded-xl border border-emerald-400/25 p-4 text-slate-200" role="status">
+                  Далее: <strong>{upcomingSet.exercise.code} · {upcomingSet.exercise.name}</strong><br />
+                  Подход {upcomingSet.si + 1} · {upcomingSet.target}
+                </div>}
                 {blocks.map((block, bi) => {
                   const blockTotal = (block.exercises || []).reduce((sum, ex) => sum + (ex.targetSets?.length || 0), 0);
                   const blockDone = (block.exercises || []).reduce((sum, ex, ei) =>
@@ -1470,10 +1438,28 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                   );
                 })}
 
-                {totalSets > 0 && doneCount === totalSets && (
+                {!completedAt && <div className="rounded-xl border border-white/10 p-4">
+                  <button type="button" onClick={() => setFinishOpen(open => !open)} className="text-sm text-slate-300">Завершить раньше</button>
+                  {finishOpen && <div className="mt-3 space-y-3">
+                    <label className="block text-sm text-slate-300">Причина завершения
+                      <select value={selectedFinishReason} onChange={event => setSelectedFinishReason(event.target.value)} className="mt-2 w-full rounded-xl bg-slate-800 p-3">
+                        <option value="">Выбери причину</option>
+                        {FINISH_REASONS.map(reason => <option key={reason}>{reason}</option>)}
+                      </select>
+                    </label>
+                    <p className="text-sm text-slate-400">Сохранятся только выполненные подходы. {selectedFinishReason === 'Дискомфорт' ? 'Сообщи тренеру, какое упражнение пришлось остановить.' : ''}</p>
+                    <button type="button" disabled={!selectedFinishReason} onClick={finishEarly} className="rounded-xl bg-emerald-400 px-4 py-3 font-bold text-slate-950 disabled:opacity-40">Завершить и оценить нагрузку</button>
+                  </div>}
+                </div>}
+                {completedAt && (
                   <div className="space-y-4">
-                    <CompletionSummary totalSets={totalSets} elapsedSeconds={elapsedSeconds || dose.estimatedMinutes * 60} tonnage={tonnage} rpe={sessionRpe} />
+                    {doneCount < totalSets && <button type="button" onClick={startWorkout} className="rounded-xl border border-white/15 px-4 py-3 text-sm text-slate-300">Вернуться к выполнению</button>}
+                    <CompletionSummary finishReason={finishReason} totalSets={doneCount} elapsedSeconds={elapsedSeconds} tonnage={tonnage} rpe={sessionRpe} />
                     <FeedbackForm
+                      key={completedAt}
+                      finishReason={finishReason}
+                      lastActionAt={lastActionAt}
+                      initialFeedback={serverFeedback}
                       token={token}
                       sessionDate={sessionDate}
                       session={session}
@@ -1539,6 +1525,15 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                       <div className="text-[14px] font-semibold text-slate-200">{histMeta?.dayGoal || histSession.blocks?.[0]?.goal || histSession.goal || histSession.day_goal}</div>
                     </div>
                   )}
+                  <div className="mb-4 rounded-xl border border-white/10 p-4 text-sm text-slate-300">
+                    {histMeta?.log || histMeta?.actual ? <>
+                      <p>Выполнено подходов: {histMeta?.log ? Object.values(histMeta.log.done || {}).filter(Boolean).length : (histMeta.actual.exercises || []).reduce((sum, ex) => sum + (ex.completedSets || 0), 0)}</p>
+                      {histMeta?.log?.elapsedSeconds > 0 && <p>Время: {formatWorkoutDuration(histMeta.log.elapsedSeconds)}</p>}
+                      {(histMeta?.log?.finishReason || histMeta?.feedback?.finishReason) && <p>Завершена раньше: {histMeta.log?.finishReason || histMeta.feedback?.finishReason}</p>}
+                      <p>RPE: {histMeta?.feedback?.rpe || 'Оценка не отправлена'}</p>
+                      {histMeta?.feedback?.note && <p>Комментарий: {histMeta.feedback.note}</p>}
+                    </> : 'Фактическое выполнение ещё не записано.'}
+                  </div>
                   {(histSession.blocks || []).map((block, bi) => (
                     <div key={bi}>
                       <div className="mb-3 flex items-center gap-3">
@@ -1568,6 +1563,8 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                                 <div key={si} className="flex min-w-[58px] flex-col items-center rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
                                   <span className="text-[10px] font-bold mb-0.5 text-slate-600">{si + 1}</span>
                                   <span className="text-sm font-black leading-none text-slate-400">{s}</span>
+                                  <span className="mt-2 text-[11px] text-emerald-300">{histMeta?.log?.done?.[`${bi}-${ei}-${si}`] || histMeta?.actual?.exercises?.find(item => item.name === ex.name && item.block === (block.label || ''))?.setActuals?.[si]?.completed ? '✓ Выполнен' : 'Не отмечен'}</span>
+                                  {Number(String(histMeta?.log?.weights?.[`${bi}-${ei}-${si}`] || histMeta?.actual?.exercises?.find(item => item.name === ex.name && item.block === (block.label || ''))?.setActuals?.[si]?.kg || '').replace(',', '.')) > 0 && <span className="mt-1 text-[11px] text-slate-200">Факт: {histMeta?.log?.weights?.[`${bi}-${ei}-${si}`] || histMeta?.actual?.exercises?.find(item => item.name === ex.name && item.block === (block.label || ''))?.setActuals?.[si]?.kg} кг</span>}
                                   {/^\d/.test(plannedWeightLabel(ex)) && <span className="mt-1 text-[9px] font-semibold leading-none text-slate-600">план {plannedWeightLabel(ex)}</span>}
                                 </div>
                               ))}
@@ -1589,17 +1586,17 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                 </div>
               </div>
             ) : (
-              <div className="py-20 text-center text-slate-600 text-sm">Тренировка не найдена</div>
+              <div className="py-20 text-center text-slate-400 text-sm"><p>{histError || 'Тренировка не найдена'}</p><button type="button" className="mt-3 p-3" onClick={() => loadHistSession(selectedHistDate)}>Повторить</button><button type="button" className="p-3" onClick={() => setSelectedHistDate(null)}>Все тренировки</button></div>
             )}
           </main>
         )}
 
-        {workoutStarted && activeTab === 'workout' && (
+        {workoutStarted && !finishOpen && activeTab === 'workout' && (
           <RestTimer
-            timer={restTimer}
-            onToggle={() => setRestTimer(current => current ? { ...current, running: !current.running } : null)}
-            onAdd={() => setRestTimer(current => current ? { ...current, total: current.total + 15, remaining: current.remaining + 15, running: true } : null)}
-            onSkip={() => setRestTimer(null)}
+            timer={restTimer ? { ...restTimer, label: upcomingSet ? `Далее ${upcomingSet.exercise.code || upcomingSet.exercise.name} · подход ${upcomingSet.si + 1} · ${upcomingSet.target}` : restTimer.label } : null}
+            onToggle={() => changeRest('toggle')}
+            onAdd={() => changeRest('add')}
+            onSkip={() => changeRest('skip')}
           />
         )}
         <UndoSetToast undo={undoSet} onUndo={undoLastSet} onDismiss={() => setUndoSet(null)} />
