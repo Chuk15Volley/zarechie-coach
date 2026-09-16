@@ -94,3 +94,23 @@ test('coach UI exposes Russian strength modes and submits the selected mode', ()
   const statusSource = readFileSync(new URL('../pages/api/programs/generate-status.js', import.meta.url), 'utf8');
   assert.match(statusSource, /processing_status: 'quality_correction'/);
 });
+
+test('eccentric step-down is knee prehab, not an arbitrary accessory', () => {
+  const prescription = inSeasonStrengthDoseProfile(buildInSeasonStrengthContext({ focus: 'inseason_strength' }));
+  const session = structuredClone(developmentSession);
+  session.blocks[4].exercises[0].name = 'SL Eccentric Step-Down';
+  assert.equal(auditInSeasonStrengthSession(session, prescription).valid, true);
+  session.blocks[4].exercises[0].name = 'Biceps Curl';
+  assert.equal(auditInSeasonStrengthSession(session, prescription).checks.prehab, false);
+});
+
+test('strength stop rule replaces unsafe RPE 9 instruction without altering dose or other methods', async () => {
+  const { enforceStrengthStopRule } = await import('../lib/inSeasonStrength.mjs');
+  const session = structuredClone(developmentSession);
+  session.blocks[1].exercises[0].autoReg = 'RPE достигает 9 → снизь нагрузку 5%.';
+  const normalized = enforceStrengthStopRule(session, 'inseason_strength');
+  assert.match(normalized.blocks[1].exercises[0].autoReg, /RPE > 8.*немедленно завершить/);
+  assert.doesNotMatch(normalized.blocks[1].exercises[0].autoReg, /9/);
+  assert.deepEqual(normalized.blocks[1].exercises[0].targetSets, session.blocks[1].exercises[0].targetSets);
+  assert.equal(enforceStrengthStopRule(session, 'inseason_power'), session);
+});

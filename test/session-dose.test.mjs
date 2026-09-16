@@ -52,3 +52,21 @@ test('a modestly short but otherwise complete session is conservative, not unsaf
   assert.equal(audit.safe, true);
   assert.equal(audit.minimumViable, true);
 });
+
+test('light prophylaxis in A/B/C is not heavy work; loaded accessories cannot bypass recovery caps', () => {
+  const prescription = buildDosePrescription({ focus: 'inseason_prophylaxis', trainingType: 'recovery_prehab' });
+  const session = isoSession(2);
+  session.blocks = session.blocks.slice(0, 4);
+  for (const block of session.blocks) for (const ex of block.exercises) {
+    ex.weightNote = 'RPE 3–4';
+    ex.autoReg = 'RPE > 8 → стоп';
+  }
+  const light = auditDose(session, prescription);
+  assert.equal(light.actual.hardSets, 12);
+  assert.equal(light.actual.loadedHardSets, 0);
+  assert.equal(light.safe, true);
+  for (const ex of session.blocks[3].exercises) ex.weightKg = 20;
+  const loaded = auditDose(session, { ...prescription, loadedHardSetsMax: 0 });
+  assert.equal(loaded.actual.loadedHardSets, 4);
+  assert.equal(loaded.safeChecks.loadedHardSets, false);
+});
