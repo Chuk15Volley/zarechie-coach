@@ -1831,7 +1831,7 @@ function qualityTone(ok) {
   return ok ? 'border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-300' : 'border-amber-500/20 bg-amber-500/[0.07] text-amber-300';
 }
 
-function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
+function DecisionDataPanel({ data, loading, workspace, coachRecovery, onApply }) {
   const tone = (level) => ({
     green: 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300',
     yellow: 'border-amber-500/20 bg-amber-500/[0.06] text-amber-300',
@@ -1853,6 +1853,32 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery }) {
     );
   }
   if (!data) return null;
+
+  if (data.source === 'ReadySix') {
+    const rec = data.recommendation;
+    const state = rec?.state || data.decision;
+    return (
+      <section className="mt-4 space-y-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.04] p-4" aria-live="polite">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-bold text-cyan-300">ReadySix · состояние и расписание</span>
+          <a href="https://zarechie-odintsovo.vercel.app/dashboard" target="_blank" rel="noreferrer" className="text-xs text-slate-400 underline">Открыть аналитику</a>
+        </div>
+        <div className={`rounded-xl border p-3 ${tone(state?.level)}`}>
+          <p className="text-sm font-semibold">{state?.label || 'Нет решения ReadySix'}</p>
+          <p className="mt-1 text-xs opacity-80">{state?.detail}</p>
+          {state?.capPercent != null && <p className="mt-1 text-xs">Лимит объёма ReadySix: {state.capPercent}% · не процент от 1ПМ</p>}
+        </div>
+        {rec && <div className="space-y-2">
+          <p className="text-xs text-slate-400">{data.targetDate} · {rec.calendar?.todayEvent?.type === 'game' ? 'День матча' : rec.calendar?.nextGame ? `Следующая игра ${rec.calendar.nextGame} · MD−${rec.calendar.daysToGame}` : 'Дата ближайшей игры не передана'}</p>
+          <p className="text-sm font-semibold text-white">Предложение: {rec.label}</p>
+          {rec.reasons.map((reason, index) => <p key={index} className="text-xs text-slate-300">{reason}</p>)}
+          {rec.warnings.map((warning, index) => <p key={index} className="text-xs text-amber-300">{warning}</p>)}
+          {rec.canApply && <button type="button" onClick={() => onApply?.(rec)} className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-xs font-semibold text-cyan-200">Применить вариант для зала</button>}
+          <p className="text-[11px] text-slate-500">Применение меняет настройки программы. Генерация и сохранение — отдельным действием тренера.</p>
+        </div>}
+      </section>
+    );
+  }
 
   const evening = data.evening || {};
   const postMorning = data.postMorning || {};
@@ -2198,7 +2224,7 @@ export default function Home() {
   const genTimers = useRef([]);
 
   // Main section navigation
-  const [mainSection, setMainSection] = useState('today');
+  const [mainSection, setMainSection] = useState('workouts');
 
   // Left panel tabs
   const [leftTab, setLeftTab] = useState('players'); // 'players' | 'day'
@@ -2733,7 +2759,7 @@ export default function Home() {
         return body;
       })
       .then(body => { if (!cancelled) setDecisionData(body); })
-      .catch(() => { if (!cancelled) setDecisionData(null); })
+      .catch(error => { if (!cancelled) setDecisionData({ source: 'ReadySix', decision: { level: 'yellow', label: 'Данные ReadySix недоступны', detail: error.message } }); })
       .finally(() => { if (!cancelled) setDecisionDataLoading(false); });
     return () => { cancelled = true; };
   }, [apiKey, playerId, date, workspace]);
@@ -4673,7 +4699,7 @@ export default function Home() {
                   { id: 'today', label: 'Сегодня', ariaLabel: 'Сегодня — умный центр решений', icon: <Target size={14} />, tone: 'tone-cyan', activeClass: 'border-cyan-300/30 bg-gradient-to-r from-cyan-300/[0.18] to-emerald-300/[0.1] text-cyan-100 shadow-[0_8px_24px_-15px_rgba(34,211,238,0.95)]' },
                 ],
                 [
-                  { id: 'readiness', label: 'Готовность', icon: <Activity size={14} />, tone: 'tone-emerald', activeClass: 'border-emerald-300/25 bg-emerald-300/[0.13] text-emerald-200 shadow-[0_8px_22px_-16px_rgba(52,211,153,0.9)]' },
+                  { id: 'readiness', label: 'ReadySix', icon: <Activity size={14} />, tone: 'tone-emerald', activeClass: 'border-emerald-300/25 bg-emerald-300/[0.13] text-emerald-200 shadow-[0_8px_22px_-16px_rgba(52,211,153,0.9)]' },
                   { id: 'workouts',  label: 'Зал',        icon: <Dumbbell size={14} />, tone: 'tone-cyan', activeClass: 'border-cyan-300/25 bg-cyan-300/[0.13] text-cyan-100 shadow-[0_8px_22px_-16px_rgba(34,211,238,0.9)]' },
                   { id: 'warmup',    label: 'Разминка',   icon: <Zap size={14} />, tone: 'tone-violet', activeClass: 'border-violet-300/25 bg-violet-300/[0.13] text-violet-200 shadow-[0_8px_22px_-16px_rgba(167,139,250,0.9)]' },
                 ],
@@ -4690,11 +4716,15 @@ export default function Home() {
                 ],
               ].map((row, ri) => (
                 <div key={ri} className="sidebar-nav-row">
-                  {row.filter(s => s.id !== 'planner' || usesSeasonCalendar(workspace)).map(s => (
+                  {row.filter(s => s.id !== 'attention' && (s.id !== 'planner' || usesSeasonCalendar(workspace))).map(s => (
                     <button
                       key={s.id}
                       type="button"
                       onClick={() => {
+                        if (s.id === 'readiness') {
+                          window.open('https://zarechie-odintsovo.vercel.app/dashboard', '_blank', 'noopener,noreferrer');
+                          return;
+                        }
                         if (s.id === 'library') {
                           window.location.assign('/library');
                           return;
@@ -7034,7 +7064,7 @@ export default function Home() {
                 recoveryStatus === 'yellow' ? 'border-amber-400/30 bg-amber-400/10 text-amber-300' :
                 'border-rose-400/30 bg-rose-400/10 text-rose-300'
               }`}>
-                {recoveryStatus === 'green' ? 'Готов к работе' : recoveryStatus === 'yellow' ? 'Объём снижен' : 'Только качество'}
+                {recoveryStatus === 'green' ? 'Доза по источнику' : recoveryStatus === 'yellow' ? 'Тренер снизил объём' : 'Щадящий режим тренера'}
               </div>
             </div>
 
@@ -7069,11 +7099,11 @@ export default function Home() {
               </div>
 
               <div>
-                <SectionLabel icon={<Activity size={11} />} text="Готовность" />
+                <SectionLabel icon={<Activity size={11} />} text="Коррекция дозы тренером" />
                 <div className="grid grid-cols-3 gap-1.5">
                   {[
-                    { v: 'green',  dot: 'bg-emerald-400', label: 'Норма',  on: 'border-emerald-400/50 bg-emerald-400/10 text-emerald-300' },
-                    { v: 'yellow', dot: 'bg-amber-400', label: '-25%',   on: 'border-amber-400/50 bg-amber-400/10 text-amber-300' },
+                    { v: 'green',  dot: 'bg-emerald-400', label: 'По источнику',  on: 'border-emerald-400/50 bg-emerald-400/10 text-emerald-300' },
+                    { v: 'yellow', dot: 'bg-amber-400', label: 'Снизить',   on: 'border-amber-400/50 bg-amber-400/10 text-amber-300' },
                     { v: 'red',    dot: 'bg-rose-400', label: 'Тонус',  on: 'border-rose-400/50 bg-rose-400/10 text-rose-300' },
                   ].map(b => (
                     <button
@@ -7103,6 +7133,13 @@ export default function Home() {
               loading={decisionDataLoading}
               workspace={workspace}
               coachRecovery={recoveryStatus}
+              onApply={rec => {
+                setPeriod('inseason');
+                setFocus(rec.focus);
+                setTrainingType(rec.trainingType);
+                if (rec.strengthMode) setStrengthMode(rec.strengthMode);
+                if (rec.powerMode) setPowerMode(rec.powerMode);
+              }}
             />
 
             {/* Advanced data */}

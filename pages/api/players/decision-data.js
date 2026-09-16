@@ -1,3 +1,5 @@
+import { recommendGymSession } from '../../../lib/readySixGym.mjs';
+import { getRecentSessionRecords } from '../../../lib/sessionHistory';
 // GET ?playerId=&date=&workspace= → compact, read-only snapshot used before generation.
 // It intentionally mirrors the main generator's data sources without calling OpenAI.
 
@@ -70,12 +72,12 @@ export default async function handler(req, res) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return res.status(400).json({ error: 'Invalid date' });
 
   try {
-    const [snapshot, rawRestrictions, rawSchedule] = await Promise.all([
-      // The panel is an immediate pre-flight check, not a trend report. Three
-      // days covers the relevant evening status without loading 28-day history.
-      getPlayerSnapshot(playerId, 3, targetDate, 3, workspace),
+    const [snapshot, rawRestrictions, rawSchedule, recentSessions] = await Promise.all([
+      // Read the same recent source context used by the gym recommendation.
+      getPlayerSnapshot(playerId, 7, targetDate, 7, workspace),
       redis('get', restrictionsKey(workspace, playerId)).catch(() => null),
       usesSeasonCalendar(workspace) ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
+      getRecentSessionRecords(playerId, 6, workspace, targetDate).catch(() => []),
     ]);
     if (!snapshot) return res.status(404).json({ error: 'Player not found' });
 
@@ -160,6 +162,9 @@ export default async function handler(req, res) {
       dataQuality,
       dataCompleteness: Math.round(Object.values(dataQuality).filter(Boolean).length / Object.keys(dataQuality).length * 100),
       decision: readiness.decision,
+      source: snapshot.readySixMeta ? 'ReadySix' : 'Legacy',
+      recommendation: snapshot.readySixMeta ? recommendGymSession({ snapshot, targetDate, recentSessions }) : null,
+      readySixMeta: snapshot.readySixMeta || null,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });

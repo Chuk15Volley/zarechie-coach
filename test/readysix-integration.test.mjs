@@ -26,9 +26,9 @@ function response(payload, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => payload };
 }
 
-test('ReadySix stays legacy until primary mode is explicitly enabled', () => {
-  assert.equal(readySixIntegrationMode('zarechie', {}), 'legacy');
-  assert.equal(usesReadySix('zarechie', {}), false);
+test('ReadySix is the primary source by default with explicit legacy rollback', () => {
+  assert.equal(readySixIntegrationMode('zarechie', {}), 'primary');
+  assert.equal(usesReadySix('zarechie', {}), true);
   assert.equal(usesReadySix('zarechie', environment), true);
   assert.equal(readySixIntegrationMode('nkperf', { ...environment, READYSIX_NK_MODE: 'legacy' }), 'legacy');
 });
@@ -85,7 +85,7 @@ test('workspace credentials are selected server-side and organization mismatch f
       observedKey = options.headers['x-api-key'];
       return response({
         schema: 'readysix.program-generator-context', schemaVersion: 1, mode: 'roster',
-        organizationId: 'nk-performance', players: [],
+        organizationId: 'nk-performance', date: '2026-08-27', players: [],
       });
     },
   });
@@ -96,7 +96,7 @@ test('workspace credentials are selected server-side and organization mismatch f
       environment,
       fetchImpl: async () => response({
         schema: 'readysix.program-generator-context', schemaVersion: 1, mode: 'roster',
-        organizationId: 'nk-performance', players: [],
+        organizationId: 'nk-performance', date: '2026-08-27', players: [],
       }),
     }),
     error => error instanceof ReadySixIntegrationError && error.code === 'READYSIX_CONTRACT_MISMATCH',
@@ -168,3 +168,24 @@ test('team readiness uses one ReadySix request and normalizes all players', asyn
   assert.equal(normalized.roster[0].id, '101');
   assert.equal(normalized.snapshots[0].whoop[0].recovery, 72);
 });
+
+test('OVERTRAQ jumps and calendar survive the ReadySix adapter', () => {
+  const snapshot = normalizeReadySixPlayerSnapshot({
+    date: '2026-09-16', player: { id: '101' },
+    calendar: { date: '2026-09-16', events: [{ date: '2026-09-20', type: 'match' }] },
+    monitoring: { overtraq: { jumps: 42 }, overtraqHistory: [{ date: '2026-09-15', jumps: 70 }] },
+    decision: { recommendation: 'full', capPercent: 100 },
+  }, { targetDate: '2026-09-16', days: 7, chronicDays: 28 });
+  assert.equal(snapshot.manual['2026-09-16'].jumps, 42);
+  assert.equal(snapshot.manual['2026-09-15'].jumps, 70);
+  assert.equal(snapshot.readySixCalendar.events[0].type, 'match');
+});
+
+for (const [date, id, code] of [['2026-08-26', '101', 'READYSIX_DATE_MISMATCH'], ['2026-08-27', '102', 'READYSIX_PLAYER_MISMATCH']]) {
+  test(`ReadySix rejects mismatched context: ${code}`, async () => {
+    await assert.rejects(getReadySixPlayerContext('zarechie', '101', '2026-08-27', 7, {
+      environment, fetchImpl: async () => response({ schema: 'readysix.program-generator-context', schemaVersion: 1,
+        mode: 'player-context', organizationId: 'zarechie-odintsovo', date, player: { id } }),
+    }), error => error.code === code);
+  });
+}

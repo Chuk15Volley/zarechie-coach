@@ -1,0 +1,202 @@
+diff --git a/lib/programGeneratorCalendar.mjs b/lib/programGeneratorCalendar.mjs
+new file mode 100644
+index 0000000..40e74b9
+--- /dev/null
++++ b/lib/programGeneratorCalendar.mjs
+@@ -0,0 +1,50 @@
++import { calendarDaySchedule } from './competitionCalendar.mjs';
++import { normalizeSessionSchedule, sessionScheduleKey } from './sessionSchedule.mjs';
++import { resolveReadySixReportsConfig } from './reportsConfig.mjs';
++
++const shift = (date, days) => {
++  const value = new Date(`${date}T12:00:00Z`);
++  value.setUTCDate(value.getUTCDate() + days);
++  return value.toISOString().slice(0, 10);
++};
++const parse = raw => {
++  try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return null; }
++};
++
++// The supplied redis is already bound to the credential's organization/region.
++// No client-provided organization or separate club calendar is consulted.
++export async function readProgramGeneratorCalendar(redis, date, organizationId) {
++  const dates = Array.from({ length: 43 }, (_, index) => shift(date, index - 14));
++  const values = await redis('MGET', 'reports:config:v1', ...dates.map(sessionScheduleKey));
++  const config = resolveReadySixReportsConfig(parse(values?.[0]) || {}, { organizationId });
++  const events = new Map(Object.entries(config.events || {})
++    .filter(([day]) => day >= dates[0] && day <= shift(date, 90))
++    .map(([day, event]) => [day, { date: day, type: event.type, label: event.label, opponent: event.opponent, source: 'reports', confirmed: true }]));
++  const conflicts = [];
++  let today = null;
++  dates.forEach((day, index) => {
++    const raw = parse(values?.[index + 1]);
++    const owned = raw && (!raw.organizationId || raw.organizationId === organizationId) && (!raw.date || raw.date === day) ? { ...raw, date: day } : null;
++    const schedule = calendarDaySchedule(day, config.events, owned) || (owned ? normalizeSessionSchedule(owned, day) : null);
++    if (!schedule) return;
++    if (day === date) today = {
++      date: day, confirmed: schedule.confirmed, planType: schedule.planType,
++      dayType: schedule.dayType, morning: {
++        enabled: schedule.morning.enabled, gymIncluded: schedule.morning.gymIncluded,
++        strengthFocus: schedule.morning.strengthFocus,
++      }, evening: { enabled: schedule.evening.enabled, direction: schedule.evening.direction },
++    };
++    if (!schedule.confirmed) return;
++    const existing = events.get(day);
++    const normalizedType = type => ['gym_only', 'gym_volleyball', 'volleyball_only', 'pregame'].includes(type) ? 'training' : type === 'flight' ? 'travel' : type;
++    const storedSchedule = owned?.confirmed ? normalizeSessionSchedule(owned, day) : null;
++    if (existing && storedSchedule && normalizedType(existing.type) !== normalizedType(storedSchedule.dayType)) {
++      conflicts.push({ date: day, reportType: existing.type, scheduleType: storedSchedule.dayType });
++      // ReadySix's shared calendar gives Reports Center precedence.
++      return;
++    }
++    events.set(day, { ...existing, date: day, type: schedule.dayType, planType: schedule.planType, source: existing ? 'reports' : 'confirmed_schedule', confirmed: true });
++  });
++  return { source: 'ReadySix', date, windowStart: dates[0], windowEnd: shift(date, 90), today,
++    events: [...events.values()].sort((a, b) => a.date.localeCompare(b.date)), conflicts };
++}
+diff --git a/lib/programGeneratorReadModel.mjs b/lib/programGeneratorReadModel.mjs
+index 97002df..c093545 100644
+--- a/lib/programGeneratorReadModel.mjs
++++ b/lib/programGeneratorReadModel.mjs
+@@ -1,4 +1,5 @@
+ import { createHash } from 'node:crypto';
++import { readProgramGeneratorCalendar } from './programGeneratorCalendar.mjs';
+ 
+ export const PROGRAM_GENERATOR_CONTEXT_SCHEMA = 'readysix.program-generator-context';
+ export const PROGRAM_GENERATOR_CONTEXT_SCHEMA_VERSION = 1;
+@@ -149,14 +150,21 @@ function publicDecision(decisionRun, player) {
+     engine: decisionRun.engine,
+     engineVersion: decisionRun.engineVersion,
+     recommendation: decision.recommendation,
++    recommendationLabel: decision.recommendationLabel || null,
+     capPercent: decision.capPercent,
+     confidence: decision.confidence,
++    observations: decision.observations || [],
+     hardStopSignal: decision.hardStopSignal === true,
+     reasons: decision.reasons || [],
+     restrictions: decision.restrictions || [],
+     targets: (decision.targets || []).map(target => ({
+       target: target.target,
+       capPercent: target.capPercent,
++      healthCapPercent: target.healthCapPercent ?? target.capPercent,
++      healthRecommendation: target.healthRecommendation ?? target.recommendation,
++      scheduleCapPercent: target.scheduleCapPercent ?? null,
++      planApplicability: target.planApplicability ?? null,
++      jumpPrescription: target.jumpPrescription ?? null,
+       recommendation: target.recommendation,
+       reasons: target.reasons || [],
+       restrictions: target.restrictions || [],
+@@ -184,12 +192,13 @@ export async function buildProgramGeneratorPlayerContext({
+   const aliases = programGeneratorPlayerAliases(player);
+   const dates = dateWindow(snapshot.date, historyDays);
+ 
+-  const [morning, evening, postMorning, postEvening, manualValues] = await Promise.all([
++  const [morning, evening, postMorning, postEvening, manualValues, calendar] = await Promise.all([
+     readDatedFamily(redis, aliases, dates, (id, date) => `survey:morning:${id}:${date}`, MORNING_FIELDS),
+     readDatedFamily(redis, aliases, dates, (id, date) => `survey:${id}:${date}`, SESSION_FIELDS),
+     readDatedFamily(redis, aliases, dates, (id, date) => `survey:session:${id}:${date}:morning`, SESSION_FIELDS),
+     readDatedFamily(redis, aliases, dates, (id, date) => `survey:session:${id}:${date}:evening`, SESSION_FIELDS),
+     redis('MGET', ...aliases.map(id => `manual:snapshot:${id}`)),
++    readProgramGeneratorCalendar(redis, snapshot.date, organizationId),
+   ]);
+ 
+   const manual = Object.fromEntries(Object.entries(mergeObjects(manualValues || [])).map(([date, value]) => {
+@@ -208,6 +217,7 @@ export async function buildProgramGeneratorPlayerContext({
+     date: snapshot.date,
+     generatedAt: snapshot.generatedAt || new Date().toISOString(),
+     player: publicPlayer(player),
++    calendar,
+     monitoring: {
+       whoop: whoopHistory(player),
+       morning,
+diff --git a/pages/api/integrations/program-generator.js b/pages/api/integrations/program-generator.js
+index 82f4fae..2d88e9c 100644
+--- a/pages/api/integrations/program-generator.js
++++ b/pages/api/integrations/program-generator.js
+@@ -5,6 +5,7 @@ import { organizationLocalDate } from '../../../lib/organizationTime.mjs';
+ import { buildTeamSnapshotReadModel } from '../../../lib/teamSnapshotReadModel';
+ import { buildDailyDecisionRun } from '../../../lib/performanceDecisionEngine.mjs';
+ import { resolveProgramGeneratorCredential } from '../../../lib/programGeneratorAccess.mjs';
++import { readProgramGeneratorCalendar } from '../../../lib/programGeneratorCalendar.mjs';
+ import {
+   buildProgramGeneratorPlayerContext,
+   buildProgramGeneratorRoster,
+@@ -46,6 +47,7 @@ export default async function handler(req, res) {
+         credential.organizationId,
+         buildDailyDecisionRun(snapshot),
+       );
++      payload.calendar = await readProgramGeneratorCalendar(storage.redis, date, credential.organizationId);
+     } else if (!playerId) {
+       payload = buildProgramGeneratorRoster(snapshot, credential.organizationId);
+     } else {
+diff --git a/tests/unit/program-generator-calendar.test.mjs b/tests/unit/program-generator-calendar.test.mjs
+new file mode 100644
+index 0000000..c96a7b8
+--- /dev/null
++++ b/tests/unit/program-generator-calendar.test.mjs
+@@ -0,0 +1,42 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readProgramGeneratorCalendar } from '../../lib/programGeneratorCalendar.mjs';
++const date = '2026-09-16';
++const org = 'zarechie-odintsovo';
++const store = records => async (command, ...keys) => {
++  assert.equal(command, 'MGET');
++  return keys.map(key => records[key] ? JSON.stringify(records[key]) : null);
++};
++test('exports real matches and confirmed plans separately from health', async () => {
++  const result = await readProgramGeneratorCalendar(store({
++    'reports:config:v1': { events: { '2026-09-20': { type: 'match', opponent: 'Opponent' } } },
++    [`session:schedule:${date}`]: { organizationId: org, confirmed: true, planType: 'rest' },
++  }), date, org);
++  assert.equal(result.today.planType, 'rest');
++  assert.equal(result.events.find(event => event.date === '2026-09-20').type, 'match');
++  assert.equal(result.events.find(event => event.date === date).type, 'rest');
++});
++test('missing data does not invent events and foreign schedules are ignored', async () => {
++  const result = await readProgramGeneratorCalendar(store({
++    [`session:schedule:${date}`]: { organizationId: 'another-org', confirmed: true, planType: 'match' },
++  }), date, org);
++  assert.equal(result.today, null);
++  assert.deepEqual(result.events, []);
++});
++test('conflicting confirmed rest cannot erase a match', async () => {
++  const result = await readProgramGeneratorCalendar(store({
++    'reports:config:v1': { events: { [date]: { type: 'match' } } },
++    [`session:schedule:${date}`]: { organizationId: org, confirmed: true, planType: 'rest' },
++  }), date, org);
++  assert.equal(result.events[0].type, 'match');
++  assert.equal(result.conflicts.length, 1);
++});
++
++test('Reports Center alone supplies the same confirmed day and focus as ReadySix analytics', async () => {
++  const result = await readProgramGeneratorCalendar(store({
++    'reports:config:v1': { events: { [date]: { type: 'gym_only', strengthFocus: 'ballistic' } } },
++  }), date, org);
++  assert.equal(result.today.confirmed, true);
++  assert.equal(result.today.planType, 'gym_only');
++  assert.deepEqual(result.today.morning.strengthFocus, ['ballistic']);
++});
+diff --git a/tests/unit/program-generator-integration.test.mjs b/tests/unit/program-generator-integration.test.mjs
+index e6e1b66..9fc5c0a 100644
+--- a/tests/unit/program-generator-integration.test.mjs
++++ b/tests/unit/program-generator-integration.test.mjs
+@@ -76,7 +76,7 @@ test('player context is alias-aware, minimized, and carries the live strength de
+     decisions: [{
+       playerId: 'player-z', recommendation: 'modified', capPercent: 80, confidence: 'high',
+       hardStopSignal: false, reasons: ['fatigue'], restrictions: ['reduce volume'],
+-      targets: [{ target: 'strength_lower', capPercent: 80, recommendation: 'modified', reasons: ['fatigue'], restrictions: ['reduce volume'] }],
++      targets: [{ target: 'strength_lower', capPercent: 80, recommendation: 'modified', reasons: ['fatigue'], restrictions: ['reduce volume'] }, { target: 'strength_upper', capPercent: 0, healthCapPercent: 100, scheduleCapPercent: 0, planApplicability: 'not_planned' }],
+     }],
+   };
+   const result = await buildProgramGeneratorPlayerContext({
+@@ -89,6 +89,9 @@ test('player context is alias-aware, minimized, and carries the live strength de
+   assert.equal(JSON.stringify(result).includes('must-not-leak'), false);
+   assert.equal(result.decision.targets[0].target, 'strength_lower');
+   assert.equal(result.decision.targets[0].capPercent, 80);
++  assert.equal(result.decision.targets[1].healthCapPercent, 100);
++  assert.equal(result.decision.targets[1].scheduleCapPercent, 0);
++  assert.equal(result.decision.targets[1].planApplicability, 'not_planned');
+   assert.equal(findProgramGeneratorPlayer(snapshot(), 'unknown'), null);
+ });
+ 
