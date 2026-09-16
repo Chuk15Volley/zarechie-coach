@@ -14,6 +14,7 @@ import { loadUnitsForExercise } from '../../lib/tonnage';
 import { exerciseDescription } from '../../lib/tempoDescription.mjs';
 import { analyzeSessionDose } from '../../lib/sessionDose.mjs';
 import {
+  athleteSessionWarning,
   completedTonnage,
   blockIsComplete,
   firstIncompleteBlock,
@@ -24,7 +25,7 @@ import {
 } from '../../lib/playerWorkout.mjs';
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
 }
 
 function formatDate(dateStr) {
@@ -660,11 +661,11 @@ function SyncBadge({ status, savedAt }) {
   );
 }
 
-function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, dose, onStart }) {
-  const warnings = String(session?.warnings || '').trim();
+function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, isUpcoming, dose, onStart }) {
+  const warnings = athleteSessionWarning(session?.warnings);
   return (
     <section className="player-start-card">
-      {!isToday && (
+      {!isToday && !isUpcoming && (
         <div className="player-old-session-alert">
           <span>!</span>
           <div>
@@ -761,6 +762,7 @@ function PlayerSplash({ visible }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog, isMatchDayPrimer = false }) {
+  const isUpcoming = !isToday && sessionDate > todayISO();
   const initialDone = serverLog?.done || {};
   const blocks = Array.isArray(session?.blocks) ? session.blocks : [];
   const flatExercises = useMemo(() => workoutExercises(session), [session]);
@@ -1199,7 +1201,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
               {activeTab === 'workout' && session ? (
                 <>
                   <div className={`player-status-pill ${isToday ? 'is-today' : 'is-latest'}`}>
-                    <span />{isToday ? 'Сегодня' : 'Последняя'}
+                    <span />{isToday ? 'Сегодня' : isUpcoming ? 'Запланирована' : 'Последняя'}
                   </div>
                   <div className="player-session-date" suppressHydrationWarning>{formatDate(sessionDate)}</div>
                 </>
@@ -1215,7 +1217,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
 
           <div className="player-identity flex items-center gap-3.5">
             {playerPhoto ? (
-              <img src={playerPhoto} alt="" className="player-avatar h-14 w-14 shrink-0 rounded-[18px] border border-white/[0.1] object-cover" />
+              <img src={playerPhoto} alt={player?.name || 'Фото игрока'} className="player-avatar h-14 w-14 shrink-0 rounded-[18px] border border-white/[0.1] object-cover" />
             ) : (
               <div className="player-avatar flex h-14 w-14 shrink-0 items-center justify-center rounded-[18px] bg-[#4ade80]/20 text-[14px] font-black text-[#4ade80]">
                 {initials(player?.name)}
@@ -1358,12 +1360,13 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                 session={session}
                 sessionDate={sessionDate}
                 isToday={isToday}
+                isUpcoming={isUpcoming}
                 dose={dose}
                 onStart={startWorkout}
               />
             ) : (
               <>
-                {!isToday && (
+                {!isToday && !isUpcoming && (
                   <div className="player-old-session-alert">
                     <span>!</span>
                     <div>
@@ -1552,10 +1555,10 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                       </div>
                     </div>
                   ))}
-                  {histSession.warnings && (
+                  {athleteSessionWarning(histSession.warnings) && (
                     <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.05] px-4 py-4">
                       <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-amber-400/60">Важно</div>
-                      <p className="text-[13px] leading-relaxed text-amber-200/70">{histSession.warnings}</p>
+                      <p className="text-[13px] leading-relaxed text-amber-200/70">{athleteSessionWarning(histSession.warnings)}</p>
                     </div>
                   )}
                 </div>
