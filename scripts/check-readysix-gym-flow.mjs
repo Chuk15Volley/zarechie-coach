@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { readySixToday } from '../lib/readySixPlanning.mjs';
 import { pathToFileURL } from 'node:url';
 const liveModel = process.argv.includes('--live-model');
 if (liveModel && !process.env.OPENAI_API_KEY) {
@@ -46,9 +47,9 @@ const backend = http.createServer(async (req, res) => {
     const requestedDate = url.searchParams.get('date');
     const selected = url.searchParams.get('playerId');
     const mode = selected ? 'player-context' : url.searchParams.get('view') === 'readiness' ? 'team-readiness' : 'roster';
-    const decision = { recommendation: scenario === 'stop' ? 'load_stop' : 'full', capPercent: scenario === 'stop' ? 0 : 100, confidence: 'high', reasons: [], restrictions: [], targets: [] };
-    const monitoring = { whoop: [{ date: requestedDate, recovery: 5 }], morning: [{ date: requestedDate, readiness: 5 }], evening: [], postMorning: [], postEvening: [] };
-    const calendar = { date: requestedDate, events: scenario === 'matches' ? [{ date: '2026-09-15', type: 'match' }, { date, type: 'match' }] : scenario === 'rest' ? [{ date: requestedDate, type: 'rest' }] : [{ date: '2026-09-20', type: 'match' }], conflicts: [] };
+    const decision = { recommendation: scenario === 'stop' ? 'load_stop' : scenario === 'planning' ? 'insufficient_data' : 'full', capPercent: scenario === 'stop' ? 0 : 100, confidence: 'high', reasons: [], restrictions: [], targets: [] };
+    const monitoring = scenario === 'planning' ? { whoop: [], morning: [], evening: [], postMorning: [], postEvening: [] } : { whoop: [{ date: requestedDate, recovery: 5 }], morning: [{ date: requestedDate, readiness: 5 }], evening: [], postMorning: [], postEvening: [] };
+    const calendar = { date: requestedDate, events: scenario === 'planning' ? [{ date: requestedDate, type: 'rest' }] : scenario === 'matches' ? [{ date: '2026-09-15', type: 'match' }, { date, type: 'match' }] : scenario === 'rest' ? [{ date: requestedDate, type: 'rest' }] : [{ date: '2026-09-20', type: 'match' }], conflicts: [] };
     res.end(JSON.stringify({ schema: 'readysix.program-generator-context', schemaVersion: 1, mode,
       organizationId: req.headers['x-api-key'] === 'qa-nk' ? 'nk-performance' : 'zarechie-odintsovo',
       date: requestedDate, revision: 'qa-revision', generatedAt: new Date().toISOString(), calendar,
@@ -145,6 +146,30 @@ try {
   const otherWorkspace = await request(`/api/programs/get?playerId=${player.id}&date=${date}&workspace=nkperf`);
   assert.equal(otherWorkspace.body.record, null, 'A program must not cross workspace boundaries');
   console.log('PASS: save, reopen, ReadySix revision and workspace isolation in local storage');
+  if (!liveModel) {
+    scenario = 'planning';
+    const futureDate = new Date(Date.parse(readySixToday() + 'T12:00:00Z') + 86400000).toISOString().slice(0, 10);
+    const futureInput = { ...input, date: futureDate, focus: 'camp_iso_anterior', trainingType: 'anterior_chain' };
+    const decision = await request(`/api/players/decision-data?playerId=${player.id}&date=${futureDate}&workspace=zarechie`);
+    assert.equal(decision.status, 200);
+    assert.equal(decision.body.recommendation.planning.assessmentDate, readySixToday());
+    assert.equal(decision.body.recommendation.key, 'planning_only');
+    const futureQueue = await request('/api/programs/generate-async', futureInput);
+    assert.equal(futureQueue.status, 200, 'Missing future questionnaires must not block async queue');
+    const future = await request('/api/programs/generate', futureInput);
+    assert.equal(future.status, 200, 'Missing future questionnaires must not block sync generation');
+    assert.equal(future.body.quality.dose.prescription.readySix.planning.preliminary, true);
+    const savedFuture = await request('/api/programs/save', { ...futureInput, ...future.body, playerId: player.id, workspace: 'zarechie' });
+    assert.equal(savedFuture.status, 200);
+    const reopenedFuture = await request(`/api/programs/get?playerId=${player.id}&date=${futureDate}&workspace=zarechie`);
+    assert.equal(reopenedFuture.body.record.date, futureDate);
+    assert.equal(reopenedFuture.body.record.quality.dose.prescription.readySix.planning.assessmentDate, readySixToday());
+    scenario = 'stop';
+    const stoppedFuture = await request(`/api/programs/generate-status?batchId=${futureQueue.body.batchId}`);
+    assert.equal(stoppedFuture.status, 409, 'A newly reported real stop must still block future draft processing');
+    scenario = 'normal';
+    console.log('PASS: evening planning without questionnaires, both generation routes, saved future date/provenance and new-stop refresh');
+  }
   if (process.env.QA_BROWSER_MODULE) {
     const { chromium } = await import(pathToFileURL(process.env.QA_BROWSER_MODULE));
     const browser = await chromium.launch({ headless: true });
@@ -158,6 +183,21 @@ try {
       await page.getByRole('button', { name: 'Применить вариант для зала' }).click();
       await page.screenshot({ path: process.env.QA_SCREENSHOT || '/tmp/readysix-gym-flow.png', fullPage: true });
       console.log('PASS: real browser source card and apply action');
+      if (!liveModel) {
+        scenario = 'planning';
+        await page.reload();
+        await page.getByText('Тестовый игрок', { exact: true }).first().click();
+        const selectedDate = readySixToday();
+        const monthNames = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+        const [year, month, day] = selectedDate.split('-').map(Number);
+        await page.getByRole('button', { name: `${day} ${monthNames[month - 1]} ${year}`, exact: true }).first().click();
+        const tomorrowDate = new Date(Date.parse(selectedDate + 'T12:00:00Z') + 86400000).toISOString().slice(0, 10);
+        await page.getByRole('button', { name: tomorrowDate, exact: true }).click();
+        await page.getByText(`Предварительный план на ${tomorrowDate}`, { exact: true }).waitFor();
+        await page.getByText('Анкеты на дату тренировки не обязательны для подготовки программы.', { exact: false }).waitFor();
+        await page.screenshot({ path: '/tmp/readysix-evening-planning.png', fullPage: true });
+        console.log('PASS: preliminary planning notice in real browser');
+      }
     } finally { await browser.close(); }
   }
   console.log(`PASS: real HTTP readiness, sync/async safety, poll-time refresh, generation context; ${liveModel ? 'live model with synthetic player and local storage' : 'synthetic services only'}`);

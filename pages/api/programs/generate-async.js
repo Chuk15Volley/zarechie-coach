@@ -9,7 +9,7 @@ import { redis } from '../../../lib/redis';
 import { buildGenerationInputs, buildSessionTool } from './generate';
 import crypto from 'node:crypto';
 
-export const config = { maxDuration: 15 };
+export const config = { maxDuration: 30 };
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
