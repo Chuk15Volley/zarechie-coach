@@ -7685,10 +7685,6 @@ export default function Home() {
           {session && meta && (
             <div className="premium-session-card mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
 
-              {meta.quality?.dose?.prescription?.readySix?.planning?.preliminary && <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200 print:text-black">
-                <p className="font-semibold">Предварительная программа</p>
-                <p className="mt-1">Составлена по аналитике ReadySix на {meta.quality.dose.prescription.readySix.planning.assessmentDate}. Перед тренировкой проверьте актуальные анкеты и ограничения; при изменениях скорректируйте программу.</p>
-              </div>}
               {/* Result toolbar */}
               <div className="mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden">
                 <div className="flex flex-wrap items-center gap-2.5">
