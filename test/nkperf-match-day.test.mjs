@@ -52,7 +52,7 @@ test('generation APIs use manual match day in both workspaces', () => {
   const decisionData = fs.readFileSync(new URL('../pages/api/players/decision-data.js', import.meta.url), 'utf8');
 
   assert.match(generation, /manualMatchDayRequested = isManualMatchDayFocus\(focus\)/);
-  assert.match(generation, /resolveManualMatchDaySession\(\{ targetDate, consecutiveGameDay: previousManualMatchDays \+ 1 \}\)/);
+  assert.match(generation, /resolveManualMatchDaySession\(\{ targetDate, consecutiveGameDay: gymRecommendation \? gymRecommendation.calendar.consecutiveGameDay \|\| 1 : previousManualMatchDays \+ 1 \}\)/);
   assert.match(generation, /usesSeasonCalendar\(workspace\) \? redis\('get', scheduleKey\(workspace\)\)/);
   assert.match(generation, /expectsPerformanceTests\(workspace\) && seasonDecision\?\.key !== 'match_day'/);
   assert.match(warmup, /if \(isManualMatchDayFocus\(focus\)\)/);

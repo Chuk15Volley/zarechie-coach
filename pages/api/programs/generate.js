@@ -28,7 +28,7 @@ import { IN_SEASON_SYSTEM_PROMPT } from '../../../lib/inSeasonPrompt.mjs';
 import { normalizeSessionTempoDescriptions, stripTempoDescription, tempoDescription } from '../../../lib/tempoDescription.mjs';
 import { buildMatchDayPrimerContext, formatMatchDayPrimerForPrompt, matchDayAutomaticRecoveryStatus } from '../../../lib/matchDayPrimer.mjs';
 import { buildInSeasonPowerContext, formatInSeasonPowerForPrompt } from '../../../lib/inSeasonPower.mjs';
-import { assessOneRmFreshness, buildInSeasonStrengthContext, formatInSeasonStrengthForPrompt } from '../../../lib/inSeasonStrength.mjs';
+import { assessOneRmFreshness, buildInSeasonStrengthContext, formatInSeasonStrengthForPrompt, enforceStrengthStopRule } from '../../../lib/inSeasonStrength.mjs';
 import {
   formatSeasonDecisionForPrompt,
   isInSeasonFocus,
@@ -349,6 +349,7 @@ function conciseCue(text, tempo = '') {
 
 export function normalizeExerciseLanguage(session, focus = '') {
   if (!session?.blocks) return session;
+  session = enforceStrengthStopRule(session, focus);
   return {
     ...session,
     blocks: session.blocks.map(block => ({
@@ -1613,8 +1614,8 @@ export async function buildGenerationInputs(body) {
         : 'full_body'
   );
   let seasonDecision = manualMatchDayRequested
-    ? resolveManualMatchDaySession({ targetDate, consecutiveGameDay: previousManualMatchDays + 1 })
-    : usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
+    ? resolveManualMatchDaySession({ targetDate, consecutiveGameDay: gymRecommendation ? gymRecommendation.calendar.consecutiveGameDay || 1 : previousManualMatchDays + 1 })
+    : !gymRecommendation && usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
       ? resolveSeasonSession({
       events: Array.isArray(scheduleEvents) ? scheduleEvents : [],
       targetDate,
@@ -1734,7 +1735,7 @@ export async function buildGenerationInputs(body) {
     );
 
   let { userPrompt, dataSummary } = buildUserPrompt({
-    snapshot, sessionSummaries, rawSchedule, raw1RM: strengthContext && !oneRmFreshness.fresh ? null : raw1RM, rawFeedbacks,
+    snapshot, sessionSummaries, rawSchedule: gymRecommendation ? null : rawSchedule, raw1RM: strengthContext && !oneRmFreshness.fresh ? null : raw1RM, rawFeedbacks,
     actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType: effectiveTrainingType, notes, warmupSummary, teamUsedExercises, coachRecovery, microcycleSlot,
     playbookText, workspace, seasonDecision,
   });

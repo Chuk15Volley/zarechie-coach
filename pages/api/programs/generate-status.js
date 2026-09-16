@@ -338,11 +338,11 @@ export default async function handler(req, res) {
       playerRestrictions,
     });
 
-    // Strength methodology and exercise variety get one shared repair attempt. If the
+    // Every method gets one shared repair attempt for failed quality checks. If the
     // deterministic structure/dose audit still fails after that attempt, the
     // original or corrected candidate is returned with a specific warning and
     // remains available for an explicit manual save.
-    if (((quality.strength && !quality.valid) || quality.variety?.needsCorrection) && !record.correctionAttempted) {
+    if ((!quality.valid || quality.variety?.needsCorrection) && !record.correctionAttempted) {
       const correctionPrompt = qualityCorrectionPrompt(userPrompt, session, quality);
       const corrected = await createOpenAIBackgroundResponse(apiKey, correctionPrompt, systemPrompt, sessionTool, {
         maxOutputTokens: SESSION_RETRY_OUTPUT_TOKENS,
