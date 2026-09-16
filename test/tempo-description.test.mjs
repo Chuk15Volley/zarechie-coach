@@ -79,3 +79,25 @@ test('an intentionally empty manual description stays empty', () => {
     descriptionOverride: '',
   }), '');
 });
+
+test('timed holds follow set prescription instead of the encoded tempo pause', () => {
+  for (const name of ['Spanish Squat', 'Pallof Press ISO', 'Side Plank']) {
+    const exercise = { name, tempo: '0-5сек-X-0', targetSets: ['30 сек', '30 сек'], cue: 'Спина нейтральна.' };
+    assert.match(exerciseDescription(exercise), /удерживай положение 30 сек/);
+    assert.doesNotMatch(exerciseDescription(exercise), /5 секунд/);
+    assert.match(exerciseDescription(exercise), /Спина нейтральна/);
+    const normalized = normalizeSessionTempoDescriptions({ blocks: [{ exercises: [exercise] }] });
+    assert.deepEqual(normalizeSessionTempoDescriptions(normalized), normalized);
+  }
+});
+
+test('varying and unilateral hold targets retain the prescribed dose', () => {
+  assert.match(exerciseDescription({ name: 'Side Plank', targetSets: ['20 sec/side'] }), /20 sec\/side/);
+  assert.match(exerciseDescription({ name: 'Spanish Squat', targetSets: ['20 сек', '30 сек'] }), /время, указанное в каждом подходе/);
+  assert.match(exerciseDescription({ name: 'Spanish Squat', targetSets: ['30с'] }), /30с/);
+});
+
+test('dynamic timed exercises and repetition counts do not become static holds', () => {
+  assert.match(exerciseDescription({ name: 'Goblet Squat', tempo: '3-5-X-0', targetSets: ['30 сек'] }), /пауза внизу — 5 секунд/);
+  assert.match(exerciseDescription({ name: 'Pallof Press ISO', tempo: '0-5-X-0', targetSets: ['6', '6'] }), /удерживай положение 5 секунд/);
+});

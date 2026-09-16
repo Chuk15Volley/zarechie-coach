@@ -320,7 +320,7 @@ function ExerciseMedia({ name, token }) {
 }
 
 // ── Single exercise card ──────────────────────────────────────────────────────
-function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, token }) {
+function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, token, readOnly = false }) {
   const plannedWeight = plannedWeightLabel(ex);
   const plannedSetWeight = plannedWeightValue(ex);
   const weightNote = String(ex.weightNote || '').trim();
@@ -353,6 +353,12 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, to
       <div className={`grid ${setGrid} gap-2 px-3.5 pt-3`}>
         {(ex.targetSets || []).map((s, si) => {
           const key = `${bi}-${ei}-${si}`;
+          if (readOnly) return (
+            <div key={si} className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-center">
+              <div className="text-[11px] text-slate-500">Подход {si + 1}</div>
+              <div className="mt-1 text-sm font-bold text-slate-200">{s}</div>
+            </div>
+          );
           return (
             <SetBtn
               key={si}
@@ -599,8 +605,8 @@ function InstallHint() {
     const standalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       window.navigator.standalone === true;
-    if (standalone) return;
-    if (localStorage.getItem('pwa-hint-dismissed')) return;
+    if (standalone || !/iPhone|iPod|Android.*Mobile/i.test(navigator.userAgent)) return;
+    try { if (localStorage.getItem('pwa-hint-dismissed')) return; } catch (_) {}
     setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
     setVisible(true);
     const t = setTimeout(() => setVisible(false), 12000);
@@ -609,7 +615,7 @@ function InstallHint() {
 
   function dismiss() {
     setVisible(false);
-    localStorage.setItem('pwa-hint-dismissed', '1');
+    try { localStorage.setItem('pwa-hint-dismissed', '1'); } catch (_) {}
   }
 
   if (!visible) return null;
@@ -661,7 +667,8 @@ function SyncBadge({ status, savedAt }) {
   );
 }
 
-function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, isUpcoming, dose, onStart }) {
+function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, isUpcoming, dose, onStart, token }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const warnings = athleteSessionWarning(session?.warnings);
   return (
     <section className="player-start-card">
@@ -687,6 +694,23 @@ function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, is
         <div className="player-start-warning">
           <div className="player-kicker">Важно от тренера</div>
           <p>{warnings}</p>
+        </div>
+      )}
+      <button type="button" className="mb-3 w-full rounded-xl border border-white/15 px-4 py-3 text-sm font-bold text-slate-200" aria-expanded={previewOpen} aria-controls="workout-preview" onClick={() => setPreviewOpen(open => !open)}>
+        {previewOpen ? 'Свернуть программу' : 'Посмотреть упражнения'}
+      </button>
+      {previewOpen && (
+        <div id="workout-preview" className="mb-5 space-y-5">
+          <p className="text-sm text-slate-400">Просмотр программы. Время тренировки начнёт отсчитываться после нажатия «Начать тренировку».</p>
+          {(session.blocks || []).map((block, bi) => (
+            <section key={bi} className="space-y-3">
+              <h3 className="font-bold text-slate-200">Блок {block.label}</h3>
+              {block.rest_note && <p className="text-sm text-slate-400">Отдых: {block.rest_note}</p>}
+              {(block.exercises || []).map((ex, ei) => (
+                <ExCard key={ei} bi={bi} ei={ei} ex={ex} block={block} token={token} readOnly />
+              ))}
+            </section>
+          ))}
         </div>
       )}
       <button type="button" className="player-start-button" onClick={onStart}>
@@ -1363,6 +1387,7 @@ export default function PlayerPage({ token, session, sessionLabel, player, sessi
                 isUpcoming={isUpcoming}
                 dose={dose}
                 onStart={startWorkout}
+                token={token}
               />
             ) : (
               <>
