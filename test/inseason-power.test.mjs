@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   auditInSeasonPowerSession,
+  inSeasonPowerDoseProfile,
   buildInSeasonPowerContext,
 } from '../lib/inSeasonPower.mjs';
 import { buildDosePrescription } from '../lib/sessionDose.mjs';
@@ -149,4 +150,15 @@ test('power validation allows deadlift and Olympic lifts but still rejects squat
   assert.equal(rejected.valid, false);
   assert.match(rejected.errors.join(' '), /Depth Jump/);
   assert.match(rejected.errors.join(' '), /Back Squat/);
+});
+
+test('power prehab recognizes soleus and band pull-apart without accepting unrelated curls', () => {
+  const session = developmentSession();
+  const prescription = inSeasonPowerDoseProfile(buildInSeasonPowerContext({ focus: 'inseason_power', position: 'MB', recoveryStatus: 'green', requestedMode: 'development' }));
+  for (const name of ['Standing Soleus Raise (DB)', 'Band Pull-Apart']) {
+    session.blocks[5].exercises = [exercise('F1', name, ['10', '10'])];
+    assert.equal(auditInSeasonPowerSession(session, prescription).checks.prehab, true);
+  }
+  session.blocks[5].exercises = [exercise('F1', 'Biceps Curl', ['10', '10'])];
+  assert.equal(auditInSeasonPowerSession(session, prescription).checks.prehab, false);
 });
