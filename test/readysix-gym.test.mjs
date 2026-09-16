@@ -82,3 +82,15 @@ test('ReadySix-resolved calendar discrepancies do not block neighbouring match d
   s.readySixCalendar.conflicts = [{ date, reportType: 'rest', scheduleType: 'recovery' }];
   assert.equal(rec(s).key, 'no_gym', 'Resolved rest remains a day without gym');
 });
+
+test('back-to-back matches retain the match protocol instead of imposing a recovery day', () => {
+  const recommendation = rec(snapshot([{ date: '2026-09-15', type: 'match' }, { date, type: 'match' }, { date: '2026-09-17', type: 'match' }]));
+  assert.equal(recommendation.key, 'match_day');
+  const original = { minutes: { min: 20, max: 25 }, totalSets: { min: 12, max: 12 }, hardSets: { min: 4, max: 8 }, jumpContacts: { min: 4, max: 8 }, targetRpe: { min: 3, max: 4 } };
+  const dose = applyReadySixGymDose(original, recommendation);
+  assert.deepEqual(dose.hardSets, original.hardSets);
+  assert.deepEqual(dose.jumpContacts, original.jumpContacts);
+  assert.equal(dose.loadedHardSetsMax, undefined);
+  const limited = rec(snapshot([{ date: '2026-09-15', type: 'match' }, { date, type: 'match' }], { capPercent: 50 }));
+  assert.equal(applyReadySixGymDose(original, limited).totalSets.max, 6, 'health limit still applies');
+});
