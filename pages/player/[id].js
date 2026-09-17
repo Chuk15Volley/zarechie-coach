@@ -1,4 +1,4 @@
-import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetitions, actualTarget, targetLabel, isCircuit, focusExerciseIndex, shortCue, needsLoadEntry, russianCount, playerLoadLabel } from '../../lib/playerGym.mjs';
+import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetitions, actualTarget, targetLabel, isCircuit, focusExerciseIndex, shortCue, needsLoadEntry, russianCount, playerLoadLabel, validActualWeight, setCompletionIssue, weightChangeSummary } from '../../lib/playerGym.mjs';
 // pages/player/[id].js
 // Individual player training page — shared link, mobile-first workout tracking.
 // SSR: fetches today's saved session from Redis server-side (no client secrets exposed).
@@ -204,16 +204,17 @@ function plannedWeightValue(ex) {
 }
 
 // ── Set button — tappable, turns green when done, shows weight input ──────────
-function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedWeight, plannedWeightValue, requiresWeight, previousWeight, setKey, repetitions, onRepsChange, active }) {
+function SetBtn({ confirmLabel, total, previousReps, label, value, done, onToggle, weight, onWeightChange, plannedWeight, plannedWeightValue, requiresWeight, previousWeight, setKey, repetitions, onRepsChange, active }) {
   const [expanded, setExpanded] = useState(false);
+  const [weightStep, setWeightStep] = useState(0.5);
   const info = repetitionInput(value);
   const open = expanded || (active && !done);
-  const weightValue = weight ?? plannedWeightValue;
+  const weightValue = weight ?? '';
   const repsValue = repetitions ?? String(info?.planned ?? '');
   const adjustWeight = delta => onWeightChange(String(Math.max(0, Math.round(((Number(String(weightValue).replace(',', '.')) || 0) + delta) * 100) / 100)));
   return <div className={`gym-set ${done ? 'is-done' : ''} ${open ? 'is-open' : ''}`}>
     <button type="button" className="gym-set-heading" onClick={() => setExpanded(v => !v)} aria-expanded={open}>
-      <span className="gym-set-caption">{done && <span aria-hidden="true">✓ </span>}Подход {label}</span>
+      <span className="gym-set-caption">{done && <span aria-hidden="true">✓ </span>}Подход {label}{total ? ` из ${total}` : ''}</span>
       <strong>{targetLabel(actualTarget(value, done ? repetitions : undefined))}{done && weight ? ` · ${weight} кг` : ''}</strong>
       <span className="text-xs">{open ? 'Выполнение' : done ? 'Изменить' : 'Открыть'}</span>
     </button>
@@ -225,13 +226,15 @@ function SetBtn({ label, value, done, onToggle, weight, onWeightChange, plannedW
           <button type="button" aria-label={`Увеличить повторы, подход ${label}`} onClick={() => onRepsChange(String(Math.min(200, Number(repsValue || 0) + 1)))}>+</button>
         </div></label>}
         {requiresWeight && <label>Вес снаряда, кг<div className="gym-stepper">
-          <button type="button" aria-label={`Уменьшить вес, подход ${label}`} onClick={() => adjustWeight(-0.5)}>−</button>
-          <input id={`weight-${setKey}`} aria-label={`Фактический вес, подход ${label}`} inputMode="decimal" value={weightValue} onChange={e => { if (/^\d{0,3}([.,]\d{0,2})?$/.test(e.target.value)) onWeightChange(e.target.value); }} />
-          <button type="button" aria-label={`Увеличить вес, подход ${label}`} onClick={() => adjustWeight(0.5)}>+</button>
+          <button type="button" aria-label={`Уменьшить вес, подход ${label}`} onClick={() => adjustWeight(-weightStep)}>−</button>
+          <input id={`weight-${setKey}`} aria-label={`Фактический вес, подход ${label}`} inputMode="decimal" value={weightValue} placeholder="—" onChange={e => { if (/^\d{0,3}([.,]\d{0,2})?$/.test(e.target.value)) onWeightChange(e.target.value); }} />
+          <button type="button" aria-label={`Увеличить вес, подход ${label}`} onClick={() => adjustWeight(weightStep)}>+</button>
         </div></label>}
       </div>
-      {requiresWeight && <div className="gym-quick-values">{plannedWeightValue && <button type="button" onClick={() => onWeightChange(String(plannedWeightValue))}>План: {plannedWeightValue} кг</button>}{previousWeight != null && previousWeight !== '' && <button type="button" onClick={() => onWeightChange(previousWeight)}>Предыдущий: {previousWeight} кг</button>}</div>}
-      <button type="button" className="gym-confirm-set" disabled={!done && ((info && (repsValue === '' || validRepetitions(repsValue) == null)) || (requiresWeight && (weightValue === '' || !Number.isFinite(Number(String(weightValue).replace(',', '.'))))))} onClick={() => { onToggle(); setExpanded(false); }}>{done ? 'Снять отметку выполнения' : '✓ Подход выполнен'}</button>
+      {requiresWeight && <label className="gym-weight-step">Шаг веса<select aria-label={`Шаг веса, подход ${label}`} value={weightStep} onChange={e => setWeightStep(Number(e.target.value))}>{[0.5, 1, 2.5, 5].map(step => <option key={step} value={step}>{step} кг</option>)}</select></label>}
+      {requiresWeight && <div className="gym-quick-values">{plannedWeightValue && <button type="button" onClick={() => onWeightChange(String(plannedWeightValue))}>По плану: {plannedWeightValue} кг</button>}{previousWeight != null && previousWeight !== '' && <button type="button" onClick={() => { onWeightChange(previousWeight); if (info && previousReps != null) onRepsChange(String(previousReps)); }}>Повторить предыдущий: {previousWeight} кг</button>}</div>}
+      {requiresWeight && !done && validActualWeight(weightValue) == null && <p className="gym-actual-hint">Введи фактический вес или нажми «По плану».</p>}
+      <button type="button" className="gym-confirm-set" disabled={!done && ((info && (repsValue === '' || validRepetitions(repsValue) == null)) || (requiresWeight && (validActualWeight(weightValue) == null)))} onClick={() => { if (onToggle() !== false) setExpanded(false); }}>{done ? 'Снять отметку выполнения' : confirmLabel || '✓ Сохранить подход'}</button>
     </div>}
   </div>;
 }
@@ -381,6 +384,8 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
             <div key={si}>
             <SetBtn
               setKey={key}
+              total={setCount}
+              previousReps={si > 0 ? repetitions[`${bi}-${ei}-${si - 1}`] : null}
               previousWeight={si > 0 ? weights?.[`${bi}-${ei}-${si - 1}`] : null}
               label={`${si + 1}`}
               value={s}
@@ -803,12 +808,13 @@ function UndoSetToast({ undo, onUndo, onDismiss }) {
   );
 }
 
-function CompletionSummary({ totalSets, elapsedSeconds, tonnage, rpe, finishReason, skippedCount = 0 }) {
+function CompletionSummary({ weightChanges = [], totalSets, elapsedSeconds, tonnage, rpe, finishReason, skippedCount = 0 }) {
   return (
     <section className="player-completion-summary">
       <div className="player-completion-mark">✓</div>
       <div className="player-kicker">{finishReason ? 'Завершена раньше' : skippedCount ? 'Завершена с пропусками' : 'Тренировка завершена'}</div>
       <h2>Отличная работа</h2>
+      {weightChanges.length > 0 && <div className="gym-weight-changes"><h3>Изменения рабочего веса</h3>{weightChanges.map((item, index) => <p key={index}><strong>{item.code} · {item.name}</strong><span>План {item.planned} кг → факт {item.actual.join(' / ')} кг · {item.count} {russianCount(item.count, 'подход', 'подхода', 'подходов')}</span></p>)}</div>}
       <p>{finishReason ? `Причина: ${finishReason}. Учтены только отмеченные подходы.` : skippedCount ? `Пропущено подходов: ${skippedCount}. Учтено только выполненное.` : 'Все запланированные подходы отмечены.'} Оцени нагрузку — тренер получит итог вместе с фактическими весами.</p>
       <div className="player-completion-metrics">
         <div><strong>{totalSets}</strong><span>{russianCount(totalSets, 'подход', 'подхода', 'подходов')}</span></div>
@@ -865,6 +871,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   const [startedAt, setStartedAt] = useState(serverLog?.startedAt || null);
   const [finishReason, setFinishReason] = useState(serverLog?.finishReason || null);
   const [finishOpen, setFinishOpen] = useState(false);
+  const [resultSet, setResultSet] = useState(null);
+  const [resultIssue, setResultIssue] = useState('');
   const [selectedFinishReason, setSelectedFinishReason] = useState('');
   const [progressReady, setProgressReady] = useState(false);
   const [completedAt, setCompletedAt] = useState(serverLog?.completedAt || (initialAllDone ? serverLog?.savedAt || null : null));
@@ -1040,6 +1048,28 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   }, [progressReady, workoutStarted, totalSets, doneCount, skippedCount, completedAt, startedAt]);
 
   const upcomingSet = completedAt ? null : nextWorkoutSet(session, done, skipped);
+  const currentSet = activeBlock >= 0 ? nextWorkoutSet(session, done, skipped, activeBlock) : upcomingSet;
+  const currentCue = currentSet ? shortCue(currentSet.exercise) : '';
+  useEffect(() => {
+    if (!resultSet) return;
+    const previousFocus = document.activeElement;
+    const sheet = document.querySelector('.gym-result-sheet');
+    const keydown = event => {
+      if (event.key === 'Escape') { event.preventDefault(); setResultSet(null); }
+      if (event.key !== 'Tab') return;
+      const items = [...sheet.querySelectorAll('button:not(:disabled), input, select')];
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => { document.removeEventListener('keydown', keydown); if (previousFocus?.isConnected) previousFocus.focus(); };
+  }, [resultSet?.key]);
+  function openSetResult(item) {
+    if (!item) return;
+    setResultIssue('');
+    setResultSet({ key: item.key, bi: item.bi, ei: item.ei, si: item.si, block: item.block, ex: item.exercise });
+  }
   useEffect(() => {
     const item = holdTimer.hold;
     if (item && (completedAt || done[item.key] || skipped[`${item.bi}-${item.ei}`] || !blocks[item.bi]?.exercises?.[item.ei]?.targetSets?.[item.si])) holdTimer.cancel();
@@ -1057,6 +1087,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   }
 
   function finishEarly() {
+    setResultSet(null);
     if (!FINISH_REASONS.includes(selectedFinishReason)) return;
     const now = new Date();
     setUndoSet(null);
@@ -1102,6 +1133,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   }
 
   function skipExercise(bi, ei, reason) {
+    setResultSet(null);
     if (reason && !SKIP_REASONS.includes(reason)) return;
     const key = `${bi}-${ei}`;
     const next = { ...skipped, [key]: reason };
@@ -1123,12 +1155,19 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   function confirmHold() {
     const item = holdTimer.hold;
     if (!item || holdTimer.remaining > 0 || item.side !== item.sides) return;
-    holdTimer.cancel();
     const block = blocks[item.bi], ex = block?.exercises?.[item.ei];
     if (ex && !done[item.key] && !skipped[`${item.bi}-${item.ei}`]) toggleSet(item.key, { ...item, block, ex });
   }
 
   function toggleSet(key, context) {
+    if (!done[key]) {
+      const issue = setCompletionIssue(context.ex, context.ex.targetSets?.[context.si], weights[key], repetitions[key]);
+      if (issue) {
+        setResultIssue(issue); setResultSet({ ...context, key });
+        return false;
+      }
+    }
+    setResultIssue(''); setResultSet(null);
     if (holdTimer.hold?.key === key) holdTimer.cancel();
     const actionAt = new Date().toISOString();
     if (completedAt) { setCompletedAt(null); setFinishReason(null); }
@@ -1136,7 +1175,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     if (!wasDone) {
       const target = context.ex.targetSets?.[context.si];
       if (repetitionInput(target) && repetitions[key] == null) changeReps(key, String(repetitionInput(target).planned));
-      if (weights[key] == null && plannedWeightValue(context.ex)) changeWeight(key, plannedWeightValue(context.ex));
     }
     setDone(prev => ({ ...prev, [key]: !prev[key] }));
     setSetUpdatedAt(prev => ({ ...prev, [key]: actionAt }));
@@ -1173,12 +1211,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
 
     if (blockIsComplete(context.block, context.bi, newDone, skipped)) {
       const next = nextIncompleteBlock(session, context.bi, newDone, skipped);
-      setTimeout(() => {
-        setActiveBlock(next?.bi ?? -1);
-        if (next) {
-          blockRefs.current[next.bi]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 320);
+      setActiveBlock(next?.bi ?? -1);
+      if (next) blockRefs.current[next.bi]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
 
@@ -1207,6 +1241,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   }
 
   function changeWeight(key, value) {
+    setResultIssue('');
     setWeights(prev => ({ ...prev, [key]: value }));
     const actionAt = new Date().toISOString();
     setWeightUpdatedAt(prev => ({ ...prev, [key]: actionAt }));
@@ -1586,7 +1621,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                   <div className="space-y-4">
                     {doneCount + skippedCount < totalSets && <button type="button" onClick={startWorkout} className="rounded-xl border border-white/15 px-4 py-3 text-sm text-slate-300">Вернуться к выполнению</button>}
                     <details className="gym-result-details"><summary>Фактические результаты</summary>{blocks.map((block, bi) => (block.exercises || []).map((ex, ei) => <div key={`${bi}-${ei}`}><strong>{playerExerciseName(ex)}</strong><p>{(ex.targetSets || []).map((target, si) => { const key = `${bi}-${ei}-${si}`; return done[key] ? `${targetLabel(actualTarget(target, repetitions[key]))}${weights[key] != null && weights[key] !== '' ? ` · ${weights[key]} кг` : ''}` : 'Не выполнен'; }).join(' · ')}</p></div>))}</details>
-                    <CompletionSummary skippedCount={skippedCount} finishReason={finishReason} totalSets={doneCount} elapsedSeconds={elapsedSeconds} tonnage={tonnage} rpe={sessionRpe} />
+                    <CompletionSummary weightChanges={weightChangeSummary(session, done, weights)} skippedCount={skippedCount} finishReason={finishReason} totalSets={doneCount} elapsedSeconds={elapsedSeconds} tonnage={tonnage} rpe={sessionRpe} />
                     <FeedbackForm
                       key={completedAt}
                       finishReason={finishReason}
@@ -1720,6 +1755,26 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
           </main>
         )}
 
+        {resultSet && !completedAt && <div className="gym-result-overlay" onClick={() => setResultSet(null)}>
+          <section className="gym-result-sheet" role="dialog" aria-modal="true" aria-labelledby="set-result-title" onClick={e => e.stopPropagation()}>
+            <div className="gym-result-heading"><h2 id="set-result-title">Фактический результат</h2><button type="button" autoFocus onClick={() => setResultSet(null)} aria-label="Закрыть ввод результата">×</button></div>
+            <p>{playerExerciseName(resultSet.ex)}</p>
+            {resultIssue && <p role="status" className="gym-actual-hint">{resultIssue}</p>}
+            <SetBtn key={resultSet.key} setKey={`result-${resultSet.key}`} label={resultSet.si + 1} total={resultSet.ex.targetSets.length} value={resultSet.ex.targetSets[resultSet.si]} active
+              done={!!done[resultSet.key]} weight={weights[resultSet.key]} repetitions={repetitions[resultSet.key]}
+              plannedWeightValue={plannedWeightValue(resultSet.ex)} requiresWeight={needsLoadEntry(resultSet.ex)}
+              previousWeight={resultSet.si > 0 ? weights[`${resultSet.bi}-${resultSet.ei}-${resultSet.si - 1}`] : null}
+              previousReps={resultSet.si > 0 ? repetitions[`${resultSet.bi}-${resultSet.ei}-${resultSet.si - 1}`] : null}
+              onWeightChange={value => changeWeight(resultSet.key, value)} onRepsChange={value => changeReps(resultSet.key, value)}
+              onToggle={() => toggleSet(resultSet.key, resultSet)} />
+          </section>
+        </div>}
+        {workoutStarted && !completedAt && !finishOpen && !holdTimer.hold && !restTimer && !resultSet && activeTab === 'workout' && currentSet && <section className="gym-current-set" aria-label="Текущий подход">
+          <div className="player-kicker">{currentSet.exercise.code} · {playerExerciseName(currentSet.exercise)}</div>
+          <strong>Подход {currentSet.si + 1} из {currentSet.exercise.targetSets.length} · {targetLabel(currentSet.target)}{plannedWeightValue(currentSet.exercise) ? ` · ${plannedWeightLabel(currentSet.exercise)}` : ''}</strong>
+          {currentCue && <p>{currentCue}</p>}
+          <button type="button" className="gym-confirm-set" onClick={() => openSetResult(currentSet)}>✓ Подход выполнен</button>
+        </section>}
         {workoutStarted && !finishOpen && activeTab === 'workout' && holdTimer.hold && <section className={`player-rest-timer player-hold-timer ${holdTimer.preparing ? 'is-preparing' : ''}`} role="timer" aria-live="off" aria-label="Таймер удержания">
           <TimerDial remaining={holdTimer.preparing ? holdTimer.preparationRemaining : holdTimer.remaining} total={holdTimer.preparing ? 5 : holdTimer.hold.seconds} />
           <div className="player-timer-copy">
