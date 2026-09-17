@@ -1,23 +1,23 @@
 /* Athlete visual system. Scoped so the coach workspace keeps its own typography. */
 .gym-premium {
-  --athlete-ink: #0b1216;
-  --athlete-panel: #111e24;
+  --athlete-ink: #090c16;
+  --athlete-panel: #181d30;
   --athlete-line: rgba(196, 219, 213, .12);
   --athlete-text: #f0f3ed;
   --athlete-muted: #a4b5b9;
-  --athlete-accent: #9de4c5;
+  --athlete-accent: #7cf4c4;
   font-family: var(--font-manrope), 'Manrope', -apple-system, sans-serif;
   color: var(--athlete-text);
-  background: linear-gradient(165deg, #101e23 0%, #0b141b 38%, #0b1216 100%);
+  background: radial-gradient(ellipse 100% 500px at 100% 0, #23356760, transparent), linear-gradient(180deg, #101525, #090c16 800px);
   letter-spacing: 0;
 }
 .gym-premium::before { opacity: .025; }
 .gym-premium::after { opacity: .3; }
-.gym-premium .player-hero { padding: 20px 20px 18px; background: transparent; border-bottom: 1px solid var(--athlete-line); }
+.gym-premium .player-hero { padding: max(24px, env(safe-area-inset-top)) 22px 22px; background: radial-gradient(ellipse at 0 0, #5259d226, transparent 75%); border-bottom: 1px solid #bdcfff12; box-shadow: none; }
 .gym-premium .player-brand-row { margin-bottom: 20px; }
 .gym-premium .player-brand-name { font-size: 10px; font-weight: 650; letter-spacing: .14em; color: #d0ded9; }
 .gym-premium .player-brand-logo { width: 28px; height: 28px; border-radius: 8px; box-shadow: none; }
-.gym-premium .player-avatar { width: 46px; height: 54px; border-radius: 14px; color: var(--athlete-accent); background: #1b3333; box-shadow: none; border-color: #b8dfcd26; }
+.gym-premium .player-avatar { width: 50px; height: 58px; border-radius: 17px; color: #defcf6; background: linear-gradient(145deg, #3594b5, #4b479b); box-shadow: 0 6px 24px #567bea26, inset 0 1px #ffffff40; border-color: #c8dbff40; }
 .gym-premium .player-page-title { font-family: var(--font-manrope), 'Manrope', sans-serif; font-size: clamp(20px, 5.5vw, 25px); font-weight: 650; letter-spacing: -.035em; line-height: 1.3; text-wrap: pretty; }
 .gym-premium .player-position { font-size: 12px; line-height: 1.5; color: var(--athlete-muted); margin-top: 4px; }
 .gym-premium .player-status-pill { font-size: 9px; letter-spacing: .06em; font-weight: 650; box-shadow: none; border-color: #c6b78a30; color: #d4c69b; background: #c6b78a0a; }
@@ -32,19 +32,19 @@
 .gym-premium .gym-offline button { border-color: #aacbb52e; color: #cee7da; font-size: 11px; min-height: 36px; padding: 6px 12px; background: #a6ddc207; }
 .gym-premium .gym-offline summary { padding-top: 6px; font-size: 10px; color: #97aaa9; }
 .gym-premium .player-workout-content { padding-top: 18px; padding-inline: 16px; }
-.gym-premium .player-start-card { padding: 22px 18px 18px; border-radius: 24px; border: 1px solid #a8ccbc25; background: linear-gradient(145deg, #213936 0%, #14272c 38%, #111d26 100%); box-shadow: inset 0 1px #d3f7e60b, 0 18px 44px -30px #000b; }
-.gym-premium .player-start-card::after { width: 170px; height: 170px; top: -42px; right: -30px; opacity: .045; }
+.gym-premium .player-start-card { padding: 26px 20px 18px; border-radius: 28px; border: 1px solid #bbceff30; background: radial-gradient(ellipse 95% 230px at 110% -10%, #8857e887, transparent 80%), radial-gradient(ellipse 90% 290px at -15% 0, #168cd070, transparent 80%), linear-gradient(150deg, #243660, #171e35 330px, #121829); box-shadow: inset 0 1px #eef2ff18, 0 20px 48px -28px #000a; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.gym-premium .player-start-card::after { width: 160px; height: 160px; top: -40px; right: -40px; opacity: .13; }
 .gym-premium .player-kicker { font-size: 10px; line-height: 1.5; font-weight: 600; letter-spacing: .12em; color: #a6c7b9; }
-.gym-premium .player-start-card h2 { font-family: var(--font-prata), 'Prata', Georgia, serif; font-size: clamp(28px, 7.7vw, 37px); line-height: 1.24; font-weight: 400; letter-spacing: -.035em; color: #f3f2e9; margin-top: 9px; text-wrap: pretty; }
+.gym-premium .player-start-card h2 { font-family: inherit; font-size: clamp(29px, 8vw, 40px); line-height: 1.15; font-weight: 750; letter-spacing: -.035em; color: #f3f2e9; margin-top: 9px; text-wrap: pretty; }
 .gym-premium .player-start-goal { color: #becdca; font-size: 13px; line-height: 1.65; }
-.gym-premium .player-start-metrics { margin-top: 22px; margin-bottom: 5px; gap: 0; border-top: 1px solid #d2e9df18; border-bottom: 1px solid #d2e9df18; padding-block: 13px; }
-.gym-premium .player-start-metrics > div { padding: 0 4px; min-height: 46px; border: 0; border-radius: 0; box-shadow: none; background: none; }
-.gym-premium .player-start-metrics > div + div { border-left: 1px solid #d2e9df18; }
-.gym-premium .player-start-metrics strong { color: #eff5ec; font-size: 23px; font-weight: 650; letter-spacing: -.05em; }
-.gym-premium .player-start-metrics span { color: #b5c7c1; font-size: 10px; font-weight: 500; letter-spacing: 0; text-transform: none; margin-top: 7px; }
-.gym-premium .player-start-button, .gym-premium .gym-confirm-set { font-family: inherit; min-height: 54px; border-radius: 13px; color: #0d2d24; font-weight: 750; font-size: 15px; letter-spacing: -.015em; background: linear-gradient(110deg, #b1ebcd, #83d7b8); border: 1px solid #cbf7dd60; box-shadow: 0 6px 20px -12px #8fe6bc80, inset 0 1px #fff4; }
+.gym-premium .player-start-metrics { margin-top: 26px; margin-bottom: 5px; gap: 7px; border: 0; padding-block: 0; }
+.gym-premium .player-start-metrics > div { align-items: center; padding: 13px 3px 12px; min-height: 102px; border: 1px solid #ffffff16; border-radius: 17px; box-shadow: inset 0 1px #ffffff08; background: #0a102a45; }
+.gym-premium .player-start-metrics > div + div { border-left: 1px solid #ffffff16; }
+.gym-premium .player-start-metrics strong { color: var(--metric-color, #f5f7ff); font-size: 25px; font-weight: 750; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+.gym-premium .player-start-metrics span { color: #d0d8e8; font-size: 10px; font-weight: 500; letter-spacing: 0; text-transform: none; margin-top: 7px; }
+.gym-premium .player-start-button, .gym-premium .gym-confirm-set { font-family: inherit; min-height: 58px; border-radius: 17px; color: #063a32; font-weight: 800; font-size: 15px; letter-spacing: -.015em; background: linear-gradient(110deg, #b9ffbb, #66efca); border: 1px solid #d4ffe775; box-shadow: 0 8px 24px -10px #55efb950, inset 0 1px #fff7; transition: transform .18s ease, filter .18s ease, box-shadow .18s ease; }
 .gym-premium .player-start-button { margin-top: 20px; gap: 10px; }
-.gym-premium .player-start-icon { background: #183e3230; color: #173d30; width: 24px; height: 24px; font-size: 9px; }
+.gym-premium .player-start-icon { display: grid; place-items: center; background: #0d584720; color: #0b4a38; width: 30px; height: 30px; }
 .gym-premium .player-start-note { color: #a6bbb3; font-size: 10px; line-height: 1.6; margin: 11px 0 16px; }
 .gym-premium .gym-preview-toggle { display: flex; align-items: center; justify-content: space-between; min-height: 46px; padding: 10px 0; border: 0; border-radius: 0; border-top: 1px solid #d2e9df18; color: #e2ebe6; font-size: 13px; font-weight: 600; margin-bottom: 0; }
 .gym-premium .gym-preview-toggle > span:last-child { color: #9fc5b7; font-size: 20px; font-weight: 400; }
@@ -54,16 +54,16 @@
 .gym-premium .gym-preview-block-title { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: #e2eae6; font-size: 14px; line-height: 1.45; font-weight: 650; }
 .gym-premium .gym-preview-block-title > span:first-child { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border: 1px solid #9fc5b730; border-radius: 9px; font-size: 11px; color: #abcbbd; font-weight: 600; }
 .gym-premium .gym-rest-note { margin: 0 0 14px; color: #a3b7b8; font-size: 11px; line-height: 1.65; }
-.gym-premium .player-exercise-card { border-radius: 18px; border: 1px solid #c7e0d51a; background: linear-gradient(145deg, #15232a, #101b23); box-shadow: 0 9px 24px -20px #000; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.gym-premium .player-exercise-card { border-radius: 22px; border: 1px solid #bfd2ff22; background: linear-gradient(145deg, #202941, #151c30); box-shadow: inset 0 1px #ffffff08, 0 10px 30px -24px #000; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .gym-premium .player-exercise-heading { align-items: center; padding: 17px 15px; gap: 10px; background: none; border-bottom: 1px solid #d7ede508; }
-.gym-premium .player-exercise-code { background: #9fc5b711; border: 1px solid #9fc5b720; color: #b5d8c8; min-width: 30px; padding: 5px; text-align: center; font-size: 10px; font-weight: 600; border-radius: 8px; }
+.gym-premium .player-exercise-code { background: #7f9aff20; border: 1px solid #a6baff35; color: #c7d6ff; min-width: 34px; padding: 7px 5px; text-align: center; font-size: 11px; font-weight: 750; border-radius: 11px; }
 .gym-premium .player-exercise-name { font-family: inherit; color: #edf1eb; font-size: 17px; line-height: 1.45; font-weight: 650; letter-spacing: -.025em; padding-top: 0; text-wrap: pretty; }
-.gym-premium .player-weight-strip { padding: 13px 15px; background: #a7d6c106; border: 0; gap: 12px; align-items: center; }
+.gym-premium .player-weight-strip { padding: 14px 15px; background: linear-gradient(90deg, #6bafff16, #83dff806); border-block: 1px solid #b8ceff0c; gap: 12px; align-items: center; }
 .gym-premium .player-weight-strip > div:first-child { color: #9eb8b0; font-size: 10px; line-height: 1.45; text-transform: none; letter-spacing: .01em; font-weight: 500; white-space: nowrap; }
-.gym-premium .player-weight-strip > div:last-child { color: #bee6d1; font-size: 17px; line-height: 1.45; letter-spacing: -.025em; font-weight: 650; }
+.gym-premium .player-weight-strip > div:last-child { color: #aadaff; font-size: 20px; line-height: 1.45; letter-spacing: -.025em; font-weight: 750; }
 .gym-premium .player-weight-strip.is-prescription > div:last-child { font-size: 13px; line-height: 1.6; color: #c3d5cc; font-weight: 500; letter-spacing: 0; }
 .gym-premium .gym-technique-cue { margin: 12px 15px 0; color: #b5c3c7; font-size: 12px; line-height: 1.75; font-weight: 400; letter-spacing: 0; }
-.gym-premium .gym-prescribed-set { border-radius: 11px; background: #d5e9e603; border-color: #d5e9e610; padding: 10px 5px; }
+.gym-premium .gym-prescribed-set { border-radius: 13px; background: linear-gradient(145deg, #8caffe16, #7295d206); border-color: #bfd2ff20; padding: 12px 5px; }
 .gym-premium .gym-prescribed-set > div:first-child { color: #99aeb4; font-size: 10px; line-height: 1.4; }
 .gym-premium .gym-prescribed-set > div:nth-child(2) { color: #e0eae7; font-size: 15px; line-height: 1.5; font-weight: 600; margin-top: 5px; }
 .gym-premium .gym-technique-details { border-top: 1px solid #b8cec61a; padding-top: 3px; }
@@ -83,17 +83,17 @@
 .gym-premium .gym-stepper { background: #0c171d; border-color: #bcdcc725; border-radius: 10px; }
 .gym-premium .gym-stepper input { font-family: inherit; font-weight: 650; font-variant-numeric: tabular-nums; }
 .gym-premium .gym-quick-values button { color: #b7d0c4; font-size: 11px; }
-.gym-premium .player-footer { background: #0b141cf5; border-color: #c7e0d512; }
+.gym-premium .player-footer { background: #0c1120f5; border-color: #bed1ff18; }
 .gym-premium .player-footer > span { color: #839c97; font-size: 8px; letter-spacing: .15em; }
 .gym-premium .player-sync-badge { font-size: 10px; }
 .gym-premium.gym-active .player-hero { padding: 12px 16px; }
 .gym-premium.gym-active .player-page-title { font-size: 15px; font-weight: 600; }
-.gym-premium .player-progress-dock { background: #0c181eee; border-color: #bcdcc71f; box-shadow: 0 8px 20px -15px #000; }
+.gym-premium .player-progress-dock { background: #11172bf2; border-color: #bcd5ff26; box-shadow: 0 8px 24px -15px #0008; }
 .gym-premium .player-block-chip { border-radius: 9px; font-size: 11px; box-shadow: none; }
-.gym-premium .player-rest-timer { background: #13252bf5; border-color: #a8ccbc33; box-shadow: 0 10px 30px #0005; }
+.gym-premium .player-rest-timer { background: linear-gradient(130deg, #263959f5, #222447f5); border-color: #accaff50; box-shadow: 0 10px 35px #0007, inset 0 1px #ffffff16; }
 .gym-premium .player-rest-ring strong { font-weight: 650; font-size: 26px; letter-spacing: -.035em; }
-.gym-premium .player-completion-summary { border-color: #a8ccbc25; background: linear-gradient(145deg, #213936, #111d26); }
-.gym-premium .player-completion-summary h2 { color: #f3f2e9; font-size: 29px; }
+.gym-premium .player-completion-summary { border-color: #a4c7ff35; background: radial-gradient(ellipse at 95% 0, #7153cc66, transparent 65%), linear-gradient(145deg, #204b56, #181e38); }
+.gym-premium .player-completion-summary h2 { font-family: inherit; font-weight: 750; color: #f4f7ff; font-size: 30px; line-height: 1.2; }
 @media (max-width: 360px) {
  .gym-premium .player-hero { padding-inline: 16px; }
  .gym-premium .player-page-title { font-size: 19px; }
@@ -111,3 +111,126 @@
 @media (max-width: 360px) {
  .gym-premium .gym-prescribed-set > div:nth-child(2) { font-size: 13px; white-space: nowrap; }
 }
+
+/* Color is attached to content, while labels carry the meaning independently. */
+.gym-premium .player-start-metrics > div:nth-child(1) { --metric-color: #8dbfff; background-color: #518aff10; }
+.gym-premium .player-start-metrics > div:nth-child(2) { --metric-color: #c6afff; background-color: #a77bff10; }
+.gym-premium .player-start-metrics > div:nth-child(3) { --metric-color: #8cf5ce; background-color: #42d8b910; }
+.gym-premium .player-start-metrics > div:nth-child(4) { --metric-color: #ffca9d; background-color: #ffb36610; }
+.gym-premium .player-start-metrics svg { width: 18px; height: 18px; stroke-width: 1.75; color: var(--metric-color); margin-bottom: 11px; }
+.gym-premium .player-kicker { color: #c1d2f2; letter-spacing: .1em; }
+.gym-premium .player-tabs { background: #060a164f; border-color: #bfd2ff20; padding: 5px; border-radius: 17px; }
+.gym-premium .player-tabs button { color: #adb9d1; min-height: 44px; border-radius: 12px; }
+.gym-premium .player-tabs button[aria-pressed="true"] { color: #f5f8ff; background: linear-gradient(120deg, #435a91, #394471); box-shadow: inset 0 1px #ffffff20, 0 3px 9px #0003; }
+.gym-premium .gym-preview-block-title > span:first-child { background: #7aabff20; border-color: #96baff40; color: #b8d6ff; }
+.gym-premium .gym-preview-block-title { color: #e4ebfc; }
+.gym-premium .gym-set { background: #ffffff03; border-color: #b9d0ff28; }
+.gym-premium .gym-set.is-open { border-color: #8db4ff55; background: #6192ff0b; }
+.gym-premium .gym-stepper { background: #0f172a; border-color: #c1d4ff30; }
+.gym-premium .player-progress-track > div { background: linear-gradient(90deg, #69c8ff, #94f7c2); }
+.gym-premium .player-progress-value { color: #91e8ff; font-variant-numeric: tabular-nums; }
+.gym-premium .player-completion-mark { color: #a4ffdb; background: #67eabf20; border-color: #8effd34a; }
+.gym-premium .player-completion-metrics > div { background: #a8c6ff0a; border-color: #b2c6ff24; }
+.gym-premium .player-completion-metrics strong { color: #b5deff; }
+.gym-premium .player-completion-metrics span { color: #c0cce0; }
+.gym-premium .player-start-button:active, .gym-premium .gym-confirm-set:active { transform: scale(.985); }
+@media (hover: hover) {
+ .gym-premium .player-start-button:hover, .gym-premium .gym-confirm-set:hover { filter: brightness(1.06); box-shadow: 0 10px 26px -10px #55efb975; }
+ .gym-premium .gym-preview-toggle:hover { color: #a3d3ff; }
+}
+@media (max-width: 360px) {
+ .gym-premium .player-start-card { padding-inline: 14px; }
+ .gym-premium .player-start-metrics { gap: 5px; }
+ .gym-premium .player-start-metrics > div { border-radius: 13px; min-height: 96px; }
+ .gym-premium .player-start-metrics strong { font-size: 21px; }
+ .gym-premium .player-start-metrics span { font-size: 9px; }
+}
+
+/* Reflective glass controls: opaque fallbacks retain contrast without blur. */
+.gym-premium .player-tabs button,
+.gym-premium .player-block-chip,
+.gym-premium .player-focus-toggle,
+.gym-premium .gym-offline button,
+.gym-premium .player-rest-actions button {
+  background-image: linear-gradient(170deg, #ffffff14 0%, #ffffff05 45%, #ffffff00 48%, #ffffff03 100%);
+  border: 1px solid #c1d7ff28;
+  box-shadow: inset 0 1px #ffffff26, inset 0 -1px #ffffff06, 0 3px 10px #0002;
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+.gym-premium .player-tabs button[aria-pressed="true"] {
+  background: linear-gradient(165deg, #a3c4ff40 0%, #6179b526 46%, #30426838 48%), #354976;
+  border-color: #bdd7ff50;
+  box-shadow: inset 0 1px #ffffff65, inset 0 -1px #c9e2ff20, 0 4px 14px #0004;
+}
+.gym-premium .player-start-button,
+.gym-premium .gym-confirm-set {
+  background: linear-gradient(172deg, #ffffff88 0%, #ffffff12 45%, #ffffff00 47%, #ffffff24 100%), linear-gradient(105deg, #b2ffc1, #59eac6);
+  border: 1px solid #d6ffeca0;
+  box-shadow: inset 0 1px #ffffffc0, inset 0 -2px #14887930, 0 7px 24px -10px #59efbf70;
+}
+.gym-premium button:disabled { filter: saturate(.4); cursor: not-allowed; }
+@media (prefers-reduced-transparency: reduce) {
+ .gym-premium .player-tabs button, .gym-premium .player-block-chip,
+ .gym-premium .player-focus-toggle, .gym-premium .gym-offline button,
+ .gym-premium .player-rest-actions button { backdrop-filter: none; -webkit-backdrop-filter: none; background-image: none; }
+}
+
+.gym-premium .player-block-chip { color: #bdcce8; }
+.gym-premium .player-block-chip[data-complete="true"] { background-color: #204a43; color: #aeffda; border-color: #88e5bc50; }
+.gym-premium .player-block-chip[aria-current="step"] { color: #062d2b; background: linear-gradient(165deg, #d9fff3, #65e7c9); border-color: #baffea; box-shadow: inset 0 1px #fff9, 0 3px 14px #60dfbb25; }
+
+/* Both timers use the same fixed dial and full-width action grid. */
+.gym-premium .player-rest-timer {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px 16px;
+  padding: 16px;
+  border-radius: 26px;
+  background: linear-gradient(145deg, #344768fa, #252944fa 70%);
+  border-color: #c3d7ff55;
+  box-shadow: inset 0 1px #ffffff40, 0 16px 50px #0008;
+  max-height: calc(100dvh - 110px - env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+.gym-premium .player-rest-ring { width: 76px; height: 76px; aspect-ratio: 1; background: conic-gradient(from -90deg, #9cf4d3 var(--rest-progress), #c4d9ff1c 0); box-shadow: 0 4px 20px #070d2030; }
+.gym-premium .player-rest-ring > div { width: 66px; height: 66px; background: #202b43; box-shadow: inset 0 1px #ffffff14; }
+.gym-premium .player-rest-ring strong { color: #effff9; font-size: 28px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.04em; line-height: 1; }
+.gym-premium .player-rest-ring span { color: #bdcfe2; font-size: 9px; margin-top: 5px; letter-spacing: .09em; }
+.gym-premium .player-timer-copy { min-width: 0; }
+.gym-premium .player-rest-timer .player-kicker { font-size: 9px; letter-spacing: .06em; line-height: 1.5; color: #bcd6ff; }
+.gym-premium .player-timer-next { margin-top: 6px; font-size: 12px; font-weight: 600; line-height: 1.55; color: #f0f5ff; overflow-wrap: anywhere; }
+.gym-premium .player-rest-actions { grid-column: 1 / -1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 7px; margin: 0; }
+.gym-premium .player-rest-actions button { width: 100%; min-height: 44px; padding: 9px 5px; font-size: 11px; font-weight: 650; line-height: 1.4; border-radius: 13px; color: #ecf3ff; border-color: #c3d7ff3d; }
+.gym-premium .player-timer-undo { grid-column: 1 / -1; min-height: 36px; padding: 6px; margin-top: -7px; border: 0; border-top: 1px solid #bfd4ff1a; background: none; font-size: 11px; font-weight: 500; color: #c4d0e8; }
+.gym-premium .player-rest-timer.is-complete { border-color: #95f2c77a; }
+.gym-premium .player-rest-timer.is-complete .player-rest-ring { background: #95f2c7; }
+.gym-premium .player-start-metrics strong, .gym-premium .gym-stepper input,
+.gym-premium .player-weight-strip, .gym-premium .gym-prescribed-set { font-variant-numeric: tabular-nums; }
+.gym-premium .player-exercise-heading { align-items: flex-start; }
+.gym-premium .player-exercise-code { flex: 0 0 34px; }
+
+/* Stable block palette across preview, navigation and execution; letters remain visible. */
+.gym-premium [data-block-tone="0"] { --block-color: #99cdff; --block-rgb: 102, 177, 255; }
+.gym-premium [data-block-tone="1"] { --block-color: #c9afff; --block-rgb: 174, 133, 255; }
+.gym-premium [data-block-tone="2"] { --block-color: #8af1cc; --block-rgb: 79, 220, 176; }
+.gym-premium [data-block-tone="3"] { --block-color: #ffca97; --block-rgb: 255, 172, 102; }
+.gym-premium [data-block-tone="4"] { --block-color: #ffb3d4; --block-rgb: 251, 136, 187; }
+.gym-premium [data-block-tone="5"] { --block-color: #99eaf3; --block-rgb: 86, 209, 224; }
+.gym-premium .player-block-chip[data-block-tone] { color: var(--block-color); border-color: rgba(var(--block-rgb), .4); background-color: rgba(var(--block-rgb), .12); }
+.gym-premium .player-block-chip[data-complete="true"] { border-style: solid; }
+.gym-premium .player-block-chip[aria-current="step"] { color: #111b2b; background: linear-gradient(165deg, #ffffff65, transparent 65%), var(--block-color); border-color: #ffffffaa; box-shadow: inset 0 1px #ffffffaa, 0 0 0 2px rgba(var(--block-rgb), .22); }
+.gym-premium [data-block-tone] .player-block-badge,
+.gym-premium [data-block-tone] .gym-preview-block-title > span:first-child { background: linear-gradient(155deg, #ffffff24, transparent), rgba(var(--block-rgb), .2); border: 1px solid rgba(var(--block-rgb), .45); color: var(--block-color); box-shadow: inset 0 1px #ffffff24; }
+.gym-premium [data-block-tone] .player-exercise-code { color: var(--block-color); border-color: rgba(var(--block-rgb), .35); background: rgba(var(--block-rgb), .15); }
+.gym-premium .player-exercise-card[data-block-tone] { border-color: rgba(var(--block-rgb), .25); }
+.gym-premium [data-block-tone] .player-exercise-heading { background: linear-gradient(110deg, rgba(var(--block-rgb), .12), transparent); }
+.gym-premium [data-block-tone] .player-weight-strip { background: rgba(var(--block-rgb), .06); }
+.gym-premium [data-block-tone] .player-weight-strip.has-weight > div:last-child { color: var(--block-color); }
+.gym-premium [data-block-tone] .player-block-compact { background: linear-gradient(120deg, rgba(var(--block-rgb), .09), #141c2c); border-color: rgba(var(--block-rgb), .25); }
+.gym-premium [data-block-tone] .player-block-heading::after { background: linear-gradient(90deg, rgba(var(--block-rgb), .4), transparent); }
+.gym-premium .player-hold-timer.is-preparing .player-rest-ring { background: conic-gradient(from -90deg, #ffd29c var(--rest-progress), #c4d9ff1c 0); }
+.gym-premium .player-hold-timer.is-preparing .player-kicker { color: #ffdbb0; }
+.gym-premium .player-timer-preparation { color: #ffdbb0; font-weight: 700; }
+.gym-premium .gym-hold-prep-hint { display: block; margin-top: 3px; font-size: 10px; color: #b4c3db; }

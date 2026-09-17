@@ -11,3 +11,9 @@
 Видео продолжает открываться по исходной ссылке: ранее встроенный проигрыватель вызывал проблемы доступа. Автоматических замен упражнений нет; при занятом оборудовании игрок может пропустить упражнение, указать причину и вернуться к нему через всю программу. Замену определяет тренер.
 
 Проверено на локальной синтетической программе в мобильном окне 390×844: старт, изменение повторений, восстановление страницы, ввод веса, перенос веса предыдущего подхода, переход между упражнениями, таймер отдыха, пропуск и отображение пары. Реальные результаты игроков при проверке не изменялись.
+
+### Athlete visual system and preparation countdown
+
+The athlete UI uses scoped graphite surfaces, blue/violet highlights and reflective glass controls. Block colors repeat consistently across navigation, preview and exercise badges (A blue, B violet, C mint, D orange, E pink, F cyan, then repeat). Letter labels, the current-step outline and completion marks remain visible independently of color.
+
+Rest and hold timers share a 76px circular dial, tabular digits and equal-width action grids. A hold starts with five seconds of preparation before the full prescribed work duration; each additional side receives the same preparation period. Pausing and restoring preserves preparation separately from work, including fractional seconds. Existing timers without preparation metadata remain compatible. Rest timers start immediately.

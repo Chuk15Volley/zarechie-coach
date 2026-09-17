@@ -93,10 +93,10 @@ test('hold clock restores after reload, counts both sides, and never marks a set
   t.mock.method(Date, 'now', () => now);
   const h = harness('../lib/useHoldTimer.js', 'useHoldTimer'); env.cleanups.push(() => h.stop());
   h.render('hold:test').start({ key: '0-1-0', seconds: 30, sides: 2, name: 'Side Plank' });
-  h.render(); now += 31000; await env.tick();
+  h.render(); now += 36000; await env.tick();
   let state = h.render(); assert.equal(state.remaining, 0); assert.equal(state.hold.side, 1);
   state.nextSide(); state = h.render(); assert.equal(state.hold.side, 2); assert.equal(state.remaining, 30);
-  now += 10000; await env.tick(); state = h.render(); state.toggle(); h.render();
+  now += 15000; await env.tick(); state = h.render(); state.toggle(); h.render();
   const restored = harness('../lib/useHoldTimer.js', 'useHoldTimer'); env.cleanups.push(() => restored.stop());
   const paused = restored.render('hold:test'); assert.equal(paused.hold.deadline, null); assert.equal(paused.remaining, 20);
   now += 60000; await env.tick(); assert.equal(restored.render().remaining, 20);
@@ -111,4 +111,34 @@ test('wake lock is opt-in and released on completion', async t => {
   let state = h.render(true); assert.equal(requests, 0);
   state.toggle(); h.render(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(requests, 1); h.render(false); assert.equal(releases, 1);
+});
+
+
+test('hold preparation preserves full work duration and catches up after backgrounding', async t => {
+  const env = environment(t); let now = 100000;
+  t.mock.method(Date, 'now', () => now);
+  const h = harness('../lib/useHoldTimer.js', 'useHoldTimer'); env.cleanups.push(() => h.stop());
+  h.render('hold:prep').start({ key: '0-0-0', seconds: 20, sides: 2 });
+  let state = h.render(); assert.equal(state.preparationRemaining, 5); assert.equal(state.remaining, 20);
+  now += 4999; await env.tick(); state = h.render(); assert.equal(state.preparing, true); assert.equal(state.remaining, 20);
+  state.nextSide(); assert.equal(h.render().hold.side, 1);
+  now += 1; await env.tick(); state = h.render(); assert.equal(state.preparing, false); assert.equal(state.remaining, 20);
+  now += 17000; env.events.get('visibilitychange')(); state = h.render(); assert.equal(state.remaining, 3);
+  now += 3000; await env.tick(); state = h.render(); assert.equal(state.remaining, 0);
+  state.nextSide(); state = h.render(); assert.equal(state.hold.side, 2); assert.equal(state.preparationRemaining, 5); assert.equal(state.remaining, 20);
+});
+
+test('paused preparation restores and resumes the exact remaining delay', async t => {
+  const env = environment(t); let now = 100000;
+  t.mock.method(Date, 'now', () => now);
+  const h = harness('../lib/useHoldTimer.js', 'useHoldTimer'); env.cleanups.push(() => h.stop());
+  h.render('hold:pause-prep').start({ key: '0-0-0', seconds: 30, sides: 1 }); h.render();
+  now += 2500; h.render().toggle(); h.render(); h.stop();
+  now += 60000;
+  const restored = harness('../lib/useHoldTimer.js', 'useHoldTimer'); env.cleanups.push(() => restored.stop());
+  let state = restored.render('hold:pause-prep'); assert.equal(state.preparationRemaining, 3); assert.equal(state.remaining, 30);
+  state.toggle(); state = restored.render();
+  now += 2499; await env.tick(); state = restored.render(); assert.equal(state.preparing, true); assert.equal(state.remaining, 30);
+  now += 1; await env.tick(); state = restored.render(); assert.equal(state.preparing, false); assert.equal(state.remaining, 30);
+  now += 30000; await env.tick(); assert.equal(restored.render().remaining, 0);
 });

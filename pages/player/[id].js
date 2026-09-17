@@ -5,6 +5,7 @@ import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetiti
 
 import { useState, useEffect, useRef, useMemo, Component } from 'react';
 import Head from 'next/head';
+import { Dumbbell, Layers3, Timer, LayoutGrid, Play } from 'lucide-react';
 import OfflineProgram from '../../components/player/OfflineProgram';
 import { useHoldTimer } from '../../lib/useHoldTimer';
 import { usePlayerWakeLock } from '../../lib/usePlayerWakeLock';
@@ -345,7 +346,7 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
   const setCount = (ex.targetSets || []).length;
   const setGrid = readOnly && setCount >= 4 ? 'grid-cols-2 sm:grid-cols-4' : readOnly && setCount === 3 ? 'grid-cols-3' : readOnly && setCount === 2 ? 'grid-cols-2' : 'grid-cols-1';
   return (
-    <article className="player-exercise-card overflow-hidden rounded-[20px] border border-white/[0.1] bg-[#0d1921] shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
+    <article data-block-tone={bi % 6} className="player-exercise-card overflow-hidden rounded-[20px] border border-white/[0.1] bg-[#0d1921] shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
       {/* Header */}
       <div className="player-exercise-heading flex items-start gap-2.5 bg-gradient-to-r from-[#4ade80]/[0.15] to-transparent px-3.5 py-3">
         <span className="player-exercise-code shrink-0 rounded-lg bg-[#4ade80]/20 px-2 py-1 text-[11px] font-black text-[#4ade80]">
@@ -391,7 +392,7 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
               plannedWeightValue={plannedSetWeight}
               requiresWeight={needsLoadEntry(ex)}
             />
-            {!done[key] && holdPrescription(s, ex) && <button type="button" onClick={() => onHold({ key, bi, ei, si, name: ex.name, ...holdPrescription(s, ex) })} className="mt-2 w-full rounded-lg border border-emerald-400/25 px-1 py-2 text-xs text-emerald-200">Начать {holdPrescription(s, ex).seconds} сек{holdPrescription(s, ex).sides === 2 ? ' × 2 стороны' : ''}</button>}
+            {!done[key] && holdPrescription(s, ex) && <button type="button" onClick={() => onHold({ key, bi, ei, si, name: ex.name, ...holdPrescription(s, ex) })} className="mt-2 w-full rounded-lg border border-emerald-400/25 px-1 py-2 text-xs text-emerald-200">Начать {holdPrescription(s, ex).seconds} сек{holdPrescription(s, ex).sides === 2 ? ' × 2 стороны' : ''}<span className="gym-hold-prep-hint">5 сек на подготовку</span></button>}
             </div>
           );
         })}
@@ -723,13 +724,13 @@ function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, is
       <h2>{compactWorkoutTitle(sessionLabel)}</h2>
       {dayGoal && <p className="player-start-goal">{dayGoal}</p>}
       <div className="player-start-metrics">
-        <div><strong>{dose.exerciseCount}</strong><span>{russianCount(dose.exerciseCount, 'упражнение', 'упражнения', 'упражнений')}</span></div>
-        <div><strong>{dose.totalSets}</strong><span>{russianCount(dose.totalSets, 'подход', 'подхода', 'подходов')}</span></div>
-        <div><strong>≈ {dose.estimatedMinutes}</strong><span>{russianCount(dose.estimatedMinutes, 'минута', 'минуты', 'минут')}</span></div>
-        <div><strong>{session?.blocks?.length || 0}</strong><span>{russianCount(session?.blocks?.length || 0, 'блок', 'блока', 'блоков')}</span></div>
+        <div><Dumbbell aria-hidden="true" /><strong>{dose.exerciseCount}</strong><span>{russianCount(dose.exerciseCount, 'упражнение', 'упражнения', 'упражнений')}</span></div>
+        <div><Layers3 aria-hidden="true" /><strong>{dose.totalSets}</strong><span>{russianCount(dose.totalSets, 'подход', 'подхода', 'подходов')}</span></div>
+        <div><Timer aria-hidden="true" /><strong>≈ {dose.estimatedMinutes}</strong><span>{russianCount(dose.estimatedMinutes, 'минута', 'минуты', 'минут')}</span></div>
+        <div><LayoutGrid aria-hidden="true" /><strong>{session?.blocks?.length || 0}</strong><span>{russianCount(session?.blocks?.length || 0, 'блок', 'блока', 'блоков')}</span></div>
       </div>
       <button type="button" className="player-start-button" onClick={onStart}>
-        <span className="player-start-icon">▶</span>
+        <span className="player-start-icon"><Play size={16} fill="currentColor" aria-hidden="true" /></span>
         Начать тренировку
       </button>
       <p className="player-start-note">Результаты сохраняются автоматически.</p>
@@ -740,7 +741,7 @@ function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, is
         <div id="workout-preview" className="mb-5 space-y-5">
           <p className="text-sm text-slate-400">Можно заранее изучить упражнения. Таймер запустится, когда начнёшь тренировку.</p>
           {(session.blocks || []).map((block, bi) => (
-            <section key={bi} className="space-y-3">
+            <section key={bi} data-block-tone={bi % 6} className="space-y-3">
               <h3 className="gym-preview-block-title"><span>{block.label}</span><span>{block.title || `Блок ${block.label}`}</span></h3>
               {block.rest_note && <p className="gym-rest-note">Отдых: {block.rest_note}</p>}
               {(block.exercises || []).map((ex, ei) => (
@@ -754,24 +755,28 @@ function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, is
   );
 }
 
+function TimerDial({ remaining, total }) {
+  const progress = total > 0 ? Math.max(0, Math.min(1, remaining / total)) : 0;
+  return <div className="player-rest-ring" style={{ '--rest-progress': `${progress * 360}deg` }}>
+    <div><strong>{remaining}</strong><span>сек</span></div>
+  </div>;
+}
+
 function RestTimer({ timer, onToggle, onAdd, onSkip, undo, onUndo }) {
   if (!timer) return null;
-  const progress = timer.total > 0 ? Math.max(0, Math.min(1, timer.remaining / timer.total)) : 0;
   return (
-    <div className={`player-rest-timer ${timer.remaining === 0 ? 'is-complete' : ''}`} role="timer" aria-live="off">
-      <div className="player-rest-ring" style={{ '--rest-progress': `${progress * 360}deg` }}>
-        <div><strong>{timer.remaining}</strong><span>сек</span></div>
+    <div className={`player-rest-timer ${timer.remaining === 0 ? 'is-complete' : ''}`} role="timer" aria-label="Таймер отдыха" aria-live="off">
+      <TimerDial remaining={timer.remaining} total={timer.total} />
+      <div className="player-timer-copy">
+        <div className="player-kicker">{timer.remaining === 0 ? 'Можно продолжать' : timer.running ? 'Отдых между подходами' : 'Отдых · пауза'}</div>
+        <div className="player-timer-next">{timer.label}</div>
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="player-kicker">{timer.remaining === 0 ? 'Можно продолжать' : 'Отдых между подходами'}</div>
-        <div className="mt-1 text-[13px] font-bold leading-snug text-slate-100">{timer.label}</div>
-        <div className="player-rest-actions">
-          {timer.remaining > 0 && <button type="button" onClick={onToggle}>{timer.running ? 'Пауза' : 'Продолжить'}</button>}
-          {timer.remaining > 0 && <button type="button" onClick={onAdd}>+15 сек</button>}
-          <button type="button" onClick={onSkip}>{timer.remaining > 0 ? 'Пропустить' : 'К подходу'}</button>
-          {undo && <button type="button" onClick={onUndo}>Отменить отметку</button>}
-        </div>
+      <div className="player-rest-actions">
+        {timer.remaining > 0 && <button type="button" onClick={onToggle}>{timer.running ? 'Пауза' : 'Продолжить'}</button>}
+        {timer.remaining > 0 && <button type="button" onClick={onAdd}>+15 сек</button>}
+        <button type="button" onClick={onSkip}>{timer.remaining > 0 ? 'Пропустить' : 'К подходу'}</button>
       </div>
+      {undo && <button type="button" className="player-timer-undo" onClick={onUndo}>Отменить отметку</button>}
     </div>
   );
 }
@@ -1353,6 +1358,9 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                     key={bi}
                     type="button"
                     onClick={() => scrollToBlock(bi)}
+                    aria-current={activeBlock === bi ? 'step' : undefined}
+                    data-complete={blockComplete || undefined}
+                    data-block-tone={bi % 6}
                     className={`player-block-chip grid h-10 min-w-[48px] shrink-0 place-items-center rounded-xl px-3 text-xs font-bold transition-all ${
                       blockComplete
                         ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
@@ -1376,6 +1384,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             {[['workout', 'Тренировка'], ['history', `История (${sessionDates.length})`]].map(([tab, label]) => (
               <button
                 key={tab}
+                aria-pressed={activeTab === tab}
                 type="button"
                 onClick={() => {
                   setActiveTab(tab);
@@ -1480,6 +1489,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                       key={bi}
                       ref={el => (blockRefs.current[bi] = el)}
                       className="player-block-section"
+                      data-block-tone={bi % 6}
                       style={{ scrollMarginTop: '190px' }}
                     >
                       {blockCollapsed ? (
@@ -1687,14 +1697,15 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
           </main>
         )}
 
-        {workoutStarted && !finishOpen && activeTab === 'workout' && holdTimer.hold && <section className="player-rest-timer" aria-label="Таймер удержания">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-emerald-300">Удержание · {holdTimer.hold.name}{holdTimer.hold.sides === 2 ? ` · сторона ${holdTimer.hold.side} из 2` : ''}</p>
-            <p className="my-2 text-3xl font-black text-white">{holdTimer.remaining} сек</p>
-            <div className="flex flex-wrap gap-2 text-xs text-slate-200">
-              {holdTimer.remaining > 0 ? <button type="button" className="rounded-lg border border-white/20 p-3" onClick={holdTimer.toggle}>{holdTimer.hold.deadline ? 'Пауза удержания' : 'Продолжить удержание'}</button> : holdTimer.hold.side < holdTimer.hold.sides ? <button type="button" className="rounded-lg bg-emerald-400 p-3 text-slate-950" onClick={holdTimer.nextSide}>Начать другую сторону</button> : <button type="button" className="rounded-lg bg-emerald-400 p-3 text-slate-950" onClick={confirmHold}>Подтвердить выполненный подход</button>}
-              <button type="button" className="rounded-lg border border-white/20 p-3" onClick={holdTimer.cancel}>Отменить удержание</button>
-            </div>
+        {workoutStarted && !finishOpen && activeTab === 'workout' && holdTimer.hold && <section className={`player-rest-timer player-hold-timer ${holdTimer.preparing ? 'is-preparing' : ''}`} role="timer" aria-live="off" aria-label="Таймер удержания">
+          <TimerDial remaining={holdTimer.preparing ? holdTimer.preparationRemaining : holdTimer.remaining} total={holdTimer.preparing ? 5 : holdTimer.hold.seconds} />
+          <div className="player-timer-copy">
+            <div className="player-kicker">{holdTimer.preparing ? (holdTimer.hold.deadline ? 'Подготовка · положи телефон' : 'Подготовка · пауза') : holdTimer.remaining === 0 ? 'Удержание завершено' : holdTimer.hold.deadline ? 'Удержание' : 'Удержание · пауза'}</div>
+            <div className="player-timer-next">{holdTimer.preparing && <span className="player-timer-preparation">Затем {holdTimer.hold.seconds} сек работы<br /></span>}{holdTimer.hold.name}{holdTimer.hold.sides === 2 ? ` · сторона ${holdTimer.hold.side} из 2` : ''}</div>
+          </div>
+          <div className="player-rest-actions">
+            {holdTimer.remaining > 0 ? <button type="button" onClick={holdTimer.toggle}>{holdTimer.preparing ? (holdTimer.hold.deadline ? 'Пауза подготовки' : 'Продолжить подготовку') : holdTimer.hold.deadline ? 'Пауза удержания' : 'Продолжить удержание'}</button> : holdTimer.hold.side < holdTimer.hold.sides ? <button type="button" onClick={holdTimer.nextSide}>Начать другую сторону</button> : <button type="button" onClick={confirmHold}>Подтвердить выполненный подход</button>}
+            <button type="button" onClick={holdTimer.cancel}>Отменить удержание</button>
           </div>
         </section>}
         {workoutStarted && !finishOpen && !holdTimer.hold && activeTab === 'workout' && (
