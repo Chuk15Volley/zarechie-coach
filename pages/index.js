@@ -3782,8 +3782,8 @@ export default function Home() {
       while (queue.length) {
         const player = queue.shift();
         try {
-          await generatePlayerAsync(player);
-          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done' } : r));
+          const result = await generatePlayerAsync(player);
+          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done', draft: !result?.autoSaved } : r));
         } catch (err) {
           setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
         }
@@ -3832,8 +3832,8 @@ export default function Home() {
         continue;
       }
       if (statusData.status === 'done') {
-        if (!statusData.autoSaved) throw new Error(statusData.saveWarning || 'Тренировка создана, но не прошла безопасное автосохранение.');
-        return;
+        if (!statusData.autoSaved && !['prehab_training_draft', 'restricted_training_draft', 'restricted_day_plan'].includes(statusData.session?.kind)) throw new Error(statusData.saveWarning || 'Тренировка создана, но не прошла безопасное автосохранение.');
+        return statusData;
       }
       // status 'pending' → loop again
     }
@@ -3857,8 +3857,8 @@ export default function Home() {
       while (queue.length) {
         const player = queue.shift();
         try {
-          await generatePlayerAsync(player);
-          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done' } : r));
+          const result = await generatePlayerAsync(player);
+          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done', draft: !result?.autoSaved } : r));
         } catch (err) {
           setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
         }
@@ -3867,6 +3867,14 @@ export default function Home() {
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, selected.length) }, worker));
 
     setBatchRunning(false);
+  }
+
+  async function openBatchDraft(result) {
+    setPlayerId(result.playerId);
+    setSelectedPlayer(players.find(player => String(player.id) === String(result.playerId)) || null);
+    setError('');
+    try { await pollBatchResult(result.batchId, 'Профилактика · черновик'); }
+    catch (error) { setError(error.message); }
   }
 
   async function handleGenerate(e) {
@@ -3974,10 +3982,10 @@ export default function Home() {
       if (statusData.status === 'done') {
         setSession(statusData.session);
         if (statusData.strengthMode) setStrengthMode(statusData.strengthMode);
-        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel: statusData.session?.kind === 'restricted_day_plan' ? 'План дня · без нагрузки' : statusData.session?.kind === 'restricted_training_draft' ? 'Черновик · верх тела с ограничениями' : focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
+        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel: statusData.session?.kind === 'restricted_day_plan' ? 'План дня · без нагрузки' : statusData.session?.kind === 'restricted_training_draft' ? 'Черновик · верх тела с ограничениями' : statusData.session?.kind === 'prehab_training_draft' ? 'Профилактика · индивидуальный черновик' : focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
         setShowSummary(false);
         setAutoSaved(!!statusData.autoSaved);
-        if (!['restricted_day_plan', 'restricted_training_draft'].includes(statusData.session?.kind) && (statusData.saveWarning || statusData.quality?.medicalReviewRequired)) {
+        if (!['restricted_day_plan', 'restricted_training_draft', 'prehab_training_draft'].includes(statusData.session?.kind) && (statusData.saveWarning || statusData.quality?.medicalReviewRequired)) {
           setError(statusData.saveWarning || statusData.quality.medicalReviewReason);
         }
         stopGenProgress(true);
@@ -5267,7 +5275,7 @@ export default function Home() {
                 {!batchRunning && batchResults.length > 0 && (
                   <div className="pt-1 px-1 flex items-center justify-between">
                     <span className="text-[10px] text-emerald-400">
-                      ✓ {batchResults.filter(r => r.status === 'done').length} сохранено
+                      ✓ {batchResults.filter(r => r.status === 'done').length} подготовлено
                       {batchResults.some(r => r.status === 'error') && ` · ${batchResults.filter(r => r.status === 'error').length} ошибок`}
                     </span>
                     <button
@@ -6996,7 +7004,7 @@ export default function Home() {
                       }`}>
                         <div className="truncate text-[12px] font-semibold text-slate-200">{r.name}</div>
                         <div className="mt-0.5 text-[10px] text-slate-600">
-                          {r.status === 'done' ? 'Сохранено' : r.status === 'error' ? 'Ошибка' : r.status === 'generating' ? 'Генерирую...' : 'В очереди'}
+                          {r.status === 'done' ? (r.draft ? 'Черновик' : 'Сохранено') : r.status === 'error' ? 'Ошибка' : r.status === 'generating' ? 'Генерирую...' : 'В очереди'}
                         </div>
                       </div>
                     ))}
@@ -7388,6 +7396,12 @@ export default function Home() {
               </div>
             </div>
 
+            {focus === 'inseason_prophylaxis' && <section className="mt-4 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.05] p-4 text-sm text-slate-300" aria-label="Методика профилактики">
+              <p className="font-semibold text-cyan-200">Профилактика: индивидуальная работа по разрешённым зонам</p>
+              <p className="mt-2">Подготовка движения → поддержание силы → контроль и выносливость → разгрузка. Запрет на одну область не обнуляет разрешённые направления.</p>
+              <p className="mt-2 text-xs text-slate-400">Без отдельного назначения работа с болевой зоной ограничена комфортной разгрузкой и наблюдением. Оценить реакцию до, после и следующим утром. Программа на будущую дату требует проверки перед выполнением.</p>
+            </section>}
+
             <div className="mt-4">
               <SectionLabel icon={<MessageSquare size={11} />} text="Комментарии тренера" />
               <textarea
@@ -7545,7 +7559,7 @@ export default function Home() {
                       <Zap size={14} strokeWidth={2.5} />
                       Запустить для {batchSelectedIds.size} {batchSelectedIds.size === 1 ? 'игрока' : batchSelectedIds.size < 5 ? 'игроков' : 'игроков'}
                     </button>
-                    <p className="mt-2 text-center text-[10px] text-slate-600">Дата: {date} · Фаза: {focus} · Сессии сохранятся автоматически</p>
+                    <p className="mt-2 text-center text-[10px] text-slate-600">Дата: {date} · Фаза: {focus} · Допущенные сессии сохранятся; черновики нужно проверить</p>
                   </div>
                 </>
               )}
@@ -7555,7 +7569,7 @@ export default function Home() {
                 <>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {batchResults.map(r => (
-                      <div key={r.playerId} onClick={() => r.status === 'done' && setPlayerId(r.playerId)} className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-all ${r.status === 'done' ? 'cursor-pointer hover:border-emerald-500/50' : ''} ${
+                      <div key={r.playerId} onClick={() => r.status === 'done' && (r.draft ? openBatchDraft(r) : setPlayerId(r.playerId))} className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-all ${r.status === 'done' ? 'cursor-pointer hover:border-emerald-500/50' : ''} ${
                         r.status === 'done'       ? 'border-emerald-500/30 bg-emerald-500/[0.07]' :
                         r.status === 'error'      ? 'border-rose-500/30 bg-rose-500/[0.07]' :
                         r.status === 'generating' ? 'border-accent/30 bg-accent/[0.06]' :
@@ -7575,7 +7589,7 @@ export default function Home() {
                             r.status === 'generating' ? 'text-accent' :
                             'text-slate-600'
                           }`}>
-                            {r.status === 'done'       ? 'Сохранено' :
+                            {r.status === 'done'       ? (r.draft ? 'Черновик · открыть' : 'Сохранено') :
                              r.status === 'error'      ? (r.error || 'Ошибка') :
                              r.status === 'generating' ? 'Генерирую...' : 'В очереди'}
                           </div>

@@ -66,6 +66,8 @@ export default async function handler(req, res) {
     trainingType,
     dosePrescription: quality?.dose?.prescription || buildDosePrescription({ focus, trainingType }),
     seasonDecision: quality?.seasonDecision || null,
+    medicalReviewRequired: session.kind === 'prehab_training_draft' && (session.methodology?.mode === 'regional' || session.methodology?.preliminary === true),
+    medicalReviewReason: session.kind === 'prehab_training_draft' ? String(quality?.medicalReviewReason || 'Проверить ограничения и допуск перед выполнением.') : '',
   }));
   const savedAt = new Date().toISOString();
   const persistenceQuality = saveQuality.blocking
