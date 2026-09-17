@@ -165,7 +165,7 @@ test('timer voice speaks each live hold transition once and keeps Russian comman
   now = 105000; const work = { ...base, hold, remaining: 20 };
   h.render(work); h.render({ ...work, hold: { ...hold }, remaining: 19 });
   now = 125000; h.render({ ...work, remaining: 0 }); h.render({ ...work, hold: { ...hold }, remaining: 0 });
-  assert.deepEqual(env.spoken.map(c => c.text), ['Приготовиться', 'Начали', 'Завершено']);
+  assert.deepEqual(env.spoken.map(c => c.text), ['Подготовься к подходу', 'Начинай', 'Удержание завершено']);
   assert.ok(env.spoken.every(c => c.lang === 'ru-RU' && c.voice.localService));
 });
 
@@ -189,7 +189,7 @@ test('timer voice mute persists, prevents cues and can be enabled with a gesture
   const state = h.render({ hold: null, remaining: 0, preparing: false, active: true });
   assert.equal(state.enabled, false); state.prepare(); assert.equal(env.spoken.length, 0);
   state.toggle(); assert.equal(h.render().enabled, true); assert.equal(env.storage.get('player-timer-voice'), '1');
-  assert.equal(env.spoken[0].text, 'Звуковые команды включены');
+  assert.equal(env.spoken[0].text, 'Голосовые подсказки включены');
   h.render().toggle(); h.render().prepare(); assert.equal(env.spoken.length, 1); assert.equal(env.canceled(), 1);
 });
 
@@ -204,7 +204,7 @@ test('rest voice announces expiry, not pause, skip or repeated zero ticks', t =>
   h.render({ ...base, restTimer: { remaining: 1, running: true } });
   now = 110000; h.render({ ...base, restTimer: { remaining: 0, running: true } });
   h.render({ ...base, restTimer: { remaining: 0, running: false } });
-  assert.deepEqual(env.spoken.map(c => c.text), ['Отдых завершён']);
+  assert.deepEqual(env.spoken.map(c => c.text), ['Начинай следующий подход']);
 });
 
 test('speech failures are visible and unsupported browsers keep silent timers functional', t => {
