@@ -1314,11 +1314,12 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         {/* ── Athlete identity hero ── */}
         <header className="player-hero px-4 pb-4 pt-4">
           <div className="player-brand-row mb-5 flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <img src="/nk-logo.jpg" alt="NK" className="player-brand-logo h-9 w-9 shrink-0 rounded-xl object-cover" />
-              <div className="min-w-0">
-                <div className="player-brand-name truncate text-[10px] font-extrabold uppercase tracking-[0.18em] text-white">NK Performance</div>
-
+            <div className="player-brand-lockup">
+              <div className="player-brand-seal"><img src="/nk-logo.jpg" alt="Логотип Nikolay Korenchuk" className="player-brand-logo object-cover" /></div>
+              <div className="player-brand-wordmark">
+                <div className="player-brand-founder">Nikolay Korenchuk</div>
+                <div className="player-brand-name">NK Performance</div>
+                <div className="player-brand-product"><span aria-hidden="true" />Приложение игрока</div>
               </div>
             </div>
             <div className="player-session-state shrink-0 text-right">
