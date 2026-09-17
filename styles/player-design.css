@@ -20,9 +20,10 @@
 .gym-premium .player-brand-seal { flex: 0 0 72px; width: 72px; height: 72px; padding: 5px; border: 1px solid #b5ddbb70; border-radius: 21px; background: linear-gradient(145deg, #d3e9cb29, #84bba908 55%, #e8f5d91a); box-shadow: inset 0 1px #ecffe842, 0 8px 24px #0005, 0 0 30px #5ac6980a; }
 .gym-premium .player-brand-logo { display: block; width: 60px; height: 60px; border-radius: 15px; border: 1px solid #d2e7c929; box-shadow: none; }
 .gym-premium .player-brand-wordmark { min-width: 0; }
-.gym-premium .player-brand-founder { font-size: 9px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #b7c8bd; }
-.gym-premium .player-brand-name { margin-top: 4px; color: #f1f4e9; font-family: var(--type-interface); font-size: clamp(17px, 4.6vw, 22px); line-height: 1.2; font-weight: 750; letter-spacing: .025em; text-transform: uppercase; }
-.gym-premium .player-brand-product { display: flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 10px; font-weight: 450; letter-spacing: .04em; color: #9fc9be; }
+.gym-premium .player-brand-founder { margin-top: 7px; font-family: var(--type-display); font-size: 12px; line-height: 1.5; font-weight: 400; letter-spacing: .015em; color: #ceccb6; }
+.gym-premium .player-brand-founder > span { font-family: var(--type-interface); font-size: 10px; font-style: italic; color: #9baea5; margin-right: 3px; }
+.gym-premium .player-brand-name { margin-top: 0; color: #f1f4e9; font-family: var(--type-interface); font-size: clamp(17px, 4.6vw, 22px); line-height: 1.2; font-weight: 750; letter-spacing: .025em; text-transform: uppercase; }
+.gym-premium .player-brand-product { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 10px; font-weight: 450; letter-spacing: .04em; color: #9fc9be; }
 .gym-premium .player-brand-product > span { width: 16px; height: 1px; background: #91cab0; }
 .gym-premium .player-brand-row .player-session-state { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 14px; max-width: none; width: 100%; padding-top: 17px; border-top: 1px solid #c6e1cf21; text-align: left; }
 .gym-premium .player-identity { padding-top: 1px; gap: 14px; }
@@ -203,7 +204,7 @@
   .gym-premium .player-brand-lockup { gap: 12px; }
   .gym-premium .player-brand-seal { flex-basis: 62px; width: 62px; height: 62px; border-radius: 18px; }
   .gym-premium .player-brand-logo { width: 50px; height: 50px; border-radius: 12px; }
-  .gym-premium .player-brand-founder { font-size: 8px; letter-spacing: .15em; }
+  .gym-premium .player-brand-founder { font-size: 11px; letter-spacing: 0; }
   .gym-premium .player-brand-name { font-size: 16px; }
 }
 .gym-premium.gym-active .player-brand-row { display: none; }
