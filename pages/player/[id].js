@@ -193,7 +193,7 @@ function parseKgFromNote(note) {
 
 function plannedWeightLabel(ex) {
   const kg = formatKgValue(ex?.weightKg) || formatKgValue(parseKgFromNote(ex?.weightNote));
-  if (kg) return loadUnitsForExercise(ex) === 2 ? `${/dumbbell|\bdb\b|гантел/i.test(playerExerciseName(ex)) ? '2 гантели' : /kettlebell|\bkb\b|гир/i.test(ex?.name || '') ? '2 гири' : '2 снаряда'} по ${kg} кг` : `${kg} кг`;
+  if (kg) return loadUnitsForExercise(ex) === 2 ? `${/dumbbell|\bdb\b|гантел|^Chest-Supported Reverse Fly$/i.test(ex?.name || '') ? '2 гантели' : /kettlebell|\bkb\b|гир/i.test(ex?.name || '') ? '2 гири' : '2 снаряда'} по ${kg} кг` : `${kg} кг`;
   return playerLoadLabel(ex?.weightNote);
 }
 
