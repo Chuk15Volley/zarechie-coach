@@ -29,7 +29,7 @@ export default async function handler(req, res) {
   const parse = raw => { try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_) { return null; } };
   const log = parse(logRaw);
   res.status(200).json({
-    log: log ? { skipped: log.skipped || {}, done: log.done, weights: log.weights, completedAt: log.completedAt, elapsedSeconds: log.elapsedSeconds, finishReason: log.finishReason } : null,
+    log: log ? { skipped: log.skipped || {}, done: log.done, weights: log.weights, repetitions: log.repetitions || {}, completedAt: log.completedAt, elapsedSeconds: log.elapsedSeconds, finishReason: log.finishReason } : null,
     feedback: parse(feedbackRaw),
     actual: parse(actualRaw),
     session: sanitizeUnavailableEquipmentExercises(parsed.session),

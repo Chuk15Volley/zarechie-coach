@@ -15,7 +15,7 @@ test('player app uses a full identity hero and compact sticky workout controls',
 test('player exercise surfaces use premium branded glass components', () => {
   assert.match(playerPage, /player-exercise-card/);
   assert.match(playerPage, /player-exercise-media/);
-  assert.match(playerPage, /player-set-button/);
+  assert.match(playerPage, /gym-confirm-set/);
   assert.match(styles, /\.player-exercise-card[\s\S]*backdrop-filter: blur\(24px\)/);
   assert.match(styles, /\.player-page-shell::before[\s\S]*url\('\/nk-logo\.jpg'\)/);
 });
@@ -39,7 +39,7 @@ test('exercise technique opens the original video externally without an embedded
   assert.doesNotMatch(styles, /\.player-video-modal-card|@keyframes player-modal-in/);
 });
 
-test('focus mode keeps every exercise in the active block expanded', () => {
+test('focus mode preserves circuit blocks while offering single-exercise focus', () => {
   assert.match(playerPage, /blockIsComplete\(context\.block, context\.bi, newDone, skipped\)/);
   assert.match(playerPage, /nextIncompleteBlock\(session, context\.bi, newDone, skipped\)/);
   assert.match(playerPage, /className=\{`player-block-compact/);

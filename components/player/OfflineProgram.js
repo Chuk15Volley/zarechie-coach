@@ -29,11 +29,13 @@ export default function OfflineProgram({ token, date, session, lastContact }) {
     navigator.serviceWorker?.addEventListener('controllerchange', update);
     return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); navigator.serviceWorker?.removeEventListener('controllerchange', update); };
   }, [token, date]);
-  return <section className="mx-3.5 mt-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-slate-400" aria-label="Доступность программы">
-    <p role="status">{busy ? 'Проверяю сохранённую копию…' : cache?.ready ? 'Программа доступна без сети' : 'Программа ещё не подготовлена для работы без сети'}</p>
-    {cache?.savedAt && <p className="mt-1">Копия от {new Date(cache.savedAt).toLocaleString('ru-RU')}</p>}
-    {(!online || !lastContact) && <p className="mt-1 text-amber-200">Новые изменения тренера пока не проверены. При отсутствии сети используется сохранённая программа.</p>}
-    {cache?.changed && <p className="mt-1 text-amber-200">Программа на сервере изменилась. Обнови страницу перед сохранением копии.</p>}
-    {!cache?.ready && <button type="button" disabled={!online || busy} onClick={() => check(true)} className="mt-2 rounded-lg border border-white/15 px-3 py-2 font-semibold text-slate-200 disabled:opacity-40">Сохранить для зала</button>}
+  return <section className="gym-offline" aria-label="Доступность программы">
+    <div className="flex items-center justify-between gap-3">
+      <span role="status" className={cache?.ready ? 'text-emerald-200' : 'text-slate-300'}>{busy ? 'Готовлю для зала…' : cache?.ready ? '✓ Готово для зала · доступно без сети' : 'Сохрани программу для работы без сети'}</span>
+      {!cache?.ready && <button type="button" disabled={!online || busy} onClick={() => check(true)} className="shrink-0 rounded-lg border border-white/20 px-3 py-2 font-semibold disabled:opacity-40">{busy ? '…' : 'Сохранить'}</button>}
+    </div>
+    {!online && <p className="mt-2 text-amber-200">Нет сети. Новые изменения тренера пока не проверены.</p>}
+    {cache?.changed && <p className="mt-2 text-amber-200">Тренер обновил программу. Обнови страницу и сохрани её для зала.</p>}
+    {cache?.savedAt && <details className="mt-1"><summary>О копии</summary><p>Сохранена {new Date(cache.savedAt).toLocaleString('ru-RU')}. Видео требует подключения к интернету.</p></details>}
   </section>;
 }
