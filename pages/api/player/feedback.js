@@ -1,3 +1,4 @@
+import { actualTarget } from '../../../lib/playerGym.mjs';
 import { normalizeSkips } from '../../../lib/playerExperience.mjs';
 // pages/api/player/feedback.js
 // POST regular: { token, date, rpe, fatigue, feel, note }.
@@ -26,7 +27,7 @@ import { exerciseId } from '../../../lib/exerciseIdentity.mjs';
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).end();
-  const { token, date, rpe, fatigue, feel, note, doms, soreness, painAreas = [], done: submittedDone, weights: submittedWeights, primerFeedback, finishReason, skipped: submittedSkipped } = req.body || {};
+  const { token, date, rpe, fatigue, feel, note, doms, soreness, painAreas = [], done: submittedDone, weights: submittedWeights, repetitions: submittedRepetitions, primerFeedback, finishReason, skipped: submittedSkipped } = req.body || {};
   if (!token || !date || rpe == null) {
     return res.status(400).json({ error: 'token, date and rpe required' });
   }
@@ -90,6 +91,7 @@ export default async function handler(req, res) {
   try { log = logRaw ? (typeof logRaw === 'string' ? JSON.parse(logRaw) : logRaw) : null; } catch (_) {}
   if (submittedSkipped === undefined) record.skipped = normalizeSkips(log?.skipped);
   const completedSets = submittedDone && typeof submittedDone === 'object' ? submittedDone : log?.done || {};
+  const repetitions = submittedRepetitions && typeof submittedRepetitions === 'object' ? submittedRepetitions : log?.repetitions || {};
   const actualWeights = submittedWeights && typeof submittedWeights === 'object' ? submittedWeights : log?.weights || {};
   if (sessionRecord) {
     try {
@@ -105,7 +107,7 @@ export default async function handler(req, res) {
               return {
                 set: setIndex + 1,
                 target: String(target ?? ''),
-                reps: actualRepsFromTarget(target),
+                reps: actualRepsFromTarget(actualTarget(target, repetitions[setKey])),
                 completed: !!completedSets[setKey],
                 kg: Number.isFinite(kg) && kg > 0 ? kg : 0,
               };

@@ -1,3 +1,4 @@
+import { actualTarget } from '../lib/playerGym.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -25,7 +26,7 @@ function fixture({ failWrite = false, failRead = false } = {}) {
     loadUnitsForExercise: () => 1, weightKgFromExercise: ex => ex.weightKg || 0,
     sanitizeUnavailableEquipmentExercises: value => value,
     updateExerciseMemory: async (...args) => memories.push(args), linkPainToExercises: async () => {},
-    FINISH_REASONS, actualRepsFromTarget, normalizeSkips,
+    FINISH_REASONS, actualRepsFromTarget, normalizeSkips, actualTarget,
   };
   const source = readFileSync(new URL('../pages/api/player/feedback.js', import.meta.url), 'utf8')
     .replace(/^import[\s\S]*?from\s+['"][^'"]+['"];\s*/gm, '')
@@ -73,4 +74,15 @@ test('skipped exercises retain their reason without counting unfinished sets or 
   assert.equal(actual.exercises[0].completed, false);
   assert.equal(actual.exercises[1].completedSets, 0);
   assert.equal(actual.actualTonnage, 125);
+});
+
+
+test('submitted repetitions change persisted actuals and tonnage, including each side', async () => {
+  const f = fixture();
+  f.request.body.repetitions = { '0-0-0': '3' };
+  await f.handler(f.request, f.response);
+  assert.equal(f.response.statusCode, 200);
+  const actual = JSON.parse(f.writes.find(cmd => cmd[1] === 'nkperf:session:actual:synthetic:2026-09-17')[2]);
+  assert.equal(actual.exercises[0].setActuals[0].reps, 6);
+  assert.equal(actual.actualTonnage, 75);
 });

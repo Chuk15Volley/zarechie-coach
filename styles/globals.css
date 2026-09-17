@@ -1954,3 +1954,72 @@ input[type='date']::-webkit-calendar-picker-indicator {
   border-color: #1f2733;
   margin: 1.5em 0;
 }
+
+/* Player gym workspace: compact identity, readable prescriptions and thumb controls. */
+.gym-premium .player-hero { padding: 14px 18px 12px; }
+.gym-premium .player-brand-row { margin-bottom: 12px; }
+.gym-premium .player-brand-logo { width: 28px; height: 28px; }
+.gym-premium .player-avatar { width: 44px; height: 48px; border-radius: 13px; }
+.gym-premium .player-page-title { font-family: var(--font-sans, sans-serif); font-size: 21px; line-height: 1.2; letter-spacing: -.035em; font-weight: 650; }
+.gym-premium .player-position { margin-top: 4px; color: #a9bac4; }
+.gym-premium .player-start-card { padding: 18px 16px; border-radius: 22px; }
+.gym-premium .player-start-card h2 { font-size: 28px; line-height: 1.15; text-wrap: pretty; }
+.gym-premium .player-start-metrics { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 5px; margin-top: 14px; }
+.gym-premium .player-start-metrics > div { min-height: 58px; padding: 9px 5px; text-align: center; border-radius: 12px; }
+.gym-premium .player-start-metrics span { font-size: 9px; letter-spacing: .02em; }
+.gym-premium .player-start-button { margin-top: 16px; min-height: 54px; }
+.gym-premium .player-start-note { margin-bottom: 14px; color: #a9bac4; }
+.gym-premium .player-kicker { color: #9bcbbd; }
+.gym-settings { margin: 10px 14px 0; font-size: 12px; color: #bed0d8; }
+.gym-settings > summary { cursor: pointer; padding: 10px 0; }
+.gym-settings > summary span { float: right; color: #93aab7; }
+.gym-settings-content { display: grid; gap: 12px; padding: 12px; border: 1px solid #ffffff20; border-radius: 12px; }
+.gym-settings-content select { display: block; background: #15232f; padding: 10px; border-radius: 8px; margin-top: 8px; width: 100%; }
+.gym-offline { margin: 6px 14px 0; font-size: 11px; color: #a9bac4; }
+.gym-offline summary { cursor: pointer; padding: 4px 0; }
+.gym-active .player-hero { padding: 10px 16px; }
+.gym-active .player-brand-row, .gym-active .player-avatar, .gym-active .player-position { display: none; }
+.gym-active .player-page-title { font-size: 16px; }
+.gym-premium .player-progress-dock { padding-top: 9px; padding-bottom: 9px; }
+.gym-premium .player-progress-panel { padding: 0; }
+.gym-premium .player-exercise-name { font-size: 19px; }
+.gym-premium .player-weight-strip > div:last-child { font-size: 18px; line-height: 1.35; }
+.gym-technique-cue { margin: 12px 14px 0; font-size: 14px; line-height: 1.5; color: #bed0d8; }
+.gym-set { border: 1px solid #ffffff1f; border-radius: 14px; overflow: hidden; background: #ffffff03; }
+.gym-set.is-open { border-color: #58dca755; background: #5be8b106; }
+.gym-set.is-done { border-color: #58dca733; }
+.gym-set-heading { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; text-align: left; font-size: 13px; color: #d7e5ea; }
+.gym-set-heading > span:first-child { color: #76e8bb; }
+.gym-set-heading > span:first-child > span { margin-left: 4px; }
+.gym-set-editor { padding: 0 12px 12px; }
+.gym-set-inputs { display: grid; grid-template-columns: repeat(auto-fit,minmax(130px,1fr)); gap: 10px; }
+.gym-set-inputs label { font-size: 11px; color: #bed0d8; }
+.gym-stepper { display: flex; align-items: center; height: 48px; margin-top: 6px; border: 1px solid #ffffff24; border-radius: 10px; overflow: hidden; background: #061219; }
+.gym-stepper input { min-width: 0; width: 100%; text-align: center; background: transparent; font-size: 20px; font-weight: 650; color: #ecfff6; }
+.gym-stepper button { flex: 0 0 40px; height: 48px; font-size: 22px; color: #82e8be; }
+.gym-quick-values { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.gym-quick-values button { min-height: 40px; padding: 6px 10px; border-radius: 8px; background: #ffffff08; color: #bed0d8; font-size: 12px; }
+.gym-confirm-set { width: 100%; min-height: 48px; margin-top: 10px; border-radius: 11px; background: #65e5ae; color: #08221a; font-size: 15px; font-weight: 750; }
+.gym-confirm-set:disabled { opacity: .35; }
+.gym-set.is-done .gym-confirm-set { background: #ffffff10; color: #bed0d8; }
+.gym-safety-line { font-size: 12px; line-height: 1.5; color: #d2c499; }
+.gym-result-details { padding: 14px; border: 1px solid #ffffff20; border-radius: 16px; font-size: 13px; }
+.gym-result-details summary { cursor: pointer; min-height: 32px; }
+.gym-result-details > div { margin-top: 12px; }
+.gym-result-details p { color: #bed0d8; margin-top: 5px; }
+.gym-premium button:focus-visible, .gym-premium input:focus-visible, .gym-premium summary:focus-visible { outline: 2px solid #8df2cd; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .gym-premium *, .gym-premium *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+.gym-active .player-tabs { display: none; }
+.gym-active .player-progress-panel .player-kicker { display: none; }
+.gym-active .player-progress-value { font-size: 22px; }
+.gym-active .player-workout-tools { margin-top: 7px; }
+.gym-active .player-focus-toggle { min-height: 34px; padding: 6px 10px; font-size: 11px; white-space: nowrap; }
+.gym-active .player-block-nav { margin-top: 7px; }
+.gym-active .player-block-chip { height: 34px; }
+.gym-active .player-safety-line { margin-top: 0; }
+.gym-premium .player-rest-timer { padding: 12px; gap: 10px; border-radius: 20px; }
+.gym-premium .player-rest-ring { width: 62px; height: 62px; }
+.gym-premium .player-rest-ring > div { width: 52px; height: 52px; }
+.gym-premium .player-rest-timer .player-kicker { font-size: 9px; letter-spacing: .08em; }
+.gym-premium .player-rest-actions { gap: 5px; }
+.gym-premium .player-rest-actions button { font-size: 12px; min-height: 40px; padding: 6px 9px; }
