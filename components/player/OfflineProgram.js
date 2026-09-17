@@ -31,11 +31,11 @@ export default function OfflineProgram({ token, date, session, lastContact }) {
   }, [token, date]);
   return <section className="gym-offline" aria-label="Доступность программы">
     <div className="flex items-center justify-between gap-3">
-      <span role="status" className={cache?.ready ? 'text-emerald-200' : 'text-slate-300'}>{busy ? 'Готовлю для зала…' : cache?.ready ? '✓ Готово для зала · доступно без сети' : 'Сохрани программу для работы без сети'}</span>
-      {!cache?.ready && <button type="button" disabled={!online || busy} onClick={() => check(true)} className="shrink-0 rounded-lg border border-white/20 px-3 py-2 font-semibold disabled:opacity-40">{busy ? '…' : 'Сохранить'}</button>}
+      <span role="status" className={cache?.ready ? 'text-emerald-200' : 'text-slate-300'}>{busy ? 'Подготовка…' : cache?.ready ? '✓ Программа доступна без интернета' : 'Доступ без интернета'}</span>
+      {!cache?.ready && <button type="button" disabled={!online || busy} onClick={() => check(true)} className="shrink-0 rounded-lg border border-white/20 px-3 py-2 font-semibold disabled:opacity-40">{busy ? '…' : 'Подготовить'}</button>}
     </div>
     {!online && <p className="mt-2 text-amber-200">Нет сети. Новые изменения тренера пока не проверены.</p>}
     {cache?.changed && <p className="mt-2 text-amber-200">Тренер обновил программу. Обнови страницу и сохрани её для зала.</p>}
-    {cache?.savedAt && <details className="mt-1"><summary>О копии</summary><p>Сохранена {new Date(cache.savedAt).toLocaleString('ru-RU')}. Видео требует подключения к интернету.</p></details>}
+    {cache?.savedAt && <details className="mt-1"><summary>Подробнее</summary><p>Сохранена {new Date(cache.savedAt).toLocaleString('ru-RU')}. Видео требует подключения к интернету.</p></details>}
   </section>;
 }

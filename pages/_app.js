@@ -1,6 +1,7 @@
 import { Manrope, Prata } from 'next/font/google';
 import Head from 'next/head';
 import '../styles/globals.css';
+import '../styles/player-design.css';
 
 const manrope = Manrope({
   subsets: ['latin', 'cyrillic'],
