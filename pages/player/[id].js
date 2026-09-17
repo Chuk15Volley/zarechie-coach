@@ -24,7 +24,6 @@ import {
   FINISH_REASONS,
   nextWorkoutSet,
   restRemaining,
-  athleteSessionWarning,
   completedTonnage,
   blockIsComplete,
   firstIncompleteBlock,
@@ -715,7 +714,6 @@ function SyncBadge({ status, savedAt }) {
 
 function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, isUpcoming, dose, onStart, token, previousResults = {} }) {
   const [previewOpen, setPreviewOpen] = useState(false);
-  const warnings = athleteSessionWarning(session?.warnings);
   return (
     <section className="player-start-card">
       {!isToday && !isUpcoming && (
@@ -736,12 +734,6 @@ function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, is
         <div><strong>≈ {dose.estimatedMinutes}</strong><span>минут</span></div>
         <div><strong>{session?.blocks?.length || 0}</strong><span>блоков</span></div>
       </div>
-      {warnings && (
-        <div className="player-start-warning">
-          <div className="player-kicker">Важно от тренера</div>
-          <p>{warnings}</p>
-        </div>
-      )}
       <button type="button" className="mb-3 w-full rounded-xl border border-white/15 px-4 py-3 text-sm font-bold text-slate-200" aria-expanded={previewOpen} aria-controls="workout-preview" onClick={() => setPreviewOpen(open => !open)}>
         {previewOpen ? 'Свернуть программу' : 'Посмотреть упражнения'}
       </button>
@@ -1669,12 +1661,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                       </div>
                     </div>
                   ))}
-                  {athleteSessionWarning(histSession.warnings) && (
-                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.05] px-4 py-4">
-                      <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-amber-400/60">Важно</div>
-                      <p className="text-[13px] leading-relaxed text-amber-200/70">{athleteSessionWarning(histSession.warnings)}</p>
-                    </div>
-                  )}
                 </div>
               </div>
             ) : (
