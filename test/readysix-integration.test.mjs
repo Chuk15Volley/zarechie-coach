@@ -189,3 +189,37 @@ for (const [date, id, code] of [['2026-08-26', '101', 'READYSIX_DATE_MISMATCH'],
     }), error => error.code === code);
   });
 }
+
+
+for (const requestedId of ['501', 'nk-player-a', 'source-a', 'whoop_501']) {
+  test(`NK player context accepts its explicit identity: ${requestedId}`, async () => {
+    const payload = { schema: 'readysix.program-generator-context', schemaVersion: 1,
+      mode: 'player-context', organizationId: 'nk-performance', date: '2026-08-27',
+      player: { id: '501', readySixPlayerId: 'nk-player-a', identities: {
+        canonicalPlayerId: 'nk-player-a', sourceId: 'source-a', whoopUserId: '501',
+      } }, monitoring: { morning: [{ date: '2026-08-27', readiness: 4 }] } };
+    const result = await getReadySixPlayerContext('nkperf', requestedId, payload.date, 7, {
+      environment, fetchImpl: async () => response(payload),
+    });
+    assert.equal(result, payload);
+    assert.equal(result.player.id, '501', 'keep source identity unchanged');
+  });
+}
+
+for (const requestedId of ['nk-player-b', 'whoop_502', '', 'undefined', '[object Object]']) {
+  test(`NK rejects unrelated or empty player identity: ${requestedId}`, async () => {
+    await assert.rejects(getReadySixPlayerContext('nkperf', requestedId, '2026-08-27', 7, {
+      environment, fetchImpl: async () => response({ schema: 'readysix.program-generator-context', schemaVersion: 1,
+        mode: 'player-context', organizationId: 'nk-performance', date: '2026-08-27',
+        player: { id: '501', readySixPlayerId: 'nk-player-a', identities: { whoopUserId: '501', sourceId: {} } } }),
+    }), error => error.code === 'READYSIX_PLAYER_MISMATCH');
+  });
+}
+
+test('matching canonical identity never bypasses organization validation', async () => {
+  await assert.rejects(getReadySixPlayerContext('nkperf', 'nk-player-a', '2026-08-27', 7, {
+    environment, fetchImpl: async () => response({ schema: 'readysix.program-generator-context', schemaVersion: 1,
+      mode: 'player-context', organizationId: 'zarechie-odintsovo', date: '2026-08-27',
+      player: { id: '501', readySixPlayerId: 'nk-player-a' } }),
+  }), error => error.code === 'READYSIX_CONTRACT_MISMATCH');
+});
