@@ -1,3 +1,4 @@
+import { parseSavedSession } from '../../../lib/sessionLabel';
 // pages/api/programs/get.js
 // GET ?playerId=&date= → previously saved (edited) session for that player+day, if any.
 // Lets the UI offer "load the saved version" instead of always re-generating from scratch.
@@ -23,7 +24,7 @@ export default async function handler(req, res) {
   try {
     const raw = await redis('get', sessionKey(workspace, playerId, date));
     if (!raw) return res.status(200).json({ record: null });
-    const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const { record } = parseSavedSession(raw);
     if (record?.session) record.session = sanitizeUnavailableEquipmentExercises(record.session);
     return res.status(200).json({ record });
   } catch (e) {
