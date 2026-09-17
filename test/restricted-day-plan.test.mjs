@@ -56,3 +56,40 @@ test('queued restriction completes without model calls or workout writes, includ
     assert.deepEqual(res.body.session.blocks,[]); assert.equal(res.body.autoSaved,false);
   }
 });
+
+
+function regionalFixture() {
+  const snapshot = { player: { id:'synthetic' }, readySixDecision: { recommendation:'load_stop',
+    capPercent:0, hardStopSignal:true, reasons:['Запрещена осевая нагрузка'], targets:[
+      {target:'strength_upper',capPercent:0,healthCapPercent:100,healthRecommendation:'full',hardStopSignal:false,planApplicability:'not_planned'},
+      {target:'strength_lower',capPercent:0,healthCapPercent:0,healthRecommendation:'load_stop',hardStopSignal:true},
+    ] } };
+  return {snapshot,recommendation:recommendGymSession({snapshot,targetDate:'2026-09-17'}),date:'2026-09-17'};
+}
+
+test('regional upper permission generates eight real draft sets despite a rest-day zero cap', () => {
+  const input=regionalFixture(); const original=structuredClone(input);
+  const result=restrictedDayPlan({...input,playerRestrictions:['AXIAL','JUMP']});
+  assert.equal(result.session.kind,'restricted_training_draft');
+  const exercises=result.session.blocks.flatMap(b=>b.exercises);
+  assert.equal(exercises.length,4); assert.equal(exercises.reduce((n,e)=>n+e.targetSets.length,0),8);
+  assert.ok(exercises.every(e=>e.weightKg===undefined && /Supported/.test(e.name)));
+  assert.ok(exercises.every(e=>e.alternatives.length===0));
+  assert.equal(result.autoSaved,false); assert.equal(result.quality.medicalReviewRequired,true);
+  assert.equal(result.quality.readySixState.hardStop,true);
+  assert.deepEqual(input,original,'do not rewrite source health or calendar decisions');
+});
+
+for(const change of ['missing','blocked','partial','unknown','duplicate','shoulder','wrist']) {
+ test(`no upper draft without clear compatible permission: ${change}`,()=>{
+  const input=regionalFixture();
+  const upper=input.recommendation.state.targets[0];
+  if(change==='missing') input.recommendation.state.targets=[];
+  if(change==='blocked') upper.hardStopSignal=true;
+  if(change==='partial') upper.healthCapPercent=20;
+  if(change==='unknown') delete upper.healthCapPercent;
+  if(change==='duplicate') input.recommendation.state.targets.push({...upper});
+  const restrictions=change==='shoulder'?['SHOULDER']:change==='wrist'?['WRIST']:[];
+  assert.equal(restrictedDayPlan({...input,playerRestrictions:restrictions}).session.kind,'restricted_day_plan');
+ });
+}
