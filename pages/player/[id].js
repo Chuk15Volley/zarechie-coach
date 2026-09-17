@@ -356,6 +356,8 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
         <span className="player-exercise-name min-w-0 pt-0.5 text-[17px] font-bold leading-snug text-white">{playerExerciseName(ex)}</span>
       </div>
 
+      <div className="px-3.5 pt-3"><ExerciseMedia key={ex.name} name={ex.name} token={token} /></div>
+
       {plannedWeight && (
         <div className={`player-weight-strip ${plannedSetWeight ? 'has-weight' : 'is-prescription'} flex items-baseline justify-between gap-3 border-b border-white/[0.06] bg-[#4ade80]/[0.065] px-3.5 py-2.5`}>
           <div className="text-[10px] font-black uppercase tracking-[0.15em] text-[#4ade80]/60">{plannedSetWeight ? 'Рабочий вес' : 'Нагрузка'}</div>
@@ -416,8 +418,7 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
             </div>}
           </>}
         </div>}
-        <details className="gym-technique-details"><summary className="cursor-pointer py-2 text-sm font-semibold text-slate-300">Техника и видео</summary>
-          <ExerciseMedia name={ex.name} token={token} />
+        <details className="gym-technique-details"><summary className="cursor-pointer py-2 text-sm font-semibold text-slate-300">Подсказки по технике</summary>
           {showWeightNote && <p className="gym-load-note">{weightNote}</p>}
           <p className="mt-2 text-sm leading-relaxed text-slate-300">{exerciseDescription(ex)}</p>{playerExerciseName(ex) !== ex.name && <p className="mt-2 text-xs text-slate-400">{ex.name}</p>}
         </details>
@@ -1425,11 +1426,11 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             <a href={`/player/${encodeURIComponent(token)}?date=${todayISO()}`}>Открыть сегодня</a>
             {session && wakeLock.supported && <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={wakeLock.enabled} onChange={wakeLock.toggle} />Не гасить экран во время тренировки</label>}
             {wakeLock.status && <p role="status">{wakeLock.status}</p>}
+            <p className="text-xs text-slate-400">Голосовые подсказки озвучены с помощью ИИ.</p>
           </div>
         </details>}
         {!notFound && session && (!workoutStarted || completedAt || finishOpen) && timerVoice.supported && <div className="player-voice-settings">
           <TimerVoiceControl voice={timerVoice} />
-          <span className="text-xs text-slate-400">Мужской голос · создан ИИ</span>
           {timerVoice.enabled && <button type="button" className="player-voice-test" onClick={timerVoice.test}>Проверить звук</button>}
         </div>}
         {timerVoice.message && <div className="player-voice-message" role="status">{timerVoice.message}<button type="button" onClick={timerVoice.test}>Проверить звук</button></div>}
