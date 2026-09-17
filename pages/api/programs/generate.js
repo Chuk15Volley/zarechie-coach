@@ -1,3 +1,4 @@
+import { buildPrehabResult } from '../../../lib/prehabMethodology.mjs';
 import { restrictedDayPlan } from '../../../lib/restrictedDayPlan.mjs';
 import { recommendGymSession, formatReadySixGymContext, applyReadySixGymDose, readySixGenerationIssue } from '../../../lib/readySixGym.mjs';
 // pages/api/programs/generate.js
@@ -1586,6 +1587,11 @@ export async function buildGenerationInputs(body) {
   if (!snapshot) return { error: 'Player not found', status: 404 };
   const sessionSummaries = recentSessionRecords.map(formatSummary).filter(Boolean);
   const gymRecommendation = snapshot.readySixMeta ? recommendGymSession({ snapshot, targetDate, recentSessions: recentSessionRecords }) : null;
+  if (focus === 'inseason_prophylaxis' && gymRecommendation) {
+    const readyResult = buildPrehabResult({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal,
+      playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+    return { targetDate, dayGoal, readyResult: readyResult || restrictedDayPlan({ snapshot, recommendation: { ...gymRecommendation, reasons: [...gymRecommendation.reasons, 'Недостаточно совместимого регионального допуска для профилактической нагрузки.'] }, date: targetDate, dayGoal, allowRegionalDraft: false }) };
+  }
   const readySixIssue = readySixGenerationIssue(gymRecommendation, focus);
   if (readySixIssue) {
     if (['recovery', 'activation', 'match_day'].includes(gymRecommendation.key) && gymRecommendation.focus) {
