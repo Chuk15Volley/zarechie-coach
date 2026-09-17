@@ -26,6 +26,11 @@ export default async function handler(req, res) {
   // Build the exact same SYSTEM_PROMPT / userPrompt / tool as the synchronous generator.
   const inputs = await buildGenerationInputs(req.body || {});
   if (inputs.error) return res.status(inputs.status || 400).json({ error: inputs.error });
+  if (inputs.readyResult) {
+    const batchId = `openai-gen-${crypto.randomUUID()}`;
+    await redis('set', `coach:batch:${batchId}`, JSON.stringify({ ...inputs.readyResult, workspace, playerId: String(playerId), status: 'done' }), 'EX', 3600);
+    return res.status(200).json({ batchId, estimatedMinutes: 0 });
+  }
   const { userPrompt, systemPrompt, dataSummary, targetDate, playerRestrictions = [], qualityContext = {}, questionnaireContext = {} } = inputs;
 
   // Keep the full schema for the polled path.

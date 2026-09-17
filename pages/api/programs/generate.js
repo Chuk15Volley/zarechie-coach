@@ -1,3 +1,4 @@
+import { restrictedDayPlan } from '../../../lib/restrictedDayPlan.mjs';
 import { recommendGymSession, formatReadySixGymContext, applyReadySixGymDose, readySixGenerationIssue } from '../../../lib/readySixGym.mjs';
 // pages/api/programs/generate.js
 // POST { playerId, date, dayGoal, focus, notes, days=7 } → AI-generated gym session for one
@@ -1586,7 +1587,12 @@ export async function buildGenerationInputs(body) {
   const sessionSummaries = recentSessionRecords.map(formatSummary).filter(Boolean);
   const gymRecommendation = snapshot.readySixMeta ? recommendGymSession({ snapshot, targetDate, recentSessions: recentSessionRecords }) : null;
   const readySixIssue = readySixGenerationIssue(gymRecommendation, focus);
-  if (readySixIssue) return readySixIssue;
+  if (readySixIssue) {
+    if (['recovery', 'activation', 'match_day'].includes(gymRecommendation.key) && gymRecommendation.focus) {
+      return buildGenerationInputs({ ...body, focus: gymRecommendation.focus, trainingType: gymRecommendation.trainingType });
+    }
+    return { targetDate, dayGoal, readyResult: restrictedDayPlan({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal }) };
+  }
 
   // Per-player exercise-response memory + LSI (jump symmetry) — appended to prompt.
   const exMemory = await getExerciseMemory(String(playerId), workspace).catch(() => ({}));
@@ -1966,6 +1972,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e.message || 'Ошибка подготовки данных' });
   }
   if (inputs.error) return res.status(inputs.status || 400).json({ error: inputs.error });
+  if (inputs.readyResult) return res.status(200).json(inputs.readyResult);
   const { snapshot, userPrompt, dataSummary, targetDate, systemPrompt, effectiveFocus, effectiveTrainingType, playerRestrictions = [], qualityContext = {} } = inputs;
   const { dayGoal: bodyDayGoal = '', focus = '' } = req.body || {};
 
