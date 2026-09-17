@@ -217,3 +217,53 @@ test('speech failures are visible and unsupported browsers keep silent timers fu
   const state = unsupported.render({ hold: null, active: true });
   assert.equal(state.supported, false); assert.doesNotThrow(() => state.prepare());
 });
+
+function recordedEnvironment(t) {
+  const env = speechEnvironment(t), nodes = [], contexts = [];
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
+  window.AudioContext = class {
+    state = 'running'; destination = {};
+    constructor() { contexts.push(this); }
+    async decodeAudioData() { return { duration: 2 }; }
+    async resume() { this.state = 'running'; }
+    async close() { this.state = 'closed'; }
+    createBufferSource() {
+      const node = { started: false, stopped: false, connect() {}, disconnect() {}, start() { this.started = true; }, stop() { this.stopped = true; } };
+      nodes.push(node); return node;
+    }
+  };
+  return { ...env, nodes, contexts, flush: () => new Promise(resolve => setImmediate(resolve)) };
+}
+
+test('recorded voice plays without browser synthesis, and mute stops playback', async t => {
+  const env = recordedEnvironment(t);
+  const h = harness('../lib/useTimerVoice.js', 'useTimerVoice'); env.cleanups.push(() => h.stop());
+  h.render({ hold: null, active: true }); await env.flush();
+  h.render().prepare(); assert.equal(env.nodes.length, 1); assert.equal(env.nodes[0].started, true);
+  assert.equal(env.spoken.length, 0);
+  h.render().toggle(); assert.equal(env.nodes[0].stopped, true);
+  h.render().test(); assert.equal(env.nodes.length, 1);
+});
+
+test('pending audio resume cannot play after stop, hiding, or excessive delay', async t => {
+  const env = recordedEnvironment(t); let now = 100000;
+  t.mock.method(Date, 'now', () => now);
+  const h = harness('../lib/useTimerVoice.js', 'useTimerVoice'); env.cleanups.push(() => h.stop());
+  h.render({ hold: null, active: true }); await env.flush();
+  const ctx = env.contexts[0]; let resume;
+  ctx.state = 'suspended'; ctx.resume = () => new Promise(resolve => { resume = () => { ctx.state = 'running'; resolve(); }; });
+  h.render().prepare(); h.render().stop(); resume(); await env.flush();
+  assert.equal(env.nodes.length, 0);
+  ctx.state = 'suspended'; h.render().prepare(); document.visibilityState = 'hidden'; env.events.get('visibilitychange')(); resume(); await env.flush();
+  assert.equal(env.nodes.length, 0);
+  document.visibilityState = 'visible'; ctx.state = 'suspended'; h.render().prepare(); now += 2000; resume(); await env.flush();
+  assert.equal(env.nodes.length, 0); assert.equal(env.spoken.length, 0);
+});
+
+test('recording load failure falls back to Russian browser voice', async t => {
+  const env = recordedEnvironment(t);
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: false }));
+  const h = harness('../lib/useTimerVoice.js', 'useTimerVoice'); env.cleanups.push(() => h.stop());
+  h.render({ hold: null, active: true }); await env.flush(); h.render().prepare();
+  assert.equal(env.nodes.length, 0); assert.equal(env.spoken[0].text, 'Подготовься к подходу');
+});

@@ -149,7 +149,7 @@
 .gym-premium .gym-hold-prep-hint { display: block; margin-top: 3px; font-size: 10px; color: #a8c0c5; }
 .gym-premium .player-rest-ring strong, .gym-premium .player-start-metrics strong, .gym-premium .gym-stepper input, .gym-premium .player-weight-strip, .gym-premium .gym-prescribed-set { font-variant-numeric: tabular-nums; }
 
-.gym-premium .player-voice-settings { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 20px 10px; }
+.gym-premium .player-voice-settings { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 20px 10px; }
 .gym-premium .player-voice-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 8px 11px; border-radius: 10px; border: 1px solid #b9dfd223; color: #b6ceca; background: linear-gradient(160deg, #ffffff08, #ffffff02); box-shadow: inset 0 1px #ffffff10; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .gym-premium .player-voice-toggle[aria-pressed="true"] { color: #a5e8ca; border-color: #6ee7b73a; }
 .gym-premium .player-voice-test { min-height: 40px; padding: 8px 0; font-size: 11px; color: #aac4cb; }

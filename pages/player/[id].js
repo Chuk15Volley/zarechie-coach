@@ -1429,6 +1429,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         </details>}
         {!notFound && session && (!workoutStarted || completedAt || finishOpen) && timerVoice.supported && <div className="player-voice-settings">
           <TimerVoiceControl voice={timerVoice} />
+          <span className="text-xs text-slate-400">Мужской голос · создан ИИ</span>
           {timerVoice.enabled && <button type="button" className="player-voice-test" onClick={timerVoice.test}>Проверить звук</button>}
         </div>}
         {timerVoice.message && <div className="player-voice-message" role="status">{timerVoice.message}<button type="button" onClick={timerVoice.test}>Проверить звук</button></div>}

@@ -1,5 +1,10 @@
 const CACHE = 'nk-team-system-v6';
 const STATIC_PATHS = new Set([
+  '/audio/timer-voice-v1/prepare.wav',
+  '/audio/timer-voice-v1/start.wav',
+  '/audio/timer-voice-v1/complete.wav',
+  '/audio/timer-voice-v1/rest.wav',
+  '/audio/timer-voice-v1/enabled.wav',
   '/nk-logo.jpg',
   '/favicon.svg',
   '/manifest.webmanifest',
