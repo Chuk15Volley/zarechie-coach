@@ -3982,7 +3982,7 @@ export default function Home() {
       if (statusData.status === 'done') {
         setSession(statusData.session);
         if (statusData.strengthMode) setStrengthMode(statusData.strengthMode);
-        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel: statusData.session?.kind === 'restricted_day_plan' ? 'План дня · без нагрузки' : statusData.session?.kind === 'restricted_training_draft' ? 'Черновик · верх тела с ограничениями' : statusData.session?.kind === 'prehab_training_draft' ? 'Профилактика · индивидуальный черновик' : focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
+        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel: statusData.session?.kind === 'restricted_day_plan' ? 'План дня · без нагрузки' : statusData.session?.kind === 'restricted_training_draft' ? 'Верх тела с ограничениями' : statusData.session?.kind === 'prehab_training_draft' ? 'Профилактика · индивидуальная программа' : focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
         setShowSummary(false);
         setAutoSaved(!!statusData.autoSaved);
         if (!['restricted_day_plan', 'restricted_training_draft', 'prehab_training_draft'].includes(statusData.session?.kind) && (statusData.saveWarning || statusData.quality?.medicalReviewRequired)) {
@@ -4146,11 +4146,12 @@ export default function Home() {
       pendingAuthRetryRef.current = null;
       setReauthNotice('');
       setError('');
+      if (data.session) setSession(data.session);
       const savedQuality = data.quality || meta.quality || null;
-      if (data.quality) setMeta(prev => prev ? { ...prev, quality: data.quality } : prev);
+      if (data.quality) setMeta(prev => prev ? { ...prev, quality: data.quality, focusLabel: data.trainingLabel || prev.focusLabel } : prev);
       setJustSaved(true);
       setPendingSaved({
-        session,
+        session: data.session || session,
         player: meta.player,
         dataSummary: meta.dataSummary,
         date: meta.date,

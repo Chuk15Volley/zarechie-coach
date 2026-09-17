@@ -1,3 +1,4 @@
+import { approveProgramSession, approvedProgramLabel } from '../../../lib/programApproval.mjs';
 // pages/api/programs/save.js
 // POST { playerId, date, session, player, dataSummary, dayGoal } → persists a session.
 // Also maintains a sorted set coach:sessions:{playerId} (score = YYYYMMDD integer) so
@@ -58,9 +59,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'playerId, date and session are required' });
   }
 
-  const normalizedSession = normalizeSessionTempoDescriptions(
+  const savedAt = new Date().toISOString();
+  const normalizedSession = approveProgramSession(normalizeSessionTempoDescriptions(
     ensureSessionExerciseIds(sanitizeUnavailableEquipmentExercises(normalizeSavedWeights(session)))
-  );
+  ), savedAt);
   const saveQuality = advisorySessionQuality(assessSessionQuality(normalizedSession, {
     focus,
     trainingType,
@@ -69,7 +71,6 @@ export default async function handler(req, res) {
     medicalReviewRequired: session.kind === 'prehab_training_draft' && (session.methodology?.mode === 'regional' || session.methodology?.preliminary === true),
     medicalReviewReason: session.kind === 'prehab_training_draft' ? String(quality?.medicalReviewReason || 'Проверить ограничения и допуск перед выполнением.') : '',
   }));
-  const savedAt = new Date().toISOString();
   const persistenceQuality = saveQuality.blocking
     ? {
         ...saveQuality,
@@ -85,7 +86,8 @@ export default async function handler(req, res) {
     dayGoal: dayGoal || '',
     focus: focus || '',
     trainingType: trainingType || '',
-    trainingLabel: trainingLabel || '',
+    trainingLabel: approvedProgramLabel(trainingLabel),
+    approval: normalizedSession.approval,
     strengthMode: strengthMode || quality?.dose?.prescription?.strengthContext?.selectedMode || null,
     quality: persistenceQuality,
     date,
@@ -138,7 +140,7 @@ export default async function handler(req, res) {
       ...tonnageCmds,
     ];
     await redisPipeline(cmds);
-    return res.status(200).json({ status: 'ok', quality: persistenceQuality });
+    return res.status(200).json({ status: 'ok', quality: persistenceQuality, session: normalizedSession, trainingLabel: record.trainingLabel, approval: record.approval });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
