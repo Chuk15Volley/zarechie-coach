@@ -1319,7 +1319,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
               <div className="player-brand-wordmark">
                 <div className="player-brand-founder">Nikolay Korenchuk</div>
                 <div className="player-brand-name">NK Performance</div>
-                <div className="player-brand-product"><span aria-hidden="true" />Приложение игрока</div>
+                <div className="player-brand-product"><span aria-hidden="true" />Athlete App</div>
               </div>
             </div>
             <div className="player-session-state shrink-0 text-right">
