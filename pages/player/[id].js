@@ -5,9 +5,10 @@ import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetiti
 
 import { useState, useEffect, useRef, useMemo, Component } from 'react';
 import Head from 'next/head';
-import { Dumbbell, Layers3, Timer, LayoutGrid, Play } from 'lucide-react';
+import { Dumbbell, Layers3, Timer, LayoutGrid, Play, Volume2, VolumeX } from 'lucide-react';
 import OfflineProgram from '../../components/player/OfflineProgram';
 import { useHoldTimer } from '../../lib/useHoldTimer';
+import { useTimerVoice } from '../../lib/useTimerVoice';
 import { usePlayerWakeLock } from '../../lib/usePlayerWakeLock';
 import { SKIP_REASONS, skippedSetCount, selectSessionDate, holdPrescription, performanceKey, previousPerformances } from '../../lib/playerExperience.mjs';
 import { usePlayerFeedback } from '../../lib/usePlayerFeedback';
@@ -755,6 +756,14 @@ function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, is
   );
 }
 
+function TimerVoiceControl({ voice }) {
+  if (!voice.supported) return null;
+  const Icon = voice.enabled ? Volume2 : VolumeX;
+  return <button type="button" className="player-voice-toggle" aria-pressed={voice.enabled} aria-label={voice.enabled ? 'Отключить голос таймера' : 'Включить голос таймера'} onClick={voice.toggle}>
+    <Icon size={15} aria-hidden="true" /><span>Голос: {voice.enabled ? 'вкл.' : 'выкл.'}</span>
+  </button>;
+}
+
 function TimerDial({ remaining, total }) {
   const progress = total > 0 ? Math.max(0, Math.min(1, remaining / total)) : 0;
   return <div className="player-rest-ring" style={{ '--rest-progress': `${progress * 360}deg` }}>
@@ -969,6 +978,9 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   });
 
   const [activeTab, setActiveTab] = useState('workout');
+  const timerVoice = useTimerVoice({ hold: holdTimer.hold, remaining: holdTimer.remaining,
+    preparing: holdTimer.preparing, restTimer, restUntil,
+    active: workoutStarted && !completedAt && !finishOpen && activeTab === 'workout' });
   const [selectedHistDate, setSelectedHistDate] = useState(null);
   const [histSession, setHistSession] = useState(null);
   const [histMeta, setHistMeta] = useState(null);
@@ -1033,6 +1045,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   }, [completedAt, done, skipped, holdTimer.hold]);
 
   function changeRest(action) {
+    timerVoice.stop();
     if (!restTimer) return;
     const remaining = restTimer.running ? restRemaining(restUntil) : restTimer.remaining;
     const running = action === 'add' || (action === 'toggle' && !restTimer.running);
@@ -1073,6 +1086,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   }
 
   function startWorkout() {
+    timerVoice.test();
     const now = new Date().toISOString();
     const first = firstIncompleteBlock(session, done, skipped);
     setWorkoutStarted(true);
@@ -1102,6 +1116,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     setRestTimer(null); setRestUntil(null);
     setLastActionAt(new Date().toISOString()); setProgressRevision(value => value + 1);
     holdTimer.start(item);
+    timerVoice.prepare();
   }
 
   function confirmHold() {
@@ -1340,6 +1355,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             )}
 
             <div className="player-workout-tools">
+              <TimerVoiceControl voice={timerVoice} />
               <SyncBadge status={syncStatus} savedAt={serverSavedAt} />
               <button className="player-focus-toggle" type="button" onClick={() => { setFocusMode(value => !value); if (!focusMode && upcomingSet) setActiveBlock(upcomingSet.bi); }} aria-pressed={focusMode}>
                 {focusMode ? 'Все упражнения' : 'Текущее упражнение'}
@@ -1411,6 +1427,11 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             {wakeLock.status && <p role="status">{wakeLock.status}</p>}
           </div>
         </details>}
+        {!notFound && session && (!workoutStarted || completedAt || finishOpen) && timerVoice.supported && <div className="player-voice-settings">
+          <TimerVoiceControl voice={timerVoice} />
+          {timerVoice.enabled && <button type="button" className="player-voice-test" onClick={timerVoice.test}>Проверить звук</button>}
+        </div>}
+        {timerVoice.message && <div className="player-voice-message" role="status">{timerVoice.message}<button type="button" onClick={timerVoice.test}>Проверить звук</button></div>}
         {!notFound && session && (!workoutStarted || completedAt || finishOpen) && <OfflineProgram token={token} date={sessionDate} session={session} lastContact={lastContact} />}
         {/* ── Invalid token ── */}
         {notFound && (
@@ -1704,8 +1725,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             <div className="player-timer-next">{holdTimer.preparing && <span className="player-timer-preparation">Затем {holdTimer.hold.seconds} сек работы<br /></span>}{holdTimer.hold.name}{holdTimer.hold.sides === 2 ? ` · сторона ${holdTimer.hold.side} из 2` : ''}</div>
           </div>
           <div className="player-rest-actions">
-            {holdTimer.remaining > 0 ? <button type="button" onClick={holdTimer.toggle}>{holdTimer.preparing ? (holdTimer.hold.deadline ? 'Пауза подготовки' : 'Продолжить подготовку') : holdTimer.hold.deadline ? 'Пауза удержания' : 'Продолжить удержание'}</button> : holdTimer.hold.side < holdTimer.hold.sides ? <button type="button" onClick={holdTimer.nextSide}>Начать другую сторону</button> : <button type="button" onClick={confirmHold}>Подтвердить выполненный подход</button>}
-            <button type="button" onClick={holdTimer.cancel}>Отменить удержание</button>
+            {holdTimer.remaining > 0 ? <button type="button" onClick={() => { timerVoice.stop(); holdTimer.toggle(); }}>{holdTimer.preparing ? (holdTimer.hold.deadline ? 'Пауза подготовки' : 'Продолжить подготовку') : holdTimer.hold.deadline ? 'Пауза удержания' : 'Продолжить удержание'}</button> : holdTimer.hold.side < holdTimer.hold.sides ? <button type="button" onClick={() => { holdTimer.nextSide(); timerVoice.prepare(); }}>Начать другую сторону</button> : <button type="button" onClick={confirmHold}>Подтвердить выполненный подход</button>}
+            <button type="button" onClick={() => { timerVoice.stop(); holdTimer.cancel(); }}>Отменить удержание</button>
           </div>
         </section>}
         {workoutStarted && !finishOpen && !holdTimer.hold && activeTab === 'workout' && (

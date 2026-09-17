@@ -14,6 +14,15 @@
 
 ### Athlete visual system and preparation countdown
 
-The athlete UI uses scoped graphite surfaces, blue/violet highlights and reflective glass controls. Block colors repeat consistently across navigation, preview and exercise badges (A blue, B violet, C mint, D orange, E pink, F cyan, then repeat). Letter labels, the current-step outline and completion marks remain visible independently of color.
+The athlete UI shares the coach workspace visual language: dark translucent panels, emerald/cyan accents, Prata display headings and Manrope controls. Block colors repeat consistently across navigation, preview and exercise badges (A blue, B violet, C mint, D orange, E pink, F cyan, then repeat). Letter labels, the current-step outline and completion marks remain visible independently of color.
 
 Rest and hold timers share a 76px circular dial, tabular digits and equal-width action grids. A hold starts with five seconds of preparation before the full prescribed work duration; each additional side receives the same preparation period. Pausing and restoring preserves preparation separately from work, including fractional seconds. Existing timers without preparation metadata remain compatible. Rest timers start immediately.
+
+
+### Голос таймера
+
+Голос включён по умолчанию; переключатель до старта и в рабочей панели сохраняет выбор на устройстве. «Проверить звук» позволяет проверить громкость до упражнения. Нажатие старта активирует речь через пользовательское действие. Удержания озвучивают «Приготовиться», «Начали», «Завершено», отдых — «Отдых завершён». Названия игроков и упражнений в синтез речи не передаются.
+
+Команды произносятся только для наблюдаемого перехода в открытой странице. Восстановление, пропуск, отмена и запоздалое возвращение из фона не запускают старые команды. Выключение звука и уход со страницы останавливают текущую речь. При ошибке движка доступна повторная проверка; отсутствие поддержки речи не блокирует таймер. Звук при блокировке телефона или в фоновой вкладке не гарантируется.
+
+Используется встроенный [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis), с предпочтением локального русского голоса из [getVoices](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/getVoices). Проверки переходов, отключения, восстановления и ошибок входят в тесты синхронизации игрока.
