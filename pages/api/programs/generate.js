@@ -1591,7 +1591,7 @@ export async function buildGenerationInputs(body) {
     if (['recovery', 'activation', 'match_day'].includes(gymRecommendation.key) && gymRecommendation.focus) {
       return buildGenerationInputs({ ...body, focus: gymRecommendation.focus, trainingType: gymRecommendation.trainingType });
     }
-    return { targetDate, dayGoal, readyResult: restrictedDayPlan({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal }) };
+    return { targetDate, dayGoal, readyResult: restrictedDayPlan({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal, playerRestrictions: parseJSONSafe(rawRestrictions, []) }) };
   }
 
   // Per-player exercise-response memory + LSI (jump symmetry) — appended to prompt.

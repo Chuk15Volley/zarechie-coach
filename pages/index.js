@@ -3974,10 +3974,10 @@ export default function Home() {
       if (statusData.status === 'done') {
         setSession(statusData.session);
         if (statusData.strengthMode) setStrengthMode(statusData.strengthMode);
-        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel: statusData.session?.kind === 'restricted_day_plan' ? 'План дня · без нагрузки' : focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
+        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel: statusData.session?.kind === 'restricted_day_plan' ? 'План дня · без нагрузки' : statusData.session?.kind === 'restricted_training_draft' ? 'Черновик · верх тела с ограничениями' : focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
         setShowSummary(false);
         setAutoSaved(!!statusData.autoSaved);
-        if (statusData.session?.kind !== 'restricted_day_plan' && (statusData.saveWarning || statusData.quality?.medicalReviewRequired)) {
+        if (!['restricted_day_plan', 'restricted_training_draft'].includes(statusData.session?.kind) && (statusData.saveWarning || statusData.quality?.medicalReviewRequired)) {
           setError(statusData.saveWarning || statusData.quality.medicalReviewReason);
         }
         stopGenProgress(true);
