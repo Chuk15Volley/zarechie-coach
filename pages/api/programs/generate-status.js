@@ -205,6 +205,11 @@ export default async function handler(req, res) {
       if (refreshed.error) {
         return res.status(refreshed.status || 400).json({ error: refreshed.error });
       }
+      if (refreshed.readyResult) {
+        const result = { ...refreshed.readyResult, status: 'done' };
+        await redis('set', `coach:batch:${batchId}`, JSON.stringify({ ...record, ...result, qualityContext: {} }), 'EX', 3600);
+        return res.status(200).json(result);
+      }
       record = {
         ...record,
         date: refreshed.targetDate,

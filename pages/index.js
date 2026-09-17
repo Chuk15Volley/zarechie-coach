@@ -3974,10 +3974,10 @@ export default function Home() {
       if (statusData.status === 'done') {
         setSession(statusData.session);
         if (statusData.strengthMode) setStrengthMode(statusData.strengthMode);
-        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
+        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel: statusData.session?.kind === 'restricted_day_plan' ? 'План дня · без нагрузки' : focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
         setShowSummary(false);
         setAutoSaved(!!statusData.autoSaved);
-        if (statusData.saveWarning || statusData.quality?.medicalReviewRequired) {
+        if (statusData.session?.kind !== 'restricted_day_plan' && (statusData.saveWarning || statusData.quality?.medicalReviewRequired)) {
           setError(statusData.saveWarning || statusData.quality.medicalReviewReason);
         }
         stopGenProgress(true);
@@ -4063,7 +4063,7 @@ export default function Home() {
   }
 
   async function handleSaveWeekSession(idx) {
-    if (!weekPlan?.[idx]?.session) return;
+    if (!weekPlan?.[idx]?.session || weekPlan[idx].session.kind === 'restricted_day_plan') return;
     const item = weekPlan[idx];
     setWeekPlan(prev => prev.map((p, i) => i === idx ? { ...p, saving: true } : p));
     try {
@@ -4108,7 +4108,7 @@ export default function Home() {
   }
 
   async function handleSave() {
-    if (!session || !meta) return;
+    if (!session || !meta || session.kind === 'restricted_day_plan') return;
     setSaving(true);
     try {
       const res = await fetch('/api/programs/save', {
@@ -7749,7 +7749,8 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={handleSave}
-                    disabled={saving}
+                    disabled={saving || session.kind === 'restricted_day_plan'}
+                    title={session.kind === 'restricted_day_plan' ? 'План дня не заменяет тренировку игрока' : undefined}
                     className={`flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3.5 py-2 text-xs font-bold text-[#04212b] shadow-[0_2px_12px_-2px_rgba(34,211,238,0.35)] transition hover:bg-cyan-400 disabled:opacity-50 ${focusRing}`}
                   >
                     {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
@@ -8342,7 +8343,7 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={e => { e.stopPropagation(); handleSaveWeekSession(idx); }}
-                          disabled={item.saving}
+                          disabled={item.saving || item.session?.kind === 'restricted_day_plan'}
                           className="rounded-lg bg-accent px-3 py-1.5 text-[10px] font-bold text-[#060a0e] shadow-[0_2px_10px_rgba(34,211,238,0.25)] transition hover:brightness-110 disabled:opacity-50"
                         >
                           {item.saving ? <Loader2 size={11} className="animate-spin" /> : 'Сохранить'}
