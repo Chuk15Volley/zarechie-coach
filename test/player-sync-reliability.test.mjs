@@ -142,3 +142,78 @@ test('paused preparation restores and resumes the exact remaining delay', async 
   now += 1; await env.tick(); state = restored.render(); assert.equal(state.preparing, false); assert.equal(state.remaining, 30);
   now += 30000; await env.tick(); assert.equal(restored.render().remaining, 0);
 });
+
+function speechEnvironment(t) {
+  const env = environment(t), spoken = [];
+  let canceled = 0;
+  window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
+  window.speechSynthesis = {
+    getVoices: () => [{ lang: 'en-US', localService: true }, { lang: 'ru-RU', localService: true }],
+    speak: cue => spoken.push(cue), cancel: () => { canceled++; },
+  };
+  return { ...env, spoken, canceled: () => canceled };
+}
+
+test('timer voice speaks each live hold transition once and keeps Russian commands', t => {
+  const env = speechEnvironment(t); let now = 100000;
+  t.mock.method(Date, 'now', () => now);
+  const h = harness('../lib/useTimerVoice.js', 'useTimerVoice'); env.cleanups.push(() => h.stop());
+  const base = { hold: null, remaining: 0, preparing: false, active: true };
+  h.render(base).prepare();
+  const hold = { key: '0-0-0', side: 1, preparationEndsAt: 105000, deadline: 125000 };
+  h.render({ ...base, hold, preparing: true, remaining: 20 });
+  now = 105000; const work = { ...base, hold, remaining: 20 };
+  h.render(work); h.render({ ...work, hold: { ...hold }, remaining: 19 });
+  now = 125000; h.render({ ...work, remaining: 0 }); h.render({ ...work, hold: { ...hold }, remaining: 0 });
+  assert.deepEqual(env.spoken.map(c => c.text), ['Приготовиться', 'Начали', 'Завершено']);
+  assert.ok(env.spoken.every(c => c.lang === 'ru-RU' && c.voice.localService));
+});
+
+test('timer voice suppresses restored and late cues and cancels when hidden', t => {
+  const env = speechEnvironment(t); let now = 110000;
+  t.mock.method(Date, 'now', () => now);
+  const h = harness('../lib/useTimerVoice.js', 'useTimerVoice'); env.cleanups.push(() => h.stop());
+  const hold = { key: '0-0-0', side: 1, preparationEndsAt: 105000, deadline: 125000 };
+  const base = { hold, remaining: 15, preparing: false, active: true };
+  h.render(base); assert.equal(env.spoken.length, 0);
+  now = 130000; h.render({ ...base, remaining: 0 }); assert.equal(env.spoken.length, 0);
+  h.render().test(); assert.equal(env.spoken.length, 1);
+  document.visibilityState = 'hidden'; env.events.get('visibilitychange')(); assert.equal(env.canceled(), 1);
+  h.render().prepare(); assert.equal(env.spoken.length, 1);
+});
+
+test('timer voice mute persists, prevents cues and can be enabled with a gesture', t => {
+  const env = speechEnvironment(t);
+  env.storage.set('player-timer-voice', '0');
+  const h = harness('../lib/useTimerVoice.js', 'useTimerVoice'); env.cleanups.push(() => h.stop());
+  const state = h.render({ hold: null, remaining: 0, preparing: false, active: true });
+  assert.equal(state.enabled, false); state.prepare(); assert.equal(env.spoken.length, 0);
+  state.toggle(); assert.equal(h.render().enabled, true); assert.equal(env.storage.get('player-timer-voice'), '1');
+  assert.equal(env.spoken[0].text, 'Звуковые команды включены');
+  h.render().toggle(); h.render().prepare(); assert.equal(env.spoken.length, 1); assert.equal(env.canceled(), 1);
+});
+
+test('rest voice announces expiry, not pause, skip or repeated zero ticks', t => {
+  const env = speechEnvironment(t); let now = 100000;
+  t.mock.method(Date, 'now', () => now);
+  const h = harness('../lib/useTimerVoice.js', 'useTimerVoice'); env.cleanups.push(() => h.stop());
+  const base = { hold: null, remaining: 0, preparing: false, active: true, restUntil: new Date(110000).toISOString() };
+  h.render({ ...base, restTimer: { remaining: 10, running: true } });
+  h.render({ ...base, restTimer: { remaining: 5, running: false } });
+  h.render({ ...base, restTimer: null }); assert.equal(env.spoken.length, 0);
+  h.render({ ...base, restTimer: { remaining: 1, running: true } });
+  now = 110000; h.render({ ...base, restTimer: { remaining: 0, running: true } });
+  h.render({ ...base, restTimer: { remaining: 0, running: false } });
+  assert.deepEqual(env.spoken.map(c => c.text), ['Отдых завершён']);
+});
+
+test('speech failures are visible and unsupported browsers keep silent timers functional', t => {
+  const env = speechEnvironment(t);
+  const h = harness('../lib/useTimerVoice.js', 'useTimerVoice'); env.cleanups.push(() => h.stop());
+  h.render({ hold: null, active: true }).test();
+  env.spoken[0].onerror({ error: 'not-allowed' }); assert.match(h.render().message, /Проверить звук/);
+  delete window.speechSynthesis;
+  const unsupported = harness('../lib/useTimerVoice.js', 'useTimerVoice'); env.cleanups.push(() => unsupported.stop());
+  const state = unsupported.render({ hold: null, active: true });
+  assert.equal(state.supported, false); assert.doesNotThrow(() => state.prepare());
+});
