@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useMemo, Component } from 'react';
 import Head from 'next/head';
 import { Dumbbell, Layers3, Timer, LayoutGrid, Play, Volume2, VolumeX } from 'lucide-react';
 import OfflineProgram from '../../components/player/OfflineProgram';
-import RestSnake from '../../components/player/RestSnake';
+import RestArcade from '../../components/player/arcade/RestArcade';
 import { useHoldTimer } from '../../lib/useHoldTimer';
 import { useTimerVoice } from '../../lib/useTimerVoice';
 import { usePlayerWakeLock } from '../../lib/usePlayerWakeLock';
@@ -797,7 +797,7 @@ function RestTimer({ timer, onToggle, onAdd, onSkip, undo, onUndo }) {
         <button type="button" onClick={onSkip}>{timer.remaining > 0 ? 'Пропустить' : 'К подходу'}</button>
       </div>
       {undo && <button type="button" className="player-timer-undo" onClick={onUndo}>Отменить отметку</button>}
-      {playing && canPlay && <RestSnake remaining={timer.remaining} onClose={() => setPlaying(false)} />}
+      {playing && canPlay && <RestArcade remaining={timer.remaining} onClose={() => setPlaying(false)} />}
     </div>
   );
 }
