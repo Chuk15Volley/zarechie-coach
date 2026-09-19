@@ -57,6 +57,7 @@ import {
 } from '../lib/seasonPolicy.mjs';
 import { usesSeasonCalendar } from '../lib/workspacePolicy.mjs';
 import { exerciseDescription } from '../lib/tempoDescription.mjs';
+import { pollTeamGeneration } from '../lib/teamGeneration.mjs';
 import { canonicalExerciseId } from '../lib/exerciseIdentity.mjs';
 import { buildAttentionQueue, buildStationRotation } from '../lib/floorOperations.mjs';
 import { buildTodayDecisionCenter, normalizeReturnToPlay, RTP_PHASES } from '../lib/todayDecisionCenter.mjs';
@@ -2534,6 +2535,9 @@ export default function Home() {
   }, [apiKey, workspace]);
 
   function switchWorkspace(ws) {
+    if (batchRunning) return;
+    setBatchResults([]);
+    setBatchSelectedIds(new Set());
     setWorkspace(ws);
     if (!usesSeasonCalendar(ws) && mainSection === 'planner') setMainSection('workouts');
     if (typeof window !== 'undefined') localStorage.setItem('workspace', ws);
@@ -3772,7 +3776,7 @@ export default function Home() {
   async function retryFailedBatch() {
     const failedIds = new Set(batchResults.filter(r => r.status === 'error').map(r => r.playerId));
     const failed = players.filter(p => failedIds.has(p.id));
-    if (!failed.length) return;
+    if (!failed.length || batchRunning) return;
     setBatchResults(prev => prev.map(r => failedIds.has(r.playerId) ? { ...r, status: 'queued', error: undefined } : r));
     setBatchRunning(true);
 
@@ -3782,10 +3786,10 @@ export default function Home() {
       while (queue.length) {
         const player = queue.shift();
         try {
-          const result = await generatePlayerAsync(player);
-          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done', draft: !result?.autoSaved } : r));
+          const result = await generatePlayerAsync(player, batchResults.find(row => row.playerId === player.id));
+          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done', draft: !result?.autoSaved, result } : r));
         } catch (err) {
-          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
+          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message, ...(err.restartRequired ? { batchId: null } : {}) } : r));
         }
       }
     }
@@ -3794,57 +3798,33 @@ export default function Home() {
     setBatchRunning(false);
   }
 
-  // Generate + poll one player's gym session via the async generation path.
-  // Batch generation keeps autoSave enabled so no separate save call is needed.
-  async function generatePlayerAsync(player) {
+  // Keep completed programs as drafts until the coach reviews and saves them.
+  async function generatePlayerAsync(player, previous = null) {
     setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'generating' } : r));
-
-    // 1. Submit the batch.
-    const submitRes = await fetch('/api/programs/generate-async', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, trainingType, powerMode, strengthMode, notes, coachRecovery: recoveryStatus, workspace, autoSave: true }),
-    });
-    const submitData = await submitRes.json().catch(() => ({}));
-    if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
-    const batchId = submitData.batchId;
-    if (!batchId) throw new Error('Сервер не вернул идентификатор задачи');
-    setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, batchId } : r));
-
-    // 2. Poll every 6s, up to 8 minutes (80 attempts).
-    const MAX_ATTEMPTS = 80;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      await new Promise(r => setTimeout(r, 6000));
-      let statusData;
-      try {
-        const statusRes = await fetch(`/api/programs/generate-status?batchId=${encodeURIComponent(batchId)}`, {
-          headers: { 'x-api-key': apiKey },
-        });
-        statusData = await statusRes.json();
-        if (!statusRes.ok) {
-          const terminalError = new Error(statusData.error || 'Ошибка проверки статуса');
-          terminalError.terminal = true;
-          throw terminalError;
-        }
-      } catch (pollError) {
-        if (pollError?.terminal) throw pollError;
-        // Transient network blip during polling — keep trying until the attempt cap.
-        continue;
-      }
-      if (statusData.status === 'done') {
-        if (!statusData.autoSaved && !['prehab_training_draft', 'restricted_training_draft', 'restricted_day_plan'].includes(statusData.session?.kind)) throw new Error(statusData.saveWarning || 'Тренировка создана, но не прошла безопасное автосохранение.');
-        return statusData;
-      }
-      // status 'pending' → loop again
+    let batchId = previous?.batchId;
+    if (!batchId) {
+      const request = previous?.request || { playerId: player.id, date, dayGoal, days, focus, trainingType, powerMode, strengthMode, notes, coachRecovery: recoveryStatus, workspace, autoSave: false };
+      setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, request } : r));
+      const submitRes = await fetch('/api/programs/generate-async', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify(request),
+      });
+      const submitData = await submitRes.json().catch(() => ({}));
+      if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
+      batchId = submitData.batchId;
+      if (!batchId) throw new Error('Сервер не вернул идентификатор задачи');
+      setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, batchId } : r));
     }
-    throw new Error('Генерация заняла слишком долго');
+    return pollTeamGeneration(batchId, {
+      fetchStatus: id => fetch(`/api/programs/generate-status?batchId=${encodeURIComponent(id)}`, {
+        headers: { 'x-api-key': apiKey },
+      }),
+    });
   }
 
   async function runBatchGeneration() {
-    if (matchDayManualReview) {
-      setError('В игровой день праймер генерируется индивидуально: откройте игрока, проверьте программу и сохраните вручную. Командное автосохранение отключено.');
-      return;
-    }
+    if (batchRunning || !apiKey) return;
     const selected = players.filter(p => batchSelectedIds.has(p.id));
     if (!selected.length) return;
     setBatchResults(selected.map(p => ({ playerId: p.id, name: p.name, position: p.position, status: 'queued' })));
@@ -3858,9 +3838,9 @@ export default function Home() {
         const player = queue.shift();
         try {
           const result = await generatePlayerAsync(player);
-          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done', draft: !result?.autoSaved } : r));
+          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done', draft: !result?.autoSaved, result } : r));
         } catch (err) {
-          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
+          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message, ...(err.restartRequired ? { batchId: null } : {}) } : r));
         }
       }
     }
@@ -3869,11 +3849,23 @@ export default function Home() {
     setBatchRunning(false);
   }
 
-  async function openBatchDraft(result) {
-    setPlayerId(result.playerId);
-    setSelectedPlayer(players.find(player => String(player.id) === String(result.playerId)) || null);
-    setError('');
-    try { await pollBatchResult(result.batchId, 'Профилактика · черновик'); }
+  async function openBatchDraft(row) {
+    if (row.request?.workspace && row.request.workspace !== workspace) return;
+    selectPlayer(players.find(player => String(player.id) === String(row.playerId)) || { id: row.playerId, name: row.name });
+    setMainSection('workouts');
+    setSessionType('gym');
+    setPendingSaved(null);
+    const result = row.result;
+    if (result) {
+      setDate(result.date || row.request?.date || date);
+      setSession(result.session);
+      setMeta({ ...result, sessionType: 'gym', focusLabel: result.session?.title || getFocusLabel(period, result.focus || focus) });
+      setAutoSaved(!!result.autoSaved);
+      if (result.strengthMode) setStrengthMode(result.strengthMode);
+      setError(result.saveWarning || '');
+      return;
+    }
+    try { await pollBatchResult(row.batchId, getFocusLabel(period, focus)); }
     catch (error) { setError(error.message); }
   }
 
@@ -4150,6 +4142,9 @@ export default function Home() {
       const savedQuality = data.quality || meta.quality || null;
       if (data.quality) setMeta(prev => prev ? { ...prev, quality: data.quality, focusLabel: data.trainingLabel || prev.focusLabel } : prev);
       setJustSaved(true);
+      setBatchResults(rows => rows.map(row => row.playerId === playerId && row.result?.date === meta.date
+        ? { ...row, draft: false, result: { ...row.result, session: data.session || session, quality: savedQuality, autoSaved: true } }
+        : row));
       setPendingSaved({
         session: data.session || session,
         player: meta.player,
@@ -5189,7 +5184,7 @@ export default function Home() {
                       {/* Player info — click to open */}
                       <button
                         type="button"
-                        onClick={() => selectPlayer(p)}
+                        onClick={() => batchRow?.status === 'done' ? openBatchDraft(batchRow) : selectPlayer(p)}
                         className="flex flex-1 min-w-0 items-center gap-2 text-left"
                       >
                         <span className={`shrink-0 h-1.5 w-1.5 rounded-full ${positionDot(p.position)}`} />
@@ -5221,8 +5216,8 @@ export default function Home() {
                             batchRow.status === 'generating' ? 'text-accent' :
                             'text-slate-600'
                           }`}>
-                            {batchRow.status === 'done'       ? '✓' :
-                             batchRow.status === 'error'      ? '✗' :
+                            {batchRow.status === 'done'       ? (batchRow.draft ? 'Черновик · открыть' : '✓') :
+                             batchRow.status === 'error'      ? (batchRow.error || 'Ошибка') :
                              batchRow.status === 'generating' ? '…' : '·'}
                           </span>
                         )}
@@ -5255,11 +5250,11 @@ export default function Home() {
                         await runBatchGeneration();
                         loadTeamStatus();
                       }}
-                      disabled={!apiKey || matchDayManualReview}
+                      disabled={!apiKey || batchRunning}
                       className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-accent/90 py-2.5 text-[12px] font-bold text-[#060a0e] transition hover:bg-accent disabled:opacity-30"
                     >
                       <Zap size={12} strokeWidth={2.5} />
-                      {matchDayManualReview ? 'Игровой день: проверка по одной' : `Сгенерировать для ${batchSelectedIds.size} ${batchSelectedIds.size === 1 ? 'игрока' : 'игроков'}`}
+                      {`Сгенерировать для ${batchSelectedIds.size} ${batchSelectedIds.size === 1 ? 'игрока' : 'игроков'}`}
                     </button>
                   </div>
                 )}
@@ -5278,6 +5273,7 @@ export default function Home() {
                     <span className="text-[10px] text-emerald-400">
                       ✓ {batchResults.filter(r => r.status === 'done').length} подготовлено
                       {batchResults.some(r => r.status === 'error') && ` · ${batchResults.filter(r => r.status === 'error').length} ошибок`}
+                      {batchResults.some(r => r.status === 'error') && <button type="button" onClick={retryFailedBatch} className="ml-2 text-rose-300 underline">Повторить ошибки</button>}
                     </span>
                     <button
                       type="button"
@@ -6997,7 +6993,7 @@ export default function Home() {
                 {batchResults.length > 0 && (
                   <div className="mt-4 grid grid-cols-2 gap-2 text-left">
                     {batchResults.map(r => (
-                      <div key={r.playerId} className={`rounded-xl border px-3 py-2 ${
+                      <div key={r.playerId} onClick={() => r.status === 'done' && openBatchDraft(r)} className={`rounded-xl border px-3 py-2 cursor-pointer ${
                         r.status === 'done' ? 'border-emerald-500/25 bg-emerald-500/[0.07]' :
                         r.status === 'error' ? 'border-rose-500/25 bg-rose-500/[0.07]' :
                         r.status === 'generating' ? 'border-accent/25 bg-accent/[0.07]' :
@@ -7005,13 +7001,16 @@ export default function Home() {
                       }`}>
                         <div className="truncate text-[12px] font-semibold text-slate-200">{r.name}</div>
                         <div className="mt-0.5 text-[10px] text-slate-600">
-                          {r.status === 'done' ? (r.draft ? 'Черновик' : 'Сохранено') : r.status === 'error' ? 'Ошибка' : r.status === 'generating' ? 'Генерирую...' : 'В очереди'}
+                          {r.status === 'done' ? (r.draft ? 'Черновик · открыть' : 'Сохранено') : r.status === 'error' ? (r.error || 'Ошибка') : r.status === 'generating' ? 'Генерирую...' : 'В очереди'}
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-                <p className="mt-3 text-[11px] text-slate-600">Параметры берутся из панели слева: период, тип тренировки, комментарий тренера.</p>
+                {!batchRunning && batchResults.some(r => r.status === 'error') && (
+                  <button type="button" onClick={retryFailedBatch} className="mt-3 text-xs text-rose-300 underline">Повторить ошибки</button>
+                )}
+                <p className="mt-3 text-[11px] text-slate-600">Программы готовятся как черновики. Откройте игрока, внесите коррекции и нажмите «Сохранить».</p>
               </div>
             </div>
           )}
@@ -7447,8 +7446,8 @@ export default function Home() {
             {sessionType === 'gym' && apiKey && players.length > 0 && (
               <button
                 type="button"
-                onClick={() => { setBatchOpen(o => !o); setBatchResults([]); }}
-                disabled={loading || weekPlanLoading || batchRunning || matchDayManualReview}
+                onClick={() => setBatchOpen(o => !o)}
+                disabled={loading || weekPlanLoading || batchRunning}
                 className={`flex items-center justify-center gap-2 rounded-xl border ${batchOpen ? 'border-accent/40 bg-accent/10 text-accent' : 'border-white/[0.11] bg-white/[0.045] text-slate-300'} px-4 py-3 text-sm font-semibold transition-all hover:border-white/[0.20] hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
                 title="Сгенерировать тренировки для всей команды сразу"
               >
@@ -7509,7 +7508,7 @@ export default function Home() {
                     <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[11px] font-bold text-accent">{batchSelectedIds.size}</span>
                   )}
                 </div>
-                <button onClick={() => { setBatchOpen(false); setBatchResults([]); setBatchRunning(false); }} className="text-slate-600 hover:text-slate-400 transition">
+                <button onClick={() => setBatchOpen(false)} className="text-slate-600 hover:text-slate-400 transition">
                   <X size={16} />
                 </button>
               </div>
@@ -7560,7 +7559,7 @@ export default function Home() {
                       <Zap size={14} strokeWidth={2.5} />
                       Запустить для {batchSelectedIds.size} {batchSelectedIds.size === 1 ? 'игрока' : batchSelectedIds.size < 5 ? 'игроков' : 'игроков'}
                     </button>
-                    <p className="mt-2 text-center text-[10px] text-slate-600">Дата: {date} · Фаза: {focus} · Допущенные сессии сохранятся; черновики нужно проверить</p>
+                    <p className="mt-2 text-center text-[10px] text-slate-600">Дата: {date} · Фаза: {focus} · Откройте черновики, проверьте и сохраните вручную</p>
                   </div>
                 </>
               )}
@@ -7570,7 +7569,7 @@ export default function Home() {
                 <>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {batchResults.map(r => (
-                      <div key={r.playerId} onClick={() => r.status === 'done' && (r.draft ? openBatchDraft(r) : setPlayerId(r.playerId))} className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-all ${r.status === 'done' ? 'cursor-pointer hover:border-emerald-500/50' : ''} ${
+                      <div key={r.playerId} onClick={() => r.status === 'done' && openBatchDraft(r)} className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-all ${r.status === 'done' ? 'cursor-pointer hover:border-emerald-500/50' : ''} ${
                         r.status === 'done'       ? 'border-emerald-500/30 bg-emerald-500/[0.07]' :
                         r.status === 'error'      ? 'border-rose-500/30 bg-rose-500/[0.07]' :
                         r.status === 'generating' ? 'border-accent/30 bg-accent/[0.06]' :
