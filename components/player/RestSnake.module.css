@@ -1,0 +1,24 @@
+.dialog { width: min(420px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); margin: auto; padding: 20px; overflow-y: auto; color: #e6f9f0; border: 1px solid #9fdfc540; border-radius: 24px; background: linear-gradient(145deg, #15312b, #0b1721 75%); box-shadow: 0 24px 100px #0009; font-family: inherit; }
+.dialog::backdrop { background: #030b12d9; backdrop-filter: blur(8px); }
+.header { display: flex; align-items: center; justify-content: space-between; }
+.header h2 { font-size: 25px; font-weight: 750; margin: 3px 0 0; }
+.eyebrow { color: #96c8b3; font-size: 9px; font-weight: 700; letter-spacing: .2em; }
+.close { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: #ffffff09; border: 1px solid #ffffff16; }
+.stats { display: flex; justify-content: space-between; gap: 12px; margin: 16px 0 12px; color: #abc5ba; font-size: 12px; }
+.stats b { color: #d8ffe9; margin-left: 6px; font: bold 22px ui-monospace, monospace; }
+.stats .ending, .stats .ending b { color: #ffc078; }
+.board { position: relative; width: min(100%, 38dvh); margin: auto; aspect-ratio: 1; overflow: hidden; border: 1px solid #79dfb033; border-radius: 8px; background: #071710; box-shadow: inset 0 0 40px #0005; }
+.board svg { display: block; width: 100%; height: 100%; }
+.result { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: #071710e8; text-align: center; }
+.result strong { font-size: 20px; }
+.result span { color: #abc5ba; font-size: 13px; }
+.result button { min-height: 44px; padding: 10px 22px; border-radius: 12px; background: #95f2c7; color: #0b2419; font-weight: 700; }
+.controls { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 48px); justify-content: center; gap: 7px; margin-top: 16px; }
+.controls button { display: grid; place-items: center; border: 1px solid #b9dfd230; border-radius: 12px; background: linear-gradient(#ffffff10, #ffffff05); color: #c7f6de; touch-action: manipulation; user-select: none; }
+.controls button:active { background: #79dfb040; transform: translateY(2px); }
+.up { grid-column: 2; grid-row: 1; }
+.left { grid-column: 1; grid-row: 2; }
+.down { grid-column: 2; grid-row: 2; }
+.right { grid-column: 3; grid-row: 2; }
+.hint { margin: 13px 0 0; text-align: center; font-size: 10px; line-height: 1.7; color: #90aa9e; }
+.dialog button:focus-visible { outline: 2px solid #95f2c7; outline-offset: 3px; }
