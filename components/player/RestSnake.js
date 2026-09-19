@@ -10,7 +10,20 @@ export default function RestSnake({ remaining, onClose }) {
   const [game, setGame] = useState(newSnake);
   const dialog = useRef(null);
   const pending = useRef(null);
+  const pointer = useRef(null);
+  const [pressed, setPressed] = useState(null);
   const steer = direction => { if (!pending.current) pending.current = direction; };
+  const moveStick = event => {
+    if (pointer.current !== event.pointerId) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - bounds.left - bounds.width / 2;
+    const y = event.clientY - bounds.top - bounds.height / 2;
+    const direction = Math.max(Math.abs(x), Math.abs(y)) < bounds.width / 7 ? null
+      : Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : (y > 0 ? 'down' : 'up');
+    setPressed(direction);
+    if (direction) pending.current = direction;
+  };
+  const releaseStick = () => { pointer.current = null; setPressed(null); };
 
   useEffect(() => {
     const element = dialog.current;
@@ -63,10 +76,18 @@ export default function RestSnake({ remaining, onClose }) {
           <button type="button" onClick={() => { pending.current = null; setGame(newSnake()); }}>Заново</button>
         </div>}
       </div>
-      <div className={styles.controls} aria-label="Управление змейкой">
-        {CONTROLS.map(([direction, label, Icon]) => <button type="button" key={direction} className={styles[direction]} aria-label={label} onClick={() => steer(direction)}><Icon size={25} strokeWidth={2.5} /></button>)}
+      <div className={styles.controls} aria-label="Управление змейкой"
+        onPointerDown={event => {
+          if (!event.isPrimary || event.button !== 0) return;
+          pointer.current = event.pointerId;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          moveStick(event);
+        }}
+        onPointerMove={moveStick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}>
+        <span className={styles.stickCenter} aria-hidden="true"><span /></span>
+        {CONTROLS.map(([direction, label, Icon]) => <button type="button" key={direction} className={`${styles[direction]} ${pressed === direction ? styles.pressed : ''}`} aria-label={label} onClick={event => { if (event.detail === 0) steer(direction); }}><Icon size={32} strokeWidth={2.5} /></button>)}
       </div>
-      <p className={styles.hint}>Собирай пиксели · управляй стрелками<br />Когда отдых закончится, игра закроется сама.</p>
+      <p className={styles.hint}>Нажимай стрелки или веди палец по крестовине.<br />В конце отдыха игра закроется сама.</p>
     </dialog>
   );
 }
