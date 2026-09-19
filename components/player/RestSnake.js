@@ -21,7 +21,7 @@ export default function RestSnake({ remaining, onClose }) {
     const direction = Math.max(Math.abs(x), Math.abs(y)) < bounds.width / 7 ? null
       : Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : (y > 0 ? 'down' : 'up');
     setPressed(direction);
-    if (direction) steer(direction);
+    if (direction) pending.current = direction;
   };
   const releaseStick = () => { pointer.current = null; setPressed(null); };
 
