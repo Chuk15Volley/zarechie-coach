@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useMemo, Component } from 'react';
 import Head from 'next/head';
 import { Dumbbell, Layers3, Timer, LayoutGrid, Play, Volume2, VolumeX } from 'lucide-react';
 import OfflineProgram from '../../components/player/OfflineProgram';
+import RestSnake from '../../components/player/RestSnake';
 import { useHoldTimer } from '../../lib/useHoldTimer';
 import { useTimerVoice } from '../../lib/useTimerVoice';
 import { usePlayerWakeLock } from '../../lib/usePlayerWakeLock';
@@ -778,6 +779,9 @@ function TimerDial({ remaining, total }) {
 }
 
 function RestTimer({ timer, onToggle, onAdd, onSkip, undo, onUndo }) {
+  const [playing, setPlaying] = useState(false);
+  const canPlay = Boolean(timer?.running && timer.remaining > 0);
+  useEffect(() => { if (!canPlay) setPlaying(false); }, [canPlay]);
   if (!timer) return null;
   return (
     <div className={`player-rest-timer ${timer.remaining === 0 ? 'is-complete' : ''}`} role="timer" aria-label="Таймер отдыха" aria-live="off">
@@ -789,9 +793,11 @@ function RestTimer({ timer, onToggle, onAdd, onSkip, undo, onUndo }) {
       <div className="player-rest-actions">
         {timer.remaining > 0 && <button type="button" onClick={onToggle}>{timer.running ? 'Пауза' : 'Продолжить'}</button>}
         {timer.remaining > 0 && <button type="button" onClick={onAdd}>+15 сек</button>}
+        {canPlay && <button type="button" onClick={() => setPlaying(true)}>Играть</button>}
         <button type="button" onClick={onSkip}>{timer.remaining > 0 ? 'Пропустить' : 'К подходу'}</button>
       </div>
       {undo && <button type="button" className="player-timer-undo" onClick={onUndo}>Отменить отметку</button>}
+      {playing && canPlay && <RestSnake remaining={timer.remaining} onClose={() => setPlaying(false)} />}
     </div>
   );
 }
