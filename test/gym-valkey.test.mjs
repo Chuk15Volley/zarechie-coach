@@ -6,7 +6,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { createGymValkeyTransport } from '../lib/gymValkeyTransport.mjs';
+import { createGymValkeyTransport, gymStorageIsConfigured } from '../lib/gymValkeyTransport.mjs';
 import { redis } from '../lib/redis.js';
 
 const base = {
@@ -14,6 +14,13 @@ const base = {
   GYM_STORAGE_BOUNDARY: 'readysix-gym-ru-production', GYM_VALKEY_ENDPOINT: 'redis://127.0.0.1:6379/0',
   GYM_VALKEY_USERNAME: 'gym', GYM_VALKEY_PASSWORD: 'synthetic-gym-test-password-32-bytes',
 };
+
+test('health configuration accepts only the isolated Russian gym boundary without connecting', () => {
+  assert.equal(gymStorageIsConfigured(base), true);
+  assert.equal(gymStorageIsConfigured({ ...base, GYM_DEPLOYMENT_REGION: 'eu' }), false);
+  assert.equal(gymStorageIsConfigured({ ...base, GYM_VALKEY_USERNAME: 'readysix' }), false);
+  assert.equal(gymStorageIsConfigured({ KV_REST_API_URL: 'https://old.example', KV_REST_API_TOKEN: 'synthetic' }), false);
+});
 
 test('Russian gym boundary rejects old storage, other regions and ReadySix endpoints before connecting', () => {
   for (const change of [

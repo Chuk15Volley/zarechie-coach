@@ -1,5 +1,6 @@
 import { isAuthorized } from '../../../lib/auth';
 import { redis, redisPipeline } from '../../../lib/redis';
+import { gymStorageIsConfigured } from '../../../lib/gymValkeyTransport.mjs';
 import { parsePlatformEvents } from '../../../lib/platformTelemetry';
 import { backupIsConfigured, checkHistoryIntegrity } from '../../../lib/platformBackup';
 import { pfx } from '../../../lib/workspacePrefix';
@@ -53,7 +54,9 @@ export default async function handler(req, res) {
   const readySixKey = workspace === 'nkperf' ? process.env.READYSIX_NK_API_KEY : process.env.READYSIX_ZARECHIE_API_KEY;
   const readySixConfigured = readySixMode === 'legacy' || Boolean(process.env.READYSIX_URL && readySixKey);
   const config = {
-    redis: Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN),
+    redis: process.env.GYM_DEPLOYMENT_ENV || process.env.GYM_STORAGE_PROVIDER
+      ? gymStorageIsConfigured(process.env)
+      : Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN),
     readySix: readySixConfigured,
     ai: Boolean(process.env.OPENAI_API_KEY),
     trainerKey: Boolean(process.env.TRAINER_API_KEY),
