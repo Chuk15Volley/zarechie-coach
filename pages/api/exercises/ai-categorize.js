@@ -1,3 +1,4 @@
+import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 // pages/api/exercises/ai-categorize.js
 // POST {} — classify all library exercises as gym/warmup using AI.
 // Only processes uncategorized cards (category === '' or missing).
@@ -63,7 +64,7 @@ ${list}`;
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'OPENAI_API_KEY не настроен' });
 
-  const apiResp = await fetch('https://api.openai.com/v1/responses', {
+  const apiResp = await gymProviderFetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,

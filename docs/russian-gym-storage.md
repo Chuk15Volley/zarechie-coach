@@ -57,3 +57,23 @@ five data types, Unicode, null replies, pipeline order and command failures,
 absolute ordering of sorted sets, TTL, NX and Lua ownership of locks, reconnect
 after a rejected command, and failure after shutdown. It never connects to
 production. Without the binary, that single integration test is skipped.
+# Russian encrypted backup storage
+
+The self-hosted gym uses `GYM_BACKUP_PROVIDER=yandex-s3` with the same Russian
+deployment and gym storage boundary as its Valkey client. Configure the private
+`readysix-ru-production-20261002` bucket, its existing backup account owner, and
+`GYM_BACKUP_S3_ACCESS_KEY_ID` / `GYM_BACKUP_S3_SECRET_ACCESS_KEY` outside Git.
+Keep the existing `BACKUP_ENCRYPTION_KEY`; remove both Vercel Blob tokens from
+the Russian runtime. Missing or mismatched Russian configuration fails closed.
+
+Only the gym object prefix is accessible through this adapter. Both archives
+and history integrity baselines receive authenticated AES-GCM encryption, with
+the original pathname in authenticated data. Every upload requires private ACLs,
+versioning, full ciphertext readback, and anonymous access denial. The existing
+backup format remains recoverable after the outer encryption layer is removed.
+
+The uploader account cannot delete objects. Russian runtime retention therefore
+preserves all archives; an operator must review recovery and bucket usage before
+configuring retention. Existing Blob files must be copied and verified before
+their source service is retired. This code change does not migrate old files or
+switch production by itself.

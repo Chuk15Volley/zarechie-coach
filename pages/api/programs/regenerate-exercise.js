@@ -1,3 +1,4 @@
+import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 // pages/api/programs/regenerate-exercise.js
 // POST { playerId, date, blockIndex, exerciseIndex, session? }
 // Replaces one exercise with a fresh AI-generated alternative. A current unsaved
@@ -189,7 +190,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
       const retryInstruction = lastIssue
         ? ` Предыдущий вариант отклонён: ${lastIssue}. Выбери другой, однозначно разрешённый вариант.`
         : '';
-      const r = await fetch('https://api.openai.com/v1/responses', {
+      const r = await gymProviderFetch('https://api.openai.com/v1/responses', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${openaiKey}`,

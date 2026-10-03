@@ -1,3 +1,4 @@
+import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 // pages/api/programs/generate-warmup.js
 // POST { playerId, date, dayGoal, focus, notes, days=7 }
 // Generates a volleyball warm-up sequence (15-20 min) adapted to player biometrics and phase.
@@ -303,7 +304,7 @@ ${formatSeasonDecisionForPrompt(seasonDecision)}
 Составь разминку на ${targetDate} — 15–20 минут, 4 блока (A/B/C/D). Адаптируй к биометрике игрока и фазе подготовки.`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const response = await gymProviderFetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

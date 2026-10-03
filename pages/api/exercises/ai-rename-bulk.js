@@ -1,3 +1,4 @@
+import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 // pages/api/exercises/ai-rename-bulk.js
 // POST {} → { renames: [{ canonicalId, oldTitle, newTitle }] }
 // Sends all Russian-named library cards to AI → gets professional English S&C names
@@ -40,7 +41,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'OPENAI_API_KEY не настроен' });
 
-  const apiResponse = await fetch('https://api.openai.com/v1/responses', {
+  const apiResponse = await gymProviderFetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,

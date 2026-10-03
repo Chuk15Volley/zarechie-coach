@@ -1,3 +1,4 @@
+import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 // pages/api/warmup/generate.js
 // POST { date }. Zarechie resolves protective days from its team calendar.
 // NK Performance follows the coach-selected type stored with the S&C session.
@@ -197,7 +198,7 @@ ${formatSeasonDecisionForPrompt(decision)}
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'OPENAI_API_KEY не настроен' });
 
-    const r = await fetch('https://api.openai.com/v1/responses', {
+    const r = await gymProviderFetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

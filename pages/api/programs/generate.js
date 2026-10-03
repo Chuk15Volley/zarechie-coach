@@ -1,3 +1,4 @@
+import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 import { buildPrehabResult } from '../../../lib/prehabMethodology.mjs';
 import { restrictedDayPlan } from '../../../lib/restrictedDayPlan.mjs';
 import { recommendGymSession, formatReadySixGymContext, applyReadySixGymDose, readySixGenerationIssue } from '../../../lib/readySixGym.mjs';
@@ -1925,7 +1926,7 @@ async function callOpenAIForSession(apiKey, userPrompt, systemPrompt = SYSTEM_PR
     { maxOutputTokens: SESSION_RETRY_OUTPUT_TOKENS, reasoningEffort: 'low' },
   ];
   for (const attempt of attempts) {
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const response = await gymProviderFetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

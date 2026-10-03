@@ -1,3 +1,4 @@
+import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 import { preferVarietyCorrection } from '../../../lib/exerciseVariety.mjs';
 // pages/api/programs/generate-status.js
 // GET ?batchId=xxx -> polls a queued OpenAI background Responses API session.
@@ -96,7 +97,7 @@ async function createOpenAIBackgroundResponse(apiKey, userPrompt, systemPrompt, 
   maxOutputTokens = SESSION_OUTPUT_TOKENS,
   reasoningEffort = 'medium',
 } = {}) {
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await gymProviderFetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -124,7 +125,7 @@ async function createOpenAIBackgroundResponse(apiKey, userPrompt, systemPrompt, 
 }
 
 async function retrieveOpenAIResponse(apiKey, responseId) {
-  const response = await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(responseId)}`, {
+  const response = await gymProviderFetch(`https://api.openai.com/v1/responses/${encodeURIComponent(responseId)}`, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'content-type': 'application/json',

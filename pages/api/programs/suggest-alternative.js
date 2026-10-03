@@ -1,3 +1,4 @@
+import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 // pages/api/programs/suggest-alternative.js
 // POST { exerciseName, restrictions, position, focus }
 // → { alternative: "Название упражнения — краткое обоснование" }
@@ -51,7 +52,7 @@ export default async function handler(req, res) {
   if (!apiKey) return res.status(503).json({ error: 'OPENAI_API_KEY не настроен' });
 
   try {
-    const apiResp = await fetch('https://api.openai.com/v1/responses', {
+    const apiResp = await gymProviderFetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
