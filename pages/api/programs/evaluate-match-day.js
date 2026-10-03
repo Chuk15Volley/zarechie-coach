@@ -11,7 +11,9 @@ export default async function handler(req, res) {
   // This diagnostic endpoint is intentionally absent from production. Preview
   // deployments are protected by Vercel authentication and no player data is
   // read or persisted by the evaluator.
-  if (process.env.VERCEL_ENV === 'production') return res.status(404).end();
+  if (process.env.VERCEL_ENV === 'production' || process.env.GYM_DEPLOYMENT_ENV === 'ru-self-hosted') {
+    return res.status(404).end();
+  }
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!await enforceRateLimit(req, res, { scope: 'ai-match-day-evaluation', limit: 10, windowSeconds: 3600 })) return;
