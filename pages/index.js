@@ -58,6 +58,7 @@ import {
   MANUAL_MATCH_DAY_FOCUS,
 } from '../lib/seasonPolicy.mjs';
 import { usesSeasonCalendar } from '../lib/workspacePolicy.mjs';
+import { prehabEnglishName } from '../lib/prehabNames.mjs';
 import { exerciseDescription } from '../lib/tempoDescription.mjs';
 import { canonicalExerciseId } from '../lib/exerciseIdentity.mjs';
 import { buildAttentionQueue, buildStationRotation } from '../lib/floorOperations.mjs';
@@ -2977,7 +2978,8 @@ export default function Home() {
     const qualityTrainingType = meta.trainingType || trainingType;
     const isRecovery = qualityTrainingType === 'recovery_prehab' || recoveryStatus === 'red';
     const isSeason = isInSeasonFocus(qualityFocus);
-    const prescribedExercises = meta.quality?.dose?.prescription?.exercises;
+    const isPrehab = session.kind === 'prehab_training_draft';
+    const prescribedExercises = isPrehab ? {min:10,max:12} : meta.quality?.dose?.prescription?.exercises;
     const targetMin = prescribedExercises?.min ?? (isRecovery ? 5 : isSeason ? 6 : 10);
     const targetMax = prescribedExercises?.max ?? (isRecovery ? 8 : isSeason ? 10 : 12);
     const hasMainAlternatives = exercises.some(ex => /^[ABC]1\b/i.test(ex.code || '') && Array.isArray(ex.alternatives) && ex.alternatives.length >= 2);
@@ -2985,10 +2987,10 @@ export default function Home() {
     const nonMainFiveSec = exercises.some(ex => !/^[ABC]1\b/i.test(ex.code || '') && /5-0-X-0|0-5/i.test(ex.tempo || ''));
     const hasKgOrManual = exercises.every(ex => {
       const note = String(ex.weightNote || '').toLowerCase();
-      return ex.weightKg != null || note.includes('rpe') || note.includes('вручную') || note.includes('вес тела') || !/^[ABC]1\b/i.test(ex.code || '');
+      return ex.weightKg != null || note.includes('rpe') || note.includes('вручную') || note.includes('вес тела') || note.includes('без отягощения') || !/^[ABC]1\b/i.test(ex.code || '');
     });
     return [
-      ...(meta.quality ? [{
+      ...(Number.isFinite(meta.quality?.score) ? [{
         label: 'Проф. оценка',
         ok: meta.quality.score >= 85,
         detail: `${meta.quality.score}/100 · ${meta.quality.grade || 'проверено'}`,
@@ -2996,10 +2998,10 @@ export default function Home() {
       { label: 'Фаза', ok: !!qualityFocus, detail: getFocusLabel(period, qualityFocus) },
       { label: 'Тип', ok: !!qualityTrainingType, detail: TRAINING_TYPE_LABELS[qualityTrainingType] || 'не выбран' },
       { label: 'Метод', ok: true, detail: 'ручной выбор тренера' },
-      { label: 'Recovery', ok: recoveryStatus !== 'red' || exCount <= 8, detail: recoveryStatus === 'red' ? 'сниженный объем' : 'по готовности' },
+      { label: 'Recovery', ok: isPrehab ? exercises.every(ex=>ex.targetSets.length<=2) : recoveryStatus !== 'red' || exCount <= 8, detail: recoveryStatus === 'red' ? 'сниженный объем' : 'по готовности' },
       { label: 'Упражнения', ok: exCount >= targetMin && exCount <= targetMax, detail: `${exCount} / цель ${targetMin}-${targetMax}` },
       { label: 'Запреты', ok: methodViolations.length === 0, detail: methodViolations.length ? `${methodViolations.length} наруш.` : 'чисто' },
-      { label: 'Альтернативы', ok: hasMainAlternatives && !dOrEAlt, detail: hasMainAlternatives ? 'A/B/C есть' : 'нет в основных' },
+      isPrehab ? {label:'Основное время',ok:session.methodology?.timing?.plannedMainMinutes===50,detail:'50 минут с паузами и контролем'} : { label: 'Альтернативы', ok: hasMainAlternatives && !dOrEAlt, detail: hasMainAlternatives ? 'A/B/C есть' : 'нет в основных' },
       { label: 'Темп', ok: !nonMainFiveSec, detail: nonMainFiveSec ? '5 сек вне A1/B1/C1' : 'методически чисто' },
       { label: 'Вес/RPE', ok: hasKgOrManual, detail: hasKgOrManual ? 'задан' : 'проверь основные' },
     ];
@@ -7988,7 +7990,7 @@ export default function Home() {
                           key={ex.code || ei}
                           apiKey={apiKey}
                           code={ex.code}
-                          name={ex.name}
+                          name={prehabEnglishName(ex.name)}
                           targetSets={ex.targetSets || []}
                           weightNote={ex.weightNote || ''}
                           weightKg={ex.weightKg != null ? ex.weightKg : parseKgFromNote(ex.weightNote)}
