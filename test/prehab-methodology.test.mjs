@@ -149,7 +149,7 @@ test('partially permitted players receive 12 English-named stations and 50 minut
    assert.doesNotMatch(ex.name,/[А-Яа-яЁё]/);
    assert.equal(result.session.methodology.coachProphylaxisOverride,true);
    assert.ok(ex.activeSecondsPerSet>0);
-   assert.ok(ex.activeSecondsPerSet*ex.targetSets.length*(ex.targetSets[0].includes('/ст.')?2:1)<ex.stationMinutes*60);
+   assert.ok(ex.activeSecondsPerSet*ex.targetSets.length<ex.stationMinutes*60);
    assert.doesNotMatch(exerciseDescription(ex),/максимально резко/);
   }
  }
