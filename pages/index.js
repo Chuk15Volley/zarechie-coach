@@ -1,3 +1,5 @@
+import { calendarToday } from '../lib/coachCalendar.mjs';
+import CoachCalendar from '../components/CoachCalendar';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Head from 'next/head';
@@ -98,126 +100,7 @@ function Sparkline({ values, width = 48, height = 20 }) {
 }
 
 // Custom calendar date-picker — auto-closes after selection, matches dark theme.
-function DatePicker({ value, onChange, maxDate, minDate, size = 'default', className = '' }) {
-  const [open, setOpen] = useState(false);
-  const [vy, setVy] = useState(() => value ? +value.slice(0, 4) : new Date().getFullYear());
-  const [vm, setVm] = useState(() => value ? +value.slice(5, 7) - 1 : new Date().getMonth());
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (value) { setVy(+value.slice(0, 4)); setVm(+value.slice(5, 7) - 1); }
-  }, [value]);
-
-  useEffect(() => {
-    if (!open) return;
-    function fn(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener('mousedown', fn);
-    return () => document.removeEventListener('mousedown', fn);
-  }, [open]);
-
-  const todaySt = new Date().toISOString().slice(0, 10);
-
-  function ds(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-
-  function formatLabel(v) {
-    if (!v) return 'Дата';
-    const months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-    const [y, m, d] = v.split('-');
-    return `${+d} ${months[+m - 1]} ${y}`;
-  }
-
-  const DOW = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-  const MON = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-
-  function buildGrid() {
-    const first = new Date(vy, vm, 1);
-    const last = new Date(vy, vm + 1, 0);
-    const startDow = (first.getDay() + 6) % 7;
-    const cells = [];
-    for (let i = startDow - 1; i >= 0; i--) cells.push({ d: new Date(vy, vm, -i), cur: false });
-    for (let i = 1; i <= last.getDate(); i++) cells.push({ d: new Date(vy, vm, i), cur: true });
-    while (cells.length < 42) {
-      cells.push({ d: new Date(vy, vm + 1, cells.length - last.getDate() - startDow + 1), cur: false });
-    }
-    return cells;
-  }
-
-  function prevM() { const d = new Date(vy, vm - 1, 1); setVy(d.getFullYear()); setVm(d.getMonth()); }
-  function nextM() { const d = new Date(vy, vm + 1, 1); setVy(d.getFullYear()); setVm(d.getMonth()); }
-
-  const sm = size === 'sm';
-
-  return (
-    <div ref={ref} className={`relative ${className}`}>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className={`flex w-full items-center gap-2 rounded-xl border bg-white/[0.03] text-left font-semibold text-slate-200 transition focus:outline-none
-          ${open ? 'border-accent/50' : 'border-white/[0.08] hover:border-white/[0.14]'}
-          ${sm ? 'px-2.5 py-1.5 text-[11px]' : 'px-3.5 py-2.5 text-[13px]'}`}
-      >
-        <Calendar size={sm ? 11 : 14} className="shrink-0 text-slate-500" />
-        {formatLabel(value)}
-      </button>
-
-      {open && (
-        <div className="premium-popover absolute left-0 top-full z-[60] mt-2 w-[276px] rounded-2xl border border-white/[0.10] p-4">
-          {/* Month navigation */}
-          <div className="mb-4 flex items-center justify-between">
-            <button type="button" onClick={prevM}
-              className="grid h-8 w-8 place-items-center rounded-xl text-slate-500 transition hover:bg-white/[0.06] hover:text-slate-200">
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-[13px] font-black tracking-wide text-slate-100">{MON[vm]} {vy}</span>
-            <button type="button" onClick={nextM}
-              className="grid h-8 w-8 place-items-center rounded-xl text-slate-500 transition hover:bg-white/[0.06] hover:text-slate-200">
-              <ChevronRight size={16} />
-            </button>
-          </div>
-
-          {/* Day-of-week header */}
-          <div className="mb-1 grid grid-cols-7">
-            {DOW.map(d => (
-              <div key={d} className="py-1 text-center text-[9px] font-black uppercase tracking-wider text-slate-700">{d}</div>
-            ))}
-          </div>
-
-          {/* Day grid */}
-          <div className="grid grid-cols-7 gap-y-1">
-            {buildGrid().map((cell, i) => {
-              const s = ds(cell.d);
-              const sel = s === value;
-              const tod = s === todaySt;
-              const dis = (maxDate && s > maxDate) || (minDate && s < minDate);
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  disabled={dis}
-                  aria-label={s}
-                  onClick={() => { onChange(s); setOpen(false); }}
-                  className={`h-9 w-full rounded-xl text-[12px] font-semibold transition-all focus:outline-none
-                    ${sel
-                      ? 'bg-gradient-to-b from-cyan-400 to-cyan-500 text-[#04212b] font-black shadow-[0_4px_14px_rgba(34,211,238,0.35)]'
-                      : tod
-                      ? 'border border-accent/40 text-accent hover:bg-accent/10'
-                      : cell.cur
-                      ? 'text-slate-300 hover:bg-white/[0.07] hover:text-white'
-                      : 'text-slate-700 hover:text-slate-500'}
-                    ${dis ? 'pointer-events-none opacity-25' : ''}`}
-                >
-                  {cell.d.getDate()}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+function DatePicker(props) { return <CoachCalendar {...props} />; }
 
 function PremiumSelect({ value, onChange, options, className = '', title, disabled = false, compact = false }) {
   const [open, setOpen] = useState(false);
@@ -846,7 +729,7 @@ function getFocusLabel(period, focusValue) {
 }
 
 function todayISO() {
-  return new Date().toISOString().split('T')[0];
+  return calendarToday();
 }
 
 function compactTime(value) {
@@ -1862,7 +1745,7 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery, onApply })
       <section className="mt-4 space-y-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.04] p-4" aria-live="polite">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-bold text-cyan-300">ReadySix · состояние и расписание</span>
-          <a href="https://zarechie-odintsovo.vercel.app/dashboard" target="_blank" rel="noreferrer" className="text-xs text-slate-400 underline">Открыть аналитику</a>
+          <a href="https://readysix.app/dashboard" target="_blank" rel="noreferrer" className="text-xs text-slate-400 underline">Открыть аналитику</a>
         </div>
         {rec?.planning?.preliminary && <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
           <p className="font-semibold">Предварительный план на {data.targetDate}</p>
@@ -2213,6 +2096,22 @@ export default function Home() {
   const [playersError, setPlayersError] = useState('');
   const [playerId, setPlayerId] = useState('');
   const [date, setDate] = useState(todayISO());
+  const dateDrafts = useRef(new Map());
+  function changeTrainingDate(nextDate) {
+    if (nextDate === date || loading || batchId || saving || batchRunning || weekPlanLoading) return;
+    const key = value => `${workspace}:${playerId}:${value}`;
+    dateDrafts.current.set(key(date), { session, meta, justSaved, autoSaved, dayGoal, notes, sessionType, period, focus, trainingType, powerMode, strengthMode });
+    const draft = dateDrafts.current.get(key(nextDate));
+    setSession(draft?.session || null); setMeta(draft?.meta || null);
+    setJustSaved(draft?.justSaved || false); setAutoSaved(draft?.autoSaved || false);
+    setDayGoal(draft?.dayGoal || ''); setNotes(draft?.notes || '');
+    if (draft) {
+      setSessionType(draft.sessionType); setPeriod(draft.period); setFocus(draft.focus);
+      setTrainingType(draft.trainingType); setPowerMode(draft.powerMode); setStrengthMode(draft.strengthMode);
+    }
+    setWeekPlan(null); setPendingSaved(null); setTodayWarmup(null); setError(''); setShowSummary(false);
+    setDate(nextDate);
+  }
   const [dayGoal, setDayGoal] = useState('');
   const [days, setDays] = useState(7);
   const [period, setPeriod] = useState('inseason');
@@ -4737,7 +4636,7 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         if (s.id === 'readiness') {
-                          window.open('https://zarechie-odintsovo.vercel.app/dashboard', '_blank', 'noopener,noreferrer');
+                          window.open('https://readysix.app/dashboard', '_blank', 'noopener,noreferrer');
                           return;
                         }
                         if (s.id === 'library') {
@@ -4790,7 +4689,7 @@ export default function Home() {
               {/* Date */}
               <div>
                 <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-slate-600">Дата</label>
-                <DatePicker value={warmupDate} onChange={setWarmupDate} size="sm" />
+                <DatePicker navigate value={warmupDate} onChange={setWarmupDate} size="sm" />
               </div>
 
               {/* Calendar-led season context */}
@@ -4844,7 +4743,7 @@ export default function Home() {
           {mainSection === 'readiness' && keyConnected && (
             <div className="sidebar-context flex-1 overflow-y-auto p-4 space-y-3">
               <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">Утренний экран</p>
-              <DatePicker value={readinessDate} onChange={setReadinessDate} maxDate={todayISO()} size="sm" className="w-full" />
+              <DatePicker navigate value={readinessDate} onChange={setReadinessDate} maxDate={todayISO()} size="sm" className="w-full" />
               <button
                 type="button"
                 onClick={() => {
@@ -5021,7 +4920,7 @@ export default function Home() {
 
                 {/* Date + refresh */}
                 <div className="mb-2 flex items-center gap-2 px-1">
-                  <DatePicker value={date} onChange={setDate} maxDate={addDaysToStr(todayISO(), 1)} size="sm" className="flex-1" />
+                  <DatePicker navigate quickDays value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(todayISO(), 1)} size="sm" className="flex-1" />
                   <button type="button" onClick={loadTeamStatus} disabled={teamStatusLoading} className="shrink-0 text-slate-600 hover:text-accent transition" title="Обновить">
                     <RefreshCw size={11} className={teamStatusLoading ? 'animate-spin' : ''} />
                   </button>
@@ -6544,6 +6443,10 @@ export default function Home() {
 
           {mainSection === 'workouts' && (<>
           <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
+          <section className="mb-6 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4 print:hidden sm:flex-row sm:items-center sm:justify-between" aria-label="Календарь тренера">
+            <div><p className="text-sm font-bold text-slate-100">Дата тренировки</p><p className="mt-1 text-xs text-slate-500">Выберите день. Состояние игрока — из ReadySix.</p></div>
+            <DatePicker navigate quickDays value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(todayISO(), 1)} className="w-full sm:max-w-sm" />
+          </section>
 
           {/* ── Workspace header (player selected) ── */}
           {playerId && selectedPlayer ? (
@@ -7112,7 +7015,7 @@ export default function Home() {
 
               <div>
                 <SectionLabel icon={<CalendarDays size={11} />} text="Дата" />
-                <DatePicker value={date} onChange={setDate} maxDate={addDaysToStr(todayISO(), 1)} />
+                <p className="min-h-11 rounded-xl border border-white/10 px-3 py-3 text-sm font-semibold text-slate-200">{new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`))}</p>
               </div>
 
               <div>
