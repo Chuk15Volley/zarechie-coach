@@ -57,15 +57,15 @@ test('participation and readiness change actual dose, not just the explanation',
   assert.match(unknown.session.warnings,/неизвестна/);
   assert.equal(red.session.methodology.timing.plannedMainMinutes,50);
 });
-test('regional caps are applied separately to set ceilings; absent or contradictory permission is not approval', () => {
+test('source regional caps remain visible without suppressing coach-requested prophylaxis; contradictory targets fail', () => {
   const standard = buildPrehabResult(fixture());
   const reduced = buildPrehabResult(fixture({upper:50}));
-  assert.ok(regionalSets(reduced,'upper') <= Math.floor(regionalSets(standard,'upper')/2));
+  assert.equal(active(reduced),active(standard));
   assert.equal(regionalSets(reduced,'lower'),regionalSets(standard,'lower'));
   const regional = buildPrehabResult(fixture({lower:0}));
-  assert.ok(exercises(regional).filter(ex=>ex.prehabRegion==='lower').every(ex=>ex.symptomAdapted && /Без отягощения/.test(ex.weightNote))); 
+  assert.ok(regionalSets(regional,'lower')>0); 
   assert.ok(regionalSets(regional,'upper') > 0);
-  for (const cap of [null,0,20]) { const draft=buildPrehabResult(fixture({upper:cap,lower:cap})); assert.equal(exercises(draft).length,12); assert.ok(exercises(draft).every(ex=>ex.symptomAdapted)); }
+  for (const cap of [null,0,20]) { const draft=buildPrehabResult(fixture({upper:cap,lower:cap})); assert.equal(exercises(draft).length,12); assert.equal(draft.session.methodology.coachProphylaxisOverride,true); }
   const input=fixture({lower:0}); input.recommendation.state.targets.push({...input.recommendation.state.targets[0]});
   assert.equal(buildPrehabResult(input),null);
 });
@@ -80,7 +80,7 @@ for (const [area,zone] of [['Голеностоп','ankle'],['Ахилл','achil
       const source = catalogue.find(item=>item.name===ex.name);
       if(source.zones.includes(zone)) {
         assert.equal(ex.symptomAdapted,true);
-        assert.equal(ex.targetSets.length,1);
+        assert.equal(ex.targetSets.length,2);
         assert.match(ex.weightNote,/Без отягощения/);
       }
     }
@@ -97,7 +97,7 @@ test('worsening next-morning response constrains subsequent selection and dose',
   const reactions=[{date:'2026-10-01',before:{pain:{knee:0}},nextMorning:{pain:{knee:3}}}];
   const result=buildPrehabResult({...input,reactions});
   assert.deepEqual(result.session.methodology.symptoms.worsenedZones,['knee']);
-  assert.ok(sets(result)<sets(buildPrehabResult(input)));
+  assert.ok(active(result)<active(buildPrehabResult(input)));
   assert.ok(!exercises(result).some(ex=>/Split Squat|Sit-to-Stand/.test(ex.name)));
 });
 test('repeat approved control anchors, rotate other exercises, and keep actual dose stable across sessions', () => {
@@ -117,7 +117,7 @@ test('restriction tags and imminent match caps still apply after rotation', () =
   const input=fixture(); input.recommendation.calendar.daysToGame=1;
   const result=buildPrehabResult({...input,playerRestrictions:['AXIAL','ANKLE']});
   assert.ok(exercises(result).every(ex=>!Object.values(PREHAB_FAMILIES).flat().find(item=>item.name===ex.name).tags.some(tag=>['AXIAL','ANKLE'].includes(tag))));
-  assert.ok(sets(result)<24);
+  assert.ok(active(result)<active(buildPrehabResult(fixture())));
   assert.equal(buildPrehabResult({...input,playerRestrictions:['UNKNOWN']}),null);
   assert.equal(buildPrehabResult({...input,historyAvailable:false}),null);
 });
@@ -139,7 +139,7 @@ test('a coach-entered light weight within prescribed RPE is allowed; heavy instr
 });
 
 
-test('partially permitted players receive 12 English-named stations and 50 minutes without forbidden regions', () => {
+test('partially permitted players receive 12 English-named stations and 50 minutes while source caps remain advisory', () => {
  for (const [upper,lower] of [[100,0],[0,100],[40,0],[0,25]]) {
   const result=buildPrehabResult(fixture({upper,lower}));
   assert.ok(result);
@@ -147,7 +147,7 @@ test('partially permitted players receive 12 English-named stations and 50 minut
   assert.equal(result.session.methodology.timing.plannedMainMinutes,50);
   for (const ex of exercises(result)) {
    assert.doesNotMatch(ex.name,/[А-Яа-яЁё]/);
-   if ((ex.prehabRegion==='upper'?upper:lower)<=20) assert.equal(ex.symptomAdapted,true);
+   assert.equal(result.session.methodology.coachProphylaxisOverride,true);
    assert.ok(ex.activeSecondsPerSet>0);
    assert.ok(ex.activeSecondsPerSet*ex.targetSets.length*(ex.targetSets[0].includes('/ст.')?2:1)<ex.stationMinutes*60);
    assert.doesNotMatch(exerciseDescription(ex),/максимально резко/);
