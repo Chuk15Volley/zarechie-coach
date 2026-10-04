@@ -112,3 +112,11 @@ test('prehab descriptions preserve smooth movement and calm unloaded breathing',
   }
   assert.match(exerciseDescription({ prehabRegion: 'unloaded', name: 'Дыхание' }), /спокойное дыхание без задержек и усилия/);
 });
+
+
+test('unloaded dynamic movement is not described as a breathing exercise', () => {
+ const description=exerciseDescription({name:'Glute Bridge',prehabRegion:'unloaded',cue:'Плавно поднять таз без прогиба.'});
+ assert.match(description,/плавно и под контролем/);
+ assert.doesNotMatch(description,/Темп: спокойное дыхание/);
+ assert.match(description,/поднять таз/);
+});
