@@ -1,4 +1,5 @@
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
+import { getPrehabReactions } from '../../../lib/prehabReactionStore';
 import { buildPrehabResult } from '../../../lib/prehabMethodology.mjs';
 import { restrictedDayPlan } from '../../../lib/restrictedDayPlan.mjs';
 import { recommendGymSession, formatReadySixGymContext, applyReadySixGymDose, readySixGenerationIssue } from '../../../lib/readySixGym.mjs';
@@ -916,9 +917,9 @@ export const SYSTEM_PROMPT = `Ты — элитный тренер S&C (сило
   НЕТ: сани/Sled/Prowler, обычная штанга как основной инструмент, тренажёры/машины как основной силовой блок
 
 ✅ ПРОГРЕССИЯ + ОСМЫСЛЕННАЯ ВАРИАТИВНОСТЬ:
-  • Главные упражнения A1/B1/C1 — якоря прогрессии. Сохраняй 1-2 подходящих якоря на 3-6 экспозиций, чтобы измерять рост веса, RPE, скорости и качества техники.
-  • Не заменяй главный паттерн ради новизны. Замена нужна при боли, плохой переносимости, плато, смене фазы или прямом указании тренера.
-  • Аксессуары D/E и второстепенные A2/B2/C2 ротируй чаще: меняй оборудование, хват, стойку, плоскость и вектор, но не повторяй один аксессуар в соседних 48-72 ч без методической причины.
+  • Главные упражнения A1/B1/C1 — якоря прогрессии. Сохраняй двигательные задачи, но ротируй сами упражнения с учётом последних программ; A1/B1/C1 не освобождаются от запрета повторов.
+  • Не заменяй главный паттерн ради новизны. Выбирай другое безопасное упражнение того же паттерна, учитывая боль, переносимость и фазу.
+  • Аксессуары D/E и второстепенные A2/B2/C2 ротируй чаще: меняй оборудование, хват, стойку, плоскость и вектор, но не повторяй упражнения из окна ротации независимо от прошедшего времени.
   • Разнообразие — это управляемая смена стимула внутри плана, а не случайный набор упражнений. Игрок должен видеть прогрессию в основных движениях и получать свежий, позиционно релевантный вспомогательный стимул.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1552,11 +1553,12 @@ export async function buildGenerationInputs(body) {
     return { error: planningMode === 'week' ? 'План недели ограничен семью днями' : 'Дата не может быть позже завтрашнего дня', status: 400 };
   }
 
+  let prehabHistoryAvailable = true;
   const prevDate = shiftDateStr(targetDate, -1);
   const manualMatchDayRequested = isManualMatchDayFocus(focus);
   const [snapshot, recentSessionRecords, actualSummaries, rawSchedule, raw1RM, raw1RMHistory, strengthAnchors, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan, previousManualMatchDays] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, Number(days) || 7, workspace),
-    getRecentSessionRecords(String(playerId), 12, workspace, targetDate).catch(() => []),
+    getRecentSessionRecords(String(playerId), 12, workspace, targetDate, { strict: true }).catch(() => { prehabHistoryAvailable = false; return []; }),
     getRecentActualSummaries(String(playerId), workspace, 5, targetDate).catch(() => []),
     usesSeasonCalendar(workspace) ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
     redis('get', `${wpfx}:1rm:${String(playerId)}`).catch(() => null),
@@ -1588,10 +1590,28 @@ export async function buildGenerationInputs(body) {
   if (!snapshot) return { error: 'Player not found', status: 404 };
   const sessionSummaries = recentSessionRecords.map(formatSummary).filter(Boolean);
   const gymRecommendation = snapshot.readySixMeta ? recommendGymSession({ snapshot, targetDate, recentSessions: recentSessionRecords }) : null;
+  if (!prehabHistoryAvailable) {
+    return { error: 'Не удалось проверить предыдущую тренировку. Повторите генерацию после восстановления истории.', status: 503 };
+  }
+  if (focus === 'inseason_prophylaxis' && !gymRecommendation) {
+    return { error: 'Для профилактики требуется актуальное решение ReadySix по разрешённым зонам. Обновите данные игрока.', status: 422 };
+  }
   if (focus === 'inseason_prophylaxis' && gymRecommendation) {
+    const matchDate = gymRecommendation.calendar.previousGame || shiftDateStr(targetDate, -2);
+    let reactions;
+    let matchLoads;
+    try {
+      [reactions, matchLoads] = await Promise.all([
+        getPrehabReactions(String(playerId), recentSessionRecords.filter(r => r.session?.kind === 'prehab_training_draft').map(r => r.date), workspace),
+        redis('get', matchLoadKey(workspace, matchDate)),
+      ]);
+    } catch {
+      return { error: 'Не удалось проверить игровую нагрузку или реакцию после профилактики. Повторите запрос.', status: 503 };
+    }
     const readyResult = buildPrehabResult({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal,
-      playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
-    return { targetDate, dayGoal, readyResult: readyResult || restrictedDayPlan({ snapshot, recommendation: { ...gymRecommendation, reasons: [...gymRecommendation.reasons, 'Недостаточно совместимого регионального допуска для профилактической нагрузки.'] }, date: targetDate, dayGoal, allowRegionalDraft: false }) };
+      playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery, recentSessions: recentSessionRecords, historyAvailable: prehabHistoryAvailable,
+      reactions, matchDate, matchLoad: parseJSONSafe(matchLoads, {})?.[String(playerId)] || null });
+    return { targetDate, dayGoal, readyResult: readyResult || restrictedDayPlan({ snapshot, recommendation: { ...gymRecommendation, reasons: [...gymRecommendation.reasons, 'Недостаточно безопасных вариантов с учётом допуска, симптомов и предыдущей реакции; нагрузка не назначена.'] }, date: targetDate, dayGoal, allowRegionalDraft: false }) };
   }
   const readySixIssue = readySixGenerationIssue(gymRecommendation, focus);
   if (readySixIssue) {
@@ -1995,6 +2015,10 @@ export default async function handler(req, res) {
     session = normalizeExerciseLanguage(session, focus);
     session = sanitizeUnavailableEquipmentExercises(session);
     session = normalizeSessionTempoDescriptions(session);
+    qualityContext.varietyContext = buildExerciseVarietyContext(
+      await getRecentSessionRecords(String(req.body.playerId), 12, req.body.workspace || 'zarechie', targetDate, { strict: true }),
+      { targetDate, focus: effectiveFocus, trainingType: effectiveTrainingType, seasonDecision: qualityContext.seasonDecision },
+    );
     let quality = advisorySessionQuality(assessSessionQuality(session, { ...qualityContext, playerRestrictions }));
     if (quality.variety?.needsCorrection) {
       // A failed repair must not discard the complete initial session.
@@ -2379,13 +2403,13 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .forEach(([name, n]) => lines.push(`• ${name}: ${n} ${n === 1 ? 'игрок' : n < 5 ? 'игрока' : 'игроков'}`));
-    lines.push('→ Оборудования достаточно: повторять инвентарь и нужные основные якоря разрешено. Не меняй лучшее упражнение только ради различия. Ротируй прежде всего аксессуары и только когда это сохраняет позиционную задачу, безопасность и измеримую прогрессию игрока.');
+    lines.push('→ Оборудования достаточно: одинаковые упражнения у разных игроков допустимы. Для самого игрока соблюдай запрет повторов из его истории, сохраняя позиционную задачу и безопасность.');
     teamExercisesContext = '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' + lines.join('\n') + '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
   }
 
   const historyBlock =
     sessionSummaries.length > 0
-      ? `ИСТОРИЯ ПОСЛЕДНИХ ${sessionSummaries.length} СОХРАНЁННЫХ ТРЕНИРОВОК ИГРОКА:\n${sessionSummaries.join('\n\n')}\n\nНА ОСНОВЕ ИСТОРИИ — перед составлением определи:\n1. Какие векторы/паттерны получили нагрузку в последние 48–72 ч — дозируй их с учётом восстановления.\n2. Для силовых/мощностных методов определи максимум два A1/B1/C1 как измеримые якоря — сохрани их и прогрессируй вес, RPE, скорость или технику.\n3. Какие аксессуары и второстепенные варианты встречались в последних двух сессиях — не повторяй их, сохраняя нужный паттерн и позиционную задачу.\n4. Не меняй вручную выбранный метод тренера из-за истории; история определяет дозировку и конкретную реализацию метода.\n5. Если есть фактический weightNote/вес/RPE — явно применяй правило прогрессии или объяснимого удержания/регрессии.`
+      ? `ИСТОРИЯ ПОСЛЕДНИХ ${sessionSummaries.length} СОХРАНЁННЫХ ТРЕНИРОВОК ИГРОКА:\n${sessionSummaries.join('\n\n')}\n\nНА ОСНОВЕ ИСТОРИИ — перед составлением определи:\n1. Какие векторы/паттерны получили нагрузку в последние 48–72 ч — дозируй их с учётом восстановления.\n2. Для силовых/мощностных методов сохрани двигательные задачи A1/B1/C1, выбрав другие безопасные упражнения; прежний рабочий вес не переноси автоматически на новый вариант.\n3. Какие упражнения всех блоков встречались в последних двух сессиях — не повторяй их, сохраняя нужный паттерн и позиционную задачу.\n4. Не меняй вручную выбранный метод тренера из-за истории; история определяет дозировку и конкретную реализацию метода.\n5. Если есть фактический weightNote/вес/RPE — явно применяй правило прогрессии или объяснимого удержания/регрессии.`
       : 'ИСТОРИЯ ТРЕНИРОВОК: нет сохранённых сессий для этого игрока — составь первую тренировку без привязки к предыдущим.';
 
   const actualHistoryBlock = actualSummaries.length > 0

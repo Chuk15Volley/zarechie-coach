@@ -21,7 +21,7 @@ for (const focus of focuses) {
       ], { targetDate, focus, trainingType });
       const result = auditExerciseVariety(session('DB Row'), context);
       assert.equal(result.repeated[0].thirdConsecutive, true);
-      assert.equal(result.needsCorrection, !context.protectedProtocol);
+      assert.equal(result.needsCorrection, true);
       assert.equal(auditExerciseVariety(session('Cable Row'), context).ok, true);
       assert.match(formatExerciseVarietyForPrompt(context), /две программы подряд/);
     });
@@ -39,15 +39,15 @@ test('window includes previous two programs and same-method history; excludes sa
   assert.equal(context.recent.length, 4);
 });
 
-test('at most two actual main anchors can repeat; relabeling accessories does not exempt them', () => {
+test('all main anchors rotate too; relabeling accessories does not exempt them', () => {
   const previous = { date: '2026-09-15', focus: 'strength', session: { blocks: [{ exercises: [
     { code: 'A1', name: 'Trap Bar Deadlift' }, { code: 'B1', name: 'DB Press' },
     { code: 'C1', name: 'Cable Row' }, { code: 'E1', name: 'Pallof Press' },
   ] }] } };
   const context = buildExerciseVarietyContext([previous], { targetDate, focus: 'strength' });
   const result = auditExerciseVariety(previous.session, context);
-  assert.equal(result.anchors, 2);
-  assert.deepEqual(result.repeated.map(ex => ex.name), ['Cable Row', 'Pallof Press']);
+  assert.equal(result.anchors, 0);
+  assert.deepEqual(result.repeated.map(ex => ex.name), ['Trap Bar Deadlift', 'DB Press', 'Cable Row', 'Pallof Press']);
   const disguised = { blocks: [{ exercises: [{ code: 'A1', name: 'Pallof Press' }] }] };
   assert.equal(auditExerciseVariety(disguised, context).needsCorrection, true);
   const recovery = buildExerciseVarietyContext([previous], { targetDate, focus: 'inseason_deload' });
@@ -81,7 +81,7 @@ test('repair prefers fresh safe result but rejects new safety or method failures
 test('remaining repetitions request coach review even when overall score is high', () => {
   const result = advisorySessionQuality({ valid: true, score: 97, checks: [], variety: { needsCorrection: true } });
   assert.equal(result.reviewRequired, true);
-  assert.equal(result.blocking, false);
+  assert.equal(result.blocking, true);
 });
 
 test('Redis history filters by date before limiting and stays in the requested workspace', async () => {
@@ -98,4 +98,40 @@ test('Redis history filters by date before limiting and stays in the requested w
     assert.equal(globalThis.__varietyRedisCalls[1][0][1], 'nkperf:session:p1:2026-09-14');
     assert.deepEqual(records.map(rec => rec.date), ['2026-09-14', '2026-09-15']);
   } finally { delete globalThis.__varietyRedisCalls; }
+});
+
+test('known translations and cosmetic dose changes cannot bypass rotation', () => {
+  for (const [a, b] of [
+    ['DB Row', 'Тяга гантели в наклоне'],
+    ['DB Romanian Deadlift', 'Румынская тяга с гантелями'],
+    ['Жим Палоффа (Pallof Press)', 'Pallof Press'],
+    ['Dumbbell Row RPE 6 20 kg', 'DB Row'],
+    ['Мёртвый жук', 'Dead Bug'],
+  ]) assert.equal(varietyExerciseKey(a), varietyExerciseKey(b));
+  assert.notEqual(varietyExerciseKey('Row (DB RPE 6)'), varietyExerciseKey('Row (Cable RPE 6)'));
+});
+
+test('repair prefers fewer repeats, never a higher score with more repeats', () => {
+  const quality = count => ({ valid: true, score: 90, checks: [], variety: { repeated: Array(count).fill({ name: 'Row' }), needsCorrection: count > 0 } });
+  assert.equal(preferVarietyCorrection({ ...quality(1), score: 89 }, quality(2)), true);
+  assert.equal(preferVarietyCorrection({ ...quality(2), score: 99 }, quality(1)), false);
+});
+
+test('strict history distinguishes first session from an outage or corrupt saved record', async () => {
+  const rawSource = readFileSync(new URL('../lib/sessionHistory.js', import.meta.url), 'utf8');
+  for (const [dates, values, rejects] of [
+    [[], [], false], [null, [], true],
+    [['2026-09-15'], [null], true],
+    [['2026-09-15'], ['broken JSON'], true],
+    [['2026-09-15'], [{ session: { blocks: [] } }], false],
+  ]) {
+    const src = rawSource.replace("import { redis, redisPipeline } from './redis';", `
+      const redis = async () => ${JSON.stringify(dates)};
+      const redisPipeline = async () => ${JSON.stringify(values)};
+    `).replace("import { pfx, sessionKey } from './workspacePrefix';", 'const pfx = workspace => workspace;');
+    const { getRecentSessionRecords } = await import(`data:text/javascript;base64,${Buffer.from(src).toString('base64')}`);
+    const result = getRecentSessionRecords('p1', 12, 'nkperf', targetDate, { strict: true });
+    if (rejects) await assert.rejects(result);
+    else assert.deepEqual(await result, []);
+  }
 });

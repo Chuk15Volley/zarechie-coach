@@ -4106,6 +4106,7 @@ export default function Home() {
     setMeta({
       player: pendingSaved.player,
       dataSummary: pendingSaved.dataSummary,
+      prehabReaction: pendingSaved.prehabReaction || null,
       date: pendingSaved.date,
       quality: pendingSaved.quality || null,
       focus: pendingSaved.focus || focus,
@@ -7397,10 +7398,15 @@ export default function Home() {
               </div>
             </div>
 
+            {meta?.prehabReaction && <section className="mt-4 rounded-xl border border-cyan-400/20 p-4 text-sm text-slate-300" aria-label="Реакция игрока на профилактику">
+              <p className="font-semibold">Реакция игрока на профилактику</p>
+              {Object.entries({before:'До',after:'После',nextMorning:'Следующим утром'}).map(([stage,label]) => <p key={stage} className="mt-2 text-xs">{label}: {meta.prehabReaction[stage] ? Object.entries(meta.prehabReaction[stage].pain).map(([zone,value]) => `${({ankle:'Голеностоп',achilles:'Ахилл',knee:'Колени',back:'Поясница',shoulder:'Плечи'})[zone]} ${value}/10`).join(' · ') : 'Оценка не получена'}{meta.prehabReaction[stage]?.retrospective ? ' · Внесено позже' : ''}{meta.prehabReaction[stage]?.note ? ` · ${meta.prehabReaction[stage].note}` : ''}</p>)}
+            </section>}
+
             {focus === 'inseason_prophylaxis' && <section className="mt-4 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.05] p-4 text-sm text-slate-300" aria-label="Методика профилактики">
-              <p className="font-semibold text-cyan-200">Профилактика: индивидуальная работа по разрешённым зонам</p>
-              <p className="mt-2">Подготовка движения → поддержание силы → контроль и выносливость → разгрузка. Запрет на одну область не обнуляет разрешённые направления.</p>
-              <p className="mt-2 text-xs text-slate-400">Без отдельного назначения работа с болевой зоной ограничена комфортной разгрузкой и наблюдением. Оценить реакцию до, после и следующим утром. Программа на будущую дату требует проверки перед выполнением.</p>
+              <p className="font-semibold text-cyan-200">Профилактика MD+2: восстановление и контроль движения</p>
+              <p className="mt-2">50 минут основной работы через день после матча; разминка и завершение отдельно. Мобильность → лёгкая работа на всё тело → баланс и стабилизация → индивидуальный блок по амплуа. RPE 2–4, без прыжков и отказа. Доза учитывает участие в матче, состояние и региональный допуск.</p>
+              <p className="mt-2 text-xs text-slate-400">Знакомые ключевые упражнения на контроль и баланс сохраняются, остальные ротируются. Жалобы ReadySix не считаются диагнозом: нагружающие болезненную область варианты исключаются, щадящие движения проверяет тренер. Игрок отмечает боль до, после и следующим утром; ухудшение ограничивает следующую программу. При ограничениях занятие сокращается, объём не восполняется ради 50 минут.</p>
             </section>}
 
             <div className="mt-4">

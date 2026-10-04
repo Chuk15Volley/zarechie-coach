@@ -1,80 +1,138 @@
-import { normalizeSessionTempoDescriptions, exerciseDescription } from '../lib/tempoDescription.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPrehabResult, PREHAB_VERSION } from '../lib/prehabMethodology.mjs';
 import { recommendGymSession } from '../lib/readySixGym.mjs';
-function fixture({ upper=100, lower=100, pain=false, future=false }={}) {
- const snapshot={player:{id:'synthetic'},readySixDecision:{recommendation:lower===0?'load_stop':'full',capPercent:lower===0?0:100,hardStopSignal:lower===0,
-  reasons:pain?['Боль Поясница; исключить осевую нагрузку']:[],targets:[
-   {target:'strength_upper',healthCapPercent:upper,capPercent:0,hardStopSignal:upper===0,planApplicability:'not_planned'},
-   {target:'strength_lower',healthCapPercent:lower,capPercent:0,hardStopSignal:lower===0,planApplicability:'not_planned'},
-  ]},...(future?{readySixPlanning:{preliminary:true,assessmentDate:'2026-09-17'}}:{})};
- const date=future?'2026-09-18':'2026-09-17';
- return {snapshot,recommendation:recommendGymSession({snapshot,targetDate:date}),date};
+import { PREHAB_FAMILIES } from '../lib/prehabCatalogue.mjs';
+import { auditExerciseVariety, buildExerciseVarietyContext, varietyExerciseKey } from '../lib/exerciseVariety.mjs';
+import { auditDose, buildDosePrescription } from '../lib/sessionDose.mjs';
+import { normalizeSessionTempoDescriptions, exerciseDescription } from '../lib/tempoDescription.mjs';
+const date = '2026-10-04';
+function fixture({ upper=100, lower=100, position='Доигровщик', pain=null, future=false }={}) {
+  const snapshot = { player:{id:'synthetic',position}, readySixDecision:{ recommendation:'full',capPercent:100,
+    targets:[{target:'strength_upper',healthCapPercent:upper},{target:'strength_lower',healthCapPercent:lower}] },
+    ...(pain ? { latestMorning:{ date,zoneDetails:{[pain]:{type:'pain',level10:3}} } } : {}),
+    ...(future ? {readySixPlanning:{preliminary:true,assessmentDate:'2026-10-03'}} : {}),
+  };
+  return { snapshot,date,recommendation:recommendGymSession({snapshot,targetDate:date}),matchLoad:{status:'medium',rpe:5},matchDate:'2026-10-02' };
 }
-const exercises=result=>result.session.blocks.flatMap(b=>b.exercises);
-const count=(result,region)=>exercises(result).filter(e=>e.prehabRegion===region).reduce((n,e)=>n+e.targetSets.length,0);
+const exercises = result => result.session.blocks.flatMap(block => block.exercises);
+const sets = result => exercises(result).reduce((sum,ex) => sum + ex.targetSets.length,0);
+const regionalSets = (result,region) => exercises(result).filter(ex => ex.prehabRegion === region).reduce((sum,ex) => sum + ex.targetSets.length,0);
 
-test('general prevention covers permitted chains and contains a complete structured session',()=>{
- const result=buildPrehabResult(fixture());
- assert.equal(result.focus,'inseason_prophylaxis'); assert.equal(result.session.methodology.version,PREHAB_VERSION);
- assert.equal(exercises(result).length,9); assert.equal(count(result,'upper'),7); assert.equal(count(result,'lower'),7);
- assert.equal(count(result,'unloaded'),2); assert.equal(result.autoSaved,false);
- assert.ok(exercises(result).every(e=>e.targetSets.length>0 && e.autoReg && e.cue && e.alternatives.length===0));
+test('MD+2 covers the whole body with four main-work budgets totaling 50, no warmup/cooldown counted', () => {
+  const result = buildPrehabResult(fixture());
+  assert.equal(result.session.methodology.version, PREHAB_VERSION);
+  assert.deepEqual(result.session.blocks.map(b => b.plannedMinutes), [10,15,10,15]);
+  assert.equal(result.session.methodology.timing.targetMainMinutes,50);
+  assert.equal(result.session.methodology.timing.warmupIncluded,false);
+  assert.equal(result.session.methodology.timing.cooldownIncluded,false);
+  assert.equal(result.session.methodology.timing.postMatchDay,2);
+  assert.equal(exercises(result).length,12);
+  assert.equal(sets(result),24);
+  assert.ok(regionalSets(result,'upper') > 0 && regionalSets(result,'lower') > 0);
+  assert.equal(auditDose(result.session,buildDosePrescription({focus:result.focus})).safe,true);
+  assert.equal(result.autoSaved,false);
+});
+for (const [position,key] of [['Центральная','middle'],['Доигровщик','outside'],['Диагональная','opposite'],['Связующая','setter'],['Либеро','libero'],['','general']]) {
+  test(`${position || 'unknown'} gets its own positional priorities without inferred injury diagnosis`, () => {
+    const result = buildPrehabResult(fixture({position}));
+    assert.equal(result.session.methodology.position,key);
+    assert.ok(result.session.methodology.positionPriorities);
+    assert.equal(result.session.methodology.localTherapyPrescribed,false);
+  });
+}
+test('participation and readiness change actual dose, not just the explanation', () => {
+  const input = fixture();
+  const standard = buildPrehabResult(input);
+  const high = buildPrehabResult({...input,matchLoad:{status:'high',rpe:9}});
+  const unknown = buildPrehabResult({...input,matchLoad:null});
+  const yellow = buildPrehabResult({...input,coachRecovery:'yellow'});
+  const red = buildPrehabResult({...input,coachRecovery:'red'});
+  assert.ok(sets(high) < sets(standard));
+  assert.ok(sets(unknown) < sets(standard));
+  assert.ok(sets(yellow) < sets(standard));
+  assert.ok(sets(red) <= sets(yellow));
+  assert.equal(high.session.methodology.timing.plannedMainMinutes,50);
+  assert.match(unknown.session.warnings,/неизвестна/);
+  assert.ok(red.session.methodology.timing.plannedMainMinutes < 50);
+});
+test('regional caps are applied separately to set ceilings; absent or contradictory permission is not approval', () => {
+  const standard = buildPrehabResult(fixture());
+  const reduced = buildPrehabResult(fixture({upper:50}));
+  assert.ok(regionalSets(reduced,'upper') <= Math.floor(regionalSets(standard,'upper')/2));
+  assert.equal(regionalSets(reduced,'lower'),regionalSets(standard,'lower'));
+  const regional = buildPrehabResult(fixture({lower:0}));
+  assert.equal(regionalSets(regional,'lower'),0);
+  assert.ok(regionalSets(regional,'upper') > 0);
+  for (const cap of [null,0,20]) assert.equal(buildPrehabResult(fixture({upper:cap,lower:cap})),null);
+  const input=fixture({lower:0}); input.recommendation.state.targets.push({...input.recommendation.state.targets[0]});
+  assert.equal(buildPrehabResult(input),null);
+});
+for (const [area,zone] of [['Голеностоп','ankle'],['Ахилл','achilles'],['Колени','knee'],['Поясница','back'],['Плечи','shoulder']]) {
+  test(`${area}: questionnaire complaint selects only unloaded comfortable options involving that zone`, () => {
+    const result = buildPrehabResult(fixture({pain:area}));
+    assert.ok(result.session.methodology.symptoms.zones.includes(zone));
+    assert.equal(result.session.methodology.localTherapyPrescribed,false);
+    assert.equal(result.quality.medicalReviewRequired,true);
+    const catalogue = Object.values(PREHAB_FAMILIES).flat();
+    for(const ex of exercises(result)) {
+      const source = catalogue.find(item=>item.name===ex.name);
+      if(source.zones.includes(zone)) {
+        assert.equal(ex.symptomAdapted,true);
+        assert.equal(ex.targetSets.length,1);
+        assert.match(ex.weightNote,/Без отягощения/);
+      }
+    }
+    assert.ok(exercises(result).some(ex=>!catalogue.find(item=>item.name===ex.name).zones.includes(zone)));
+  });
+}
+test('future questionnaires cannot affect current symptoms and soreness is not converted to pain', () => {
+  const input=fixture(); input.snapshot.latestMorning={date:'2026-10-05',zoneDetails:{Плечи:{type:'pain',level10:5}}};
+  input.snapshot.latestSurvey={date,zoneDetails:{Колени:{type:'soreness',level10:5}}};
+  assert.deepEqual(buildPrehabResult(input).session.methodology.symptoms.zones,[]);
+});
+test('worsening next-morning response constrains subsequent selection and dose', () => {
+  const input=fixture();
+  const reactions=[{date:'2026-10-01',before:{pain:{knee:0}},nextMorning:{pain:{knee:3}}}];
+  const result=buildPrehabResult({...input,reactions});
+  assert.deepEqual(result.session.methodology.symptoms.worsenedZones,['knee']);
+  assert.ok(sets(result)<sets(buildPrehabResult(input)));
+  assert.ok(!exercises(result).some(ex=>/сплит-присед|Вставание/.test(ex.name)));
+});
+test('repeat approved control anchors, rotate other exercises, and keep actual dose stable across sessions', () => {
+  const history=[];
+  for(let day=4;day<=9;day++) {
+    const target=`2026-10-${String(day).padStart(2,'0')}`;
+    const result=buildPrehabResult({...fixture(),date:target,recentSessions:history});
+    assert.equal(sets(result),24);
+    const previous=new Set(history.at(-1)?.session.blocks.flatMap(b=>b.exercises).map(e=>varietyExerciseKey(e.name)) || []);
+    for(const ex of exercises(result)) if(previous.has(varietyExerciseKey(ex.name))) assert.equal(ex.prehabRole,'control_anchor');
+    const context=buildExerciseVarietyContext(history,{targetDate:target,focus:result.focus});
+    assert.equal(auditExerciseVariety(result.session,context).needsCorrection,false);
+    history.push({date:target,focus:result.focus,session:result.session});
+  }
+});
+test('restriction tags and imminent match caps still apply after rotation', () => {
+  const input=fixture(); input.recommendation.calendar.daysToGame=1;
+  const result=buildPrehabResult({...input,playerRestrictions:['AXIAL','ANKLE']});
+  assert.ok(exercises(result).every(ex=>!Object.values(PREHAB_FAMILIES).flat().find(item=>item.name===ex.name).tags.some(tag=>['AXIAL','ANKLE'].includes(tag))));
+  assert.ok(sets(result)<24);
+  assert.equal(buildPrehabResult({...input,playerRestrictions:['UNKNOWN']}),null);
+  assert.equal(buildPrehabResult({...input,historyAvailable:false}),null);
+});
+test('saving and descriptions preserve controlled tempo and preliminary warnings', () => {
+  const result=buildPrehabResult(fixture({future:true}));
+  assert.match(result.session.warnings,/Предварительная/);
+  const normalized=normalizeSessionTempoDescriptions(result.session);
+  assert.deepEqual(normalizeSessionTempoDescriptions(normalized),normalized);
+  for(const ex of normalized.blocks.flatMap(b=>b.exercises)) assert.doesNotMatch(exerciseDescription(ex),/максимально резко/);
 });
 
-test('future regional prehab is not the old four-exercise fallback and never loads the blocked region',()=>{
- const input=fixture({lower:0,pain:true,future:true}); const before=structuredClone(input);
- const result=buildPrehabResult({...input,playerRestrictions:['AXIAL','JUMP']});
- assert.equal(exercises(result).length,6); assert.equal(count(result,'upper'),9); assert.equal(count(result,'lower'),0);
- assert.equal(result.session.methodology.localTherapyPrescribed,false);
- assert.equal(result.session.methodology.assessmentDate,'2026-09-17');
- assert.equal(result.session.methodology.targetDate,'2026-09-18');
- assert.match(result.session.warnings,/Предварительная/); assert.match(result.session.warnings,/нет отдельного назначения/);
- assert.equal(result.quality.medicalReviewRequired,true); assert.equal(result.quality.readySixState.hardStop,true);
- assert.deepEqual(input,before);
-});
-
-test('regional caps and coach reduction apply separately and never raise allowed set budgets',()=>{
- const result=buildPrehabResult({...fixture({upper:50,lower:100}),coachRecovery:'yellow'});
- assert.equal(count(result,'upper'),Math.floor(7*0.5*0.75));
- assert.equal(count(result,'lower'),Math.floor(7*0.75));
- const red=buildPrehabResult({...fixture({lower:0}),coachRecovery:'red'});
- assert.ok(count(red,'upper')<=Math.floor(9*0.6));
-});
-
-test('incompatible coach restrictions remove affected patterns',()=>{
- const result=buildPrehabResult({...fixture(),playerRestrictions:['SHOULDER','ANKLE','AXIAL']});
- assert.equal(result,null,'no compatible exercise remains');
- assert.equal(buildPrehabResult({...fixture(),playerRestrictions:['UNKNOWN']}),null);
-});
-
-test('missing, duplicate, empty and stopped permissions are not treated as healthy',()=>{
- for(const mode of ['missing','duplicate','null','stop','tiny']) {
-  const input=fixture({lower:0}); const targets=input.recommendation.state.targets;
-  if(mode==='missing') targets.splice(0,1);
-  if(mode==='duplicate') targets.push({...targets[0]});
-  if(mode==='null') targets[0].healthCapPercent=null;
-  if(mode==='stop') targets[0].hardStopSignal=true;
-  if(mode==='tiny') targets[0].healthCapPercent=20;
-  assert.equal(buildPrehabResult(input),null,mode);
- }
-});
-
-test('no local rehab is invented from an undiagnosed symptomatic shoulder',()=>{
- const input=fixture(); input.recommendation.state.detail='Боль плечо, нужна оценка';
- const result=buildPrehabResult(input);
- assert.equal(count(result,'upper'),0); assert.ok(count(result,'lower')>0);
- assert.equal(result.session.methodology.localTherapyPrescribed,false);
-});
-
-
-test('saving and player descriptions preserve controlled prehab tempo, including static work',()=>{
- const result=buildPrehabResult(fixture());
- const normalized=normalizeSessionTempoDescriptions(result.session);
- for(const exercise of normalized.blocks.flatMap(block=>block.exercises)) {
-  assert.doesNotMatch(exercise.cue,/максимально резко/);
-  assert.doesNotMatch(exerciseDescription(exercise),/максимально резко/);
- }
- assert.deepEqual(normalizeSessionTempoDescriptions(normalized),normalized,'normalization remains idempotent');
+test('a coach-entered light weight within prescribed RPE is allowed; heavy instructions still fail',()=>{
+  const result=buildPrehabResult(fixture());
+  const row=exercises(result).find(ex=>ex.name.includes('Тяга'));
+  row.weightKg=2;
+  assert.equal(auditDose(result.session,buildDosePrescription({focus:result.focus})).safe,true);
+  row.weightNote='RPE 8';
+  assert.equal(auditDose(result.session,buildDosePrescription({focus:result.focus})).safe,false);
 });

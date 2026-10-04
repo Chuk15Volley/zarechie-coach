@@ -1,3 +1,4 @@
+import PrehabReaction from '../../components/player/PrehabReaction';
 import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetitions, actualTarget, targetLabel, isCircuit, focusExerciseIndex, shortCue, needsLoadEntry, russianCount, playerLoadLabel, validActualWeight, setCompletionIssue, weightChangeSummary } from '../../lib/playerGym.mjs';
 // pages/player/[id].js
 // Individual player training page — shared link, mobile-first workout tracking.
@@ -173,6 +174,7 @@ export async function getServerSideProps({ params, query = {} }) {
       serverLog: serverLog || null,
       serverFeedback: serverFeedback || null,
       previousResults,
+      pendingPrehabDate: sessionDates.find(value => value === (() => { const d = new Date(`${date}T12:00:00Z`); d.setUTCDate(d.getUTCDate()-1); return d.toISOString().slice(0,10); })() && historyRecords.get(value)?.session?.kind === 'prehab_training_draft') || null,
       isMatchDayPrimer: record.quality?.seasonDecision?.key === 'match_day',
     },
   };
@@ -733,14 +735,14 @@ function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, is
       <div className="player-start-metrics">
         <div><Dumbbell aria-hidden="true" /><strong>{dose.exerciseCount}</strong><span>{russianCount(dose.exerciseCount, 'упражнение', 'упражнения', 'упражнений')}</span></div>
         <div><Layers3 aria-hidden="true" /><strong>{dose.totalSets}</strong><span>{russianCount(dose.totalSets, 'подход', 'подхода', 'подходов')}</span></div>
-        <div><Timer aria-hidden="true" /><strong>≈ {dose.estimatedMinutes}</strong><span>{russianCount(dose.estimatedMinutes, 'минута', 'минуты', 'минут')}</span></div>
+        <div><Timer aria-hidden="true" /><strong>≈ {session?.methodology?.timing?.plannedMainMinutes ?? dose.estimatedMinutes}</strong><span>{russianCount(session?.methodology?.timing?.plannedMainMinutes ?? dose.estimatedMinutes, 'минута', 'минуты', 'минут')}</span></div>
         <div><LayoutGrid aria-hidden="true" /><strong>{session?.blocks?.length || 0}</strong><span>{russianCount(session?.blocks?.length || 0, 'блок', 'блока', 'блоков')}</span></div>
       </div>
       <button type="button" className="player-start-button" onClick={onStart}>
         <span className="player-start-icon"><Play size={16} fill="currentColor" aria-hidden="true" /></span>
         Начать тренировку
       </button>
-      <p className="player-start-note">Результаты сохраняются автоматически.</p>
+      <p className="player-start-note">Результаты сохраняются автоматически.{session?.kind === 'prehab_training_draft' ? ' Указано время основной части с паузами; разминка и завершение отдельно. Оцени ощущения до старта в форме выше.' : ''}</p>
       <button type="button" className="gym-preview-toggle mb-3 w-full rounded-xl border border-white/15 px-4 py-3 text-sm font-bold text-slate-200" aria-expanded={previewOpen} aria-controls="workout-preview" onClick={() => setPreviewOpen(open => !open)}>
         <span>{previewOpen ? 'Скрыть упражнения' : 'Посмотреть упражнения'}</span><span aria-hidden="true">{previewOpen ? '−' : '+'}</span>
       </button>
@@ -839,7 +841,7 @@ function PlayerSplash({ visible }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog, serverFeedback, previousResults = {}, isMatchDayPrimer = false }) {
+function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog, serverFeedback, pendingPrehabDate = null, previousResults = {}, isMatchDayPrimer = false }) {
   const isUpcoming = !isToday && sessionDate > todayISO();
   const initialDone = serverLog?.done || {};
   const blocks = Array.isArray(session?.blocks) ? session.blocks : [];
@@ -1471,6 +1473,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         </div>}
         {timerVoice.message && <div className="player-voice-message" role="status">{timerVoice.message}<button type="button" onClick={timerVoice.test}>Проверить звук</button></div>}
         {!notFound && session && (!workoutStarted || completedAt || finishOpen) && <OfflineProgram token={token} date={sessionDate} session={session} lastContact={lastContact} />}
+        {!notFound && session?.kind === 'prehab_training_draft' && <PrehabReaction key={sessionDate} token={token} date={sessionDate} completed={!!completedAt || !!finishReason} />}
+        {!notFound && pendingPrehabDate && pendingPrehabDate !== sessionDate && <PrehabReaction key={pendingPrehabDate} token={token} date={pendingPrehabDate} morningOnly />}
         {/* ── Invalid token ── */}
         {notFound && (
           <div className="flex flex-col items-center justify-center px-6 py-24 text-center">

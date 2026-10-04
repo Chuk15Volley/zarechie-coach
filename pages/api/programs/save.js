@@ -1,3 +1,5 @@
+import { getRecentSessionRecords } from '../../../lib/sessionHistory';
+import { buildExerciseVarietyContext } from '../../../lib/exerciseVariety.mjs';
 import { approveProgramSession, approvedProgramLabel } from '../../../lib/programApproval.mjs';
 // pages/api/programs/save.js
 // POST { playerId, date, session, player, dataSummary, dayGoal } → persists a session.
@@ -59,6 +61,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'playerId, date and session are required' });
   }
 
+  let recentSessions;
+  try {
+    recentSessions = await getRecentSessionRecords(String(playerId), 12, workspace, date, { strict: true });
+  } catch {
+    return res.status(503).json({ error: 'Не удалось проверить предыдущую тренировку. Повторите сохранение после восстановления истории.' });
+  }
   const savedAt = new Date().toISOString();
   const normalizedSession = approveProgramSession(normalizeSessionTempoDescriptions(
     ensureSessionExerciseIds(sanitizeUnavailableEquipmentExercises(normalizeSavedWeights(session)))
@@ -66,6 +74,7 @@ export default async function handler(req, res) {
   const saveQuality = advisorySessionQuality(assessSessionQuality(normalizedSession, {
     focus,
     trainingType,
+    varietyContext: buildExerciseVarietyContext(recentSessions, { targetDate: date, focus, trainingType, seasonDecision: quality?.seasonDecision }),
     dosePrescription: quality?.dose?.prescription || buildDosePrescription({ focus, trainingType }),
     seasonDecision: quality?.seasonDecision || null,
     medicalReviewRequired: session.kind === 'prehab_training_draft' && (session.methodology?.mode === 'regional' || session.methodology?.preliminary === true),

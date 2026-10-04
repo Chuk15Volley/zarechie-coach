@@ -1,5 +1,6 @@
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
-import { preferVarietyCorrection } from '../../../lib/exerciseVariety.mjs';
+import { getRecentSessionRecords } from '../../../lib/sessionHistory';
+import { buildExerciseVarietyContext, preferVarietyCorrection } from '../../../lib/exerciseVariety.mjs';
 // pages/api/programs/generate-status.js
 // GET ?batchId=xxx -> polls a queued OpenAI background Responses API session.
 // While processing: { status: 'pending', processing_status }.
@@ -337,6 +338,15 @@ export default async function handler(req, res) {
     session = normalizeSessionTempoDescriptions(session);
     session = ensureSessionExerciseIds(session);
 
+    // Refresh after the model finishes: a prior-date program may have been
+    // saved while this job was running. Failure leaves the job retryable.
+    qualityContext.varietyContext = buildExerciseVarietyContext(
+      await getRecentSessionRecords(String(playerId), 12, workspace, date, { strict: true }),
+      { targetDate: date, focus: qualityContext.focus || focus,
+        trainingType: qualityContext.trainingType || trainingType,
+        seasonDecision: qualityContext.seasonDecision },
+    );
+
     let quality = assessSessionQuality(session, {
       ...qualityContext,
       focus: qualityContext.focus || focus,
@@ -374,7 +384,10 @@ export default async function handler(req, res) {
     // Compare the single repair attempt with its original candidate and keep
     // the better complete version.
     if (record.correctionAttempted && record.candidateSession && record.candidateQuality) {
-      const candidateQuality = record.candidateQuality;
+      const candidateQuality = assessSessionQuality(record.candidateSession, {
+        ...qualityContext, focus: qualityContext.focus || focus,
+        trainingType: qualityContext.trainingType || trainingType, playerRestrictions,
+      });
       const correctedIsBetter = preferVarietyCorrection(quality, candidateQuality);
       if (!correctedIsBetter) {
         session = record.candidateSession;

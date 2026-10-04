@@ -1,3 +1,4 @@
+import { getPrehabReactions } from '../../../lib/prehabReactionStore';
 import { parseSavedSession } from '../../../lib/sessionLabel';
 // pages/api/programs/get.js
 // GET ?playerId=&date= → previously saved (edited) session for that player+day, if any.
@@ -26,6 +27,9 @@ export default async function handler(req, res) {
     if (!raw) return res.status(200).json({ record: null });
     const { record } = parseSavedSession(raw);
     if (record?.session) record.session = sanitizeUnavailableEquipmentExercises(record.session);
+    if (record?.session?.kind === 'prehab_training_draft') {
+      [record.prehabReaction] = await getPrehabReactions(String(playerId), [date], workspace);
+    }
     return res.status(200).json({ record });
   } catch (e) {
     return res.status(500).json({ error: e.message });
