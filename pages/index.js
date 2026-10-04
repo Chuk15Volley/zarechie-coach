@@ -6443,9 +6443,9 @@ export default function Home() {
 
           {mainSection === 'workouts' && (<>
           <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
-          <section className="mb-6 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4 print:hidden sm:flex-row sm:items-center sm:justify-between" aria-label="Календарь тренера">
-            <div><p className="text-sm font-bold text-slate-100">Дата тренировки</p><p className="mt-1 text-xs text-slate-500">Выберите день. Состояние игрока — из ReadySix.</p></div>
-            <DatePicker navigate quickDays value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(todayISO(), 1)} className="w-full sm:max-w-sm" />
+          <section className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] pb-2 print:hidden" aria-label="Календарь тренера">
+            <p className="hidden text-xs font-semibold text-slate-400 sm:block">Дата тренировки</p>
+            <DatePicker navigate value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(todayISO(), 1)} size="sm" className="w-full sm:w-[310px]" />
           </section>
 
           {/* ── Workspace header (player selected) ── */}
