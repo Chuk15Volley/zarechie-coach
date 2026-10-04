@@ -1253,6 +1253,7 @@ function ExerciseCard({
   weightKg,
   loadUnits,
   tempo,
+  prehabRegion,
   autoReg,
   alternatives,
   cue,
@@ -1320,7 +1321,7 @@ function ExerciseCard({
   const rmSuggestion = useMemo(() => calcWeight(name, focus, week, oneRM, position), [name, focus, week, oneRM, position]);
   const effectiveSuggestedKg = suggestedKg || rmSuggestion?.kg || null;
   const hasDescriptionOverride = typeof descriptionOverride === 'string';
-  const displayedDescription = exerciseDescription({ name, tempo, cue, descriptionOverride });
+  const displayedDescription = exerciseDescription({ name, tempo, targetSets, prehabRegion, cue, descriptionOverride });
 
   async function handleRegenerate() {
     if (regenerating || !onRegenerate) return;
@@ -7993,6 +7994,7 @@ export default function Home() {
                           weightKg={ex.weightKg != null ? ex.weightKg : parseKgFromNote(ex.weightNote)}
                           loadUnits={loadUnitsForExercise(ex)}
                           tempo={ex.tempo || ''}
+                          prehabRegion={ex.prehabRegion}
                           autoReg={ex.autoReg || ''}
                           alternatives={ex.alternatives || []}
                           cue={ex.cue || ''}

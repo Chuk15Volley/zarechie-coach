@@ -101,3 +101,14 @@ test('dynamic timed exercises and repetition counts do not become static holds',
   assert.match(exerciseDescription({ name: 'Goblet Squat', tempo: '3-5-X-0', targetSets: ['30 сек'] }), /пауза внизу — 5 секунд/);
   assert.match(exerciseDescription({ name: 'Pallof Press ISO', tempo: '0-5-X-0', targetSets: ['6', '6'] }), /удерживай положение 5 секунд/);
 });
+
+
+test('prehab descriptions preserve smooth movement and calm unloaded breathing', () => {
+  for (const prehabRegion of ['lower', 'upper']) {
+    const description = exerciseDescription({ name: 'Мягкие движения стопой сидя', tempo: 'контролируемый', prehabRegion, cue: 'В комфортной амплитуде.' });
+    assert.match(description, /плавно и под контролем в обе стороны/);
+    assert.doesNotMatch(description, /максимально резко/);
+    assert.match(description, /В комфортной амплитуде/);
+  }
+  assert.match(exerciseDescription({ prehabRegion: 'unloaded', name: 'Дыхание' }), /спокойное дыхание без задержек и усилия/);
+});
