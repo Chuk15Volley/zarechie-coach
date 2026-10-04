@@ -17,6 +17,7 @@ function fixture({ upper=100, lower=100, position='Доигровщик', pain=n
 }
 const exercises = result => result.session.blocks.flatMap(block => block.exercises);
 const sets = result => exercises(result).reduce((sum,ex) => sum + ex.targetSets.length,0);
+const active = result => result.session.methodology.activeSeconds;
 const regionalSets = (result,region) => exercises(result).filter(ex => ex.prehabRegion === region).reduce((sum,ex) => sum + ex.targetSets.length,0);
 
 test('MD+2 covers the whole body with four main-work budgets totaling 50, no warmup/cooldown counted', () => {
@@ -48,13 +49,13 @@ test('participation and readiness change actual dose, not just the explanation',
   const unknown = buildPrehabResult({...input,matchLoad:null});
   const yellow = buildPrehabResult({...input,coachRecovery:'yellow'});
   const red = buildPrehabResult({...input,coachRecovery:'red'});
-  assert.ok(sets(high) < sets(standard));
-  assert.ok(sets(unknown) < sets(standard));
-  assert.ok(sets(yellow) < sets(standard));
-  assert.ok(sets(red) <= sets(yellow));
+  assert.ok(active(high) < active(standard));
+  assert.ok(active(unknown) < active(standard));
+  assert.ok(active(yellow) < active(standard));
+  assert.ok(active(red) <= active(yellow));
   assert.equal(high.session.methodology.timing.plannedMainMinutes,50);
   assert.match(unknown.session.warnings,/неизвестна/);
-  assert.ok(red.session.methodology.timing.plannedMainMinutes < 50);
+  assert.equal(red.session.methodology.timing.plannedMainMinutes,50);
 });
 test('regional caps are applied separately to set ceilings; absent or contradictory permission is not approval', () => {
   const standard = buildPrehabResult(fixture());
@@ -62,9 +63,9 @@ test('regional caps are applied separately to set ceilings; absent or contradict
   assert.ok(regionalSets(reduced,'upper') <= Math.floor(regionalSets(standard,'upper')/2));
   assert.equal(regionalSets(reduced,'lower'),regionalSets(standard,'lower'));
   const regional = buildPrehabResult(fixture({lower:0}));
-  assert.equal(regionalSets(regional,'lower'),0);
+  assert.ok(exercises(regional).filter(ex=>ex.prehabRegion==='lower').every(ex=>ex.symptomAdapted && /Без отягощения/.test(ex.weightNote))); 
   assert.ok(regionalSets(regional,'upper') > 0);
-  for (const cap of [null,0,20]) assert.equal(buildPrehabResult(fixture({upper:cap,lower:cap})),null);
+  for (const cap of [null,0,20]) { const draft=buildPrehabResult(fixture({upper:cap,lower:cap})); assert.equal(exercises(draft).length,12); assert.ok(exercises(draft).every(ex=>ex.symptomAdapted)); }
   const input=fixture({lower:0}); input.recommendation.state.targets.push({...input.recommendation.state.targets[0]});
   assert.equal(buildPrehabResult(input),null);
 });
@@ -97,7 +98,7 @@ test('worsening next-morning response constrains subsequent selection and dose',
   const result=buildPrehabResult({...input,reactions});
   assert.deepEqual(result.session.methodology.symptoms.worsenedZones,['knee']);
   assert.ok(sets(result)<sets(buildPrehabResult(input)));
-  assert.ok(!exercises(result).some(ex=>/сплит-присед|Вставание/.test(ex.name)));
+  assert.ok(!exercises(result).some(ex=>/Split Squat|Sit-to-Stand/.test(ex.name)));
 });
 test('repeat approved control anchors, rotate other exercises, and keep actual dose stable across sessions', () => {
   const history=[];
@@ -130,9 +131,34 @@ test('saving and descriptions preserve controlled tempo and preliminary warnings
 
 test('a coach-entered light weight within prescribed RPE is allowed; heavy instructions still fail',()=>{
   const result=buildPrehabResult(fixture());
-  const row=exercises(result).find(ex=>ex.name.includes('Тяга'));
+  const row=exercises(result).find(ex=>ex.name.includes('Row'));
   row.weightKg=2;
   assert.equal(auditDose(result.session,buildDosePrescription({focus:result.focus})).safe,true);
   row.weightNote='RPE 8';
   assert.equal(auditDose(result.session,buildDosePrescription({focus:result.focus})).safe,false);
+});
+
+
+test('partially permitted players receive 12 English-named stations and 50 minutes without forbidden regions', () => {
+ for (const [upper,lower] of [[100,0],[0,100],[40,0],[0,25]]) {
+  const result=buildPrehabResult(fixture({upper,lower}));
+  assert.ok(result);
+  assert.equal(exercises(result).length,12);
+  assert.equal(result.session.methodology.timing.plannedMainMinutes,50);
+  for (const ex of exercises(result)) {
+   assert.doesNotMatch(ex.name,/[А-Яа-яЁё]/);
+   if ((ex.prehabRegion==='upper'?upper:lower)<=20) assert.equal(ex.symptomAdapted,true);
+   assert.ok(ex.activeSecondsPerSet>0);
+   assert.ok(ex.activeSecondsPerSet*ex.targetSets.length*(ex.targetSets[0].includes('/ст.')?2:1)<ex.stationMinutes*60);
+   assert.doesNotMatch(exerciseDescription(ex),/максимально резко/);
+  }
+ }
+});
+test('complaints change individual tasks while preserving session stations', () => {
+ const normal=buildPrehabResult(fixture());
+ for (const pain of ['Голеностоп','Ахилл','Колени','Поясница','Плечи']) {
+  const changed=buildPrehabResult(fixture({pain}));
+  assert.equal(exercises(changed).length,12);
+  assert.notDeepEqual(changed.session.blocks.at(-1).exercises.map(ex=>ex.name),normal.session.blocks.at(-1).exercises.map(ex=>ex.name));
+ }
 });
