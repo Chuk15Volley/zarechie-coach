@@ -2097,8 +2097,10 @@ export default function Home() {
   const [playerId, setPlayerId] = useState('');
   const [date, setDate] = useState(todayISO());
   const dateDrafts = useRef(new Map());
+  const draftOpenRequest = useRef(0);
   function changeTrainingDate(nextDate) {
     if (nextDate === date || loading || batchId || saving || batchRunning || weekPlanLoading) return;
+    draftOpenRequest.current++;
     const key = value => `${workspace}:${playerId}:${value}`;
     dateDrafts.current.set(key(date), { session, meta, justSaved, autoSaved, dayGoal, notes, sessionType, period, focus, trainingType, powerMode, strengthMode });
     const draft = dateDrafts.current.get(key(nextDate));
@@ -2413,7 +2415,7 @@ export default function Home() {
       .catch(err => { setError(err.message); stopGenProgress(false); })
       .finally(() => { setBatchId(null); setLoading(false); setResuming(false); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, playerId, date]);
+  }, [apiKey, playerId, date, workspace]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -2535,7 +2537,10 @@ export default function Home() {
     )
       .then(r => r.json())
       .then(data => {
-        if (!cancelled) setPendingSaved(data.record || null);
+        if (!cancelled) {
+          setPendingSaved(data.record || null);
+          if (data.record && !dateDrafts.current.get(`${workspace}:${playerId}:${date}`)?.session) loadSavedRecord(data.record);
+        }
       })
       .catch(() => {
         if (!cancelled) setPendingSaved(null);
@@ -2543,7 +2548,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [apiKey, playerId, date]);
+  }, [apiKey, playerId, date, workspace]);
 
   // Reset trends when player changes
   useEffect(() => {
@@ -3106,7 +3111,9 @@ export default function Home() {
   }
 
   function selectPlayer(p) {
+    draftOpenRequest.current++;
     setSelectedPlayer(p);
+    setPendingSaved(null);
     setPlayerId(p.id);
     setSession(null);
     setMeta(null);
@@ -3769,11 +3776,20 @@ export default function Home() {
   }
 
   async function openBatchDraft(result) {
-    setPlayerId(result.playerId);
-    setSelectedPlayer(players.find(player => String(player.id) === String(result.playerId)) || null);
+    const player = players.find(player => String(player.id) === String(result.playerId));
+    if (player) selectPlayer(player);
+    setMainSection('workouts'); setWorkspaceTab('program');
+    const requestId = draftOpenRequest.current;
     setError('');
-    try { await pollBatchResult(result.batchId, 'Профилактика · черновик'); }
-    catch (error) { setError(error.message); }
+    try {
+      const response = await fetch(`/api/programs/get?playerId=${encodeURIComponent(result.playerId)}&date=${encodeURIComponent(date)}&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } });
+      const data = await response.json();
+      if (requestId !== draftOpenRequest.current) return;
+      if (!response.ok) throw new Error(data.error || 'Не удалось открыть программу');
+      if (data.record) { setPendingSaved(data.record); loadSavedRecord(data.record); }
+      else if (result.batchId) await pollBatchResult(result.batchId, 'Профилактика · черновик');
+      else throw new Error('Программа для выбранной даты не найдена');
+    } catch (error) { setError(error.message); }
   }
 
   async function handleGenerate(e) {
@@ -3995,21 +4011,25 @@ export default function Home() {
     }
   }
 
-  function loadSavedRecord() {
-    if (!pendingSaved) return;
-    const savedStrengthMode = pendingSaved.strengthMode
-      || pendingSaved.quality?.dose?.prescription?.strengthContext?.selectedMode
+  function loadSavedRecord(record = pendingSaved) {
+    if (!record) return;
+    if (record.focus) setFocus(record.focus);
+    if (record.trainingType) setTrainingType(record.trainingType);
+    setSessionType('gym');
+    const savedStrengthMode = record.strengthMode
+      || record.quality?.dose?.prescription?.strengthContext?.selectedMode
       || null;
     if (savedStrengthMode) setStrengthMode(savedStrengthMode);
-    setSession(pendingSaved.session);
+    setSession(record.session);
     setMeta({
-      player: pendingSaved.player,
-      dataSummary: pendingSaved.dataSummary,
-      prehabReaction: pendingSaved.prehabReaction || null,
-      date: pendingSaved.date,
-      quality: pendingSaved.quality || null,
-      focus: pendingSaved.focus || focus,
-      trainingType: pendingSaved.trainingType || trainingType,
+      player: record.player,
+      dataSummary: record.dataSummary,
+      prehabReaction: record.prehabReaction || null,
+      date: record.date,
+      quality: record.quality || null,
+      focusLabel: record.trainingLabel || '',
+      focus: record.focus || focus,
+      trainingType: record.trainingType || trainingType,
       strengthMode: savedStrengthMode,
     });
     setError('');
@@ -4921,7 +4941,7 @@ export default function Home() {
                 {/* Date + refresh */}
                 <div className="mb-2 flex items-center gap-2 px-1">
                   <DatePicker navigate quickDays value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(todayISO(), 1)} size="sm" className="flex-1" />
-                  <button type="button" onClick={loadTeamStatus} disabled={teamStatusLoading} className="shrink-0 text-slate-600 hover:text-accent transition" title="Обновить">
+                  <button type="button" onClick={() => loadTeamStatus()} disabled={teamStatusLoading} className="shrink-0 text-slate-600 hover:text-accent transition" title="Обновить">
                     <RefreshCw size={11} className={teamStatusLoading ? 'animate-spin' : ''} />
                   </button>
                 </div>
@@ -5089,7 +5109,7 @@ export default function Home() {
                       {/* Player info — click to open */}
                       <button
                         type="button"
-                        onClick={() => selectPlayer(p)}
+                        onClick={() => batchRow?.status === 'done' && batchRow.draft ? openBatchDraft(batchRow) : selectPlayer(p)}
                         className="flex flex-1 min-w-0 items-center gap-2 text-left"
                       >
                         <span className={`shrink-0 h-1.5 w-1.5 rounded-full ${positionDot(p.position)}`} />
@@ -5121,7 +5141,7 @@ export default function Home() {
                             batchRow.status === 'generating' ? 'text-accent' :
                             'text-slate-600'
                           }`}>
-                            {batchRow.status === 'done'       ? '✓' :
+                            {batchRow.status === 'done'       ? (batchRow.draft ? 'Черновик' : '✓') :
                              batchRow.status === 'error'      ? '✗' :
                              batchRow.status === 'generating' ? '…' : '·'}
                           </span>
@@ -5136,8 +5156,8 @@ export default function Home() {
                           </span>
                         )}
                         {!batchRow && st && !batchRunning && (
-                          <span className={`text-[11px] ${st.hasSession ? 'text-emerald-500' : 'text-slate-700'}`}>
-                            {st.hasSession ? '✓' : '—'}
+                          <span className={`text-[11px] ${st.hasSession || st.hasDraft ? 'text-emerald-500' : 'text-slate-700'}`}>
+                            {st.hasDraft ? 'Черновик' : st.hasSession ? '✓' : '—'}
                           </span>
                         )}
                       </div>
@@ -6444,7 +6464,7 @@ export default function Home() {
           {mainSection === 'workouts' && (<>
           <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
           <section className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] pb-2 print:hidden" aria-label="Календарь тренера">
-            <p className="hidden text-xs font-semibold text-slate-400 sm:block">Дата тренировки</p>
+            <p className="hidden text-xs font-semibold text-slate-400 sm:block">Дата тренировки{leftTab === 'day' && Object.values(teamStatus).some(status => status.hasDraft) && <span className="ml-3 text-cyan-300">Черновики: {Object.values(teamStatus).filter(status => status.hasDraft).length}</span>}</p>
             <DatePicker navigate value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(todayISO(), 1)} size="sm" className="w-full sm:w-[310px]" />
           </section>
 
@@ -7171,11 +7191,11 @@ export default function Home() {
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/20 bg-accent/[0.05] px-4 py-3 animate-fade-in">
                 <span className="flex items-center gap-2 text-xs font-medium text-accent/80">
                   <History size={13} />
-                  Для этой даты есть сохранённая тренировка
+                  {pendingSaved.draft ? 'Для этой даты сохранён черновик для проверки' : 'Для этой даты есть сохранённая тренировка'}
                 </span>
                 <button
                   type="button"
-                  onClick={loadSavedRecord}
+                  onClick={() => loadSavedRecord()}
                   className="rounded-lg border border-accent/25 bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent transition hover:bg-accent/20"
                 >
                   Загрузить

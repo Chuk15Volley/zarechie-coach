@@ -1,3 +1,4 @@
+import { generatedDraftKey, generatedDraftRecord } from '../../../lib/generatedDraft.mjs';
 // pages/api/programs/generate-async.js
 // POST { playerId, date, dayGoal, days, focus, trainingType, notes, warmupSummary, teamUsedExercises, autoSave }
 // Queues one gym-session generation for the polling endpoint. The public contract stays
@@ -29,6 +30,8 @@ export default async function handler(req, res) {
     if (inputs.error) return res.status(inputs.status || 400).json({ error: inputs.error });
     if (inputs.readyResult) {
       const batchId = `openai-gen-${crypto.randomUUID()}`;
+      const draft = generatedDraftRecord(inputs.readyResult, req.body || {});
+      if (draft) await redis('set', generatedDraftKey(workspace, String(playerId), draft.date), JSON.stringify(draft));
       await redis('set', `coach:batch:${batchId}`, JSON.stringify({ ...inputs.readyResult, workspace, playerId: String(playerId), status: 'done' }), 'EX', 3600);
       return res.status(200).json({ batchId, estimatedMinutes: 0 });
     }

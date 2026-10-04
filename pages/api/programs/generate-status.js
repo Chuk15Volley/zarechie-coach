@@ -1,3 +1,4 @@
+import { generatedDraftKey, generatedDraftRecord } from '../../../lib/generatedDraft.mjs';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 import { getRecentSessionRecords } from '../../../lib/sessionHistory';
 import { buildExerciseVarietyContext, preferVarietyCorrection } from '../../../lib/exerciseVariety.mjs';
@@ -209,6 +210,8 @@ export default async function handler(req, res) {
       }
       if (refreshed.readyResult) {
         const result = { ...refreshed.readyResult, status: 'done' };
+        const draft = generatedDraftRecord(result, record.generationRequest);
+        if (draft) await redis('set', generatedDraftKey(record.workspace, record.playerId, draft.date), JSON.stringify(draft));
         await redis('set', `coach:batch:${batchId}`, JSON.stringify({ ...record, ...result, qualityContext: {} }), 'EX', 3600);
         return res.status(200).json(result);
       }

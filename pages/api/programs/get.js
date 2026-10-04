@@ -1,3 +1,4 @@
+import { generatedDraftKey } from '../../../lib/generatedDraft.mjs';
 import { getPrehabReactions } from '../../../lib/prehabReactionStore';
 import { parseSavedSession } from '../../../lib/sessionLabel';
 // pages/api/programs/get.js
@@ -23,9 +24,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const raw = await redis('get', sessionKey(workspace, playerId, date));
+    const draftRaw = await redis('get', generatedDraftKey(workspace, playerId, date));
+    const savedRaw = await redis('get', sessionKey(workspace, playerId, date));
+    const draft = typeof draftRaw === 'string' ? JSON.parse(draftRaw) : draftRaw;
+    const saved = typeof savedRaw === 'string' ? JSON.parse(savedRaw) : savedRaw;
+    const raw = draft && (!saved || draft.generatedAt > saved.savedAt) ? draft : saved;
     if (!raw) return res.status(200).json({ record: null });
-    const { record } = parseSavedSession(raw);
+    const { record } = raw?.draft ? { record: raw } : parseSavedSession(raw);
     if (record?.session) record.session = sanitizeUnavailableEquipmentExercises(record.session);
     if (record?.session?.kind === 'prehab_training_draft') {
       [record.prehabReaction] = await getPrehabReactions(String(playerId), [date], workspace);

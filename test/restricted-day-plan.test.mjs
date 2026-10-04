@@ -1,3 +1,4 @@
+import { generatedDraftKey, generatedDraftRecord } from '../lib/generatedDraft.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -42,7 +43,8 @@ test('queued restriction completes without model calls or workout writes, includ
   const deps = { isAuthorized:()=>true, enforceRateLimit:async()=>true,
     crypto:{randomUUID:()=> '11111111-1111-1111-1111-111111111111'},
     buildGenerationInputs:async()=>({readyResult:result}),
-    redis:async(cmd,key,value)=> { assert.match(key,/^coach:batch:/); if(cmd==='set') stored=JSON.parse(value); else return stored; },
+    generatedDraftKey, generatedDraftRecord,
+    redis:async(cmd,key,value)=> { if(key.includes(':program-draft:')) { assert.equal(JSON.parse(value).draft,true); return 'OK'; } assert.match(key,/^coach:batch:/); if(cmd==='set') stored=JSON.parse(value); else return stored; },
   };
   const response=()=>({status(code){this.code=code;return this;},json(body){this.body=body;return this;}});
   let res=response();

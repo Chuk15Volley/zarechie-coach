@@ -1,3 +1,4 @@
+import { generatedDraftKey } from '../../../lib/generatedDraft.mjs';
 // pages/api/programs/team-status.js
 // POST { playerIds, date } → gym session status for each player on that date.
 // Returns: hasSession, savedAt, feedback (RPE/feel from player self-report).
@@ -52,6 +53,7 @@ export default async function handler(req, res) {
       ['GET', adaptationOutcomeKey(workspace, sid)],
     ];
   })).catch(() => []);
+  const drafts = await redisPipeline(playerIds.map(id => ['GET', generatedDraftKey(workspace, String(id), date)]));
   playerIds.forEach((id, index) => {
     const sid = String(id);
     const offset = index * 11;
@@ -91,7 +93,9 @@ export default async function handler(req, res) {
     const returnToPlay = evaluateReturnToPlay(parseJSON(rawReturnToPlay, {}), date);
     const injuryLog = parseJSON(rawInjuryLog, null) || parseJSON(rawAlternateInjuryLog, []) || [];
     const activeInjuries = (Array.isArray(injuryLog) ? injuryLog : []).filter(item => item?.status === 'active' || item?.status === 'monitoring').slice(0, 6);
+    const draft = parseJSON(drafts[index]);
     const playerStatus = {
+      hasDraft: !!draft && (!savedAt || draft.generatedAt > savedAt),
       hasSession,
       savedAt,
       feedback,
