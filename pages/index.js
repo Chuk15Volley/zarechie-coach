@@ -3719,7 +3719,7 @@ export default function Home() {
     const submitRes = await fetch('/api/programs/generate-async', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, trainingType, powerMode, strengthMode, notes, coachRecovery: recoveryStatus, workspace, autoSave: true }),
+      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, trainingType, powerMode, strengthMode, notes, coachRecovery: recoveryStatus, workspace, manualMethodSelection: true, autoSave: true }),
     });
     const submitData = await submitRes.json().catch(() => ({}));
     if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
@@ -3858,6 +3858,7 @@ export default function Home() {
           warmupSummary,
           coachRecovery: recoveryStatus,
           workspace,
+          manualMethodSelection: true,
           autoSave: false,
         }),
       });
@@ -3962,6 +3963,7 @@ export default function Home() {
             teamUsedExercises: usedExercises,
             coachRecovery: recoveryStatus,
             workspace,
+            manualMethodSelection: true,
             planningMode: 'week',
             microcycleSlot: i + 1,
           }),
@@ -6973,7 +6975,7 @@ export default function Home() {
                     ))}
                   </div>
                 )}
-                <p className="mt-3 text-[11px] text-slate-600">Параметры берутся из панели слева: период, тип тренировки, комментарий тренера.</p>
+                <p className="mt-3 text-[11px] text-slate-600">Выбранная методика имеет приоритет. Автоматические лимиты ReadySix не применяются; боли и медицинские ограничения учитываются.</p>
               </div>
             </div>
           )}

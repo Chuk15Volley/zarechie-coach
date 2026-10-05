@@ -15,3 +15,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 <!-- END:nextjs-agent-rules -->
 
 - User clarification 2026-10-05: automatic ReadySix red status/percentage may be overridden only to produce a symptom-adapted coach-review draft of any selected method. Medical contraindications and acute/systemic red flags remain binding. Development strength follows docs/strength-development-v2.md; full Green main work 40–50 min, exact-exercise completed kg/RPE, all exercises rotate weekly. Never claim a light adaptation provides a heavy development stimulus.
+
+- User-approved manual selection policy (2026-10-05): explicit coach workout selection overrides automatic ReadySix statuses and percentage caps for every method in both spaces. Medical contraindications, pain-based regional adaptations and coach prohibitions remain binding. See docs/manual-method-selection.md. This supersedes earlier automatic strength readiness limits for manual generation only.

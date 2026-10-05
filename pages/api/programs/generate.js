@@ -1,3 +1,4 @@
+import { MANUAL_METHOD_POLICY, manualMethodRecommendation } from '../../../lib/manualMethod.mjs';
 import { buildStrengthDevelopmentDraft } from '../../../lib/strengthDevelopmentDraft.mjs';
 import { buildCoachAdaptation } from '../../../lib/coachAdaptation.mjs';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
@@ -1546,8 +1547,10 @@ export function systemPromptForGeneration(focus = '', workspace = 'zarechie') {
 // (generate-async.js) so both produce byte-identical prompts. Returns either
 // { error, status } on failure or { snapshot, userPrompt, dataSummary, targetDate, dayGoal }.
 export async function buildGenerationInputs(body) {
-  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', powerMode = 'auto', strengthMode = 'maintenance', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie', planningMode = '', microcycleSlot = null } = body || {};
+  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', powerMode = 'auto', strengthMode = 'maintenance', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie', planningMode = '', microcycleSlot = null, manualMethodSelection = null } = body || {};
   if (!playerId) return { error: 'playerId required', status: 400 };
+  // Cached coach clients already send an explicit focus, before the policy flag existed.
+  const manualMethod = manualMethodSelection === true || (manualMethodSelection == null && typeof body?.focus === 'string' && body.focus !== '' && body.focus !== 'inseason');
   const wpfx = pfx(workspace);
 
   const today = todayISO();
@@ -1602,13 +1605,14 @@ export async function buildGenerationInputs(body) {
   if (focus === 'inseason_prophylaxis' && !gymRecommendation) {
     return { error: 'Для профилактики требуется актуальное решение ReadySix по разрешённым зонам. Обновите данные игрока.', status: 422 };
   }
-  const adaptedResult = buildCoachAdaptation({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal, focus, strengthMode, playerRestrictions: parseJSONSafe(rawRestrictions, []), recentSessions: recentSessionRecords, historyAvailable: prehabHistoryAvailable, coachRecovery });
+  const adaptedResult = buildCoachAdaptation({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal, focus, strengthMode, playerRestrictions: parseJSONSafe(rawRestrictions, []), recentSessions: recentSessionRecords, historyAvailable: prehabHistoryAvailable, coachRecovery, manualMethodSelection: manualMethod });
   if (adaptedResult) return { targetDate, dayGoal, readyResult: adaptedResult };
+  const methodRecommendation = manualMethodRecommendation(gymRecommendation, manualMethod);
   // Server-only development generation: clinical data never enter a model prompt.
   if (focus === 'inseason_strength' && strengthMode === 'development') {
     if (!gymRecommendation) return { error: 'Для развивающей силовой нужны данные ReadySix; внешняя генерация не запускается.', status: 422 };
     try {
-      const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal, recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+      const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
       return { targetDate, dayGoal, readyResult };
     } catch (error) {
       const readyResult = restrictedDayPlan({ snapshot, recommendation: { ...gymRecommendation, reasons: [...gymRecommendation.reasons, error.message] }, date: targetDate, dayGoal, allowRegionalDraft: false });
@@ -1628,12 +1632,13 @@ export async function buildGenerationInputs(body) {
     } catch {
       return { error: 'Не удалось проверить игровую нагрузку или реакцию после профилактики. Повторите запрос.', status: 503 };
     }
-    const readyResult = buildPrehabResult({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal,
+    const readyResult = buildPrehabResult({ snapshot, recommendation: methodRecommendation, date: targetDate, dayGoal,
       playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery, recentSessions: recentSessionRecords, historyAvailable: prehabHistoryAvailable,
       reactions, matchDate, matchLoad: parseJSONSafe(matchLoads, {})?.[String(playerId)] || null });
+    if (readyResult && manualMethod) { readyResult.quality.readySixState = gymRecommendation.state; readyResult.session.methodology.manualMethodSelection = true; }
     return { targetDate, dayGoal, readyResult: readyResult || restrictedDayPlan({ snapshot, recommendation: { ...gymRecommendation, reasons: [...gymRecommendation.reasons, 'Недостаточно безопасных вариантов с учётом допуска, симптомов и предыдущей реакции; нагрузка не назначена.'] }, date: targetDate, dayGoal, allowRegionalDraft: false }) };
   }
-  const readySixIssue = readySixGenerationIssue(gymRecommendation, focus);
+  const readySixIssue = manualMethod ? null : readySixGenerationIssue(gymRecommendation, focus);
   if (readySixIssue) {
     if (['recovery', 'activation', 'match_day'].includes(gymRecommendation.key) && gymRecommendation.focus) {
       return buildGenerationInputs({ ...body, focus: gymRecommendation.focus, trainingType: gymRecommendation.trainingType });
@@ -1668,7 +1673,7 @@ export async function buildGenerationInputs(body) {
   );
   let seasonDecision = manualMatchDayRequested
     ? resolveManualMatchDaySession({ targetDate, consecutiveGameDay: gymRecommendation ? gymRecommendation.calendar.consecutiveGameDay || 1 : previousManualMatchDays + 1 })
-    : !gymRecommendation && usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
+    : !manualMethod && !gymRecommendation && usesSeasonCalendar(workspace) && isInSeasonFocus(focus)
       ? resolveSeasonSession({
       events: Array.isArray(scheduleEvents) ? scheduleEvents : [],
       targetDate,
@@ -1690,7 +1695,7 @@ export async function buildGenerationInputs(body) {
   }
   let focusDowngradeNote = '';
   let powerKpiRecovery = 'green';
-  if (!snapshot.readySixMeta && workspace === 'zarechie' && effectiveFocus === 'inseason_power') {
+  if (!manualMethod && !snapshot.readySixMeta && workspace === 'zarechie' && effectiveFocus === 'inseason_power') {
     const kpis = performanceKpis(snapshot.neuro, targetDate);
     const depressed = [kpis.rsi, kpis.cmj, kpis.sprint10m]
       .filter(metric => metric.value != null && !metric.stale && metric.meaningfulDecline);
@@ -1717,7 +1722,7 @@ export async function buildGenerationInputs(body) {
     matchDayAutomaticRecoveryStatus(readiness.decision, seasonDecision?.key === 'match_day' && effectiveFocus !== 'inseason_strength'),
     powerKpiRecovery,
   );
-  const effectiveRecovery = strictestRecoveryStatus(coachRecovery, automaticDoseRecovery);
+  const effectiveRecovery = manualMethod ? coachRecovery : strictestRecoveryStatus(coachRecovery, automaticDoseRecovery);
   // For this manual method the calendar is not a session selector. Match load
   // is still appended as context, while readiness controls Green/Yellow/Red.
   if (effectiveFocus === 'inseason_strength') seasonDecision = null;
@@ -1726,7 +1731,7 @@ export async function buildGenerationInputs(body) {
     seasonDecision,
     position: snapshot.player?.position || '',
     recoveryStatus: effectiveRecovery,
-    requestedMode: gymRecommendation?.calendar.daysToGame === 2 || gymRecommendation?.calendar.congested ? 'microdose' : powerMode,
+    requestedMode: !manualMethod && (gymRecommendation?.calendar.daysToGame === 2 || gymRecommendation?.calendar.congested) ? 'microdose' : powerMode,
   });
   const oneRmHistory = parseJSONSafe(raw1RMHistory, []);
   const oneRmFreshness = assessOneRmFreshness(oneRmHistory, targetDate);
@@ -1743,7 +1748,7 @@ export async function buildGenerationInputs(body) {
     oneRmFreshness,
     shoulderConcern: freshShoulderConcern,
   });
-  if (powerContext?.mode === 'recovery') {
+  if (!manualMethod && powerContext?.mode === 'recovery') {
     effectiveFocus = 'inseason_prophylaxis';
     effectiveTrainingType = 'recovery_prehab';
     focusDowngradeNote = '';
@@ -1790,7 +1795,7 @@ export async function buildGenerationInputs(body) {
   let { userPrompt, dataSummary } = buildUserPrompt({
     snapshot, sessionSummaries, rawSchedule: gymRecommendation ? null : rawSchedule, raw1RM: strengthContext ? null : raw1RM, rawFeedbacks,
     actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType: effectiveTrainingType, notes, warmupSummary, teamUsedExercises, coachRecovery, microcycleSlot,
-    playbookText, workspace, seasonDecision,
+    playbookText, workspace, seasonDecision, manualMethodSelection: manualMethod,
   });
   const varietyContext = buildExerciseVarietyContext(recentSessionRecords, {
     targetDate, focus: effectiveFocus, trainingType: effectiveTrainingType, seasonDecision,
@@ -1827,7 +1832,7 @@ export async function buildGenerationInputs(body) {
     powerContext,
     strengthContext,
   });
-  if (gymRecommendation) {
+  if (gymRecommendation && !manualMethod) {
     dosePrescription = applyReadySixGymDose(dosePrescription, gymRecommendation);
     const gymText = formatReadySixGymContext(gymRecommendation);
     userPrompt += gymText;
@@ -1836,7 +1841,7 @@ export async function buildGenerationInputs(body) {
   const doseText = formatDosePrescriptionForPrompt(dosePrescription);
   userPrompt += doseText;
   dataSummary += doseText;
-  if (effectiveRecovery !== coachRecovery || powerContext?.mode === 'recovery' || strengthContext?.doseStatus !== 'green') {
+  if (!manualMethod && (effectiveRecovery !== coachRecovery || powerContext?.mode === 'recovery' || strengthContext?.doseStatus !== 'green')) {
     const readinessNote = `\n⚠ АВТОМАТИЧЕСКАЯ КОРРЕКЦИЯ ДОЗЫ: ${readiness.decision.label}. ${readiness.decision.detail} `
       + (powerContext?.mode === 'recovery'
         ? 'Красный статус отменяет мощностную работу: назначь recovery/prehab без прыжков и тяжёлой силы.\n'
@@ -1898,7 +1903,7 @@ export async function buildGenerationInputs(body) {
     dataSummary,
     targetDate,
     dayGoal,
-    systemPrompt: systemPromptForGeneration(effectiveFocus, workspace) + (strengthMethodText ? `\nОБЯЗАТЕЛЬНАЯ МЕТОДИКА СИЛОВОЙ: следующие правила заменяют общие указания выше о сохранении якорей, дозировке и прогрессии.\n${strengthMethodText}` : '') + (snapshot.readySixMeta
+    systemPrompt: systemPromptForGeneration(effectiveFocus, workspace) + (strengthMethodText ? `\nОБЯЗАТЕЛЬНАЯ МЕТОДИКА СИЛОВОЙ: следующие правила заменяют общие указания выше о сохранении якорей, дозировке и прогрессии.\n${strengthMethodText}` : '') + (manualMethod ? `\n${MANUAL_METHOD_POLICY}` : snapshot.readySixMeta
       ? '\nПРИОРИТЕТ ИСТОЧНИКА: состояние, допуск и ограничения определяет только ReadySix. Не пересчитывай статус по порогам Recovery/HRV/DOMS/CMJ из общих инструкций выше. Аналитические показатели — контекст, не отдельный алгоритм допуска. Составляй только программу зала по выбранному методу в переданном бюджете и ограничениях календаря. Более строгие ограничения тренера сохраняются.' : ''),
     effectiveFocus,
     effectiveTrainingType,
@@ -1915,6 +1920,7 @@ export async function buildGenerationInputs(body) {
       trainingType: effectiveTrainingType,
       recentSessionSummaries: sessionSummaries,
       varietyContext,
+      manualMethodSelection: manualMethod,
       readySixState: gymRecommendation?.state || null,
       gymRecommendation,
       dosePrescription,
@@ -2075,9 +2081,9 @@ export default async function handler(req, res) {
 }
 
 // ── Extracted prompt assembly (shared via buildGenerationInputs) ──────────────
-function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie', microcycleSlot = null, seasonDecision = null }) {
+function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = [], rawSchedule = null, raw1RM = null, rawFeedbacks = [], targetDate, dayGoal = '', focus = 'inseason', trainingType = '', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', playbookText = '', workspace = 'zarechie', microcycleSlot = null, seasonDecision = null, manualMethodSelection = false }) {
   let dataSummary = summarizeSnapshot(snapshot, workspace);
-  if (snapshot.readySixDecision) {
+  if (snapshot.readySixDecision && !manualMethodSelection) {
     const decision = snapshot.readySixDecision;
     const strengthTargets = (decision.targets || []).filter(target =>
       target.target === 'strength_upper' || target.target === 'strength_lower'
@@ -2098,6 +2104,7 @@ function buildUserPrompt({ snapshot, sessionSummaries = [], actualSummaries = []
     ].filter(Boolean).join('\n');
     dataSummary += `\n${block}`;
   }
+  if (manualMethodSelection) dataSummary += `\n${MANUAL_METHOD_POLICY}`;
   const freshEveningContext = eveningSafetyContext(snapshot.surveys, targetDate, snapshot.latestSurvey);
   const freshPostMorningContext = postMorningSafetyContext(snapshot.postMorningSurveys, targetDate, snapshot.latestPostMorning);
 
