@@ -1,3 +1,4 @@
+import { buildStrengthDevelopmentDraft } from '../../../lib/strengthDevelopmentDraft.mjs';
 import { buildCoachAdaptation } from '../../../lib/coachAdaptation.mjs';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 import { getPrehabReactions } from '../../../lib/prehabReactionStore';
@@ -1603,6 +1604,18 @@ export async function buildGenerationInputs(body) {
   }
   const adaptedResult = buildCoachAdaptation({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal, focus, strengthMode, playerRestrictions: parseJSONSafe(rawRestrictions, []), recentSessions: recentSessionRecords, historyAvailable: prehabHistoryAvailable, coachRecovery });
   if (adaptedResult) return { targetDate, dayGoal, readyResult: adaptedResult };
+  // Server-only development generation: clinical data never enter a model prompt.
+  if (focus === 'inseason_strength' && strengthMode === 'development') {
+    if (!gymRecommendation) return { error: 'Для развивающей силовой нужны данные ReadySix; внешняя генерация не запускается.', status: 422 };
+    try {
+      const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal, recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+      return { targetDate, dayGoal, readyResult };
+    } catch (error) {
+      const readyResult = restrictedDayPlan({ snapshot, recommendation: { ...gymRecommendation, reasons: [...gymRecommendation.reasons, error.message] }, date: targetDate, dayGoal, allowRegionalDraft: false });
+      readyResult.focus = focus; readyResult.strengthMode = strengthMode;
+      return { targetDate, dayGoal, readyResult };
+    }
+  }
   if (focus === 'inseason_prophylaxis' && gymRecommendation) {
     const matchDate = gymRecommendation.calendar.previousGame || shiftDateStr(targetDate, -2);
     let reactions;

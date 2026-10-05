@@ -40,3 +40,12 @@ test('development uses 17 sets, honest kg evidence, sequential rests and 40–50
  assert.equal(exerciseDescription(exercises[0]),'Первое точное предложение. Второе точное предложение.');
  assert.equal(conciseTechnique('Полное описание без точки'),'Полное описание без точки');
 });
+
+test('server catalogue selects complete development without model calls and respects previous-week rotation',async()=>{
+ const {buildStrengthDevelopmentDraft}=await import('../lib/strengthDevelopmentDraft.mjs');
+ const input={snapshot:{player:{position:'Связующая'}},recommendation:{calendar:{daysToGame:4},state:{}},date};
+ const first=buildStrengthDevelopmentDraft(input);assert.equal(first.quality.valid,true);
+ const second=buildStrengthDevelopmentDraft({...input,recentSessions:[{date:'2026-10-01',session:first.session}]});
+ assert.equal(second.quality.valid,true);assert.equal(second.quality.variety.repeated.length,0);
+ assert.throws(()=>buildStrengthDevelopmentDraft({...input,playerRestrictions:['AXIAL','SHOULDER']}),/Нет безопасной/);
+});
