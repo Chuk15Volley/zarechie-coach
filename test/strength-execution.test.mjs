@@ -70,3 +70,13 @@ test('same-week completed strength needs coach review; planned or previous-week 
  assert.deepEqual(context(4,{actualHistory:[{...actual,date:'2026-10-05',exercises:[]}]}).completedThisWeek,[]);
  assert.deepEqual(context(4,{actualHistory:[{...actual,date:'2026-10-03'}]}).completedThisWeek,[]);
 });
+
+test('scapular T Raise is valid prehab; controlled descriptions do not demand explosive tension',async()=>{
+ const {exerciseDescription,normalizeSessionTempoDescriptions}=await import('../lib/tempoDescription.mjs');
+ const probe=structuredClone(session);probe.blocks[3].exercises[1].name='Prone T Raise';probe.blocks[3].exercises[0]=ex('D1','Half-Kneeling Pallof Press ISO',1,'20 sec/side');
+ const normalized=normalizeSessionTempoDescriptions(normalizeStrengthExecution(probe,'inseason_strength',context()));
+ assert.equal(auditInSeasonStrengthSession(normalized,inSeasonStrengthDoseProfile(context())).valid,true);
+ for(const e of normalized.blocks[3].exercises)assert.doesNotMatch(exerciseDescription(e),/максимально резко/);
+ assert.match(exerciseDescription(normalized.blocks[3].exercises[0]),/20 sec\/side/);
+ const bad=structuredClone(normalized);bad.blocks[1].exercises[0].name='TRX Push-Up';assert.equal(auditInSeasonStrengthSession(bad,inSeasonStrengthDoseProfile(context())).safe,false);
+});
