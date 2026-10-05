@@ -80,3 +80,20 @@ test('scapular T Raise is valid prehab; controlled descriptions do not demand ex
  assert.match(exerciseDescription(normalized.blocks[3].exercises[0]),/20 sec\/side/);
  const bad=structuredClone(normalized);bad.blocks[1].exercises[0].name='TRX Push-Up';assert.equal(auditInSeasonStrengthSession(bad,inSeasonStrengthDoseProfile(context())).safe,false);
 });
+
+ test('full green session below 40 minutes requires correction; reduced dose may remain shorter',()=>{
+ const short=structuredClone(session);
+ short.blocks[2].exercises.forEach(e=>e.targetSets=e.targetSets.slice(0,1));
+ short.blocks[3].exercises.forEach(e=>e.targetSets=e.targetSets.slice(0,1));
+ const green=normalizeStrengthExecution(short,'inseason_strength',context());
+ assert.ok(estimateStrengthMinutes(green)<40);
+ assert.equal(auditInSeasonStrengthSession(green,inSeasonStrengthDoseProfile(context())).checks.execution,false);
+ const yellow=normalizeStrengthExecution(short,'inseason_strength',context(3));
+ assert.equal(auditInSeasonStrengthSession(yellow,inSeasonStrengthDoseProfile(context(3))).checks.execution,true);
+});
+
+test('scapular face pull is valid individual shoulder prehab',()=>{
+ const plan=structuredClone(session);plan.blocks[3].exercises[2].name='Face Pull (Band)';
+ const result=normalizeStrengthExecution(plan,'inseason_strength',context());
+ assert.equal(auditInSeasonStrengthSession(result,inSeasonStrengthDoseProfile(context())).checks.posteriorCore,true);
+});
