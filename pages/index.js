@@ -1,3 +1,4 @@
+import { estimateStrengthMinutes } from '../lib/strengthExecution.mjs';
 import { calendarToday } from '../lib/coachCalendar.mjs';
 import CoachCalendar from '../components/CoachCalendar';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -2184,6 +2185,10 @@ export default function Home() {
   const [showSchedule, setShowSchedule] = useState(false);
 
   const [session, setSession] = useState(null);
+  const [removedBlock, setRemovedBlock] = useState(null);
+  useEffect(() => {
+    if (removedBlock && session !== removedBlock.after) setRemovedBlock(null);
+  }, [session, removedBlock]);
   const [meta, setMeta] = useState(null);
   const [pendingSaved, setPendingSaved] = useState(null);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
@@ -4317,9 +4322,41 @@ export default function Home() {
     }));
   }
 
+  function removeBlock(blockIdx) {
+    if (saving || !session?.blocks?.[blockIdx]) return;
+    const before = session;
+    const block = before.blocks[blockIdx];
+    const blocks = before.blocks.filter((_, index) => index !== blockIdx);
+    let after = { ...before, blocks };
+    if (before.methodology?.timing) {
+      const timedBlocks = blocks.every(item => Number.isFinite(item.plannedMinutes));
+      const minutes = blocks.length === 0 ? 0 : timedBlocks
+        ? blocks.reduce((sum, item) => sum + item.plannedMinutes, 0)
+        : before.methodology.version === 'inseason-strength-v2-2026-10' ? estimateStrengthMinutes(after) : null;
+      after = { ...after, methodology: { ...before.methodology, coachEditedBlocks: true,
+        ...(before.methodology.activeSeconds != null ? { activeSeconds: blocks.flatMap(item => item.exercises || []).reduce((sum, ex) => sum + (ex.activeSecondsPerSet || 0) * (ex.targetSets || []).length, 0) } : {}),
+        timing: { ...before.methodology.timing, ...(minutes != null ? { plannedMainMinutes: minutes, estimatedMainMinutes: minutes } : {}) },
+      } };
+    }
+    setRemovedBlock({ before, after, label: block.label || blockIdx + 1 });
+    setSession(after);
+    setAddExBlock(null);
+    setJustSaved(false);
+    setAutoSaved(false);
+  }
+
+  function undoRemoveBlock() {
+    if (!removedBlock || saving) return;
+    setSession(removedBlock.before);
+    setRemovedBlock(null);
+    setJustSaved(false);
+    setAutoSaved(false);
+  }
+
   async function regenerateExercise(blockIdx, exIdx) {
+    const originalExercise = session?.blocks?.[blockIdx]?.exercises?.[exIdx];
     const sessionDate = meta?.date || date;
-    if (!session || !sessionDate) throw new Error('Сначала откройте программу игрока');
+    if (!session || !originalExercise || !sessionDate) throw new Error('Сначала откройте программу игрока');
     const res = await fetch('/api/programs/regenerate-exercise', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
@@ -4335,14 +4372,10 @@ export default function Home() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
     if (data.exercise) {
-      setSession(prev => ({
+      setSession(prev => prev ? ({
         ...prev,
-        blocks: prev.blocks.map((b, bi) =>
-          bi !== blockIdx
-            ? b
-            : { ...b, exercises: b.exercises.map((ex, ei) => (ei !== exIdx ? ex : data.exercise)) }
-        ),
-      }));
+        blocks: prev.blocks.map(b => ({ ...b, exercises: b.exercises.map(ex => ex === originalExercise ? data.exercise : ex) })),
+      }) : prev);
     }
   }
 
@@ -7947,18 +7980,26 @@ export default function Home() {
                 </div>
               )}
 
+              {removedBlock && (
+                <div role="status" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] px-4 py-3 text-sm text-amber-200 print:hidden">
+                  <span>Блок {removedBlock.label} удалён вместе с упражнениями. Нажмите «Сохранить изменения», чтобы сохранить программу.</span>
+                  <button type="button" onClick={undoRemoveBlock} disabled={saving} className={`shrink-0 rounded-lg border border-amber-300/30 px-3 py-2 font-semibold disabled:opacity-40 ${focusRing}`}>Отменить удаление</button>
+                </div>
+              )}
+
               {/* Blocks — screen only */}
               <div className="space-y-8 print:hidden">
                 {(session.blocks || []).map((block, bi) => (
-                  <div key={bi}>
+                  <div key={block.blockId || block.label || bi}>
                     {(() => {
                       const bc = blockCfg(block.label);
                       const isCollapsed = collapsedBlocks.has(block.label);
                       return (
+                        <div className="mb-4 flex items-start gap-2">
                         <button
                           type="button"
                           onClick={() => toggleBlock(block.label)}
-                          className={`mb-4 flex w-full items-center gap-3.5 text-left rounded-xl py-1 transition-opacity hover:opacity-90 ${focusRing}`}
+                          className={`flex min-w-0 flex-1 items-center gap-3.5 text-left rounded-xl py-1 transition-opacity hover:opacity-90 ${focusRing}`}
                         >
                           <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${bc.circle} text-base font-black text-[#04212b] ring-1 ring-inset ring-white/20`}>
                             {block.label}
@@ -7979,6 +8020,13 @@ export default function Home() {
                             {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                           </span>
                         </button>
+                        <button type="button" onClick={() => removeBlock(bi)} disabled={saving}
+                          aria-label={`Удалить блок ${block.label || bi + 1}`}
+                          title="Удалить блок вместе со всеми упражнениями"
+                          className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-rose-400/20 px-3 text-xs font-semibold text-rose-300 transition hover:bg-rose-400/10 disabled:opacity-40 ${focusRing}`}>
+                          <X size={14} /><span className="hidden sm:inline">Удалить блок</span>
+                        </button>
+                        </div>
                       );
                     })()}
                     {!collapsedBlocks.has(block.label) && (
