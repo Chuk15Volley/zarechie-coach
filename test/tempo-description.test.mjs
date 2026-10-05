@@ -130,3 +130,9 @@ test('controlled accessories remove contradictory explosive wording and retain t
  assert.match(cue,/не компенсируй поворотом туловища/);
  assert.deepEqual(normalizeSessionTempoDescriptions(normalized),normalized);
 });
+
+test('controlled description preserves a prohibition of explosive loading',()=>{
+ const description=exerciseDescription({name:'Hip Airplane Assisted',controlledExecution:true,targetSets:['6/side'],cue:'Без взрывного усилия и потери равновесия. Колено удерживай над стопой.'});
+ assert.match(description,/Без взрывного усилия и потери равновесия/);
+ assert.doesNotMatch(description,/контролемго/);
+});
