@@ -116,3 +116,26 @@ test('actual tonnage never treats timed holds as repetitions', () => {
   assert.equal(completedTonnage(workout, { '0-0-0': true, '0-0-1': true }, { '0-0-0': 20, '0-0-1': 20 }), 200);
   assert.equal(completedTonnage(workout, { '0-0-1': true }, {}), 0);
 });
+
+
+test('block budgets and station times never become recovery timers', () => {
+  for (const minutes of [10,15,50]) {
+    const block = { label:'A', rest_note:`Бюджет блока ${minutes} мин, включая паузы; 60–90 сек между подходами. Станция 300 сек.`, exercises:[{code:'A1',targetSets:['8','8']},{code:'A2',targetSets:['8','8']}] };
+    assert.equal(restSecondsFor(block),90);
+    assert.equal(restSecondsFor(block,block.exercises[0],{bi:0,ei:0,next:{bi:0,ei:0,exercise:block.exercises[0]}}),90);
+  }
+  assert.equal(restSecondsFor({rest_note:'Бюджет блока 15 мин. Удержание 300 сек.'}),60);
+  assert.equal(restSecondsFor({rest_note:'5 мин отдых между подходами.'}),300);
+  assert.equal(restSecondsFor({rest_note:'2–3 мин между подходами; 15 мин длительность блока.'}),180);
+});
+
+test('structured prophylaxis rests separate sets, transitions and session budgets', () => {
+  const block={ label:'A',exerciseOrder:'sequential',restSeconds:90,transitionRestSeconds:60,roundRestSeconds:90,rest_note:'Бюджет блока 15 мин; 60–90 сек между подходами; 60 сек между упражнениями.',exercises:[{code:'A1',targetSets:['8','8']},{code:'A2',targetSets:['8','8']}] };
+  const workout={blocks:[block]};let done={'0-0-0':true};
+  let next=nextWorkoutSet(workout,done);assert.equal(next.key,'0-0-1');
+  assert.equal(restSecondsFor(block,block.exercises[0],{bi:0,ei:0,next}),90);
+  done['0-0-1']=true;next=nextWorkoutSet(workout,done);assert.equal(next.key,'0-1-0');
+  assert.equal(restSecondsFor(block,block.exercises[0],{bi:0,ei:0,next}),60);
+  assert.equal(restSecondsFor(block,{restSeconds:120},{bi:0,ei:0,next}),120);
+  assert.equal(restSecondsFor(block,block.exercises[1],{bi:0,ei:1,next:{bi:1,ei:0,block:{label:'B'},exercise:{code:'B1'}}}),60);
+});

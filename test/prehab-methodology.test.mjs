@@ -162,3 +162,10 @@ test('complaints change individual tasks while preserving session stations', () 
   assert.notDeepEqual(changed.session.blocks.at(-1).exercises.map(ex=>ex.name),normal.session.blocks.at(-1).exercises.map(ex=>ex.name));
  }
 });
+
+test('every prophylaxis block has explicit recovery independent of its budget', () => {
+  for (const block of buildPrehabResult(fixture()).session.blocks) {
+    assert.equal(block.exerciseOrder,'sequential');assert.equal(block.restSeconds,90);assert.equal(block.transitionRestSeconds,60);
+    assert.match(block.rest_note,/60 сек на переход/);
+  }
+});
