@@ -32,6 +32,7 @@ import { IN_SEASON_SYSTEM_PROMPT } from '../../../lib/inSeasonPrompt.mjs';
 import { normalizeSessionTempoDescriptions, stripTempoDescription, tempoDescription } from '../../../lib/tempoDescription.mjs';
 import { buildMatchDayPrimerContext, formatMatchDayPrimerForPrompt, matchDayAutomaticRecoveryStatus } from '../../../lib/matchDayPrimer.mjs';
 import { buildInSeasonPowerContext, formatInSeasonPowerForPrompt } from '../../../lib/inSeasonPower.mjs';
+import { normalizeStrengthExecution } from '../../../lib/strengthExecution.mjs';
 import { assessOneRmFreshness, buildInSeasonStrengthContext, formatInSeasonStrengthForPrompt, enforceStrengthStopRule } from '../../../lib/inSeasonStrength.mjs';
 import {
   formatSeasonDecisionForPrompt,
@@ -101,15 +102,16 @@ function formatMatchLoadForPrompt(playerId, targetDate, rawToday, rawPrev) {
   return '\n' + lines.join('\n');
 }
 
-async function getRecentActualSummaries(playerId, workspace = 'zarechie', limit = 5, targetDate = todayISO()) {
+async function getRecentActualHistory(playerId, workspace = 'zarechie', limit = 5, targetDate = todayISO()) {
   const wp = pfx(workspace);
   const dates = await redis('zrevrangebyscore', sessionsKey(workspace, playerId), String(Number(targetDate.replace(/-/g, '')) - 1), '-inf', 'LIMIT', 0, limit).catch(() => []);
   const recentDates = (dates || []).filter(date => date < targetDate).sort().slice(-limit).reverse();
-  if (!recentDates.length) return [];
+  if (!recentDates.length) return { records:[], summaries:[] };
   const raws = await redisPipeline(
     recentDates.map(d => ['get', `${wp}:session:actual:${playerId}:${d}`])
   ).catch(() => []);
-  return recentDates.flatMap((date, i) => {
+  const records = recentDates.flatMap((date,i) => { const record=parseJSONSafe(raws[i],null); return record ? [{...record,date}] : []; });
+  return { records, summaries: recentDates.flatMap((date, i) => {
     const raw = raws[i];
     const rec = parseJSONSafe(raw, null);
     if (!rec) return [];
@@ -134,7 +136,7 @@ async function getRecentActualSummaries(playerId, workspace = 'zarechie', limit 
       .join('; ');
     if (!sessionLine && !blockLines && !exLines) return [];
     return [`${date}${sessionLine ? ` | ${sessionLine}` : ''}${blockLines ? ` | блоки: ${blockLines}` : ''}${exLines ? ` | упражнения: ${exLines}` : ''}`];
-  });
+  }) };
 }
 
 const FOCUS_LABELS = {
@@ -155,7 +157,7 @@ const FOCUS_LABELS = {
   zvs_strength_base:  'Межсезонье: Силовая база — двусторонние паттерны под нагрузкой, первые PAP-пары 75-80%; RPE 7-8; JLU ≤350',
   zvs_power_transfer: 'Межсезонье: Мощность и перенос — полные PAP-кластеры 80-87.5%, Resisted Approach Jump, позиционная работа; тейпер последняя неделя; RPE 8-9; JLU ≤500',
   // ── СЕЗОН ЗАРЕЧЬЕ 2025–2026 (сентябрь 2025 — апрель 2026) ───────────────
-  inseason_strength:     'СЕЗОН · СИЛОВАЯ / ПОДДЕРЖАНИЕ — ручной full-body метод без разминки, прыжков и PAP. Режим «Развивающая»: 50–55 мин, 5 блоков A–E, 16–21 подход, session RPE 6–7. Режим «Поддерживающая»: 30–35 мин, 4 блока A–D, 11–15 подходов, session RPE 4–6. Тяжёлый bilateral lower anchor + дополняющий unilateral lower + жим/обязательная горизонтальная тяга + posterior/core + позиционный prehab.',
+  inseason_strength:     'СЕЗОН · СИЛОВАЯ / ПОДДЕРЖАНИЕ — ручной full-body метод без разминки, прыжков и PAP. Режим «Развивающая»: 50–55 мин, 5 блоков A–E, 16–21 подход, session RPE 6–7. Режим «Поддерживающая»: 40–50 мин с подводящими подходами и паузами, 4 блока A–D, 13–17 подходов green или 10–13 yellow/MD−3, утром до вечерней площадки, session RPE 4–6. Тяжёлый bilateral lower anchor + дополняющий unilateral lower + жим/обязательная горизонтальная тяга + posterior/core + позиционный prehab.',
   inseason_power:        'СЕЗОН · МОЩНОСТЬ / СКОРОСТЬ — Development 50–55 мин на MD-4+ (MD-3 только green + невысокая match load) или Microdose 30 мин на MD-2; sprint/COD 5–7 м, позиционный прыжковый бюджет, одна complex-пара только в Development, upper/rotational power и prehab. Разминка проводится тренером отдельно.',
   inseason_prophylaxis:  'СЕЗОН · ПРОФИЛАКТИКА/ВОССТАНОВЛЕНИЕ — день MD+2 после игры (обычно понедельник) + pre-game MD-1. Слабые звенья волейболиста, мобильность, контроль движения, стабилизация суставов. БЕЗ тяжёлой штанги, БЕЗ высокоударной плиометрики. Pre-game MD-1: короткая нейромышечная активация + тонус, не утомлять.',
   inseason_accumulation: 'СЕЗОН · ФЕВРАЛЬ · БЛОК НАКОПЛЕНИЯ СИЛЫ — 60 мин (вместо обычных 40). Структура та же (4 блока), все блоки удлиняются пропорционально: больше сетов/упражнений. Интенсивность 80–87% 1ПМ с индивидуальной поправкой по состоянию (CMJ/RSI baseline + Recovery). Единственное окно сезона для реального набора силы перед мартовской конверсией. Волна 3:1 сохраняется. «Священные» упражнения обязательны.',
@@ -351,9 +353,9 @@ function conciseCue(text, tempo = '') {
   return firstSentence.length > 90 ? `${firstSentence.slice(0, 87).trim()}...` : firstSentence;
 }
 
-export function normalizeExerciseLanguage(session, focus = '') {
+export function normalizeExerciseLanguage(session, focus = '', strengthContext = null) {
   if (!session?.blocks) return session;
-  session = enforceStrengthStopRule(session, focus);
+  session = normalizeStrengthExecution(enforceStrengthStopRule(session, focus), focus, strengthContext);
   return {
     ...session,
     blocks: session.blocks.map(block => ({
@@ -1541,7 +1543,7 @@ export function systemPromptForGeneration(focus = '', workspace = 'zarechie') {
 // (generate-async.js) so both produce byte-identical prompts. Returns either
 // { error, status } on failure or { snapshot, userPrompt, dataSummary, targetDate, dayGoal }.
 export async function buildGenerationInputs(body) {
-  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', powerMode = 'auto', strengthMode = 'development', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie', planningMode = '', microcycleSlot = null } = body || {};
+  const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', powerMode = 'auto', strengthMode = 'maintenance', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie', planningMode = '', microcycleSlot = null } = body || {};
   if (!playerId) return { error: 'playerId required', status: 400 };
   const wpfx = pfx(workspace);
 
@@ -1556,10 +1558,10 @@ export async function buildGenerationInputs(body) {
   let prehabHistoryAvailable = true;
   const prevDate = shiftDateStr(targetDate, -1);
   const manualMatchDayRequested = isManualMatchDayFocus(focus);
-  const [snapshot, recentSessionRecords, actualSummaries, rawSchedule, raw1RM, raw1RMHistory, strengthAnchors, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan, previousManualMatchDays] = await Promise.all([
+  const [snapshot, recentSessionRecords, actualHistory, rawSchedule, raw1RM, raw1RMHistory, strengthAnchors, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan, previousManualMatchDays] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, Number(days) || 7, workspace),
-    getRecentSessionRecords(String(playerId), 12, workspace, targetDate, { strict: true }).catch(() => { prehabHistoryAvailable = false; return []; }),
-    getRecentActualSummaries(String(playerId), workspace, 5, targetDate).catch(() => []),
+    getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, targetDate, { strict: true }).catch(() => { prehabHistoryAvailable = false; return []; }),
+    getRecentActualHistory(String(playerId), workspace, 12, targetDate).catch(() => ({ records:[], summaries:[] })),
     usesSeasonCalendar(workspace) ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
     redis('get', `${wpfx}:1rm:${String(playerId)}`).catch(() => null),
     redis('get', rmHistoryKey(workspace, String(playerId))).catch(() => null),
@@ -1588,6 +1590,7 @@ export async function buildGenerationInputs(body) {
   ]);
 
   if (!snapshot) return { error: 'Player not found', status: 404 };
+  const actualSummaries = actualHistory.summaries;
   const sessionSummaries = recentSessionRecords.map(formatSummary).filter(Boolean);
   const gymRecommendation = snapshot.readySixMeta ? recommendGymSession({ snapshot, targetDate, recentSessions: recentSessionRecords }) : null;
   if (!prehabHistoryAvailable) {
@@ -1715,10 +1718,10 @@ export async function buildGenerationInputs(body) {
     .some(record => Number(record?.shoulderLoad || 0) >= 4
       || Object.entries(record?.zoneDetails || {}).some(([area, detail]) => /плеч|shoulder/i.test(area) && (detail?.type === 'pain' || Number((detail?.level10 ?? detail?.level) || 0) >= 3)));
   const strengthContext = buildInSeasonStrengthContext({
-    focus: effectiveFocus,
+    focus: effectiveFocus, targetDate, calendar:gymRecommendation?.calendar || null, actualHistory:actualHistory.records.map(record => ({...record,focus:recentSessionRecords.find(saved=>saved.date===record.date)?.focus || ''})),
     position: snapshot.player?.position || '',
     recoveryStatus: effectiveRecovery,
-    requestedMode: gymRecommendation?.calendar.daysToGame != null && gymRecommendation.calendar.daysToGame <= 2 ? 'maintenance' : strengthMode,
+    requestedMode: gymRecommendation?.calendar.daysToGame != null && gymRecommendation.calendar.daysToGame <= 3 ? 'maintenance' : strengthMode,
     anchorContext: strengthAnchors,
     oneRmFreshness,
     shoulderConcern: freshShoulderConcern,
@@ -1768,7 +1771,7 @@ export async function buildGenerationInputs(body) {
     );
 
   let { userPrompt, dataSummary } = buildUserPrompt({
-    snapshot, sessionSummaries, rawSchedule: gymRecommendation ? null : rawSchedule, raw1RM: strengthContext && !oneRmFreshness.fresh ? null : raw1RM, rawFeedbacks,
+    snapshot, sessionSummaries, rawSchedule: gymRecommendation ? null : rawSchedule, raw1RM: strengthContext?.selectedMode === 'maintenance' || (strengthContext && !oneRmFreshness.fresh) ? null : raw1RM, rawFeedbacks,
     actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType: effectiveTrainingType, notes, warmupSummary, teamUsedExercises, coachRecovery, microcycleSlot,
     playbookText, workspace, seasonDecision,
   });
@@ -2012,7 +2015,7 @@ export default async function handler(req, res) {
     }
 
     // Audit the actual result; allow one targeted repair for repeated exercises.
-    session = normalizeExerciseLanguage(session, focus);
+    session = normalizeExerciseLanguage(sanitizeUnavailableEquipmentExercises(session), effectiveFocus, qualityContext.strengthContext);
     session = sanitizeUnavailableEquipmentExercises(session);
     session = normalizeSessionTempoDescriptions(session);
     qualityContext.varietyContext = buildExerciseVarietyContext(
@@ -2020,11 +2023,11 @@ export default async function handler(req, res) {
       { targetDate, focus: effectiveFocus, trainingType: effectiveTrainingType, seasonDecision: qualityContext.seasonDecision },
     );
     let quality = advisorySessionQuality(assessSessionQuality(session, { ...qualityContext, playerRestrictions }));
-    if (quality.variety?.needsCorrection) {
+    if (!quality.valid || quality.variety?.needsCorrection) {
       // A failed repair must not discard the complete initial session.
       const repaired = await callOpenAIForSession(apiKey, qualityCorrectionPrompt(userPrompt, session, quality), systemPrompt).catch(() => null);
       if (repaired?.session) {
-        const candidate = normalizeSessionTempoDescriptions(sanitizeUnavailableEquipmentExercises(normalizeExerciseLanguage(repaired.session, effectiveFocus)));
+        const candidate = normalizeSessionTempoDescriptions(sanitizeUnavailableEquipmentExercises(normalizeExerciseLanguage(sanitizeUnavailableEquipmentExercises(repaired.session), effectiveFocus, qualityContext.strengthContext)));
         const candidateQuality = advisorySessionQuality(assessSessionQuality(candidate, { ...qualityContext, playerRestrictions }));
         if (preferVarietyCorrection(candidateQuality, quality)) {
           session = candidate;

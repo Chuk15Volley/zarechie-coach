@@ -632,7 +632,7 @@ const WARMUP_PHASE_MAP = {
 
 const PHASES_BY_PERIOD = {
   inseason: [
-    { value: 'inseason_strength',     label: 'Силовая / поддержание', sub: 'Развивающая 50–55 · Поддерживающая 30–35 мин' },
+    { value: 'inseason_strength',     label: 'Силовая / поддержание', sub: 'Развивающая 50–55 · Поддерживающая 40–50 мин' },
     { value: 'inseason_power',        label: 'Мощность / скорость',   sub: 'Development 50–55 · Microdose 30 мин' },
     { value: 'inseason_prophylaxis',  label: 'Профилактика',          sub: 'Слабые звенья · суставы' },
     { value: 'inseason_deload',       label: 'Разгрузочная неделя',  sub: 'По тренду усталости и календарю' },
@@ -2122,7 +2122,7 @@ export default function Home() {
   const [focus, setFocus] = useState('inseason_strength');
   const [trainingType, setTrainingType] = useState('full_body');
   const [powerMode, setPowerMode] = useState('development');
-  const [strengthMode, setStrengthMode] = useState('development');
+  const [strengthMode, setStrengthMode] = useState('maintenance');
   const [notes, setNotes] = useState('');
   const [sessionType, setSessionType] = useState('gym'); // 'gym' | 'warmup'
   const [loading, setLoading] = useState(false);
@@ -4993,7 +4993,7 @@ export default function Home() {
                     <div className="grid grid-cols-2 gap-1 rounded-lg border border-cyan-400/20 bg-cyan-400/[0.05] p-1">
                       {[
                         { value: 'development', label: 'Развивающая', sub: '50–55 мин' },
-                        { value: 'maintenance', label: 'Поддерживающая', sub: '30–35 мин' },
+                        { value: 'maintenance', label: 'Поддерживающая', sub: '40–50 мин' },
                       ].map(mode => (
                         <button
                           key={mode.value}
@@ -7263,7 +7263,7 @@ export default function Home() {
                   <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.05] p-1.5">
                     {[
                       { value: 'development', label: 'Развивающая', sub: '50–55 мин · развитие силы' },
-                      { value: 'maintenance', label: 'Поддерживающая', sub: '30–35 мин · поддержание' },
+                      { value: 'maintenance', label: 'Поддерживающая', sub: '40–50 мин · поддержание' },
                     ].map(mode => (
                       <button
                         key={mode.value}

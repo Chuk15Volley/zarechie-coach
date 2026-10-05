@@ -43,7 +43,7 @@ test('manual strength modes and Green/Yellow/Red doses are deterministic', () =>
   assert.equal(dev.mode, 'development');
   assert.deepEqual(inSeasonStrengthDoseProfile(dev).minutes, { min: 50, max: 55 });
   assert.equal(maintenance.mode, 'maintenance');
-  assert.deepEqual(inSeasonStrengthDoseProfile(maintenance).minutes, { min: 30, max: 35 });
+  assert.deepEqual(inSeasonStrengthDoseProfile(maintenance).minutes, { min: 40, max: 50 });
   assert.deepEqual(inSeasonStrengthDoseProfile(yellow).minutes, { min: 40, max: 45 });
   assert.equal(red.mode, 'red_adaptation');
   assert.deepEqual(inSeasonStrengthDoseProfile(red).jumpContacts, { min: 0, max: 0 });
@@ -56,7 +56,7 @@ test('same-pattern exposure under 48 hours applies Yellow volume without replaci
   });
   assert.equal(context.mode, 'maintenance');
   assert.equal(context.doseStatus, 'yellow');
-  assert.deepEqual(inSeasonStrengthDoseProfile(context).minutes, { min: 25, max: 30 });
+  assert.deepEqual(inSeasonStrengthDoseProfile(context).minutes, { min: 40, max: 50 });
 });
 
 test('1RM is usable for exact percentages for 12 weeks only', () => {
@@ -96,7 +96,7 @@ test('coach UI exposes Russian strength modes and submits the selected mode', ()
 });
 
 test('eccentric step-down is knee prehab, not an arbitrary accessory', () => {
-  const prescription = inSeasonStrengthDoseProfile(buildInSeasonStrengthContext({ focus: 'inseason_strength' }));
+  const prescription = inSeasonStrengthDoseProfile(buildInSeasonStrengthContext({ focus: 'inseason_strength', requestedMode:'development' }));
   const session = structuredClone(developmentSession);
   session.blocks[4].exercises[0].name = 'SL Eccentric Step-Down';
   assert.equal(auditInSeasonStrengthSession(session, prescription).valid, true);

@@ -336,7 +336,7 @@ export default async function handler(req, res) {
     if (!session) {
       return res.status(502).json({ error: 'Модель не вернула структурированную тренировку' });
     }
-    session = normalizeExerciseLanguage(session, focus);
+    session = normalizeExerciseLanguage(sanitizeUnavailableEquipmentExercises(session), qualityContext.focus || focus, qualityContext.strengthContext);
     session = sanitizeUnavailableEquipmentExercises(session);
     session = normalizeSessionTempoDescriptions(session);
     session = ensureSessionExerciseIds(session);
