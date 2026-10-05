@@ -120,3 +120,13 @@ test('unloaded dynamic movement is not described as a breathing exercise', () =>
  assert.doesNotMatch(description,/Темп: спокойное дыхание/);
  assert.match(description,/поднять таз/);
 });
+
+test('controlled accessories remove contradictory explosive wording and retain technical safeguards',()=>{
+ const ex={name:'Standing Cable External Rotation',controlledExecution:true,tempo:'2-1-X-1',targetSets:['10/side'],cue:'Выполни ротацию максимально резко. Локоть держи у корпуса, плечо не поднимай; не компенсируй поворотом туловища.'};
+ const normalized=normalizeSessionTempoDescriptions({blocks:[{exercises:[ex]}]});
+ const cue=normalized.blocks[0].exercises[0].cue;
+ assert.doesNotMatch(cue,/максимально резко/);
+ assert.match(cue,/Локоть держи у корпуса/);
+ assert.match(cue,/не компенсируй поворотом туловища/);
+ assert.deepEqual(normalizeSessionTempoDescriptions(normalized),normalized);
+});

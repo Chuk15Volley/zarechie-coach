@@ -368,7 +368,9 @@ export function normalizeExerciseLanguage(session, focus = '', strengthContext =
             ? '0-5сек-X-0'
             : (ex.tempo || '');
         const lead = tempoDescription(nextTempo || ex.tempo, ex.name);
-        const cue = conciseCue(ex.cue, nextTempo || ex.tempo);
+        const cue = session.methodology?.version === 'inseason-strength-v2-2026-10'
+          ? stripMismatchedFiveSecondCue(stripTempoDescription(ex.cue || ''), nextTempo || ex.tempo).replace(/\s+/g, ' ').trim()
+          : conciseCue(ex.cue, nextTempo || ex.tempo);
         return {
           ...ex,
           weightKg: weightKgFromExercise(ex) || null,
