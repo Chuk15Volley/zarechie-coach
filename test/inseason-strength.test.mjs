@@ -41,10 +41,10 @@ test('manual strength modes and Green/Yellow/Red doses are deterministic', () =>
   const yellow = buildInSeasonStrengthContext({ focus: 'inseason_strength', requestedMode: 'development', recoveryStatus: 'yellow' });
   const red = buildInSeasonStrengthContext({ focus: 'inseason_strength', requestedMode: 'maintenance', recoveryStatus: 'red' });
   assert.equal(dev.mode, 'development');
-  assert.deepEqual(inSeasonStrengthDoseProfile(dev).minutes, { min: 50, max: 55 });
+  assert.deepEqual(inSeasonStrengthDoseProfile(dev).minutes, { min: 40, max: 50 });
   assert.equal(maintenance.mode, 'maintenance');
   assert.deepEqual(inSeasonStrengthDoseProfile(maintenance).minutes, { min: 40, max: 50 });
-  assert.deepEqual(inSeasonStrengthDoseProfile(yellow).minutes, { min: 40, max: 45 });
+  assert.deepEqual(inSeasonStrengthDoseProfile(yellow).minutes, { min: 40, max: 50 });
   assert.equal(red.mode, 'red_adaptation');
   assert.deepEqual(inSeasonStrengthDoseProfile(red).jumpContacts, { min: 0, max: 0 });
 });

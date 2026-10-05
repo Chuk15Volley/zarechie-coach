@@ -1,3 +1,4 @@
+import { buildCoachAdaptation } from '../../../lib/coachAdaptation.mjs';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 import { getPrehabReactions } from '../../../lib/prehabReactionStore';
 import { buildPrehabResult } from '../../../lib/prehabMethodology.mjs';
@@ -29,7 +30,7 @@ import { evaluateDevelopmentPlan, formatDevelopmentPlanForPrompt } from '../../.
 import { buildDosePrescription, formatDosePrescriptionForPrompt } from '../../../lib/sessionDose.mjs';
 import { readinessDecisionFromSnapshot, strictestRecoveryStatus } from '../../../lib/readinessDecision.mjs';
 import { IN_SEASON_SYSTEM_PROMPT } from '../../../lib/inSeasonPrompt.mjs';
-import { normalizeSessionTempoDescriptions, stripTempoDescription, tempoDescription } from '../../../lib/tempoDescription.mjs';
+import { conciseTechnique, normalizeSessionTempoDescriptions, stripTempoDescription, tempoDescription } from '../../../lib/tempoDescription.mjs';
 import { buildMatchDayPrimerContext, formatMatchDayPrimerForPrompt, matchDayAutomaticRecoveryStatus } from '../../../lib/matchDayPrimer.mjs';
 import { buildInSeasonPowerContext, formatInSeasonPowerForPrompt } from '../../../lib/inSeasonPower.mjs';
 import { normalizeStrengthExecution } from '../../../lib/strengthExecution.mjs';
@@ -349,8 +350,7 @@ function conciseCue(text, tempo = '') {
     .replace(/\s+/g, ' ')
     .trim();
   if (!cleaned) return 'Держи корпус жёстко, движение чистое.';
-  const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0]?.trim() || cleaned;
-  return firstSentence.length > 90 ? `${firstSentence.slice(0, 87).trim()}...` : firstSentence;
+  return conciseTechnique(cleaned);
 }
 
 export function normalizeExerciseLanguage(session, focus = '', strengthContext = null) {
@@ -1601,6 +1601,8 @@ export async function buildGenerationInputs(body) {
   if (focus === 'inseason_prophylaxis' && !gymRecommendation) {
     return { error: 'Для профилактики требуется актуальное решение ReadySix по разрешённым зонам. Обновите данные игрока.', status: 422 };
   }
+  const adaptedResult = buildCoachAdaptation({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal, focus, strengthMode, playerRestrictions: parseJSONSafe(rawRestrictions, []), recentSessions: recentSessionRecords, historyAvailable: prehabHistoryAvailable, coachRecovery });
+  if (adaptedResult) return { targetDate, dayGoal, readyResult: adaptedResult };
   if (focus === 'inseason_prophylaxis' && gymRecommendation) {
     const matchDate = gymRecommendation.calendar.previousGame || shiftDateStr(targetDate, -2);
     let reactions;
@@ -1723,7 +1725,7 @@ export async function buildGenerationInputs(body) {
     focus: effectiveFocus, targetDate, calendar:gymRecommendation?.calendar || null, actualHistory:actualHistory.records.map(record => ({...record,focus:recentSessionRecords.find(saved=>saved.date===record.date)?.focus || ''})),
     position: snapshot.player?.position || '',
     recoveryStatus: effectiveRecovery,
-    requestedMode: gymRecommendation?.calendar.daysToGame != null && gymRecommendation.calendar.daysToGame <= 3 ? 'maintenance' : strengthMode,
+    requestedMode: strengthMode,
     anchorContext: strengthAnchors,
     oneRmFreshness,
     shoulderConcern: freshShoulderConcern,
@@ -1773,7 +1775,7 @@ export async function buildGenerationInputs(body) {
     );
 
   let { userPrompt, dataSummary } = buildUserPrompt({
-    snapshot, sessionSummaries, rawSchedule: gymRecommendation ? null : rawSchedule, raw1RM: strengthContext?.selectedMode === 'maintenance' || (strengthContext && !oneRmFreshness.fresh) ? null : raw1RM, rawFeedbacks,
+    snapshot, sessionSummaries, rawSchedule: gymRecommendation ? null : rawSchedule, raw1RM: strengthContext ? null : raw1RM, rawFeedbacks,
     actualSummaries, targetDate, dayGoal, focus: effectiveFocus, trainingType: effectiveTrainingType, notes, warmupSummary, teamUsedExercises, coachRecovery, microcycleSlot,
     playbookText, workspace, seasonDecision,
   });

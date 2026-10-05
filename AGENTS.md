@@ -13,3 +13,5 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+- User clarification 2026-10-05: automatic ReadySix red status/percentage may be overridden only to produce a symptom-adapted coach-review draft of any selected method. Medical contraindications and acute/systemic red flags remain binding. Development strength follows docs/strength-development-v2.md; full Green main work 40–50 min, exact-exercise completed kg/RPE, all exercises rotate weekly. Never claim a light adaptation provides a heavy development stimulus.
