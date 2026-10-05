@@ -86,6 +86,9 @@ test('scapular T Raise is valid prehab; controlled descriptions do not demand ex
  short.blocks[2].exercises.forEach(e=>e.targetSets=e.targetSets.slice(0,1));
  short.blocks[3].exercises.forEach(e=>e.targetSets=e.targetSets.slice(0,1));
  const green=normalizeStrengthExecution(short,'inseason_strength',context());
+ green.blocks[0].exercises[0].targetSets=green.blocks[0].exercises[0].targetSets.slice(0,2);
+ green.blocks[2].exercises.forEach(e=>e.targetSets=e.targetSets.slice(0,1));
+ green.blocks[3].exercises.forEach(e=>e.targetSets=e.targetSets.slice(0,1));
  assert.ok(estimateStrengthMinutes(green)<40);
  assert.equal(auditInSeasonStrengthSession(green,inSeasonStrengthDoseProfile(context())).checks.execution,false);
  const yellow=normalizeStrengthExecution(short,'inseason_strength',context(3));
@@ -103,4 +106,15 @@ test('reduced dose with two posterior sets does not exceed eight hard sets',()=>
  const result=normalizeStrengthExecution(plan,'inseason_strength',context(3));
  assert.match(result.blocks[2].exercises[1].weightNote,/RPE 5–6/);
  assert.equal(analyzeSessionDose(result).hardSets,8);
+});
+
+test('agreed set template is applied consistently without accessory padding',()=>{
+ const plan=structuredClone(session);plan.blocks.forEach(b=>b.exercises.forEach(e=>e.targetSets=e.targetSets.slice(0,1)));
+ plan.blocks[3].exercises[2].name='Hip Airplane Assisted';
+ const green=normalizeStrengthExecution(plan,'inseason_strength',context());
+ assert.deepEqual(green.blocks.map(b=>b.exercises.map(e=>e.targetSets.length)),[[3],[2,2],[2,2],[1,2,2]]);
+ assert.equal(analyzeSessionDose(green).totalSets,16);
+ assert.equal(auditInSeasonStrengthSession(green,inSeasonStrengthDoseProfile(context())).valid,true);
+ const yellow=normalizeStrengthExecution(plan,'inseason_strength',context(3));
+ assert.deepEqual(yellow.blocks.map(b=>b.exercises.map(e=>e.targetSets.length)),[[2],[2,2],[1,1],[1,1,1]]);
 });
