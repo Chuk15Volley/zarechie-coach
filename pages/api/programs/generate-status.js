@@ -357,11 +357,27 @@ export default async function handler(req, res) {
       playerRestrictions,
     });
 
-    // Every method gets one shared repair attempt for failed quality checks. If the
-    // deterministic structure/dose audit still fails after that attempt, the
+    // Compare the latest repair attempt with its original candidate and keep
+    // the better complete version.
+    if (record.correctionAttempted && record.candidateSession && record.candidateQuality) {
+      const candidateQuality = assessSessionQuality(record.candidateSession, {
+        ...qualityContext, focus: qualityContext.focus || focus,
+        trainingType: qualityContext.trainingType || trainingType, playerRestrictions,
+      });
+      const correctedIsBetter = preferVarietyCorrection(quality, candidateQuality);
+      if (!correctedIsBetter) {
+        session = record.candidateSession;
+        quality = candidateQuality;
+      }
+    }
+
+    // Strength gets up to two targeted repairs; other methods retain one. If the
+    // deterministic structure/dose audit still fails after the allowed attempts, the
     // original or corrected candidate is returned with a specific warning and
     // remains available for an explicit manual save.
-    if ((!quality.valid || quality.variety?.needsCorrection) && !record.correctionAttempted) {
+    const repairLimit = (qualityContext.focus || focus) === 'inseason_strength' ? 2 : 1;
+    const repairCount = record.correctionAttempts ?? (record.correctionAttempted ? 1 : 0);
+    if ((!quality.valid || quality.variety?.needsCorrection) && repairCount < repairLimit) {
       const correctionPrompt = qualityCorrectionPrompt(userPrompt, session, quality);
       const corrected = await createOpenAIBackgroundResponse(apiKey, correctionPrompt, systemPrompt, sessionTool, {
         maxOutputTokens: SESSION_RETRY_OUTPUT_TOKENS,
@@ -375,26 +391,13 @@ export default async function handler(req, res) {
           openaiStatus: corrected.response.status || 'queued',
           activePrompt: correctionPrompt,
           correctionAttempted: true,
+          correctionAttempts: repairCount + 1,
           candidateSession: session,
           candidateQuality: quality,
           tokenRetryCount: 0,
           correctionStartedAt: new Date().toISOString(),
         }), 'EX', 3600);
         return res.status(200).json({ status: 'pending', processing_status: 'quality_correction' });
-      }
-    }
-
-    // Compare the single repair attempt with its original candidate and keep
-    // the better complete version.
-    if (record.correctionAttempted && record.candidateSession && record.candidateQuality) {
-      const candidateQuality = assessSessionQuality(record.candidateSession, {
-        ...qualityContext, focus: qualityContext.focus || focus,
-        trainingType: qualityContext.trainingType || trainingType, playerRestrictions,
-      });
-      const correctedIsBetter = preferVarietyCorrection(quality, candidateQuality);
-      if (!correctedIsBetter) {
-        session = record.candidateSession;
-        quality = candidateQuality;
       }
     }
 

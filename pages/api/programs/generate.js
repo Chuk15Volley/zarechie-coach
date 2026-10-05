@@ -2023,7 +2023,8 @@ export default async function handler(req, res) {
       { targetDate, focus: effectiveFocus, trainingType: effectiveTrainingType, seasonDecision: qualityContext.seasonDecision },
     );
     let quality = advisorySessionQuality(assessSessionQuality(session, { ...qualityContext, playerRestrictions }));
-    if (!quality.valid || quality.variety?.needsCorrection) {
+    const repairLimit = effectiveFocus === 'inseason_strength' ? 2 : 1;
+    for (let repair = 0; repair < repairLimit && (!quality.valid || quality.variety?.needsCorrection); repair++) {
       // A failed repair must not discard the complete initial session.
       const repaired = await callOpenAIForSession(apiKey, qualityCorrectionPrompt(userPrompt, session, quality), systemPrompt).catch(() => null);
       if (repaired?.session) {
