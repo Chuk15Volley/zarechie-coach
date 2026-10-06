@@ -1,3 +1,4 @@
+import RestArcade from '../../components/player/arcade/RestArcade';
 import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetitions, actualTarget, targetLabel, isCircuit, focusExerciseIndex, shortCue, needsLoadEntry, russianCount, playerLoadLabel, validActualWeight, setCompletionIssue, weightChangeSummary } from '../../lib/playerGym.mjs';
 // pages/player/[id].js
 // Individual player training page — shared link, mobile-first workout tracking.
@@ -32,7 +33,7 @@ import {
   firstIncompleteBlock,
   formatWorkoutDuration,
   nextIncompleteBlock,
-  restSecondsFor,
+  restAfterWorkoutSet,
   workoutExercises,
 } from '../../lib/playerWorkout.mjs';
 
@@ -779,20 +780,25 @@ function TimerDial({ remaining, total }) {
 }
 
 function RestTimer({ timer, onToggle, onAdd, onSkip, undo, onUndo }) {
+  const [playing, setPlaying] = useState(false);
+  const canPlay = Boolean(timer?.running && timer.remaining > 0);
+  useEffect(() => { if (!canPlay) setPlaying(false); }, [canPlay]);
   if (!timer) return null;
   return (
     <div className={`player-rest-timer ${timer.remaining === 0 ? 'is-complete' : ''}`} role="timer" aria-label="Таймер отдыха" aria-live="off">
       <TimerDial remaining={timer.remaining} total={timer.total} />
       <div className="player-timer-copy">
-        <div className="player-kicker">{timer.remaining === 0 ? 'Можно продолжать' : timer.running ? 'Отдых между подходами' : 'Отдых · пауза'}</div>
+        <div className="player-kicker">{timer.remaining === 0 ? 'Можно продолжать' : timer.running ? ({exercise:'Переход к упражнению',block:'Переход к следующему блоку',round:'Отдых после круга',set:'Отдых между подходами'}[timer.kind] || 'Отдых') : 'Отдых · пауза'}</div>
         <div className="player-timer-next">{timer.label}</div>
       </div>
       <div className="player-rest-actions">
         {timer.remaining > 0 && <button type="button" onClick={onToggle}>{timer.running ? 'Пауза' : 'Продолжить'}</button>}
         {timer.remaining > 0 && <button type="button" onClick={onAdd}>+15 сек</button>}
+        {canPlay && <button type="button" onClick={() => setPlaying(true)}>Играть</button>}
         <button type="button" onClick={onSkip}>{timer.remaining > 0 ? 'Пропустить' : 'К подходу'}</button>
       </div>
       {undo && <button type="button" className="player-timer-undo" onClick={onUndo}>Отменить отметку</button>}
+      {playing && canPlay && <RestArcade remaining={timer.remaining} onClose={() => setPlaying(false)} />}
     </div>
   );
 }
@@ -1048,7 +1054,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     if (navigator.vibrate) navigator.vibrate([35, 60, 35, 60, 80]);
   }, [progressReady, workoutStarted, totalSets, doneCount, skippedCount, completedAt, startedAt]);
 
-  const upcomingSet = completedAt ? null : nextWorkoutSet(session, done, skipped);
+  const upcomingSet = completedAt ? null : (activeBlock >= 0 ? nextWorkoutSet(session, done, skipped, activeBlock) : null) || nextWorkoutSet(session, done, skipped);
   const currentSet = activeBlock >= 0 ? nextWorkoutSet(session, done, skipped, activeBlock) : upcomingSet;
   const currentCue = currentSet ? shortCue(currentSet.exercise) : '';
   useEffect(() => {
@@ -1199,9 +1205,10 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     const newDone = { ...done, [key]: true };
     const allFinished = totalSets > 0 && Object.values(newDone).filter(Boolean).length === totalSets;
     if (!allFinished) {
-      const seconds = restSecondsFor(context.block, context.ex, { ...context, next: nextWorkoutSet(session, newDone, skipped) });
+      const { seconds, kind } = restAfterWorkoutSet(session, newDone, skipped, context);
       setRestTimer({
         total: seconds,
+        kind,
         remaining: seconds,
         running: true,
         notified: false,

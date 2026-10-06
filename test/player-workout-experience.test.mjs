@@ -136,6 +136,6 @@ test('structured prophylaxis rests separate sets, transitions and session budget
   assert.equal(restSecondsFor(block,block.exercises[0],{bi:0,ei:0,next}),90);
   done['0-0-1']=true;next=nextWorkoutSet(workout,done);assert.equal(next.key,'0-1-0');
   assert.equal(restSecondsFor(block,block.exercises[0],{bi:0,ei:0,next}),60);
-  assert.equal(restSecondsFor(block,{restSeconds:120},{bi:0,ei:0,next}),120);
+  assert.equal(restSecondsFor(block,{restSeconds:120},{bi:0,ei:0,next}),60);
   assert.equal(restSecondsFor(block,block.exercises[1],{bi:0,ei:1,next:{bi:1,ei:0,block:{label:'B'},exercise:{code:'B1'}}}),60);
 });

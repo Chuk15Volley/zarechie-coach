@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { needsLoadEntry, repetitionInput, setCompletionIssue, validActualWeight, weightChangeSummary } from '../lib/playerGym.mjs';
-import { blockIsComplete, nextIncompleteBlock, nextWorkoutSet } from '../lib/playerWorkout.mjs';
+import { blockIsComplete, nextIncompleteBlock, nextWorkoutSet, restAfterWorkoutSet } from '../lib/playerWorkout.mjs';
 
 const ex = { name: 'DB Row', code: 'A1', weightKg: 16, targetSets: ['12', '12'] };
 const session = { blocks: [{ label: 'A', exercises: [ex] }, { label: 'B', exercises: [{ name: 'Breathing', targetSets: ['5'] }] }] };
@@ -19,7 +19,7 @@ function runCompletion(weight, { unmark = false } = {}) {
    setProgressRevision: noop, setRestTimer: noop, setRestUntil: noop, setUndoSet: noop,
    setFocusMode: noop, setActiveBlock: value => calls.push(['block', value]), navigator: {},
    undoTimer: { current: null }, clearTimeout: noop, setTimeout: noop,
-   totalSets: 3, restSecondsFor: () => 60, nextWorkoutSet, session, skipped: {},
+   totalSets: 3, restAfterWorkoutSet, nextWorkoutSet, session, skipped: {},
    blockIsComplete, nextIncompleteBlock, blockRefs: { current: [] },
  };
  const toggle = new Function(...Object.keys(bindings), `${body}; return toggleSet;`)(...Object.values(bindings));
