@@ -1,3 +1,4 @@
+import { reconcileReplacementDescriptions } from '../lib/exerciseReplacement.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -100,6 +101,7 @@ test('manual save recomputes history and records the coach override; an outage p
     const deps = { ...common,
       getRecentSessionRecords: async () => { if (historyFails) throw new Error('offline'); return past; },
       approveProgramSession: identity, approvedProgramLabel: identity,
+      redis: async () => null, reconcileReplacementDescriptions,
       buildDosePrescription: () => ({}), weightKgFromExercise: () => 0,
       loadUnitsForExercise: () => 1, sessionKey: () => 'session:p1', sessionsKey: () => 'sessions:p1',
       redisPipeline: async value => { commands = value; },

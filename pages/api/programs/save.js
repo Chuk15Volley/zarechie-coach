@@ -1,3 +1,4 @@
+import { reconcileReplacementDescriptions } from '../../../lib/exerciseReplacement.mjs';
 import { getRecentSessionRecords } from '../../../lib/sessionHistory';
 import { buildExerciseVarietyContext } from '../../../lib/exerciseVariety.mjs';
 import { approveProgramSession, approvedProgramLabel } from '../../../lib/programApproval.mjs';
@@ -67,9 +68,12 @@ export default async function handler(req, res) {
   } catch {
     return res.status(503).json({ error: 'Не удалось проверить предыдущую тренировку. Повторите сохранение после восстановления истории.' });
   }
+  const previousRaw = await redis('get', sessionKey(workspace, playerId, date));
+  const previousRecord = typeof previousRaw === 'string' ? JSON.parse(previousRaw) : previousRaw;
+  const describedSession = reconcileReplacementDescriptions(session, previousRecord?.session || previousRecord);
   const savedAt = new Date().toISOString();
   const normalizedSession = approveProgramSession(normalizeSessionTempoDescriptions(
-    ensureSessionExerciseIds(sanitizeUnavailableEquipmentExercises(normalizeSavedWeights(session)))
+    ensureSessionExerciseIds(sanitizeUnavailableEquipmentExercises(normalizeSavedWeights(describedSession)))
   ), savedAt);
   const saveQuality = advisorySessionQuality(assessSessionQuality(normalizedSession, {
     focus,

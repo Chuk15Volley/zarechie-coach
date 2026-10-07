@@ -1,3 +1,4 @@
+import { replaceExerciseDescription } from '../lib/exerciseReplacement.mjs';
 import { estimateStrengthMinutes } from '../lib/strengthExecution.mjs';
 import { calendarToday } from '../lib/coachCalendar.mjs';
 import CoachCalendar from '../components/CoachCalendar';
@@ -1260,6 +1261,7 @@ function ExerciseCard({
   alternatives,
   cue,
   descriptionOverride,
+  descriptionExerciseId,
   compactDescription,
   controlledExecution,
   focus,
@@ -1325,7 +1327,7 @@ function ExerciseCard({
   const rmSuggestion = useMemo(() => calcWeight(name, focus, week, oneRM, position), [name, focus, week, oneRM, position]);
   const effectiveSuggestedKg = suggestedKg || rmSuggestion?.kg || null;
   const hasDescriptionOverride = typeof descriptionOverride === 'string';
-  const displayedDescription = exerciseDescription({ name, tempo, targetSets, prehabRegion, cue, descriptionOverride, compactDescription, controlledExecution });
+  const displayedDescription = exerciseDescription({ name, tempo, targetSets, prehabRegion, cue, descriptionOverride, descriptionExerciseId, compactDescription, controlledExecution });
 
   async function handleRegenerate() {
     if (regenerating || !onRegenerate) return;
@@ -4292,7 +4294,7 @@ export default function Home() {
       blocks: prev.blocks.map((b, bi) =>
         bi !== blockIdx
           ? b
-          : { ...b, exercises: b.exercises.map((ex, ei) => (ei !== exIdx ? ex : { ...ex, ...patch })) }
+          : { ...b, exercises: b.exercises.map((ex, ei) => (ei !== exIdx ? ex : replaceExerciseDescription(ex, patch))) }
       ),
     }));
   }
@@ -8053,6 +8055,7 @@ export default function Home() {
                           alternatives={ex.alternatives || []}
                           cue={ex.cue || ''}
                           descriptionOverride={ex.descriptionOverride}
+                          descriptionExerciseId={ex.descriptionExerciseId}
                           compactDescription={ex.compactDescription}
                           controlledExecution={ex.controlledExecution}
                           focus={focus}
@@ -8072,7 +8075,7 @@ export default function Home() {
                           onActualKgChange={pendingSaved ? (v => updateExercise(bi, ei, { actualKg: v })) : undefined}
                           actualRpe={ex.actualRpe ?? null}
                           onActualRpeChange={pendingSaved ? (v => updateExercise(bi, ei, { actualRpe: v })) : undefined}
-                          onChangeName={v => updateExercise(bi, ei, { name: v, exerciseId: canonicalExerciseId(v), descriptionOverride: undefined })}
+                          onChangeName={v => updateExercise(bi, ei, { name: v })}
                           onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
                           onAddSet={() => addSetRow(bi, ei)}
                           onRemoveSet={si => removeSetRow(bi, ei, si)}
