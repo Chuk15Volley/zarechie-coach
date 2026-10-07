@@ -30,6 +30,7 @@ import {
   nextWorkoutSet,
   restRemaining,
   completedTonnage,
+  completedSetCount,
   blockIsComplete,
   firstIncompleteBlock,
   formatWorkoutDuration,
@@ -854,7 +855,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   const flatExercises = useMemo(() => workoutExercises(session), [session]);
   const dose = useMemo(() => analyzeSessionDose(session || {}), [session]);
   const totalSets = flatExercises.reduce((sum, item) => sum + (item.exercise.targetSets?.length || 0), 0);
-  const initialDoneCount = Object.values(initialDone).filter(Boolean).length;
+  const initialDoneCount = completedSetCount(session, initialDone);
   const initialAllDone = totalSets > 0 && initialDoneCount === totalSets;
 
   // Cross-device state is seeded from Redis, with a local offline fallback.
@@ -1006,7 +1007,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   const [histError, setHistError] = useState('');
   const [histLoading, setHistLoading] = useState(false);
 
-  const doneCount = Object.values(done).filter(Boolean).length;
+  const doneCount = completedSetCount(session, done);
   const pct = totalSets > 0 ? Math.round((doneCount / totalSets) * 100) : 0;
   const tonnage = useMemo(() => completedTonnage(session, done, weights, repetitions), [session, done, weights, repetitions]);
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {nextWorkoutSet,restSecondsFor,restAfterWorkoutSet,restTransitionKind} from '../lib/playerWorkout.mjs';
+import {nextWorkoutSet,restSecondsFor,restAfterWorkoutSet,restTransitionKind,completedSetCount} from '../lib/playerWorkout.mjs';
 import {isCircuit} from '../lib/playerGym.mjs';
 const block={label:'B',exerciseOrder:'sequential',restSeconds:150,transitionRestSeconds:60,rest_note:'150 сек между подходами; 60 сек на переход между упражнениями. Выполнить все подходы упражнения последовательно.',exercises:[{code:'B1',targetSets:['7','7']},{code:'B2',targetSets:['10','10']}]};
 test('Burkova B: set pause is 150s, completed B1 transitions to B2 in 60s',()=>{
@@ -66,4 +66,10 @@ test('power intervals use their own pause rather than the longer exercise transi
  assert.equal(transition.seconds,120);assert.equal(transition.kind,'exercise');
  const onlyBlockPause={...a,rest_note:'120 сек после блока'};
  assert.equal(restSecondsFor(onlyBlockPause,{}, {bi:0,ei:0,si:0,next:{bi:0,ei:0,si:1}}),60);
+});
+
+test('removed or legacy set keys cannot prematurely finish a revised program',()=>{
+ const session={blocks:[block]};
+ assert.equal(completedSetCount(session,{'0-0-0':true,'0-0-1':true,'4-0-0':true,'0-0-4':true}),2);
+ assert.equal(completedSetCount(session,{'0-0-0':false}),0);
 });
