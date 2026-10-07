@@ -4,15 +4,15 @@ import {createConfetti, confettiFrame, CONFETTI_DURATION_MS,createFireworks,fire
 
 test('paper falls and tumbles using elapsed time and expires within a bounded celebration', () => {
   const papers = createConfetti(390, 844, () => 0.5);
-  assert.equal(papers.length, 450);
-  const paper = papers[0];
+  assert.equal(papers.length, 680);
+  const paper = papers[340];
   assert.equal(confettiFrame(paper, 0, 844), null);
-  const early = confettiFrame(paper, 1000, 844), later = confettiFrame(paper, 2000, 844);
+  const early = confettiFrame(paper, 4000, 844), later = confettiFrame(paper, 5000, 844);
   assert.ok(later.y > early.y);
   assert.notEqual(later.scale, early.scale);
   assert.ok(later.opacity > 0 && later.opacity <= 1);
   assert.equal(confettiFrame(paper, CONFETTI_DURATION_MS, 844), null);
-  assert.equal(confettiFrame(paper, 6000, 100), null);
+  assert.equal(confettiFrame(paper, 13000, 100), null);
 });
 
 test('particles remain finite over phone and desktop viewport sizes', () => {
@@ -32,7 +32,7 @@ test('particles remain finite over phone and desktop viewport sizes', () => {
 import { readFileSync } from 'node:fs';
 function effectHarness({ reduced = false, celebration = 'fresh-completion' } = {}) {
  const events=new Map(),frames=new Map();let serial=0,painted=0,cleanup;
- const context={beginPath(){},moveTo(){},lineTo(){},stroke(){},scale(){},clearRect(){},save(){},translate(){},rotate(){},fillRect(){painted++;},restore(){}};
+ const context={createLinearGradient(){return {addColorStop(){}};},bezierCurveTo(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},scale(){},clearRect(){},save(){},translate(){},rotate(){},fillRect(){painted++;},restore(){}};
  const canvas={hidden:false,getContext:()=>context};
  const motion={matches:reduced,addEventListener:(k,fn)=>events.set('motion:'+k,fn),removeEventListener:k=>events.delete('motion:'+k)};
  const document={hidden:false,addEventListener:(k,fn)=>events.set(k,fn),removeEventListener:k=>events.delete(k)};
@@ -66,21 +66,29 @@ test('backgrounding or changing reduced-motion preference stops the current cele
  }
 });
 
-test('celebration has fresh falling paper in the second half and expires at twelve seconds',()=>{
+test('celebration has fresh falling paper in the second half and expires at fourteen seconds',()=>{
  const papers=createConfetti(390,844,()=>0.5);
  assert.ok(papers.filter(p=>confettiFrame(p,9000,844)).length>=150);
- assert.equal(CONFETTI_DURATION_MS,12000);
+ assert.equal(CONFETTI_DURATION_MS,14000);
 });
 test('fireworks launch, expand into fading sparks, and stop after their lifetime',()=>{
  const bursts=createFireworks(390,844,()=>0.5);
  const burst=bursts[0];
  assert.equal(fireworkFrame(burst,0,844),null);
  assert.ok(fireworkFrame(burst,500,844).rocket);
- const early=fireworkFrame(burst,1100,844),later=fireworkFrame(burst,1800,844);
- assert.equal(early.rocket,null);assert.equal(early.sparks.length,42);
+ const early=fireworkFrame(burst,1200,844),later=fireworkFrame(burst,1800,844);
+ assert.equal(early.rocket,null);assert.equal(early.sparks.length,64);
  assert.ok(later.sparks[0].x>early.sparks[0].x);
  assert.ok(later.sparks[0].opacity<early.sparks[0].opacity);
  assert.equal(fireworkFrame(burst,4000,844),null);
  assert.ok(bursts.some(b=>fireworkFrame(b,10000,844)?.sparks.length));
- assert.ok(bursts.every(b=>fireworkFrame(b,12000,844)===null));
+ assert.ok(bursts.every(b=>fireworkFrame(b,14000,844)===null));
+});
+
+test('opening cannons launch upward from both sides before gravity returns them',()=>{
+ const papers=createConfetti(390,844,()=>0.5);
+ const left=papers[0],right=papers[1];
+ assert.ok(left.vx>0 && right.vx<0);
+ const early=confettiFrame(left,500,844),peak=confettiFrame(left,1600,844),late=confettiFrame(left,3000,844);
+ assert.ok(peak.y<early.y);assert.ok(late.y>peak.y);
 });
