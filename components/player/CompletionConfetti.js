@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { CONFETTI_DURATION_MS, createConfetti, confettiFrame } from '../../lib/completionConfetti.mjs';
+import { CONFETTI_DURATION_MS, createConfetti, confettiFrame, createFireworks, fireworkFrame } from '../../lib/completionConfetti.mjs';
 
 export default function CompletionConfetti({ celebration }) {
   const canvasRef = useRef(null);
@@ -17,6 +17,7 @@ export default function CompletionConfetti({ celebration }) {
     context.scale(ratio, ratio);
     canvas.hidden = false;
     const papers = createConfetti(width, height);
+    const fireworks = createFireworks(width, height);
     let frame, stopped = false;
     const start = performance.now();
     const stop = () => {
@@ -30,6 +31,36 @@ export default function CompletionConfetti({ celebration }) {
       const elapsed = now - start;
       if (elapsed >= CONFETTI_DURATION_MS) { stop(); return; }
       context.clearRect(0, 0, width, height);
+      context.save();
+      context.globalCompositeOperation = 'lighter';
+      context.lineCap = 'round';
+      for (const burst of fireworks) {
+        const pose = fireworkFrame(burst, elapsed, height);
+        if (!pose) continue;
+        context.strokeStyle = burst.color;
+        context.fillStyle = burst.color;
+        if (pose.rocket) {
+          context.globalAlpha = 0.65;
+          context.lineWidth = 2;
+          context.beginPath();
+          context.moveTo(pose.rocket.x, pose.rocket.y + 22);
+          context.lineTo(pose.rocket.x, pose.rocket.y);
+          context.stroke();
+        }
+        for (const spark of pose.sparks) {
+          context.globalAlpha = spark.opacity * 0.22;
+          context.lineWidth = 6;
+          context.beginPath();
+          context.moveTo(spark.tailX, spark.tailY);
+          context.lineTo(spark.x, spark.y);
+          context.stroke();
+          context.globalAlpha = spark.opacity;
+          context.lineWidth = 1.5;
+          context.stroke();
+          context.fillRect(spark.x - 1, spark.y - 1, 2, 2);
+        }
+      }
+      context.restore();
       for (const paper of papers) {
         const pose = confettiFrame(paper, elapsed, height);
         if (!pose) continue;
