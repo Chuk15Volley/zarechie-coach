@@ -8,22 +8,22 @@ const ex = { name: 'DB Row', code: 'A1', weightKg: 16, targetSets: ['12', '12'] 
 const session = { blocks: [{ label: 'A', exercises: [ex] }, { label: 'B', exercises: [{ name: 'Breathing', targetSets: ['5'] }] }] };
 const source = readFileSync(new URL('../pages/player/[id].js', import.meta.url), 'utf8');
 const body = source.slice(source.indexOf('  function toggleSet('), source.indexOf('  function undoLastSet('));
-function runCompletion(weight, { unmark = false } = {}) {
+function runCompletion(weight, { unmark = false, overrides = {} } = {}) {
  const done = { '0-0-0': true, ...(unmark ? { '0-0-1': true } : {}) }, calls = [];
  const noop = () => {};
  const bindings = { done, weights: { '0-0-1': weight }, repetitions: {}, setCompletionIssue, repetitionInput,
    setResultIssue: value => calls.push(['issue', value]), setResultSet: noop,
    holdTimer: { hold: null, cancel: noop }, completedAt: null,
-   setCompletedAt: noop, setFinishReason: noop, changeReps: noop,
+   setCelebration: value => calls.push(['celebration', value]), setCompletedAt: noop, setFinishReason: noop, changeReps: noop,
    setDone: fn => calls.push(['done', fn(done)]), setSetUpdatedAt: noop, setLastActionAt: noop,
-   setProgressRevision: noop, setRestTimer: noop, setRestUntil: noop, setUndoSet: noop,
+   setProgressRevision: noop, setRestTimer: value => calls.push(['rest', value]), setRestUntil: value => calls.push(['deadline', value]), setUndoSet: noop,
    setFocusMode: noop, setActiveBlock: value => calls.push(['block', value]), navigator: {},
    undoTimer: { current: null }, clearTimeout: noop, setTimeout: noop,
    totalSets: 3, restAfterWorkoutSet, nextWorkoutSet, session, skipped: {},
-   blockIsComplete, nextIncompleteBlock, blockRefs: { current: [] },
+   blockIsComplete, nextIncompleteBlock, blockRefs: { current: [] }, ...overrides,
  };
  const toggle = new Function(...Object.keys(bindings), `${body}; return toggleSet;`)(...Object.values(bindings));
- const result = toggle('0-0-1', { bi: 0, ei: 0, si: 1, ex, block: session.blocks[0] });
+ const result = toggle('0-0-1', { bi: 0, ei: 0, si: 1, ex, block: bindings.session.blocks[0] });
  return { calls, result };
 }
 test('last set of a block cannot complete or navigate on a missing, empty, or invalid actual weight', () => {
@@ -61,4 +61,22 @@ test('completion summary includes only completed changed weights, including zero
  const result = weightChangeSummary(session, { '0-0-0': true }, { '0-0-0': '0', '0-0-1': '10' });
  assert.deepEqual(result[0].actual, [0]); assert.equal(result[0].count, 1);
  assert.deepEqual(weightChangeSummary(session, { '0-0-0': true }, { '0-0-0': '16' }), []);
+});
+
+test('full live completion celebrates once, while partial or skipped completion does not', () => {
+ const full = runCompletion('16', {overrides:{session:{blocks:[session.blocks[0]]},totalSets:2}});
+ assert.equal(full.calls.filter(([type])=>type==='celebration').length,1);
+ assert.ok(full.calls.find(([type])=>type==='celebration')[1]);
+ assert.equal(runCompletion('16').calls.some(([type])=>type==='celebration'),false);
+ const skipped = runCompletion('16', {overrides:{skipped:{'1-0':'Нет оборудования'}}});
+ assert.equal(skipped.calls.some(([type])=>type==='celebration'),false);
+ assert.equal(skipped.calls.find(([type])=>type==='rest')[1],null);
+ assert.equal(skipped.calls.find(([type])=>type==='deadline')[1],null);
+});
+test('zero-second transitions move to the next block without opening a timer', () => {
+ const block={...session.blocks[0],transitionRestSeconds:0};
+ const result=runCompletion('16',{overrides:{session:{blocks:[block,session.blocks[1]]}}});
+ assert.equal(result.calls.find(([type])=>type==='rest')[1],null);
+ assert.equal(result.calls.find(([type])=>type==='deadline')[1],null);
+ assert.equal(result.calls.find(([type])=>type==='block')[1],1);
 });

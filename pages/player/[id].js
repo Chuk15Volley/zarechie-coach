@@ -1,3 +1,4 @@
+import CompletionConfetti from '../../components/player/CompletionConfetti';
 import RestArcade from '../../components/player/arcade/RestArcade';
 import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetitions, actualTarget, targetLabel, isCircuit, focusExerciseIndex, shortCue, needsLoadEntry, russianCount, playerLoadLabel, validActualWeight, setCompletionIssue, weightChangeSummary } from '../../lib/playerGym.mjs';
 // pages/player/[id].js
@@ -876,6 +877,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   const [focusMode, setFocusMode] = useState(true);
   const [workoutStarted, setWorkoutStarted] = useState(Boolean(serverLog?.startedAt || Object.values(initialDone).some(Boolean)));
   const [startedAt, setStartedAt] = useState(serverLog?.startedAt || null);
+  const [celebration, setCelebration] = useState(null);
   const [finishReason, setFinishReason] = useState(serverLog?.finishReason || null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [resultSet, setResultSet] = useState(null);
@@ -1188,6 +1190,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     setLastActionAt(actionAt);
     setProgressRevision(value => value + 1);
     if (wasDone) {
+      setCelebration(null);
       setRestTimer(null);
       setRestUntil(null);
       setCompletedAt(null);
@@ -1203,18 +1206,23 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     undoTimer.current = setTimeout(() => setUndoSet(null), 5200);
 
     const newDone = { ...done, [key]: true };
-    const allFinished = totalSets > 0 && Object.values(newDone).filter(Boolean).length === totalSets;
+    const allFinished = totalSets > 0 && !nextWorkoutSet(session, newDone);
+    if (allFinished) {
+      setCelebration(actionAt);
+      setRestTimer(null);
+      setRestUntil(null);
+    }
     if (!allFinished) {
-      const { seconds, kind } = restAfterWorkoutSet(session, newDone, skipped, context);
-      setRestTimer({
+      const { seconds, kind, next } = restAfterWorkoutSet(session, newDone, skipped, context);
+      setRestTimer(next && seconds > 0 ? {
         total: seconds,
         kind,
         remaining: seconds,
         running: true,
         notified: false,
         label: context.block?.rest_note || `После ${context.ex?.code || 'подхода'}`,
-      });
-      setRestUntil(new Date(Date.now() + seconds * 1000).toISOString());
+      } : null);
+      setRestUntil(next && seconds > 0 ? new Date(Date.now() + seconds * 1000).toISOString() : null);
     }
 
     if (blockIsComplete(context.block, context.bi, newDone, skipped)) {
@@ -1226,6 +1234,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
 
   function undoLastSet() {
     if (!undoSet?.key) return;
+    setCelebration(null);
     const actionAt = new Date().toISOString();
     setDone(prev => ({ ...prev, [undoSet.key]: false }));
     setSetUpdatedAt(prev => ({ ...prev, [undoSet.key]: actionAt }));
@@ -1817,6 +1826,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         </div>
       </div>
 
+      <CompletionConfetti celebration={celebration} />
       <PlayerSplash visible={splashVisible} />
       <InstallHint />
     </>

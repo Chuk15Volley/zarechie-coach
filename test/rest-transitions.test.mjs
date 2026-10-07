@@ -35,3 +35,35 @@ test('skipped exercises cannot trigger a false round timer or a timer after fina
  assert.equal(restAfterWorkoutSet(session,{'0-0-0':true,'0-0-1':true},{'0-1':'Пропуск'},context).seconds,0);
  assert.equal(restTransitionKind(block,{...context,next:null}),'finished');
 });
+test('explicit block pause applies only after the entire block, not after an exercise or round',()=>{
+ const a={...block,rest_note:'150 сек между подходами; 60 сек между упражнениями; 120 сек после блока'};
+ const session={blocks:[a,{...block,label:'C'}]};
+ const done={'0-0-0':true,'0-0-1':true};
+ let rest=restAfterWorkoutSet(session,done,{}, {block:a,ex:a.exercises[0],bi:0,ei:0,si:1});
+ assert.equal(rest.seconds,60);assert.equal(rest.kind,'exercise');
+ Object.assign(done,{'0-1-0':true,'0-1-1':true});
+ rest=restAfterWorkoutSet(session,done,{}, {block:a,ex:a.exercises[1],bi:0,ei:1,si:1});
+ assert.equal(rest.seconds,120);assert.equal(rest.kind,'block');assert.equal(rest.next.key,'1-0-0');
+ const b={...a,rest_note:'',blockRestSeconds:90};
+ assert.equal(restSecondsFor(b,b.exercises[1],{bi:0,ei:1,si:1,next:rest.next}),90);
+});
+test('explicit zero rest permits immediate transitions; missing values retain the normal fallback',()=>{
+ const next={bi:0,ei:1,si:0,exercise:{code:'B2'}};
+ for(const value of [0,'0']) {
+  assert.equal(restSecondsFor({transitionRestSeconds:value},{},{bi:0,ei:0,si:0,next}),0);
+  assert.equal(restSecondsFor({}, {restSeconds:value}),0);
+ }
+ for(const value of [null,undefined,'',' ']) {
+  assert.equal(restSecondsFor({transitionRestSeconds:value},{},{bi:0,ei:0,si:0,next}),60);
+ }
+});
+test('power intervals use their own pause rather than the longer exercise transition',()=>{
+ const a={...block,restSeconds:undefined,transitionRestSeconds:undefined,rest_note:'75–90 сек между качественными отрезками; 2 мин между упражнениями.'};
+ const context={block:a,ex:a.exercises[0],bi:0,ei:0,si:0};
+ const rest=restAfterWorkoutSet({blocks:[a]},{'0-0-0':true},{},context);
+ assert.equal(rest.seconds,90);assert.equal(rest.kind,'set');
+ const transition=restAfterWorkoutSet({blocks:[a]},{'0-0-0':true,'0-0-1':true},{},{...context,si:1});
+ assert.equal(transition.seconds,120);assert.equal(transition.kind,'exercise');
+ const onlyBlockPause={...a,rest_note:'120 сек после блока'};
+ assert.equal(restSecondsFor(onlyBlockPause,{}, {bi:0,ei:0,si:0,next:{bi:0,ei:0,si:1}}),60);
+});
