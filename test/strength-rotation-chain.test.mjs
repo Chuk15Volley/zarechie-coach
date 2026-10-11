@@ -72,3 +72,13 @@ test('ANKLE prohibition cannot be bypassed by lateral-vector requirement',()=>{
  const result=build({playerRestrictions:['ANKLE']});
  assert.ok(exercises(result).every(e=>!/lateral/i.test(e.name)));
 });
+
+test('background, exercise replacement and copying cannot silently introduce historical repeats',()=>{
+ const status=readFileSync(new URL('../pages/api/programs/generate-status.js',import.meta.url),'utf8');
+ assert.match(status,/\(qualityContext.focus \|\| focus\) === 'inseason_strength' \? 42 : 12/);
+ const replacement=readFileSync(new URL('../pages/api/programs/regenerate-exercise.js',import.meta.url),'utf8');
+ assert.match(replacement,/excludedKeys.has\(varietyExerciseKey\(candidateName\)\)/);
+ const copy=readFileSync(new URL('../pages/api/programs/copy.js',import.meta.url),'utf8');
+ assert.match(copy,/getRecentSessionRecords\(String\(toPlayerId\)/);
+ assert.match(copy,/copyQuality.variety\?\.needsCorrection/);
+});

@@ -1,3 +1,5 @@
+import {getRecentSessionRecords} from '../../../lib/sessionHistory';
+import {buildExerciseVarietyContext} from '../../../lib/exerciseVariety.mjs';
 import { redis } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { restrictionsKey, rosterKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
@@ -60,6 +62,9 @@ export default async function handler(req, res) {
     } catch (_) {}
   }
 
+  let recentSessions;
+  try { recentSessions=await getRecentSessionRecords(String(toPlayerId),record.focus === 'inseason_strength'?42:12,workspace,date,{strict:true}); }
+  catch { return res.status(503).json({error:'Не удалось проверить историю получателя. Повторите копирование позже.'}); }
   const newRecord = {
     ...record,
     session: sanitizeUnavailableEquipmentExercises(record.session),
@@ -69,11 +74,13 @@ export default async function handler(req, res) {
   const restrictions = parseJSON(rawRestrictions);
   const copyQuality = advisorySessionQuality(assessSessionQuality(newRecord.session, {
     focus: newRecord.focus || '',
+    varietyContext:buildExerciseVarietyContext(recentSessions,{targetDate:date,focus:newRecord.focus,trainingType:newRecord.trainingType}),
     trainingType: newRecord.trainingType || '',
     playerRestrictions: Array.isArray(restrictions) ? restrictions : [],
     dosePrescription: newRecord.quality?.dose?.prescription || buildDosePrescription({ focus: newRecord.focus, trainingType: newRecord.trainingType }),
     seasonDecision: newRecord.quality?.seasonDecision || null,
   }));
+  if(newRecord.focus === 'inseason_strength' && copyQuality.variety?.needsCorrection) return res.status(409).json({error:'У получателя уже были эти упражнения. Нужна индивидуальная замена перед сохранением.',repeated:copyQuality.variety.repeated});
   newRecord.quality = copyQuality.blocking
     ? {
         ...copyQuality,

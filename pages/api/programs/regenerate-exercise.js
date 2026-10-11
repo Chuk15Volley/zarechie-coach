@@ -1,3 +1,5 @@
+import {getRecentSessionRecords} from '../../../lib/sessionHistory';
+import {buildExerciseVarietyContext,varietyExerciseKey,formatExerciseVarietyForPrompt} from '../../../lib/exerciseVariety.mjs';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 // pages/api/programs/regenerate-exercise.js
 // POST { playerId, date, blockIndex, exerciseIndex, session? }
@@ -143,6 +145,12 @@ export default async function handler(req, res) {
   const exercise = block.exercises?.[exerciseIndex];
   if (!exercise) return res.status(400).json({ error: 'Упражнение не найдено' });
 
+  const replacementFocus=record?.focus || (String(session.methodology?.goal || '').startsWith('inseason_strength')?'inseason_strength':'');
+  let recentSessions;
+  try { recentSessions=await getRecentSessionRecords(String(playerId),replacementFocus==='inseason_strength'?42:12,workspace,date,{strict:true}); }
+  catch { return res.status(503).json({error:'Не удалось проверить историю упражнений. Повторите замену позже.'}); }
+  const varietyContext=buildExerciseVarietyContext(recentSessions,{targetDate:date,focus:replacementFocus,trainingType:record?.trainingType || session.methodology?.trainingType});
+  const excludedKeys=new Set([...varietyContext.recent.map(entry=>entry.key),...(session.blocks || []).flatMap(b=>b.exercises || []).map(e=>varietyExerciseKey(e.name))]);
   // All other exercises (for dedup)
   const others = (session.blocks || [])
     .flatMap((b, bi) =>
@@ -159,6 +167,7 @@ export default async function handler(req, res) {
 
 ПРОГРАММА:
 Цель дня: ${dayGoal}
+${formatExerciseVarietyForPrompt(varietyContext)}
 ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code || ''}): ${(b.exercises || []).map(e => e.name).join(', ')}`).join('\n')}
 
 ЗАМЕНИТЬ:
@@ -240,6 +249,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
         lastIssue = 'нельзя возвращать исходное упражнение';
         continue;
       }
+      if(excludedKeys.has(varietyExerciseKey(candidateName))) { lastIssue='упражнение уже встречалось в текущей или недавней программе'; continue; }
       if (isForbiddenExercise(candidateName)) {
         lastIssue = `упражнение "${candidateName}" запрещено или неоднозначно по оборудованию`;
         continue;

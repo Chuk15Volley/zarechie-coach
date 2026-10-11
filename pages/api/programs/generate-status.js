@@ -344,7 +344,7 @@ export default async function handler(req, res) {
     // Refresh after the model finishes: a prior-date program may have been
     // saved while this job was running. Failure leaves the job retryable.
     qualityContext.varietyContext = buildExerciseVarietyContext(
-      await getRecentSessionRecords(String(playerId), 12, workspace, date, { strict: true }),
+      await getRecentSessionRecords(String(playerId), (qualityContext.focus || focus) === 'inseason_strength' ? 42 : 12, workspace, date, { strict: true }),
       { targetDate: date, focus: qualityContext.focus || focus,
         trainingType: qualityContext.trainingType || trainingType,
         seasonDecision: qualityContext.seasonDecision },
