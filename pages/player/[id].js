@@ -347,7 +347,7 @@ function ExerciseMedia({ name, token }) {
 }
 
 // ── Single exercise card ──────────────────────────────────────────────────────
-function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, repetitions = {}, onRepsChange, token, readOnly = false, skipReason, onSkip, onHold, previousResult }) {
+function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, repetitions = {}, onRepsChange, token, readOnly = false, skipReason, onSkip, onHold, previousResult, currentSetKey }) {
   const [skipOpen, setSkipOpen] = useState(false);
   const [reason, setReason] = useState('');
   const plannedWeight = plannedWeightLabel(ex);
@@ -398,7 +398,7 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
               value={s}
               done={!!done[key]}
               onToggle={() => onToggle(key, { bi, ei, si, block, ex })}
-              active={si === (ex.targetSets || []).findIndex((_, i) => !done[`${bi}-${ei}-${i}`])}
+              active={key === currentSetKey}
               repetitions={repetitions[key]}
               onRepsChange={val => onRepsChange(key, val)}
               weight={weights?.[key]}
@@ -787,7 +787,7 @@ function RestTimer({ timer, onToggle, onAdd, onSkip, undo, onUndo }) {
     <div className={`player-rest-timer ${timer.remaining === 0 ? 'is-complete' : ''}`} role="timer" aria-label="Таймер отдыха" aria-live="off">
       <TimerDial remaining={timer.remaining} total={timer.total} />
       <div className="player-timer-copy">
-        <div className="player-kicker">{timer.remaining === 0 ? 'Можно продолжать' : timer.running ? ({exercise:'Переход к упражнению',block:'Переход к следующему блоку',round:'Отдых после круга',set:'Отдых между подходами'}[timer.kind] || 'Отдых') : 'Отдых · пауза'}</div>
+        <div className="player-kicker">{timer.remaining === 0 ? 'Можно продолжать' : timer.running ? ({exercise:'Отдых между упражнениями',block:'Переход к следующему блоку',round:'Отдых между сериями / кругами',set:'Отдых между подходами'}[timer.kind] || 'Отдых') : 'Отдых · пауза'}</div>
         <div className="player-timer-next">{timer.label}</div>
       </div>
       <div className="player-rest-actions">
@@ -967,7 +967,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
       setLastActionAt(merged.lastActionAt); setElapsedSeconds(merged.elapsedSeconds);
       setWorkoutStarted(Boolean(merged.startedAt || Object.values(merged.done).some(Boolean)));
       setActiveBlock(firstIncompleteBlock(session, merged.done, merged.skipped)?.bi ?? -1);
-      if (merged.completedAt) setFocusMode(false);
       setRestUntil(merged.restUntil);
       if (merged.restPausedSeconds > 0) setRestTimer({ total: merged.restPausedSeconds, remaining: merged.restPausedSeconds, running: false, label: 'Отдых · пауза' });
       if (merged.restUntil) setRestTimer({ total: Math.max(1, restRemaining(merged.restUntil)), remaining: restRemaining(merged.restUntil), running: true, label: 'Отдых' });
@@ -1047,8 +1046,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     const now = new Date();
     const start = startedAt ? new Date(startedAt) : now;
     const seconds = Math.max(1, Math.round((now.getTime() - start.getTime()) / 1000));
-    setCompletedAt(now.toISOString());
-    setFocusMode(false); setUndoSet(null);
+    setCompletedAt(now.toISOString()); setUndoSet(null);
     setLastActionAt(now.toISOString());
     setRestUntil(null);
     setElapsedSeconds(seconds);
@@ -1104,7 +1102,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     setFinishReason(selectedFinishReason); setCompletedAt(now.toISOString());
     setElapsedSeconds(Math.max(0, Math.round((now - new Date(startedAt || now)) / 1000)));
     setRestTimer(null); setRestUntil(null); setLastActionAt(now.toISOString());
-    setFinishOpen(false); setFocusMode(false); setProgressRevision(value => value + 1);
+    setFinishOpen(false); setProgressRevision(value => value + 1);
   }
 
   useEffect(() => {
@@ -1196,7 +1194,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
       setRestUntil(null);
       setCompletedAt(null);
       setUndoSet(null);
-      setFocusMode(true);
       setActiveBlock(context.bi);
       return;
     }
@@ -1245,7 +1242,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     setUndoSet(null);
     setRestTimer(null);
     setRestUntil(null);
-    setFocusMode(true);
     if (Number.isInteger(undoSet.bi)) setActiveBlock(undoSet.bi);
     if (undoTimer.current) clearTimeout(undoTimer.current);
     if (navigator.vibrate) navigator.vibrate(10);
@@ -1268,7 +1264,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   }
 
   function scrollToBlock(idx) {
-    setActiveBlock(idx);
     blockRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -1287,22 +1282,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     }
   }, []);
 
-  // Track active block on scroll
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      entries => {
-        for (const e of entries) {
-          if (e.isIntersecting) {
-            const idx = blockRefs.current.indexOf(e.target);
-            if (idx !== -1) setActiveBlock(idx);
-          }
-        }
-      },
-      { threshold: 0.4 }
-    );
-    blockRefs.current.forEach(el => el && observer.observe(el));
-    return () => observer.disconnect();
-  }, [blocks.length, workoutStarted]);
+  // Browsing the open program must never change the execution order.
 
   return (
     <ErrorBoundary>
@@ -1557,7 +1537,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                       ref={el => (blockRefs.current[bi] = el)}
                       className="player-block-section"
                       data-block-tone={bi % 6}
-                      style={{ scrollMarginTop: '190px' }}
+                      style={{ scrollMarginTop: '16px' }}
                     >
                       <div className="player-block-heading mb-3 flex items-center gap-3">
                         <span className="player-block-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e] shadow-[0_4px_14px_rgba(74,222,128,0.18)]">
@@ -1577,6 +1557,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                             ei={ei}
                             ex={ex}
                             block={block}
+                            currentSetKey={currentSet?.key}
                             done={done}
                             skipReason={skipped[`${bi}-${ei}`]}
                             onSkip={skipExercise}
@@ -1760,6 +1741,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
               onToggle={() => toggleSet(resultSet.key, resultSet)} />
           </section>
         </div>}
+        <div className="player-action-dock">
         {workoutStarted && !completedAt && !finishOpen && !holdTimer.hold && !restTimer && !resultSet && activeTab === 'workout' && currentSet && <section className="gym-current-set" aria-label="Текущий подход">
           <div className="player-kicker">{currentSet.exercise.code} · {playerExerciseName(currentSet.exercise)}</div>
           <strong>Подход {currentSet.si + 1} из {currentSet.exercise.targetSets.length} · {targetLabel(currentSet.target)}{plannedWeightValue(currentSet.exercise) ? ` · ${plannedWeightLabel(currentSet.exercise)}` : ''}</strong>
@@ -1788,6 +1770,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
           />
         )}
         <UndoSetToast undo={restTimer && !finishOpen ? null : undoSet} onUndo={undoLastSet} onDismiss={() => setUndoSet(null)} />
+
+        </div>
 
         {/* ── Footer ── */}
         <div className="player-footer fixed bottom-0 left-0 right-0 flex items-center justify-center border-t border-white/[0.05] bg-[#07101a]/95 py-2 backdrop-blur-xl">

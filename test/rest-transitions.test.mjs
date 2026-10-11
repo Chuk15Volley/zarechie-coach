@@ -73,3 +73,35 @@ test('removed or legacy set keys cannot prematurely finish a revised program',()
  assert.equal(completedSetCount(session,{'0-0-0':true,'0-0-1':true,'4-0-0':true,'0-0-4':true}),2);
  assert.equal(completedSetCount(session,{'0-0-0':false}),0);
 });
+
+test('Voronkova pair and triple keep exercise pauses separate from series pauses',()=>{
+ for(const [label,n,sets,notes,pauses] of [
+  ['A',2,3,'5–10 сек A1→A2, 3 мин после пары.',[10,180]],
+  ['B',3,3,'10–15 сек B1→B2, 90 сек B2→B3, 2 мин после тройки.',[15,90,120]],
+  ['C',3,2,'10–15 сек C1→C2, 90 сек C2→C3, 2 мин после тройки.',[15,90,120]],
+ ]) {
+  const block={label,rest_note:notes,exercises:Array.from({length:n},(_,ei)=>({code:label+(ei+1),targetSets:Array(sets).fill('5')}))};
+  const session={blocks:[block]},done={};
+  for(let si=0;si<sets;si++)for(let ei=0;ei<n;ei++) {
+   const next=nextWorkoutSet(session,done);assert.equal(next.key,`0-${ei}-${si}`);done[next.key]=true;
+   const rest=restAfterWorkoutSet(session,done,{}, {...next,ex:next.exercise});
+   const final=si===sets-1&&ei===n-1;
+   assert.equal(rest.kind,final?'finished':ei===n-1?'round':'exercise');
+   assert.equal(rest.seconds,final?0:pauses[ei]);
+  }
+ }
+});
+test('a note about exercise transitions alone does not turn sequential sets into a circuit',()=>{
+ for(const [note,setSeconds,exerciseSeconds] of [
+  ['60–75 сек между подходами; 90 сек между упражнениями.',75,90],
+  ['45–60 сек между подходами и упражнениями.',60,60],
+ ]) {
+  const b={...block,exerciseOrder:undefined,restSeconds:undefined,transitionRestSeconds:undefined,rest_note:note};
+  assert.equal(isCircuit(b),false);
+  const session={blocks:[b]},done={'0-0-0':true};
+  let rest=restAfterWorkoutSet(session,done,{}, {block:b,ex:b.exercises[0],bi:0,ei:0,si:0});
+  assert.equal(rest.next.key,'0-0-1');assert.equal(rest.kind,'set');assert.equal(rest.seconds,setSeconds);
+  done['0-0-1']=true;rest=restAfterWorkoutSet(session,done,{}, {block:b,ex:b.exercises[0],bi:0,ei:0,si:1});
+  assert.equal(rest.next.key,'0-1-0');assert.equal(rest.kind,'exercise');assert.equal(rest.seconds,exerciseSeconds);
+ }
+});
