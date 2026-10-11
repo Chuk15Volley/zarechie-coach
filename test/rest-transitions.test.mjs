@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {nextWorkoutSet,restSecondsFor,restAfterWorkoutSet,restTransitionKind,completedSetCount} from '../lib/playerWorkout.mjs';
+import {restoredWorkoutBlock,nextWorkoutSet,restSecondsFor,restAfterWorkoutSet,restTransitionKind,completedSetCount} from '../lib/playerWorkout.mjs';
 import {isCircuit} from '../lib/playerGym.mjs';
 const block={label:'B',exerciseOrder:'sequential',restSeconds:150,transitionRestSeconds:60,rest_note:'150 сек между подходами; 60 сек на переход между упражнениями. Выполнить все подходы упражнения последовательно.',exercises:[{code:'B1',targetSets:['7','7']},{code:'B2',targetSets:['10','10']}]};
 test('Burkova B: set pause is 150s, completed B1 transitions to B2 in 60s',()=>{
@@ -104,4 +104,14 @@ test('a note about exercise transitions alone does not turn sequential sets into
   done['0-0-1']=true;rest=restAfterWorkoutSet(session,done,{}, {block:b,ex:b.exercises[0],bi:0,ei:0,si:1});
   assert.equal(rest.next.key,'0-1-0');assert.equal(rest.kind,'exercise');assert.equal(rest.seconds,exerciseSeconds);
  }
+});
+
+test('reload restores the saved execution block, with safe fallback after program edits or skips',()=>{
+ const session={blocks:[block,{...block,label:'C'}]};
+ assert.equal(restoredWorkoutBlock(session,{'1-0-0':true},{},1),1);
+ assert.equal(nextWorkoutSet(session,{'1-0-0':true},{},restoredWorkoutBlock(session,{'1-0-0':true},{},1)).key,'1-0-1');
+ for(const invalid of [null,undefined,-1,8,'1'])assert.equal(restoredWorkoutBlock(session,{}, {},invalid),0);
+ assert.equal(restoredWorkoutBlock(session,{}, {'1-0':'skip','1-1':'skip'},1),0);
+ const done=Object.fromEntries([0,1].flatMap(bi=>[0,1].flatMap(ei=>[0,1].map(si=>[`${bi}-${ei}-${si}`,true]))));
+ assert.equal(restoredWorkoutBlock(session,done,{},1),-1);
 });

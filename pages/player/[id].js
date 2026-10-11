@@ -29,6 +29,7 @@ import { exerciseDescription } from '../../lib/tempoDescription.mjs';
 import { analyzeSessionDose } from '../../lib/sessionDose.mjs';
 import {
   FINISH_REASONS,
+  restoredWorkoutBlock,
   nextWorkoutSet,
   restRemaining,
   completedTonnage,
@@ -874,8 +875,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   const [lastActionAt, setLastActionAt] = useState(serverLog?.lastActionAt || null);
   const [restUntil, setRestUntil] = useState(serverLog?.restUntil || null);
   const [serverSavedAt, setServerSavedAt] = useState(serverLog?.savedAt || null);
-  const initialBlock = firstIncompleteBlock(session, initialDone, serverLog?.skipped);
-  const [activeBlock, setActiveBlock] = useState(initialBlock?.bi ?? (initialAllDone ? -1 : 0));
+  const [activeBlock, setActiveBlock] = useState(restoredWorkoutBlock(session, initialDone, serverLog?.skipped, serverLog?.activeBlock));
   const [workoutStarted, setWorkoutStarted] = useState(Boolean(serverLog?.startedAt || Object.values(initialDone).some(Boolean)));
   const [startedAt, setStartedAt] = useState(serverLog?.startedAt || null);
   const [celebration, setCelebration] = useState(null);
@@ -966,7 +966,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
       setFinishReason(merged.finishReason || null);
       setLastActionAt(merged.lastActionAt); setElapsedSeconds(merged.elapsedSeconds);
       setWorkoutStarted(Boolean(merged.startedAt || Object.values(merged.done).some(Boolean)));
-      setActiveBlock(firstIncompleteBlock(session, merged.done, merged.skipped)?.bi ?? -1);
+      setActiveBlock(restoredWorkoutBlock(session, merged.done, merged.skipped, merged.activeBlock));
       setRestUntil(merged.restUntil);
       if (merged.restPausedSeconds > 0) setRestTimer({ total: merged.restPausedSeconds, remaining: merged.restPausedSeconds, running: false, label: 'Отдых · пауза' });
       if (merged.restUntil) setRestTimer({ total: Math.max(1, restRemaining(merged.restUntil)), remaining: restRemaining(merged.restUntil), running: true, label: 'Отдых' });
