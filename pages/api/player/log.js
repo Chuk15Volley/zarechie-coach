@@ -64,6 +64,8 @@ export default async function handler(req, res) {
       activeBlock: Number.isInteger(log?.activeBlock) ? log.activeBlock : null,
       restUntil: log?.restUntil || null,
       restPausedSeconds: log?.restPausedSeconds || 0,
+      restKind: log?.restKind || null,
+      restTotal: log?.restTotal || 0,
       lastActionAt: log?.lastActionAt || null,
     });
   }
@@ -104,6 +106,12 @@ export default async function handler(req, res) {
         weightUpdatedAt: payload.weightUpdatedAt,
         revision: payload.revision,
         savedAt: payload.savedAt,
+        activeBlock: payload.activeBlock,
+        restUntil: payload.restUntil,
+        restPausedSeconds: payload.restPausedSeconds,
+        restKind: payload.restKind,
+        restTotal: payload.restTotal,
+        lastActionAt: payload.lastActionAt,
       });
     } catch (error) {
       await recordPlatformEvent({ workspace, area: 'player_sync', status: 'error', durationMs: Date.now() - started, message: error.message }).catch(() => {});

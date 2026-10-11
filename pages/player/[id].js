@@ -30,6 +30,8 @@ import { analyzeSessionDose } from '../../lib/sessionDose.mjs';
 import {
   FINISH_REASONS,
   restoredWorkoutBlock,
+  restoredRestTimer,
+  restKindLabel,
   nextWorkoutSet,
   restRemaining,
   completedTonnage,
@@ -788,7 +790,7 @@ function RestTimer({ timer, onToggle, onAdd, onSkip, undo, onUndo }) {
     <div className={`player-rest-timer ${timer.remaining === 0 ? 'is-complete' : ''}`} role="timer" aria-label="Таймер отдыха" aria-live="off">
       <TimerDial remaining={timer.remaining} total={timer.total} />
       <div className="player-timer-copy">
-        <div className="player-kicker">{timer.remaining === 0 ? 'Можно продолжать' : timer.running ? ({exercise:'Отдых между упражнениями',block:'Переход к следующему блоку',round:'Отдых между сериями / кругами',set:'Отдых между подходами'}[timer.kind] || 'Отдых') : 'Отдых · пауза'}</div>
+        <div className="player-kicker">{timer.remaining === 0 ? 'Можно продолжать' : timer.running ? restKindLabel(timer.kind) : `${restKindLabel(timer.kind)} · пауза`}</div>
         <div className="player-timer-next">{timer.label}</div>
       </div>
       <div className="player-rest-actions">
@@ -890,7 +892,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   const [sessionRpe, setSessionRpe] = useState(null);
   const [syncStatus, setSyncStatus] = useState(serverLog?.savedAt ? 'saved' : 'local');
   const [progressRevision, setProgressRevision] = useState(0);
-  const [restTimer, setRestTimer] = useState(() => serverLog?.restUntil ? { total: Math.max(1, restRemaining(serverLog.restUntil)), remaining: restRemaining(serverLog.restUntil), running: true, label: 'Отдых' } : null);
+  const [restTimer, setRestTimer] = useState(() => restoredRestTimer(serverLog || {}));
   const [undoSet, setUndoSet] = useState(null);
   const [coachCommands, setCoachCommands] = useState([]);
   const [commandAcknowledging, setCommandAcknowledging] = useState(false);
@@ -968,20 +970,21 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
       setWorkoutStarted(Boolean(merged.startedAt || Object.values(merged.done).some(Boolean)));
       setActiveBlock(restoredWorkoutBlock(session, merged.done, merged.skipped, merged.activeBlock));
       setRestUntil(merged.restUntil);
-      if (merged.restPausedSeconds > 0) setRestTimer({ total: merged.restPausedSeconds, remaining: merged.restPausedSeconds, running: false, label: 'Отдых · пауза' });
-      if (merged.restUntil) setRestTimer({ total: Math.max(1, restRemaining(merged.restUntil)), remaining: restRemaining(merged.restUntil), running: true, label: 'Отдых' });
+      setRestTimer(restoredRestTimer(merged));
       if (local || pending) setProgressRevision(value => value + 1);
     } catch (_) {}
     setProgressReady(true);
   }, [token, sessionDate, serverLog, session]);
 
   const restPausedSeconds = restTimer && !restTimer.running ? restTimer.remaining : 0;
-  const progressSnapshot = { skipped, skipUpdatedAt, restPausedSeconds, done, weights, repetitions, repsUpdatedAt, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, activeBlock, restUntil, lastActionAt, clientRevision: serverRevision, clientId: deviceId, deviceLabel: typeof navigator === 'undefined' ? 'Устройство игрока' : `${navigator.platform || 'Mobile'} · ${navigator.standalone ? 'PWA' : 'Browser'}` };
+  const restKind = restTimer?.kind || null;
+  const restTotal = restTimer?.total || 0;
+  const progressSnapshot = { skipped, skipUpdatedAt, restPausedSeconds, restKind, restTotal, done, weights, repetitions, repsUpdatedAt, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, activeBlock, restUntil, lastActionAt, clientRevision: serverRevision, clientId: deviceId, deviceLabel: typeof navigator === 'undefined' ? 'Устройство игрока' : `${navigator.platform || 'Mobile'} · ${navigator.standalone ? 'PWA' : 'Browser'}` };
   useEffect(() => {
     if (!progressReady || !token || !sessionDate) return;
     try { localStorage.setItem(`gym:${token}:${sessionDate}`, JSON.stringify(progressSnapshot)); }
     catch (_) { setSyncStatus('storage-error'); }
-  }, [progressReady, done, weights, repetitions, repsUpdatedAt, skipped, skipUpdatedAt, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, restUntil, restPausedSeconds, lastActionAt, token, sessionDate]);
+  }, [progressReady, done, weights, repetitions, repsUpdatedAt, skipped, skipUpdatedAt, setUpdatedAt, weightUpdatedAt, startedAt, completedAt, finishReason, elapsedSeconds, restUntil, restPausedSeconds, restKind, restTotal, activeBlock, lastActionAt, token, sessionDate]);
 
   usePlayerProgressSync({ token, sessionDate, ready: progressReady, revision: progressRevision, snapshot: progressSnapshot,
     onStatus: setSyncStatus,

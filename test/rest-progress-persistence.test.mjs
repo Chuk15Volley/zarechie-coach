@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mergeWorkoutProgress} from '../lib/workoutProgress.mjs';
+import {restoredRestTimer,restKindLabel,restoredWorkoutBlock,nextWorkoutSet} from '../lib/playerWorkout.mjs';
+const now='2026-10-12T07:00:00.000Z';
+const later='2026-10-12T07:00:10.000Z';
+for(const kind of ['set','exercise','round','block'])test(`${kind} rest retains its type, duration and execution block after save/reload`,()=>{
+ const saved=mergeWorkoutProgress({}, {activeBlock:1,lastActionAt:now,restKind:kind,restTotal:180,restUntil:'2026-10-12T07:03:00Z',restPausedSeconds:0});
+ const restored=restoredRestTimer(JSON.parse(JSON.stringify(saved)),Date.parse(later));
+ assert.equal(restored.kind,kind);assert.equal(restored.total,180);assert.equal(restored.remaining,170);assert.equal(restored.running,true);
+ assert.notEqual(restKindLabel(restored.kind),'Отдых');
+ const paused=mergeWorkoutProgress(saved,{lastActionAt:later,activeBlock:1,restKind:kind,restTotal:180,restUntil:null,restPausedSeconds:170});
+ const afterPause=restoredRestTimer(paused,Date.parse(later)+600000);
+ assert.equal(afterPause.kind,kind);assert.equal(afterPause.remaining,170);assert.equal(afterPause.running,false);assert.equal(afterPause.total,180);
+ const session={blocks:[0,1].map(()=>({exercises:[{targetSets:['5','5']}]}))};
+ assert.equal(nextWorkoutSet(session,{}, {},restoredWorkoutBlock(session,{}, {},paused.activeBlock)).bi,1);
+ const stale=mergeWorkoutProgress(paused,{lastActionAt:now,activeBlock:0,restKind:'set',restTotal:60,restUntil:'2026-10-12T07:01:00Z',restPausedSeconds:0});
+ assert.equal(stale.activeBlock,1);assert.deepEqual(restoredRestTimer(stale),afterPause);
+ const cleared=mergeWorkoutProgress(paused,{lastActionAt:'2026-10-12T07:00:20Z',restKind:null,restTotal:0,restUntil:null,restPausedSeconds:0});
+ assert.equal(restoredRestTimer(cleared),null);
+});
+test('legacy, expired, invalid and completed timers restore without inventing a rest kind',()=>{
+ assert.equal(restoredRestTimer({}),null);
+ assert.equal(restoredRestTimer({restUntil:'invalid'}),null);
+ const legacy=restoredRestTimer({restPausedSeconds:60});assert.equal(legacy.kind,null);assert.equal(legacy.total,60);assert.equal(legacy.running,false);
+ const saved=mergeWorkoutProgress({}, {restKind:'invalid',restTotal:Infinity,activeBlock:null,restUntil:'2026-10-12T07:01:00Z',lastActionAt:now});
+ assert.equal(saved.activeBlock,null);assert.equal(saved.restKind,null);assert.equal(saved.restTotal,0);
+ assert.equal(restoredRestTimer(saved,Date.parse(now)+120000).remaining,0);
+ assert.equal(restoredRestTimer({...saved,completedAt:later}),null);
+});
