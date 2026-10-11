@@ -670,6 +670,8 @@ const TRAINING_TYPES = [
   { value: 'activation_power', label: 'Активация / мощность' },
 ];
 
+const STRENGTH_TRAINING_TYPES = TRAINING_TYPES.filter(type => ['full_body','anterior_chain','posterior_chain'].includes(type.value));
+
 const MATCH_LOAD_OPTIONS = [
   { value: '', label: 'Матч: —' },
   { value: 'high', label: 'Высокая' },
@@ -2953,7 +2955,7 @@ export default function Home() {
   }, [session, progressionMap]);
 
   const methodViolations = useMemo(() => {
-    if (!session) return [];
+    if (!session || !(meta?.focus || focus).startsWith('camp_')) return [];
     const v = [];
     (session.blocks || []).forEach(b =>
       (b.exercises || []).forEach(ex => {
@@ -2962,7 +2964,7 @@ export default function Home() {
       })
     );
     return v;
-  }, [session]);
+  }, [session, meta?.focus, focus]);
 
   const jumpVolume = useMemo(() => {
     if (!session) return null;
@@ -5078,9 +5080,9 @@ export default function Home() {
                   <PremiumSelect
                     value={trainingType}
                     onChange={setTrainingType}
-                    options={TRAINING_TYPES}
+                    options={focus === 'inseason_strength' ? STRENGTH_TRAINING_TYPES : TRAINING_TYPES}
                     className="w-full rounded-lg border border-white/[0.08] bg-[#0a1520] px-2 py-1.5 text-[11px] text-slate-300 outline-none focus:border-accent/40 [color-scheme:dark]"
-                    title="Ручной тип тренировки"
+                    title={focus === 'inseason_strength' ? 'Акцент силовой тренировки' : 'Ручной тип тренировки'}
                     compact
                   />
 
@@ -7349,7 +7351,7 @@ export default function Home() {
                 <PremiumSelect
                   value={trainingType}
                   onChange={setTrainingType}
-                  options={TRAINING_TYPES}
+                  options={focus === 'inseason_strength' ? STRENGTH_TRAINING_TYPES : TRAINING_TYPES}
                   className={`${inputBase} ${focusRing} mb-2 [color-scheme:dark]`}
                   title="Выберите тип тренировки"
                 />

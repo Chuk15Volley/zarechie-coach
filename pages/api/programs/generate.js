@@ -1612,12 +1612,11 @@ export async function buildGenerationInputs(body) {
   if (focus === 'inseason_strength' && strengthMode === 'development') {
     if (!gymRecommendation) return { error: 'Для развивающей силовой нужны данные ReadySix; внешняя генерация не запускается.', status: 422 };
     try {
-      const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+      const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
       return { targetDate, dayGoal, readyResult };
     } catch (error) {
-      const readyResult = restrictedDayPlan({ snapshot, recommendation: { ...gymRecommendation, reasons: [...gymRecommendation.reasons, error.message] }, date: targetDate, dayGoal, allowRegionalDraft: false });
-      readyResult.focus = focus; readyResult.strengthMode = strengthMode;
-      return { targetDate, dayGoal, readyResult };
+      if (/Нет безопасной новой/.test(error.message)) return { error: error.message + ' Повторы автоматически не разрешаются. Сохранённая программа не изменена.', status: 422 };
+      throw error;
     }
   }
   if (focus === 'inseason_prophylaxis' && gymRecommendation) {
@@ -1744,6 +1743,8 @@ export async function buildGenerationInputs(body) {
     position: snapshot.player?.position || '',
     recoveryStatus: effectiveRecovery,
     requestedMode: strengthMode,
+    trainingType: effectiveTrainingType,
+    lateralVector: true,
     anchorContext: strengthAnchors,
     oneRmFreshness,
     shoulderConcern: freshShoulderConcern,
@@ -2042,7 +2043,7 @@ export default async function handler(req, res) {
     session = sanitizeUnavailableEquipmentExercises(session);
     session = normalizeSessionTempoDescriptions(session);
     qualityContext.varietyContext = buildExerciseVarietyContext(
-      await getRecentSessionRecords(String(req.body.playerId), 12, req.body.workspace || 'zarechie', targetDate, { strict: true }),
+      await getRecentSessionRecords(String(req.body.playerId), effectiveFocus === 'inseason_strength' ? 42 : 12, req.body.workspace || 'zarechie', targetDate, { strict: true }),
       { targetDate, focus: effectiveFocus, trainingType: effectiveTrainingType, seasonDecision: qualityContext.seasonDecision },
     );
     let quality = advisorySessionQuality(assessSessionQuality(session, { ...qualityContext, playerRestrictions }));

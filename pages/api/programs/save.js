@@ -64,7 +64,7 @@ export default async function handler(req, res) {
 
   let recentSessions;
   try {
-    recentSessions = await getRecentSessionRecords(String(playerId), 12, workspace, date, { strict: true });
+    recentSessions = await getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, date, { strict: true });
   } catch {
     return res.status(503).json({ error: 'Не удалось проверить предыдущую тренировку. Повторите сохранение после восстановления истории.' });
   }
@@ -84,6 +84,9 @@ export default async function handler(req, res) {
     medicalReviewRequired: session.kind === 'prehab_training_draft' && (session.methodology?.mode === 'regional' || session.methodology?.preliminary === true),
     medicalReviewReason: session.kind === 'prehab_training_draft' ? String(quality?.medicalReviewReason || 'Проверить ограничения и допуск перед выполнением.') : '',
   }));
+  if (focus === 'inseason_strength' && saveQuality.variety?.needsCorrection) {
+    return res.status(409).json({ error: 'Силовая содержит упражнения из предыдущих программ. Замените повторы перед сохранением.', repeated: saveQuality.variety.repeated });
+  }
   const persistenceQuality = saveQuality.blocking
     ? {
         ...saveQuality,

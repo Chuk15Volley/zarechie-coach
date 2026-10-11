@@ -71,24 +71,21 @@ test('individual, team and week UI submissions carry policy; sync and async shar
  const status=readFileSync(new URL('../pages/api/programs/generate-status.js',import.meta.url),'utf8');
  assert.match(status,/buildGenerationInputs\(record.generationRequest\)/);
 });
-test('manual development reuses an unloaded regional trial instead of cancelling the whole workout',()=>{
- const data=fixture();data.snapshot.latestMorning={date,zoneDetails:{'Голень левая':{type:'pain',level10:2}}};
+test('manual development rotates unloaded regional trials and never grants rotation exceptions',()=>{
+ const data=fixture();data.snapshot.player.position='Диагональная';
+ data.snapshot.latestMorning={date,zoneDetails:{'Голень левая':{type:'pain',level10:2}}};
  const recommendation=manualMethodRecommendation(data.recommendation,true);
  const first=buildStrengthDevelopmentDraft({...data,recommendation});
- const repeated={date:'2026-10-05',session:first.session};
- const second=buildStrengthDevelopmentDraft({...data,recommendation,recentSessions:[repeated]});
- assert.equal(exs(second).length,8);assert.equal(second.session.kind,'strength_training_draft');
- assert.ok(second.session.methodology.rotationExceptions.some(e=>e.code==='A1'));
+ const second=buildStrengthDevelopmentDraft({...data,recommendation,recentSessions:[{date:'2026-10-05',session:first.session}]});
+ assert.equal(exs(second).length,8);
+ assert.equal(second.quality.variety.repeated.length,0);
+ assert.equal(second.session.methodology.rotationExceptions,undefined);
  assert.ok(exs(second).filter(e=>e.symptomAdapted).every(e=>e.weightKg===null&&/Без отягощения/.test(e.weightNote)));
- assert.match(second.session.warnings,/повторены упражнения/);
 });
-test('manual development survives exhausted healthy catalogue but retains coach bans',()=>{
- const data=fixture();const recommendation=manualMethodRecommendation(data.recommendation,true);const recentSessions=[];
- for(let i=0;i<6;i++){
-  const result=buildStrengthDevelopmentDraft({...data,recommendation,recentSessions});
-  assert.equal(exs(result).length,8);
-  recentSessions.push({date:'2026-10-05',session:result.session});
- }
- assert.throws(()=>buildStrengthDevelopmentDraft({...data,recommendation,recentSessions,manualMethodSelection:false}),/Нет безопасной/);
- assert.throws(()=>buildStrengthDevelopmentDraft({...data,recommendation,recentSessions,playerRestrictions:['AXIAL','SHOULDER']}),/Нет безопасной/);
+test('exhausted catalogue requires coach selection in both manual and automatic modes',()=>{
+ const data=fixture();const recommendation=manualMethodRecommendation(data.recommendation,true);
+ const first=buildStrengthDevelopmentDraft({...data,recommendation});
+ const second=buildStrengthDevelopmentDraft({...data,recommendation,recentSessions:[{date:'2026-10-05',session:first.session}]});
+ const recentSessions=[{date:'2026-10-05',session:{blocks:[{exercises:[...exs(first),...exs(second)]}]}}];
+ for(const manualMethodSelection of [true,false]) assert.throws(()=>buildStrengthDevelopmentDraft({...data,recommendation,recentSessions,manualMethodSelection}),/Нет безопасной новой/);
 });
