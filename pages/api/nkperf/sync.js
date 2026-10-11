@@ -7,6 +7,7 @@ import { isAuthorized } from '../../../lib/auth';
 import { enforceRateLimit } from '../../../lib/rateLimit';
 import { getNKRoster } from '../../../lib/nkperfClient';
 import { hydratePlayerPhotos } from '../../../lib/playerPhotos';
+import { hydratePlayerTimeZones } from '../../../lib/playerTimeZoneStore';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
@@ -17,7 +18,7 @@ export default async function handler(req, res) {
     const raw = await redis('get', 'nkperf:roster').catch(() => null);
     let players = [];
     try { players = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : []; } catch { players = []; }
-    players = await hydratePlayerPhotos(players, 'nkperf');
+    players = await hydratePlayerTimeZones(await hydratePlayerPhotos(players, 'nkperf'), 'nkperf');
     return res.status(200).json({ players });
   }
 
@@ -27,7 +28,7 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'NK Performance API returned no players' });
     }
     await redis('set', 'nkperf:roster', JSON.stringify(players));
-    players = await hydratePlayerPhotos(players, 'nkperf');
+    players = await hydratePlayerTimeZones(await hydratePlayerPhotos(players, 'nkperf'), 'nkperf');
     return res.status(200).json({ synced: players.length, players });
   }
 
