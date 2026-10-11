@@ -67,6 +67,7 @@ for(const area of ['Голень левая','Колено','Пах'])test(`${ar
  assert.ok(exercises(result).every(e=>!/Lateral Lunge|Lateral Step-Up/.test(e.name)));
  assert.equal(result.quality.medicalReviewRequired,true);
  assert.ok(exercises(result).filter(e=>e.symptomAdapted).every(e=>e.weightKg===null));
+ assert.ok(exercises(result).filter(e=>e.symptomAdapted&&/Hip Abduction/.test(e.name)).every(e=>e.targetSets.every(target=>target.endsWith('/side'))));
 });
 test('ANKLE prohibition cannot be bypassed by lateral-vector requirement',()=>{
  const result=build({playerRestrictions:['ANKLE']});
