@@ -17,6 +17,7 @@ test('profile timezone remains isolated from the roster and Moscow workspace',as
  const source=readFileSync(new URL('../lib/playerTimeZoneStore.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,'');const reads=[];
  const factory=new Function('redis','redisPipeline','playerTimeZone','DEFAULT_PLAYER_TIME_ZONE',source+';return {getPlayerTimeZone,hydratePlayerTimeZones,playerTimeZoneKey};');
  const m=factory(async(...args)=>{reads.push(args);return JSON.stringify({timeZone:'Asia/Shanghai'});},async()=>[JSON.stringify({timeZone:'Asia/Shanghai'}),null],x=>validPlayerTimeZone(x)?x:'Europe/Moscow','Europe/Moscow');
+ assert.equal(m.playerTimeZoneKey('nkperf','whoop_39474730'),m.playerTimeZoneKey('nkperf','39474730'));
  assert.equal(await m.getPlayerTimeZone('same','zarechie'),'Europe/Moscow');assert.equal(reads.length,0);assert.equal(await m.getPlayerTimeZone('same','nkperf'),'Asia/Shanghai');assert.equal(reads[0][1],'nkperf:player:time_zone:same');
  const hydrated=await m.hydratePlayerTimeZones([{id:'same'},{id:'other'}],'nkperf');assert.equal(hydrated[0].timeZone,'Asia/Shanghai');assert.equal(hydrated[1].timeZone,'Europe/Moscow');
 });
