@@ -1,3 +1,4 @@
+import { saveProgramRequest } from '../lib/programSaveClient.mjs';
 import { replaceExerciseDescription } from '../lib/exerciseReplacement.mjs';
 import { estimateStrengthMinutes } from '../lib/strengthExecution.mjs';
 import { calendarToday } from '../lib/coachCalendar.mjs';
@@ -2356,6 +2357,9 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
+  const programSaveLockRef = useRef(false);
+  const currentSaveViewRef = useRef(null);
+  currentSaveViewRef.current = {workspace,playerId,date,session};
   const matchDayManualReview = isManualMatchDayFocus(focus);
   const [nkSyncing, setNkSyncing] = useState(false);
 
@@ -4052,28 +4056,19 @@ export default function Home() {
   }
 
   async function handleSave() {
-    if (!session || !meta || session.kind === 'restricted_day_plan') return;
+    if (!session || !meta || session.kind === 'restricted_day_plan' || programSaveLockRef.current) return;
+    programSaveLockRef.current = true;
+    const submittedSession = session;
+    const isCurrentView = () => {const view=currentSaveViewRef.current; return view.workspace === workspace && view.playerId === playerId && view.date === date;};
     setSaving(true);
     try {
-      const res = await fetch('/api/programs/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({
-          playerId,
-          date: meta.date,
-          session,
-          player: meta.player,
-          dataSummary: meta.dataSummary,
-          dayGoal: meta.dayGoal || '',
-          focus: meta.focus || focus,
-          trainingType: meta.trainingType || trainingType,
-          trainingLabel: meta.focusLabel || getFocusLabel(period, focus),
-          strengthMode: meta.strengthMode || strengthMode,
-          quality: meta.quality || null,
-          workspace,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
+      const {res,data} = await saveProgramRequest({
+        playerId, date:meta.date, session:submittedSession, player:meta.player,
+        dataSummary:meta.dataSummary, dayGoal:meta.dayGoal || '', focus:meta.focus || focus,
+        trainingType:meta.trainingType || trainingType, trainingLabel:meta.focusLabel || getFocusLabel(period,focus),
+        strengthMode:meta.strengthMode || strengthMode, quality:meta.quality || null, workspace,
+      }, apiKey);
+      if (!isCurrentView()) return;
       if (res.status === 401) {
         requestReauthentication(() => handleSave(), 'Сессия истекла. Войдите снова — программа будет сохранена автоматически.');
         return;
@@ -4082,22 +4077,27 @@ export default function Home() {
       pendingAuthRetryRef.current = null;
       setReauthNotice('');
       setError('');
-      if (data.session) setSession(data.session);
+      const unchanged = currentSaveViewRef.current.session === submittedSession;
+      if (unchanged && data.session) setSession(data.session);
       const savedQuality = data.quality || meta.quality || null;
-      if (data.quality) setMeta(prev => prev ? { ...prev, quality: data.quality, focusLabel: data.trainingLabel || prev.focusLabel } : prev);
-      setJustSaved(true);
+      if (unchanged && data.quality) setMeta(prev => prev ? { ...prev, quality: data.quality, focusLabel: data.trainingLabel || prev.focusLabel } : prev);
+      setJustSaved(unchanged);
       setPendingSaved({
         session: data.session || session,
         player: meta.player,
         dataSummary: meta.dataSummary,
         date: meta.date,
         quality: savedQuality,
-        savedAt: new Date().toISOString(),
+        savedAt: data.savedAt || new Date().toISOString(),
+        focus:meta.focus || focus, trainingType:meta.trainingType || trainingType,
+        strengthMode:meta.strengthMode || strengthMode, trainingLabel:data.trainingLabel || meta.focusLabel || '',
+        dayGoal:meta.dayGoal || '',
       });
       setTimeout(() => setJustSaved(false), 2500);
     } catch (err) {
-      setError(err.message);
+      if (isCurrentView()) setError(err.message);
     } finally {
+      programSaveLockRef.current = false;
       setSaving(false);
     }
   }

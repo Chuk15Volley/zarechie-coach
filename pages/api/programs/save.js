@@ -58,21 +58,24 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { playerId, date, session, player, dataSummary, dayGoal, focus = '', trainingType = '', trainingLabel = '', strengthMode = null, quality = null, workspace = 'zarechie' } = req.body || {};
+  const { playerId, date, session, player, dataSummary, dayGoal, focus = '', trainingType = '', trainingLabel = '', strengthMode = null, quality = null, saveRequestId = '', workspace = 'zarechie' } = req.body || {};
   if (!playerId || !date || !session) {
     return res.status(400).json({ error: 'playerId, date and session are required' });
   }
 
+  try {
   const banned = coachBannedSessionExercises(session);
   if (banned.length) return res.status(409).json({error:'В программе есть упражнения, запрещённые тренером. Замените их перед сохранением.', banned});
+  const previousRaw = await redis('get', sessionKey(workspace, playerId, date));
+  const previousRecord = typeof previousRaw === 'string' ? JSON.parse(previousRaw) : previousRaw;
+  const requestId = /^[a-zA-Z0-9-]{16,80}$/.test(saveRequestId) ? saveRequestId : '';
+  if (requestId && previousRecord?.saveRequestId === requestId) return res.status(200).json({status:'ok',session:previousRecord.session,quality:previousRecord.quality,trainingLabel:previousRecord.trainingLabel,approval:previousRecord.approval,savedAt:previousRecord.savedAt});
   let recentSessions;
   try {
     recentSessions = await getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, date, { strict: true });
   } catch {
     return res.status(503).json({ error: 'Не удалось проверить предыдущую тренировку. Повторите сохранение после восстановления истории.' });
   }
-  const previousRaw = await redis('get', sessionKey(workspace, playerId, date));
-  const previousRecord = typeof previousRaw === 'string' ? JSON.parse(previousRaw) : previousRaw;
   const describedSession = reconcileReplacementDescriptions(session, previousRecord?.session || previousRecord);
   const savedAt = new Date().toISOString();
   const normalizedSession = approveProgramSession(normalizeSessionTempoDescriptions(
@@ -111,6 +114,7 @@ export default async function handler(req, res) {
     quality: persistenceQuality,
     date,
     savedAt,
+    ...(requestId ? {saveRequestId:requestId} : {}),
   };
 
   // Score is the date as a plain integer (20260618) — sorts chronologically.
@@ -159,8 +163,11 @@ export default async function handler(req, res) {
       ...tonnageCmds,
     ];
     await redisPipeline(cmds);
-    return res.status(200).json({ status: 'ok', quality: persistenceQuality, session: normalizedSession, trainingLabel: record.trainingLabel, approval: record.approval });
+    return res.status(200).json({ status: 'ok', quality: persistenceQuality, session: normalizedSession, trainingLabel: record.trainingLabel, approval: record.approval, savedAt });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return res.status(503).json({ error: 'Не удалось подтвердить сохранение. Правки остаются на экране; повторите сохранение.' });
+  }
+  } catch {
+    return res.status(503).json({error:'Хранилище временно недоступно. Правки остаются на экране; повторите сохранение.'});
   }
 }
