@@ -8,4 +8,4 @@ Rest labels distinguish pauses between exercises, sets, and series/circuits. Leg
 
 Regression coverage includes Voronkova's A/B/C pair/triple prescriptions (10→180 seconds; 15→90→120 seconds), D sequential sets (75 seconds between sets, 90 between exercises), and E (60 seconds). Existing explicit order, block pauses, zero-rest transitions, skipping and completion tests remain applicable.
 
-Verification: 645 tests passed, one skipped. Production build, mobile Safari and production smoke recorded at release time. Athlete programs and results are not modified by this change; UI completion checks use an isolated disposable fixture.
+Verification: 646 tests passed, one skipped. Production build, mobile Safari and production smoke recorded at release time. Athlete programs and results are not modified by this change; UI completion checks use an isolated disposable fixture.

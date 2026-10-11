@@ -219,7 +219,7 @@
 .gym-premium.gym-active .player-action-dock > .player-rest-timer,
 .gym-premium.gym-active .player-action-dock > .player-undo-toast { position: static; transform: none; width: 100%; max-height: none; margin: 0; }
 .gym-premium.gym-active .player-action-dock > .player-undo-toast { margin-top: 6px; }
-.gym-premium.gym-active .player-footer { position: static; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+.gym-premium.gym-active .player-footer { position: static; transform: none; width: 100%; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
 .gym-premium.gym-active .gym-current-set { padding: 12px; }
 .gym-premium.gym-active .gym-current-set strong { font-size: 16px; margin-block: 5px; }
 .gym-premium.gym-active .gym-current-set p { max-height: 36px; margin-bottom: 6px; }
