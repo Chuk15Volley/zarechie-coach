@@ -1,6 +1,6 @@
-import { isCoachBannedExercise } from '../../../lib/exerciseRestrictions';
+import { isCoachBannedExercise, coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import {getRecentSessionRecords} from '../../../lib/sessionHistory';
-import {buildExerciseVarietyContext,varietyExerciseKey,formatExerciseVarietyForPrompt} from '../../../lib/exerciseVariety.mjs';
+import {buildExerciseVarietyContext,varietyExerciseKey,formatExerciseVarietyForPrompt,auditExerciseVariety} from '../../../lib/exerciseVariety.mjs';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 // pages/api/programs/regenerate-exercise.js
 // POST { playerId, date, blockIndex, exerciseIndex, session? }
@@ -122,7 +122,7 @@ export default async function handler(req, res) {
   if (!await enforceRateLimit(req, res, { scope: 'ai-regenerate-exercise', limit: 30, windowSeconds: 600 })) return;
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { playerId, date, blockIndex, exerciseIndex, session: requestedSession, workspace = 'zarechie' } = req.body || {};
+  const { playerId, date, blockIndex, exerciseIndex, session: requestedSession, focus: requestedFocus, trainingType: requestedTrainingType, workspace = 'zarechie' } = req.body || {};
   if (!playerId || !date || blockIndex == null || exerciseIndex == null) {
     return res.status(400).json({ error: 'playerId, date, blockIndex, exerciseIndex required' });
   }
@@ -147,11 +147,17 @@ export default async function handler(req, res) {
   const exercise = block.exercises?.[exerciseIndex];
   if (!exercise) return res.status(400).json({ error: 'Упражнение не найдено' });
 
-  const replacementFocus=record?.focus || (String(session.methodology?.goal || '').startsWith('inseason_strength')?'inseason_strength':'');
+  const replacementFocus=requestedFocus || record?.focus || (String(session.methodology?.goal || '').startsWith('inseason_strength')?'inseason_strength':'');
+  const replacementTrainingType=requestedTrainingType || record?.trainingType || session.methodology?.trainingType || '';
   let recentSessions;
   try { recentSessions=await getRecentSessionRecords(String(playerId),replacementFocus==='inseason_strength'?42:12,workspace,date,{strict:true}); }
   catch { return res.status(503).json({error:'Не удалось проверить историю упражнений. Повторите замену позже.'}); }
-  const varietyContext=buildExerciseVarietyContext(recentSessions,{targetDate:date,focus:replacementFocus,trainingType:record?.trainingType || session.methodology?.trainingType});
+  const varietyContext=buildExerciseVarietyContext(recentSessions,{targetDate:date,focus:replacementFocus,trainingType:replacementTrainingType});
+  const otherSession={...session,blocks:session.blocks.map((b,bi)=>({...b,exercises:(b.exercises||[]).filter((_,ei)=>bi!==blockIndex||ei!==exerciseIndex)}))};
+  const otherBans=coachBannedSessionExercises(otherSession);
+  if(otherBans.length)return res.status(409).json({error:'Сначала замените запрещённые упражнения в остальных позициях программы.',banned:otherBans});
+  const otherVariety=auditExerciseVariety(otherSession,varietyContext);
+  if(replacementFocus==='inseason_strength' && otherVariety?.needsCorrection)return res.status(409).json({error:'Сначала замените повторы в остальных позициях силовой программы.',repeated:otherVariety.repeated});
   const excludedKeys=new Set([...varietyContext.recent.map(entry=>entry.key),...(session.blocks || []).flatMap(b=>b.exercises || []).map(e=>varietyExerciseKey(e.name))]);
   // All other exercises (for dedup)
   const others = (session.blocks || [])
@@ -281,13 +287,22 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
           exercises: currentBlock.exercises.map((currentExercise, currentExerciseIndex) => currentExerciseIndex === exerciseIndex ? newExercise : currentExercise),
         }),
     }));
+    // The current draft may contain other manual edits. Audit the complete result
+    // against fresh history before the replacement endpoint can write any of it.
+    const banned=coachBannedSessionExercises(updatedSession);
+    if(banned.length)return res.status(409).json({error:'В программе есть упражнения, запрещённые тренером. Замените их перед сохранением.',banned});
+    let latestHistory;
+    try{latestHistory=await getRecentSessionRecords(String(playerId),replacementFocus==='inseason_strength'?42:12,workspace,date,{strict:true});}
+    catch{return res.status(503).json({error:'Не удалось проверить историю упражнений. Повторите замену позже.'});}
+    const replacementQuality = advisorySessionQuality(assessSessionQuality(updatedSession, {
+      focus: replacementFocus,
+      trainingType: replacementTrainingType,
+      varietyContext:buildExerciseVarietyContext(latestHistory,{targetDate:date,focus:replacementFocus,trainingType:replacementTrainingType}),
+      dosePrescription: record?.quality?.dose?.prescription || buildDosePrescription({ focus: replacementFocus, trainingType: replacementTrainingType }),
+      seasonDecision: record?.quality?.seasonDecision || null,
+    }));
+    if(replacementFocus==='inseason_strength' && replacementQuality.variety?.needsCorrection)return res.status(409).json({error:'Силовая содержит упражнения из предыдущих программ. Замените повторы перед сохранением.',repeated:replacementQuality.variety.repeated});
     if (record) {
-      const replacementQuality = advisorySessionQuality(assessSessionQuality(updatedSession, {
-        focus: record.focus || '',
-        trainingType: record.trainingType || '',
-        dosePrescription: record.quality?.dose?.prescription || buildDosePrescription({ focus: record.focus, trainingType: record.trainingType }),
-        seasonDecision: record.quality?.seasonDecision || null,
-      }));
       if (replacementQuality.blocking) {
         return res.status(422).json({ error: replacementQuality.reviewMessage, quality: replacementQuality });
       }

@@ -2067,6 +2067,9 @@ export default async function handler(req, res) {
 
     const banned = coachBannedSessionExercises(session);
     if (banned.length) return res.status(422).json({error:'Генератор оставил упражнения, запрещённые тренером. Повторите подбор.',banned});
+    if (effectiveFocus === 'inseason_strength' && quality.variety?.needsCorrection) {
+      return res.status(422).json({error:'Не удалось подобрать силовую без повторов после исправлений. Повторите подбор; повторы автоматически не разрешаются.',repeated:quality.variety.repeated,quality});
+    }
 
     console.log('GEN blocks:', session.blocks?.length,
       'ex per block:', session.blocks?.map(b => b.exercises?.length),

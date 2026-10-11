@@ -2,7 +2,7 @@ import {getPlayerTimeZone} from '../../lib/playerTimeZoneStore';
 import {playerLocalDate,playerLocalClock,playerTimeZoneLabel} from '../../lib/playerTimeZone.mjs';
 import CompletionConfetti from '../../components/player/CompletionConfetti';
 import RestArcade from '../../components/player/arcade/RestArcade';
-import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetitions, actualTarget, targetLabel, isCircuit, focusExerciseIndex, shortCue, needsLoadEntry, russianCount, playerLoadLabel, validActualWeight, setCompletionIssue, weightChangeSummary } from '../../lib/playerGym.mjs';
+import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetitions, actualTarget, targetLabel, shortCue, needsLoadEntry, russianCount, playerLoadLabel, validActualWeight, setCompletionIssue, weightChangeSummary } from '../../lib/playerGym.mjs';
 // pages/player/[id].js
 // Individual player training page — shared link, mobile-first workout tracking.
 // SSR: fetches today's saved session from Redis server-side (no client secrets exposed).
@@ -722,7 +722,6 @@ function SyncBadge({ status, savedAt }) {
 }
 
 function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, isUpcoming, dose, onStart, token, previousResults = {} }) {
-  const [previewOpen, setPreviewOpen] = useState(false);
   return (
     <section className="player-start-card">
       {!isToday && !isUpcoming && (
@@ -748,10 +747,6 @@ function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, is
         Начать тренировку
       </button>
       <p className="player-start-note">Результаты сохраняются автоматически.{session?.kind === 'prehab_training_draft' ? ' Указано время основной части с паузами; разминка и завершение отдельно. При появлении боли останови упражнение и сообщи тренеру.' : ''}</p>
-      <button type="button" className="gym-preview-toggle mb-3 w-full rounded-xl border border-white/15 px-4 py-3 text-sm font-bold text-slate-200" aria-expanded={previewOpen} aria-controls="workout-preview" onClick={() => setPreviewOpen(open => !open)}>
-        <span>{previewOpen ? 'Скрыть упражнения' : 'Посмотреть упражнения'}</span><span aria-hidden="true">{previewOpen ? '−' : '+'}</span>
-      </button>
-      {previewOpen && (
         <div id="workout-preview" className="mb-5 space-y-5">
           <p className="text-sm text-slate-400">Можно заранее изучить упражнения. Таймер запустится, когда начнёшь тренировку.</p>
           {(session.blocks || []).map((block, bi) => (
@@ -764,7 +759,6 @@ function WorkoutIntro({ sessionLabel, dayGoal, session, sessionDate, isToday, is
             </section>
           ))}
         </div>
-      )}
     </section>
   );
 }
@@ -882,7 +876,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   const [serverSavedAt, setServerSavedAt] = useState(serverLog?.savedAt || null);
   const initialBlock = firstIncompleteBlock(session, initialDone, serverLog?.skipped);
   const [activeBlock, setActiveBlock] = useState(initialBlock?.bi ?? (initialAllDone ? -1 : 0));
-  const [focusMode, setFocusMode] = useState(true);
   const [workoutStarted, setWorkoutStarted] = useState(Boolean(serverLog?.startedAt || Object.values(initialDone).some(Boolean)));
   const [startedAt, setStartedAt] = useState(serverLog?.startedAt || null);
   const [celebration, setCelebration] = useState(null);
@@ -1145,7 +1138,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     try { localStorage.removeItem(`gym:feedback:${token}:${sessionDate}`); } catch (_) {}
     setLastActionAt(now);
     setProgressRevision(value => value + 1);
-    if (first) { setActiveBlock(first.bi); setFocusMode(true); }
+    if (first) { setActiveBlock(first.bi); }
     if (navigator.vibrate) navigator.vibrate(20);
   }
 
@@ -1296,7 +1289,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
 
   // Track active block on scroll
   useEffect(() => {
-    if (focusMode) return undefined;
     const observer = new IntersectionObserver(
       entries => {
         for (const e of entries) {
@@ -1310,7 +1302,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     );
     blockRefs.current.forEach(el => el && observer.observe(el));
     return () => observer.disconnect();
-  }, [blocks.length, focusMode]);
+  }, [blocks.length, workoutStarted]);
 
   return (
     <ErrorBoundary>
@@ -1420,9 +1412,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             <div className="player-workout-tools">
               <TimerVoiceControl voice={timerVoice} />
               <SyncBadge status={syncStatus} savedAt={serverSavedAt} />
-              <button className="player-focus-toggle" type="button" onClick={() => { setFocusMode(value => !value); if (!focusMode && upcomingSet) setActiveBlock(upcomingSet.bi); }} aria-pressed={focusMode}>
-                {focusMode ? 'Все упражнения' : 'Текущее упражнение'}
-              </button>
             </div>
 
             {blocks.length > 0 && (
@@ -1557,18 +1546,11 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
 
                 {(session.blocks || []).some(b => (b.exercises || []).some(ex => ex.autoReg?.startsWith('Новая или усиливающаяся боль'))) && <p className="gym-safety-line">При новой или усиливающейся боли, онемении либо слабости остановись и сообщи тренеру.</p>}
                 {skippedCount > 0 && <p className="text-sm text-amber-200">Пропущено подходов: {skippedCount}. Они не засчитываются как выполненные.</p>}
-                {!focusMode && upcomingSet && <div className="rounded-xl border border-emerald-400/25 p-4 text-slate-200" role="status">
+                {upcomingSet && <div className="rounded-xl border border-emerald-400/25 p-4 text-slate-200" role="status">
                   Далее: <strong>{upcomingSet.exercise.code} · {playerExerciseName(upcomingSet.exercise)}</strong><br />
                   Подход {upcomingSet.si + 1} · {targetLabel(upcomingSet.target)}
                 </div>}
                 {blocks.map((block, bi) => {
-                  const blockTotal = (block.exercises || []).reduce((sum, ex) => sum + (ex.targetSets?.length || 0), 0);
-                  const blockDone = (block.exercises || []).reduce((sum, ex, ei) =>
-                    sum + (ex.targetSets || []).filter((_, si) => done[`${bi}-${ei}-${si}`]).length, 0);
-                  const blockComplete = blockIsComplete(block, bi, done, skipped);
-                  const blockCollapsed = focusMode && bi !== activeBlock;
-                  const focusedEi = focusExerciseIndex(block, bi, done, skipped);
-
                   return (
                     <div
                       key={bi}
@@ -1577,56 +1559,38 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                       data-block-tone={bi % 6}
                       style={{ scrollMarginTop: '190px' }}
                     >
-                      {blockCollapsed ? (
-                        <button
-                          type="button"
-                          className={`player-block-compact ${blockComplete ? 'is-complete' : ''}`}
-                          onClick={() => scrollToBlock(bi)}
-                          aria-label={`Открыть блок ${block.label}`}
-                        >
-                          <span className="player-block-badge">{block.label}</span>
-                          <span className="min-w-0 flex-1 text-left">
-                            <strong>Блок {block.label}</strong>
-                            <small>{blockComplete ? (blockDone === blockTotal ? 'Выполнен' : 'Закрыт с пропусками') : 'Ожидает'} · {blockDone}/{blockTotal} подходов</small>
-                          </span>
-                          <span className="player-block-compact-action" aria-hidden="true">{blockComplete ? '✓' : '→'}</span>
-                        </button>
-                      ) : (
-                        <>
-                          <div className="player-block-heading mb-3 flex items-center gap-3">
-                            <span className="player-block-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e] shadow-[0_4px_14px_rgba(74,222,128,0.18)]">
-                              {block.label}
-                            </span>
-                            <div className="min-w-0">
-                              <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Блок {block.label}</div>
-                              {block.rest_note && <div className="mt-0.5 truncate text-[10px] text-slate-600">Отдых: {block.rest_note}</div>}
-                            </div>
-                          </div>
+                      <div className="player-block-heading mb-3 flex items-center gap-3">
+                        <span className="player-block-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e] shadow-[0_4px_14px_rgba(74,222,128,0.18)]">
+                          {block.label}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Блок {block.label}</div>
+                          {block.rest_note && <div className="mt-0.5 truncate text-[10px] text-slate-600">Отдых: {block.rest_note}</div>}
+                        </div>
+                      </div>
 
-                          <div className="space-y-3.5">
-                            {(block.exercises || []).map((ex, ei) => (
-                              (!focusMode || isCircuit(block) || focusedEi < 0 || ei === focusedEi) && <ExCard
-                                key={ei}
-                                bi={bi}
-                                ei={ei}
-                                ex={ex}
-                                block={block}
-                                done={done}
-                                skipReason={skipped[`${bi}-${ei}`]}
-                                onSkip={skipExercise}
-                                onHold={startHold}
-                                previousResult={previousResults[performanceKey(ex)]}
-                                onToggle={toggleSet}
-                                weights={weights}
-                                repetitions={repetitions}
-                                onRepsChange={changeReps}
-                                onWeightChange={changeWeight}
-                                token={token}
-                              />
-                            ))}
-                          </div>
-                        </>
-                      )}
+                      <div className="space-y-3.5">
+                        {(block.exercises || []).map((ex, ei) => (
+                          <ExCard
+                            key={ei}
+                            bi={bi}
+                            ei={ei}
+                            ex={ex}
+                            block={block}
+                            done={done}
+                            skipReason={skipped[`${bi}-${ei}`]}
+                            onSkip={skipExercise}
+                            onHold={startHold}
+                            previousResult={previousResults[performanceKey(ex)]}
+                            onToggle={toggleSet}
+                            weights={weights}
+                            repetitions={repetitions}
+                            onRepsChange={changeReps}
+                            onWeightChange={changeWeight}
+                            token={token}
+                          />
+                        ))}
+                      </div>
                     </div>
                   );
                 })}

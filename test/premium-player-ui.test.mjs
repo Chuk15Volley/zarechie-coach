@@ -24,9 +24,9 @@ test('player install prompt stays aligned to the mobile application canvas', () 
   assert.match(styles, /\.player-install-hint \{[\s\S]*width: min\(calc\(100% - 32px\), 508px\)/);
 });
 
-test('player experience includes start, focus, rest, undo and completion states', () => {
+test('player experience includes start, open exercises, rest, undo and completion states', () => {
   assert.match(playerPage, /player-start-card/);
-  assert.match(playerPage, /player-focus-toggle/);
+  assert.doesNotMatch(playerPage, /player-focus-toggle|Все упражнения|Текущее упражнение/);
   assert.match(playerPage, /player-rest-timer/);
   assert.match(playerPage, /player-undo-toast/);
   assert.match(playerPage, /player-completion-summary/);
@@ -39,9 +39,9 @@ test('exercise technique opens the original video externally without an embedded
   assert.doesNotMatch(styles, /\.player-video-modal-card|@keyframes player-modal-in/);
 });
 
-test('focus mode preserves circuit blocks while offering single-exercise focus', () => {
+test('open exercise list preserves circuit progression without hiding blocks or exercises', () => {
   assert.match(playerPage, /blockIsComplete\(context\.block, context\.bi, newDone, skipped\)/);
   assert.match(playerPage, /nextIncompleteBlock\(session, context\.bi, newDone, skipped\)/);
-  assert.match(playerPage, /className=\{`player-block-compact/);
+  assert.doesNotMatch(playerPage, /blockCollapsed|focusedEi|previewOpen/);
   assert.doesNotMatch(playerPage, /collapsed=\{focusMode && \(activeExercise/);
 });

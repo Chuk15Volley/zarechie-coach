@@ -4386,6 +4386,8 @@ export default function Home() {
         exerciseIndex: exIdx,
         workspace,
         session,
+        focus:meta?.focus || focus,
+        trainingType:meta?.trainingType || trainingType,
       }),
     });
     const data = await res.json().catch(() => ({}));

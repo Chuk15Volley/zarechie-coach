@@ -414,6 +414,11 @@ export default async function handler(req, res) {
     }));
 
     if (coachBannedSessionExercises(session).length) throw new Error('Генератор оставил упражнения, запрещённые тренером. Повторите подбор.');
+    if ((qualityContext.focus || focus) === 'inseason_strength' && quality.variety?.needsCorrection) {
+      const error='Не удалось подобрать силовую без повторов после исправлений. Повторите подбор; повторы автоматически не разрешаются.';
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify({...record,status:'failed',error,quality,autoSaved:false}), 'EX', 3600);
+      return res.status(422).json({status:'failed',error,repeated:quality.variety.repeated,quality});
+    }
     const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 7, workspace).catch(() => null);
     const player = snapshot?.player || null;
     const dataSummary = record.dataSummary || '';
