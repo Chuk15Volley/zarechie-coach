@@ -1,3 +1,4 @@
+import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import { reconcileReplacementDescriptions } from '../../../lib/exerciseReplacement.mjs';
 import { getRecentSessionRecords } from '../../../lib/sessionHistory';
 import { buildExerciseVarietyContext } from '../../../lib/exerciseVariety.mjs';
@@ -62,6 +63,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'playerId, date and session are required' });
   }
 
+  const banned = coachBannedSessionExercises(session);
+  if (banned.length) return res.status(409).json({error:'В программе есть упражнения, запрещённые тренером. Замените их перед сохранением.', banned});
   let recentSessions;
   try {
     recentSessions = await getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, date, { strict: true });

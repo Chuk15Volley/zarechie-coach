@@ -1,3 +1,4 @@
+import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import { generatedDraftKey, generatedDraftRecord } from '../../../lib/generatedDraft.mjs';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 import { getRecentSessionRecords } from '../../../lib/sessionHistory';
@@ -412,6 +413,7 @@ export default async function handler(req, res) {
       playerRestrictions,
     }));
 
+    if (coachBannedSessionExercises(session).length) throw new Error('Генератор оставил упражнения, запрещённые тренером. Повторите подбор.');
     const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 7, workspace).catch(() => null);
     const player = snapshot?.player || null;
     const dataSummary = record.dataSummary || '';

@@ -1,3 +1,4 @@
+import { isCoachBannedExercise } from '../../../lib/exerciseRestrictions';
 import {getRecentSessionRecords} from '../../../lib/sessionHistory';
 import {buildExerciseVarietyContext,varietyExerciseKey,formatExerciseVarietyForPrompt} from '../../../lib/exerciseVariety.mjs';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
@@ -18,7 +19,7 @@ import { isSledExercise, sanitizeUnavailableEquipmentExercises } from '../../../
 import { buildDosePrescription } from '../../../lib/sessionDose.mjs';
 
 const BANNED =
-  'Sled Push / Sled Pull / Sled Drag / Prowler Push / любые упражнения с санями | Nordic Hamstring / Nordic Curl | Barbell Back Squat | Barbell Front Squat | обычная штанговая тяга / Conventional Barbell Deadlift | Olympic lifts со штангой | Depth Jump | Heavy Good Morning | Barbell Overhead Press | Barbell Bench Press | Leg Press | Smith Machine | Leg Extension | Hamstring Curl | Incline Push-Up / наклонные отжимания | Ab Wheel Rollout / Ab Roller | Broad Jump | DB Floor Press | Band Wrist Stability | Jump Set Drill | KB Press / жим с гирями | Tricep Pushdown с резиновой петлёй / Band Tricep Pushdown';
+  'Sled Push / Sled Pull / Sled Drag / Prowler Push / любые упражнения с санями | Nordic Hamstring / Nordic Curl | Barbell Back Squat | Barbell Front Squat | обычная штанговая тяга / Conventional Barbell Deadlift | Olympic lifts со штангой | Depth Jump | Heavy Good Morning | Barbell Overhead Press | Barbell Bench Press | Seated Cable Row / Cable Row | Leg Press | Smith Machine | Leg Extension | Hamstring Curl | Incline Push-Up / наклонные отжимания | Ab Wheel Rollout / Ab Roller | Broad Jump | DB Floor Press | Band Wrist Stability | Jump Set Drill | KB Press / жим с гирями | Tricep Pushdown с резиновой петлёй / Band Tricep Pushdown';
 
 const OPENAI_MODEL = 'gpt-5.6-terra';
 
@@ -56,6 +57,7 @@ function findFunctionCall(output, name) {
 }
 
 function isForbiddenExercise(name) {
+  if (isCoachBannedExercise(name)) return true;
   const normalized = String(name || '').toLowerCase();
   if (!normalized) return true;
   if (isSledExercise(name)) return true;

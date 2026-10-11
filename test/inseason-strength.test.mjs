@@ -19,7 +19,7 @@ const ex = (code, name, sets, extra = {}) => ({
 const developmentSession = {
   blocks: [
     { code: 'A', label: 'A · Lower anchor', rest_note: '3 мин', exercises: [ex('A1', 'Conventional Deadlift', 3, { targetSets: ['3', '3', '3'], weightNote: '82% 1RM, RPE 7–8' })] },
-    { code: 'B', label: 'B · Press + pull', rest_note: '2 мин', exercises: [ex('B1', 'Barbell Bench Press', 3), ex('B2', 'Chest-Supported DB Row', 3)] },
+    { code: 'B', label: 'B · Press + pull', rest_note: '2 мин', exercises: [ex('B1', 'DB Bench Press', 3), ex('B2', 'Chest-Supported DB Row', 3)] },
     { code: 'C', label: 'C · Unilateral lower', rest_note: '2 мин', exercises: [ex('C1', 'Bulgarian Split Squat', 3)] },
     { code: 'D', label: 'D · Posterior + core', rest_note: '90 сек', exercises: [ex('D1', '45-Degree Back Extension', 2), ex('D2', 'Pallof Press', 2)] },
     { code: 'E', label: 'E · Prehab', rest_note: '60 сек', exercises: [ex('E1', 'Spanish Squat ISO', 2), ex('E2', 'Soleus Calf Raise', 2)] },
@@ -29,7 +29,7 @@ const developmentSession = {
 const maintenanceSession = {
   blocks: [
     { code: 'A', label: 'A · Lower anchor', rest_note: '3 мин', exercises: [ex('A1', 'Trap Bar Deadlift', 2, { targetSets: ['3', '3'], weightNote: '82% 1RM, RPE 7–8' })] },
-    { code: 'B', label: 'B · Press + pull', rest_note: '2 мин', exercises: [ex('B1', 'DB Bench Press', 2), ex('B2', 'Cable Row', 2)] },
+    { code: 'B', label: 'B · Press + pull', rest_note: '2 мин', exercises: [ex('B1', 'DB Bench Press', 2), ex('B2', 'Inverted Row', 2)] },
     { code: 'C', label: 'C · Lower sequence', rest_note: '90 сек', exercises: [ex('C1', 'Reverse Lunge', 2), ex('C2', 'Machine Hamstring Curl', 2)] },
     { code: 'D', label: 'D · Core + prehab', rest_note: '45 сек', exercises: [ex('D1', 'Dead Bug Core', 1), ex('D2', 'Cable External Rotation', 1), ex('D3', 'Soleus Calf Raise', 1)] },
   ],

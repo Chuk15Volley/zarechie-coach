@@ -1,3 +1,4 @@
+import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import { MANUAL_METHOD_POLICY, manualMethodRecommendation } from '../../../lib/manualMethod.mjs';
 import { buildStrengthDevelopmentDraft } from '../../../lib/strengthDevelopmentDraft.mjs';
 import { buildCoachAdaptation } from '../../../lib/coachAdaptation.mjs';
@@ -2060,6 +2061,9 @@ export default async function handler(req, res) {
         }
       }
     }
+
+    const banned = coachBannedSessionExercises(session);
+    if (banned.length) return res.status(422).json({error:'Генератор оставил упражнения, запрещённые тренером. Повторите подбор.',banned});
 
     console.log('GEN blocks:', session.blocks?.length,
       'ex per block:', session.blocks?.map(b => b.exercises?.length),
