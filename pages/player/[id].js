@@ -1,3 +1,5 @@
+import {getPlayerTimeZone} from '../../lib/playerTimeZoneStore';
+import {playerLocalDate,playerLocalClock,playerTimeZoneLabel} from '../../lib/playerTimeZone.mjs';
 import CompletionConfetti from '../../components/player/CompletionConfetti';
 import RestArcade from '../../components/player/arcade/RestArcade';
 import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetitions, actualTarget, targetLabel, isCircuit, focusExerciseIndex, shortCue, needsLoadEntry, russianCount, playerLoadLabel, validActualWeight, setCompletionIssue, weightChangeSummary } from '../../lib/playerGym.mjs';
@@ -39,9 +41,7 @@ import {
   workoutExercises,
 } from '../../lib/playerWorkout.mjs';
 
-function todayISO() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
-}
+function todayISO(timeZone='Europe/Moscow') { return playerLocalDate(timeZone); }
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
@@ -87,7 +87,6 @@ class ErrorBoundary extends Component {
 
 export async function getServerSideProps({ params, query = {} }) {
   const token = params.id;
-  const date = todayISO();
   const requestedDate = typeof query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(query.date) ? query.date : null;
 
   // Resolve token → playerId + workspace (never expose playerId to the client)
@@ -96,6 +95,8 @@ export async function getServerSideProps({ params, query = {} }) {
     return { props: { token, session: null, sessionLabel: '', player: null, sessionDate: null, dayGoal: '', isToday: false, notFound: true, sessionDates: [], sessionHistory: [], playerPhoto: null, serverLog: null } };
   }
   const { playerId, workspace } = resolved;
+  const timeZone=await getPlayerTimeZone(playerId,workspace);
+  const date=todayISO(timeZone);
 
   const [allDates, storedPhoto, legacyPhoto, playerInfo] = await Promise.all([
     redis('zrange', sessionsKey(workspace, playerId), 0, -1).catch(() => []),
@@ -134,7 +135,7 @@ export async function getServerSideProps({ params, query = {} }) {
   if (chosenDate && !record) record = parseSavedSession(await redis('get', sessionKey(workspace, playerId, chosenDate)).catch(() => null)).record;
 
   if (!record) {
-    return { props: { token, session: null, sessionLabel: '', player: playerProfile, sessionDate: requestedDate, dayGoal: '', isToday: false, notFound: false, sessionDates, sessionHistory, playerPhoto: playerPhoto || null, serverLog: null } };
+    return { props: { token, session: null, sessionLabel: '', player: playerProfile, sessionDate: requestedDate, dayGoal: '', isToday: false, notFound: false, sessionDates, sessionHistory, timeZone, serverToday:date, playerPhoto: playerPhoto || null, serverLog: null } };
   }
 
   const activeSession = parseSavedSession(record).session;
@@ -163,6 +164,8 @@ export async function getServerSideProps({ params, query = {} }) {
   return {
     props: {
       token,
+      timeZone,
+      serverToday:date,
       session: activeSession,
       sessionLabel: sessionTrainingLabel(record),
       player,
@@ -848,8 +851,12 @@ function PlayerSplash({ visible }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal, isToday, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog, serverFeedback, pendingPrehabDate = null, previousResults = {}, isMatchDayPrimer = false }) {
-  const isUpcoming = !isToday && sessionDate > todayISO();
+function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal, isToday:serverIsToday, timeZone='Europe/Moscow', serverToday=null, notFound, sessionDates, sessionHistory = [], playerPhoto, serverLog, serverFeedback, pendingPrehabDate = null, previousResults = {}, isMatchDayPrimer = false }) {
+  const [localNow,setLocalNow]=useState(null);
+  useEffect(()=>{const tick=()=>setLocalNow(new Date());tick();const timer=setInterval(tick,30000);return()=>clearInterval(timer);},[]);
+  const localToday=localNow?playerLocalDate(timeZone,localNow):(serverToday||todayISO(timeZone));
+  const isToday=sessionDate===localToday;
+  const isUpcoming = !isToday && sessionDate > localToday;
   const initialDone = serverLog?.done || {};
   const blocks = Array.isArray(session?.blocks) ? session.blocks : [];
   const flatExercises = useMemo(() => workoutExercises(session), [session]);
@@ -1341,6 +1348,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
               </div>
             </div>
             <div className="player-session-state shrink-0 text-right">
+              {localNow&&timeZone!=='Europe/Moscow'&&<div className="text-[10px] text-slate-400">{playerLocalClock(timeZone,localNow)} · {playerTimeZoneLabel(timeZone,localNow)}</div>}
               {activeTab === 'workout' && session ? (
                 <>
                   <div className={`player-status-pill ${isToday ? 'is-today' : 'is-latest'}`}>
@@ -1477,7 +1485,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
           <summary>Дата и настройки <span>{sessionDate ? formatDate(sessionDate) : 'Выбрать дату'}</span></summary>
           <div className="gym-settings-content">
             <label>Дата программы<select aria-label="Дата программы" value={sessionDate || ''} onChange={event => { if (event.target.value) window.location.assign(`/player/${encodeURIComponent(token)}?date=${event.target.value}`); }}><option value="">Выбери дату</option>{sessionDate && !sessionDates.includes(sessionDate) && <option value={sessionDate}>{sessionDate} · нет программы</option>}{sessionDates.map(date => <option key={date} value={date}>{formatDate(date)}</option>)}</select></label>
-            <a href={`/player/${encodeURIComponent(token)}?date=${todayISO()}`}>Открыть сегодня</a>
+            <a href={`/player/${encodeURIComponent(token)}?date=${localToday}`}>Открыть сегодня</a>
             {session && wakeLock.supported && <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={wakeLock.enabled} onChange={wakeLock.toggle} />Не гасить экран во время тренировки</label>}
             {wakeLock.status && <p role="status">{wakeLock.status}</p>}
             <p className="text-xs text-slate-400">Голосовые подсказки озвучены с помощью ИИ.</p>

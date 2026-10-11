@@ -1,3 +1,4 @@
+import {hydratePlayerTimeZones} from '../../../lib/playerTimeZoneStore';
 // pages/api/players/list.js
 // Returns every known player (WHOOP-tracked + roster-only) for the program-generator UI.
 
@@ -50,7 +51,7 @@ export default async function handler(req, res) {
   if (usesReadySix(workspace)) {
     const rosterResult = await getCachedReadySixRoster(workspace, todayISO());
     const payload = rosterResult.payload;
-    const roster = await hydratePlayerPhotos(normalizeReadySixRoster(payload), workspace);
+    const roster = await hydratePlayerTimeZones(await hydratePlayerPhotos(normalizeReadySixRoster(payload), workspace),workspace);
     const meta = await redisPipeline(
       roster.map(player => ['zrange', sessionsKey(workspace, player.id), -1, -1])
     ).catch(() => []);
@@ -95,7 +96,7 @@ export default async function handler(req, res) {
       lastSessionDate: Array.isArray(meta[i]) && meta[i].length ? meta[i][0] : null,
     }));
 
-    return res.status(200).json({ players: playersWithMeta });
+    return res.status(200).json({ players: await hydratePlayerTimeZones(playersWithMeta,workspace) });
   }
 
   const [whoopIds, rosterIds] = await Promise.all([
@@ -173,7 +174,7 @@ export default async function handler(req, res) {
     deduped.map(p => ({ id: p.id, name: p.name, position: p.position, hasPhoto: !!p.hasPhoto }))
   )).catch(() => {});
 
-  res.status(200).json({ players: playersWithMeta });
+  res.status(200).json({ players: await hydratePlayerTimeZones(playersWithMeta,workspace) });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

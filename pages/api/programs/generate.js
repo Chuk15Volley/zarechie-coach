@@ -1,3 +1,4 @@
+import {getPlayerTimeZone} from '../../../lib/playerTimeZoneStore';
 import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import { MANUAL_METHOD_POLICY, manualMethodRecommendation } from '../../../lib/manualMethod.mjs';
 import { buildStrengthDevelopmentDraft } from '../../../lib/strengthDevelopmentDraft.mjs';
@@ -1554,7 +1555,8 @@ export async function buildGenerationInputs(body) {
   const manualMethod = manualMethodSelection === true || (manualMethodSelection == null && typeof body?.focus === 'string' && body.focus !== '' && body.focus !== 'inseason');
   const wpfx = pfx(workspace);
 
-  const today = todayISO();
+  const timeZone = await getPlayerTimeZone(String(playerId),workspace);
+  const today = todayISO(timeZone);
   const targetDate = date || today;
   const futureLimit = new Date(today + 'T12:00:00');
   futureLimit.setDate(futureLimit.getDate() + (planningMode === 'week' ? 8 : 2));
@@ -1614,6 +1616,7 @@ export async function buildGenerationInputs(body) {
     if (!gymRecommendation) return { error: 'Для развивающей силовой нужны данные ReadySix; внешняя генерация не запускается.', status: 422 };
     try {
       const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+      readyResult.timeZone = timeZone;
       return { targetDate, dayGoal, readyResult };
     } catch (error) {
       if (/Нет безопасной новой/.test(error.message)) return { error: error.message + ' Повторы автоматически не разрешаются. Сохранённая программа не изменена.', status: 422 };

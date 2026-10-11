@@ -1,3 +1,5 @@
+import PlayerTimeZoneControl from '../components/PlayerTimeZoneControl';
+import {playerTimeZone,playerLocalDate} from '../lib/playerTimeZone.mjs';
 import { saveProgramRequest } from '../lib/programSaveClient.mjs';
 import { replaceExerciseDescription } from '../lib/exerciseReplacement.mjs';
 import { estimateStrengthMinutes } from '../lib/strengthExecution.mjs';
@@ -2357,6 +2359,16 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
+  const [playerClockNow,setPlayerClockNow] = useState(null);
+  useEffect(()=>{const tick=()=>setPlayerClockNow(new Date());tick();const timer=setInterval(tick,30000);return()=>clearInterval(timer);},[]);
+  const activePlayerTimeZone = workspace==='nkperf'?playerTimeZone(selectedPlayer?.timeZone):'Europe/Moscow';
+  const playerToday = playerLocalDate(activePlayerTimeZone,playerClockNow || new Date());
+  function changePlayerTimeZone(timeZone){
+    if(currentSaveViewRef.current.workspace!=='nkperf'||currentSaveViewRef.current.playerId!==playerId)return;
+    setPlayers(list=>list.map(p=>p.id===playerId?{...p,timeZone}:p));
+    setSelectedPlayer(p=>p?.id===playerId?{...p,timeZone}:p);
+    if(!currentSaveViewRef.current.session)setDate(playerLocalDate(timeZone));
+  }
   const programSaveLockRef = useRef(false);
   const currentSaveViewRef = useRef(null);
   currentSaveViewRef.current = {workspace,playerId,date,session};
@@ -3130,6 +3142,7 @@ export default function Home() {
 
   function selectPlayer(p) {
     draftOpenRequest.current++;
+    if(workspace==='nkperf' && date===playerToday)setDate(playerLocalDate(playerTimeZone(p.timeZone)));
     setSelectedPlayer(p);
     setPendingSaved(null);
     setPlayerId(p.id);
@@ -4984,7 +4997,7 @@ export default function Home() {
 
                 {/* Date + refresh */}
                 <div className="mb-2 flex items-center gap-2 px-1">
-                  <DatePicker navigate quickDays value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(todayISO(), 1)} size="sm" className="flex-1" />
+                  <DatePicker navigate quickDays timeZone={activePlayerTimeZone} value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(playerToday, 1)} size="sm" className="flex-1" />
                   <button type="button" onClick={() => loadTeamStatus()} disabled={teamStatusLoading} className="shrink-0 text-slate-600 hover:text-accent transition" title="Обновить">
                     <RefreshCw size={11} className={teamStatusLoading ? 'animate-spin' : ''} />
                   </button>
@@ -6509,7 +6522,7 @@ export default function Home() {
           <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
           <section className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] pb-2 print:hidden" aria-label="Календарь тренера">
             <p className="hidden text-xs font-semibold text-slate-400 sm:block">Дата тренировки{leftTab === 'day' && Object.values(teamStatus).some(status => status.hasDraft) && <span className="ml-3 text-cyan-300">Черновики: {Object.values(teamStatus).filter(status => status.hasDraft).length}</span>}</p>
-            <DatePicker navigate value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(todayISO(), 1)} size="sm" className="w-full sm:w-[310px]" />
+            <DatePicker navigate timeZone={activePlayerTimeZone} value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(playerToday, 1)} size="sm" className="w-full sm:w-[310px]" />
           </section>
 
           {/* ── Workspace header (player selected) ── */}
@@ -7052,6 +7065,7 @@ export default function Home() {
               </div>
             </div>
 
+            {workspace==='nkperf' && <PlayerTimeZoneControl key={playerId} playerId={playerId} timeZone={activePlayerTimeZone} apiKey={apiKey} disabled={saving||loading||!!batchId} onChange={changePlayerTimeZone} />}
             <div className="mb-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_1.15fr]">
               <div>
                 <SectionLabel icon={<Dumbbell size={11} />} text="Формат" />
@@ -7106,7 +7120,7 @@ export default function Home() {
               </div>
             </div>
 
-            {date > todayISO() && (
+            {date > playerToday && (
               <p className="mb-4 rounded-xl border border-accent/15 bg-accent/[0.04] px-3 py-2 text-[11px] text-accent/75">
                 Вечерние данные за сегодня будут учтены для завтрашней тренировки.
               </p>

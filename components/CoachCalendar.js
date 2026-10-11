@@ -8,9 +8,9 @@ const label = date => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 
 const compactLabel = date => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
 const monthLabel = month => new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T12:00:00Z`));
 
-export default function CoachCalendar({ value, onChange, minDate, maxDate, size = 'default', className = '', navigate = false, quickDays = false, disabled = false }) {
-  const selected = validCalendarDate(value) ? value : calendarToday();
-  const today = calendarToday();
+export default function CoachCalendar({ value, onChange, minDate, maxDate, size = 'default', className = '', navigate = false, quickDays = false, disabled = false, timeZone = 'Europe/Moscow' }) {
+  const selected = validCalendarDate(value) ? value : calendarToday(new Date(),timeZone);
+  const today = calendarToday(new Date(),timeZone);
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(selected.slice(0, 7));
   const [position, setPosition] = useState(null);

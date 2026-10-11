@@ -1,3 +1,4 @@
+import {getPlayerTimeZone} from '../../../lib/playerTimeZoneStore';
 import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import {getRecentSessionRecords} from '../../../lib/sessionHistory';
 import {buildExerciseVarietyContext} from '../../../lib/exerciseVariety.mjs';
@@ -72,6 +73,7 @@ export default async function handler(req, res) {
     ...record,
     session: sanitizeUnavailableEquipmentExercises(record.session),
     player: targetPlayer || record.player,
+    timeZone: await getPlayerTimeZone(String(toPlayerId),workspace),
     savedAt: new Date().toISOString(),
   };
   const restrictions = parseJSON(rawRestrictions);

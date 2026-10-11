@@ -1,3 +1,4 @@
+import {getPlayerTimeZone} from '../../../lib/playerTimeZoneStore';
 import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import { reconcileReplacementDescriptions } from '../../../lib/exerciseReplacement.mjs';
 import { getRecentSessionRecords } from '../../../lib/sessionHistory';
@@ -77,6 +78,7 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: 'Не удалось проверить предыдущую тренировку. Повторите сохранение после восстановления истории.' });
   }
   const describedSession = reconcileReplacementDescriptions(session, previousRecord?.session || previousRecord);
+  const timeZone = await getPlayerTimeZone(String(playerId),workspace);
   const savedAt = new Date().toISOString();
   const normalizedSession = approveProgramSession(normalizeSessionTempoDescriptions(
     ensureSessionExerciseIds(sanitizeUnavailableEquipmentExercises(normalizeSavedWeights(describedSession)))
@@ -103,6 +105,7 @@ export default async function handler(req, res) {
 
   const record = {
     session: normalizedSession,
+    timeZone,
     player: player || null,
     dataSummary: dataSummary || '',
     dayGoal: dayGoal || '',

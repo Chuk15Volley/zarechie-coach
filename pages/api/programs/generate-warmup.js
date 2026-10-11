@@ -1,3 +1,4 @@
+import {getPlayerTimeZone} from '../../../lib/playerTimeZoneStore';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 // pages/api/programs/generate-warmup.js
 // POST { playerId, date, dayGoal, focus, notes, days=7 }
@@ -248,7 +249,7 @@ export default async function handler(req, res) {
   const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', notes = '', workspace = 'zarechie' } = req.body || {};
   if (!playerId) return res.status(400).json({ error: 'playerId required' });
 
-  const today = todayISO();
+  const today = todayISO(await getPlayerTimeZone(String(playerId),workspace));
   const targetDate = date || today;
 
   const snapshot = await getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, 28, workspace);
