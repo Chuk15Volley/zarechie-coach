@@ -17,7 +17,7 @@ function runCompletion(weight, { unmark = false, overrides = {} } = {}) {
    setCelebration: value => calls.push(['celebration', value]), setCompletedAt: noop, setFinishReason: noop, changeReps: noop,
    setDone: fn => calls.push(['done', fn(done)]), setSetUpdatedAt: noop, setLastActionAt: noop,
    setProgressRevision: noop, setRestTimer: value => calls.push(['rest', value]), setRestUntil: value => calls.push(['deadline', value]), setUndoSet: noop,
-   setFocusMode: noop, setActiveBlock: value => calls.push(['block', value]), navigator: {},
+   setActiveBlock: value => calls.push(['block', value]), navigator: {},
    undoTimer: { current: null }, clearTimeout: noop, setTimeout: noop,
    totalSets: 3, restAfterWorkoutSet, nextWorkoutSet, session, skipped: {},
    blockIsComplete, nextIncompleteBlock, blockRefs: { current: [] }, ...overrides,
@@ -79,4 +79,11 @@ test('zero-second transitions move to the next block without opening a timer', (
  assert.equal(result.calls.find(([type])=>type==='rest')[1],null);
  assert.equal(result.calls.find(([type])=>type==='deadline')[1],null);
  assert.equal(result.calls.find(([type])=>type==='block')[1],1);
+});
+
+test('manually recording a later block keeps the next-set label aligned with its timer',()=>{
+ const later={label:'B',exerciseOrder:'circuit',rest_note:'15 сек между упражнениями; 120 сек после круга',exercises:[{...ex,code:'B1',targetSets:['12','12','12']},{name:'Push-Up',code:'B2',targetSets:['5','5','5']}]};
+ const {calls}=runCompletion('16',{overrides:{session:{blocks:[session.blocks[0],later]},totalSets:8,restAfterWorkoutSet:(s,d,k,c)=>restAfterWorkoutSet(s,{'1-0-0':true,'1-0-1':true},{},{...c,block:later,bi:1,ei:0,si:1,ex:later.exercises[0]})}});
+ assert.equal(calls.find(([type])=>type==='block')[1],1);
+ assert.equal(calls.find(([type])=>type==='rest')[1].kind,'exercise');
 });

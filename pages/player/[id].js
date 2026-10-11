@@ -1212,6 +1212,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     }
     if (!allFinished) {
       const { seconds, kind, next } = restAfterWorkoutSet(session, newDone, skipped, context);
+      setActiveBlock(next?.bi ?? -1);
       setRestTimer(next && seconds > 0 ? {
         total: seconds,
         kind,
