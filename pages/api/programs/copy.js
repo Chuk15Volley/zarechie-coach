@@ -14,18 +14,20 @@ import { generatedDraftKey } from '../../../lib/generatedDraft.mjs';
 import { programCopySession, validProgramWorkspace } from '../../../lib/programCopy.mjs';
 
 const parse = raw => typeof raw === 'string' ? JSON.parse(raw) : raw;
+const identityAliases = id => /^\d+$/.test(String(id).replace(/^whoop_/,'')) ? [...new Set([String(id), String(id).replace(/^whoop_/,''), `whoop_${String(id).replace(/^whoop_/,'')}`])] : [String(id)];
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({error:'Unauthorized'});
   if (req.method !== 'POST') return res.status(405).end();
   const {fromPlayerId,toPlayerId,date,workspace='zarechie',targetWorkspace=workspace,targetDate=date,dryRun=false,sourceSession=null} = req.body || {};
   if (!validProgramWorkspace(workspace) || !validProgramWorkspace(targetWorkspace) || !fromPlayerId || !toPlayerId || !/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate || '')) return res.status(400).json({error:'Выберите команды, игроков и даты.'});
-  if (workspace===targetWorkspace && String(fromPlayerId)===String(toPlayerId) && date===targetDate) return res.status(400).json({error:'Выберите другого получателя или другую дату.'});
+  if (workspace===targetWorkspace && String(fromPlayerId).replace(/^whoop_/,'')===String(toPlayerId).replace(/^whoop_/,'') && date===targetDate) return res.status(400).json({error:'Выберите другого получателя или другую дату.'});
   try {
-    const [raw,targetPlayer,rawRestrictions] = await Promise.all([
-      redis('get',sessionKey(workspace,fromPlayerId,date)),
+    const [sourceRecords,targetPlayer,restrictionRecords] = await Promise.all([
+      Promise.all(identityAliases(fromPlayerId).map(id=>redis('get',sessionKey(workspace,id,date)))),
       getPlayerInfo(String(toPlayerId),targetWorkspace),
-      redis('get',restrictionsKey(targetWorkspace,toPlayerId)),
+      Promise.all(identityAliases(toPlayerId).map(id=>redis('get',restrictionsKey(targetWorkspace,id)))),
     ]);
+    const raw=sourceRecords.filter(Boolean).map(parse).sort((a,b)=>String(b.savedAt||'').localeCompare(String(a.savedAt||'')))[0];
     if (!raw) return res.status(404).json({error:'Сначала сохраните исходную программу на выбранную дату.'});
     if (!targetPlayer) return res.status(404).json({error:'Получатель не найден в выбранной команде.'});
     const source=parse(raw);
@@ -33,7 +35,7 @@ export default async function handler(req, res) {
     const session=sanitizeUnavailableEquipmentExercises(programCopySession(source.session));
     const banned=coachBannedSessionExercises(source.session);
     if (banned.length) return res.status(409).json({error:'В исходной программе есть запрещённые тренером упражнения. Замените их перед копированием.',banned});
-    const restrictions=parse(rawRestrictions)||[];
+    const restrictions=restrictionRecords.flatMap(raw=>parse(raw)||[]);
     const violations=session.blocks.flatMap(b=>b.exercises).filter(e=>hasRestriction(e.name,restrictions)).map(e=>e.name);
     if (violations.length) return res.status(409).json({error:'Программа нарушает ограничения получателя. Нужна индивидуальная замена.',exercises:violations});
     let recent;
