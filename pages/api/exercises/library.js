@@ -7,6 +7,7 @@ import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { getAllCards, getCard, normalize } from '../../../lib/exerciseLibrary';
 import { EXERCISE_BANK, findExerciseUrl } from '../../../lib/exerciseBank';
+import { isCoachBannedExercise } from '../../../lib/exerciseRestrictions';
 
 export const config = { maxDuration: 20 };
 
@@ -15,7 +16,7 @@ function legacySlug(name) {
 }
 
 function isBannedLibraryExercise(name) {
-  return /incline push[ -]?up|наклонн.*отжим/i.test(name || '');
+  return isCoachBannedExercise(name) || /incline push[ -]?up|наклонн.*отжим/i.test(name || '');
 }
 
 // SCAN helper — follows cursor to collect all matching keys.

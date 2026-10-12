@@ -13,7 +13,7 @@ const makeSession = name => ({ blocks: [{ label: 'A', exercises: [{ code: 'A1', 
 const past = [{ date: '2026-09-29', focus: 'strength', session: makeSession('DB Row') }];
 const varietyContext = buildExerciseVarietyContext(past, { targetDate: date, focus: 'strength' });
 const assessSessionQuality = (session, context) => ({ valid: true, score: 95, checks: [], variety: auditExerciseVariety(session, context.varietyContext) });
-const response = () => ({ code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
+const response = () => ({ code: 200, setHeader(){}, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
 const identity = value => value;
 function apiKey(t) {
   const original = process.env.OPENAI_API_KEY;

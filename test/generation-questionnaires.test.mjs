@@ -17,7 +17,7 @@ test('snapshot reads all three questionnaire families including post-morning loa
 });
 
 test('async generation refreshes questionnaires immediately before the first model request', () => {
-  assert.match(asyncSubmit, /generationRequest: req\.body/);
+  assert.match(asyncSubmit, /generationRequest:request/);
   assert.match(asyncStatus, /buildGenerationInputs\(record\.generationRequest\)/);
   assert.match(asyncStatus, /inputsRefreshedAt/);
   assert.ok(

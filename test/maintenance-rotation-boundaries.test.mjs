@@ -9,7 +9,7 @@ const history=[{date:'2026-10-01',focus,session:makeSession('One-Arm DB Row')}];
 const identity=x=>x;
 const assessSessionQuality=(session,context)=>({valid:!coachBannedSessionExercises(session).length,score:95,checks:[],variety:auditExerciseVariety(session,context.varietyContext)});
 const common={recordCoachReplacements,isAuthorized:()=>true,enforceRateLimit:async()=>true,normalizeExerciseLanguage:identity,sanitizeUnavailableEquipmentExercises:identity,normalizeSessionTempoDescriptions:identity,ensureSessionExerciseIds:identity,assessSessionQuality,advisorySessionQuality,preferVarietyCorrection,buildExerciseVarietyContext,coachBannedSessionExercises,qualityCorrectionPrompt:()=> 'repair'};
-const response=()=>({code:200,status(code){this.code=code;return this;},json(body){this.body=body;return this;}});
+const response=()=>({code:200,setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}});
 function key(t){const before=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='synthetic-test-key';t.after(()=>before===undefined?delete process.env.OPENAI_API_KEY:process.env.OPENAI_API_KEY=before);}
 function load(path,deps){let source=readFileSync(new URL('../'+path,import.meta.url),'utf8').replace(/^import[\s\S]*?;\n/gm,'').replace('export const config','const config').replace('export default ','');return new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));}
 for(const workspace of ['zarechie','nkperf']){

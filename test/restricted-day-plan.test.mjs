@@ -46,7 +46,7 @@ test('queued restriction completes without model calls or workout writes, includ
     generatedDraftKey, generatedDraftRecord,
     redis:async(cmd,key,value)=> { if(key.includes(':program-draft:')) { assert.equal(JSON.parse(value).draft,true); return 'OK'; } assert.match(key,/^coach:batch:/); if(cmd==='set') stored=JSON.parse(value); else return stored; },
   };
-  const response=()=>({status(code){this.code=code;return this;},json(body){this.body=body;return this;}});
+  const response=()=>({setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}});
   let res=response();
   await handler('generate-async.js',deps)({method:'POST',body:{playerId:'synthetic',workspace:'nkperf'}},res);
   assert.equal(res.code,200); assert.equal(stored.status,'done'); assert.equal(stored.autoSaved,false);

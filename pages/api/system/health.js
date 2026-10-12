@@ -1,3 +1,4 @@
+import {generationMonitor} from '../../../lib/generationMonitoring';
 import { isAuthorized } from '../../../lib/auth';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { gymStorageIsConfigured } from '../../../lib/gymValkeyTransport.mjs';
@@ -71,9 +72,10 @@ export default async function handler(req, res) {
   const recoveryFresh = latestRecovery?.status === 'ok' && recoveryAgeHours != null && recoveryAgeHours <= 8 * 24;
   const recoveryCritical = latestRecovery?.status === 'error' || (recoveryAgeHours != null && recoveryAgeHours > 10 * 24);
   const readinessPerformance = summarizeReadinessTelemetry(rawReadinessLatency, rawReadinessRollups);
+  const generationPerformance=await generationMonitor(workspace).catch(()=>({unavailable:true,needsAttention:true}));
   const status = !historyIntegrity.ok || !redisOk || !redisReadWrite || !config.redis || (backupAgeHours != null && backupAgeHours > 72) || recoveryCritical
     ? 'error'
-    : errors24h > 0 || !config.readySix || !config.ai || !backupFresh || !recoveryFresh || !readinessPerformance.healthy ? 'warning' : 'healthy';
+    : generationPerformance.needsAttention || errors24h > 0 || !config.readySix || !config.ai || !backupFresh || !recoveryFresh || !readinessPerformance.healthy ? 'warning' : 'healthy';
   res.setHeader('Cache-Control', 'no-store');
   return res.status(200).json({
     status,
@@ -90,6 +92,7 @@ export default async function handler(req, res) {
       readinessP95: readinessPerformance.enoughSamples ? readinessPerformance.healthy : null,
     },
     readinessPerformance,
+    generationPerformance,
     historyIntegrity,
     alerting: operationalAlertStatus(),
     notifications: (Array.isArray(rawNotifications) ? rawNotifications : []).map(parseJson).filter(Boolean).slice(0, 30),

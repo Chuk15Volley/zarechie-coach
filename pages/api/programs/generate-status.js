@@ -1,3 +1,5 @@
+import {generationJobTTL} from '../../../lib/teamQueue.mjs';
+import {observeGenerationResponse} from '../../../lib/generationMonitoring';
 import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import { generatedDraftKey, generatedDraftRecord } from '../../../lib/generatedDraft.mjs';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
@@ -149,6 +151,7 @@ function parseSessionFromResponse(response) {
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try{observeGenerationResponse(res,{workspace:req.query?.workspace || 'zarechie',phase:'poll',batchId:req.query?.batchId});}catch{}
   if (!await enforceRateLimit(req, res, { scope: 'ai-generation-status', limit: 600, windowSeconds: 600 })) return;
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -175,9 +178,15 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e.message });
   }
 
+  res.setHeader('Cache-Control','no-store');
+  if(req.query.workspace && req.query.workspace!==record.workspace)return res.status(404).json({error:'Задача не найдена в этом пространстве'});
+  res.generationContext={workspace:record.workspace || 'zarechie',phase:'poll',batchId};
+  if(record.status==='preparing')return Date.now()<record.leaseUntil?res.status(200).json({status:'pending',processing_status:'preparing'}):res.status(410).json({code:'PREPARATION_INTERRUPTED',error:'Подготовка прервана. Продолжите очередь.'});
+  if(record.status==='preparation_failed')return res.status(422).json({status:'failed',error:record.error});
   if (record.status === 'done' && record.session) {
     return res.status(200).json({
       status: 'done',
+      coachReview:!!record.coachReview,
       session: record.session,
       player: record.player || null,
       dataSummary: record.dataSummary || '',
@@ -210,10 +219,11 @@ export default async function handler(req, res) {
         return res.status(refreshed.status || 400).json({ error: refreshed.error });
       }
       if (refreshed.readyResult) {
-        const result = { ...refreshed.readyResult, status: 'done' };
+        const result = { ...refreshed.readyResult, coachReview:!!record.coachReview, status: 'done',completedAt:new Date().toISOString() };
+        if(record.teamQueueId)result.session={...result.session,teamGeneration:{queueId:record.teamQueueId,batchId}};
         const draft = generatedDraftRecord(result, record.generationRequest);
         if (draft) await redis('set', generatedDraftKey(record.workspace, record.playerId, draft.date), JSON.stringify(draft));
-        await redis('set', `coach:batch:${batchId}`, JSON.stringify({ ...record, ...result, qualityContext: {} }), 'EX', 3600);
+        await redis('set', `coach:batch:${batchId}`, JSON.stringify({ ...record, ...result, qualityContext: {} }), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
         return res.status(200).json(result);
       }
       record = {
@@ -228,7 +238,7 @@ export default async function handler(req, res) {
         questionnaireContext: refreshed.questionnaireContext || {},
         inputsRefreshedAt: new Date().toISOString(),
       };
-      await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', 3600);
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
     } catch (error) {
       // Do not spend tokens on a prompt whose health/load data could be stale.
       return res.status(503).json({ error: `Не удалось обновить последние анкеты перед генерацией: ${error.message}` });
@@ -284,7 +294,7 @@ export default async function handler(req, res) {
         activePrompt,
         tokenRetryCount: record.tokenRetryCount || 0,
       };
-      await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', 3600);
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
     } else {
       const retrieved = await retrieveOpenAIResponse(apiKey, openaiResponseId);
       if (retrieved.error) return res.status(retrieved.status || 502).json({ error: retrieved.error });
@@ -297,7 +307,7 @@ export default async function handler(req, res) {
         status: 'submitted',
         openaiStatus: openaiResponse.status,
         lastPolledAt: new Date().toISOString(),
-      }), 'EX', 3600).catch(() => {});
+      }), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600)).catch(() => {});
       return res.status(200).json({ status: 'pending', processing_status: openaiResponse.status });
     }
 
@@ -319,7 +329,7 @@ export default async function handler(req, res) {
           activePrompt,
           tokenRetryCount: Number(record.tokenRetryCount || 0) + 1,
           tokenRetryStartedAt: new Date().toISOString(),
-        }), 'EX', 3600);
+        }), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
         return res.status(200).json({ status: 'pending', processing_status: 'token_limit_retry' });
       }
       const failureMessage = sessionResponseFailureMessage(openaiResponse);
@@ -328,7 +338,7 @@ export default async function handler(req, res) {
         status: 'failed',
         error: failureMessage,
         completedAt: new Date().toISOString(),
-      }), 'EX', 3600).catch(() => {});
+      }), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600)).catch(() => {});
       await recordPlatformEvent({ workspace, area: 'generation', status: 'error', message: failureMessage, meta: { playerId, batchId } }).catch(() => {});
       return res.status(502).json({ status: 'failed', error: failureMessage });
     }
@@ -397,7 +407,7 @@ export default async function handler(req, res) {
           candidateQuality: quality,
           tokenRetryCount: 0,
           correctionStartedAt: new Date().toISOString(),
-        }), 'EX', 3600);
+        }), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
         return res.status(200).json({ status: 'pending', processing_status: 'quality_correction' });
       }
     }
@@ -416,13 +426,14 @@ export default async function handler(req, res) {
     if (coachBannedSessionExercises(session).length) throw new Error('Генератор оставил упражнения, запрещённые тренером. Повторите подбор.');
     if ((qualityContext.focus || focus) === 'inseason_strength' && quality.variety?.needsCorrection) {
       const error='Не удалось подобрать силовую без повторов после исправлений. Повторите подбор; повторы автоматически не разрешаются.';
-      await redis('set', `coach:batch:${batchId}`, JSON.stringify({...record,status:'failed',error,quality,autoSaved:false}), 'EX', 3600);
+      await redis('set', `coach:batch:${batchId}`, JSON.stringify({...record,status:'failed',error,quality,autoSaved:false}), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
       return res.status(422).json({status:'failed',error,repeated:quality.variety.repeated,quality});
     }
     const snapshot = await getPlayerSnapshot(String(playerId), 7, date, 7, workspace).catch(() => null);
     const player = snapshot?.player || null;
     const dataSummary = record.dataSummary || '';
 
+    if(record.teamQueueId)session={...session,teamGeneration:{queueId:record.teamQueueId,batchId}};
     const record2 = {
       session,
       player,
@@ -435,6 +446,7 @@ export default async function handler(req, res) {
       date,
       savedAt: new Date().toISOString(),
     };
+    if(record.teamQueueId){await redis('set',generatedDraftKey(workspace,playerId,date),JSON.stringify({...record2,draft:true,generatedAt:new Date().toISOString(),teamQueueId:record.teamQueueId,batchId,trainingLabel:'Командный черновик'}));}
     let autoSaved = false;
     let saveWarning = '';
     const preliminary = quality.dose?.prescription?.readySix?.planning?.preliminary === true;
@@ -462,6 +474,7 @@ export default async function handler(req, res) {
     await redis('set', `coach:batch:${batchId}`, JSON.stringify({
       ...record,
       status: 'done',
+      coachReview:!!record.coachReview,
       session,
       player,
       dataSummary,
@@ -469,11 +482,12 @@ export default async function handler(req, res) {
       autoSaved,
       saveWarning,
       completedAt: new Date().toISOString(),
-    }), 'EX', 3600);
+    }), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
     await recordPlatformEvent({ workspace, area: 'generation', status: saveWarning ? 'warning' : 'ok', message: saveWarning, meta: { playerId, batchId, autoSaved } }).catch(() => {});
 
     return res.status(200).json({
       status: 'done',
+      coachReview:!!record.coachReview,
       session,
       player,
       dataSummary,

@@ -1,5 +1,8 @@
+import GenerationMonitor from '../components/GenerationMonitor';
+import useTeamGenerationQueue from '../hooks/useTeamGenerationQueue';
+import TeamQueueReview from '../components/TeamQueueReview';
 import TeamGenerationResults from '../components/TeamGenerationResults';
-import {isCoachReviewDraft,runTeamGeneration} from '../lib/teamGenerationClient.mjs';
+import {isCoachReviewDraft} from '../lib/teamGenerationClient.mjs';
 import {STRENGTH_EQUIPMENT, STRENGTH_COHORT_EXPERIENCE} from '../lib/strengthEquipment.mjs';
 import {REPLACEMENT_REASONS} from '../lib/strengthCycle.mjs';
 import PlayerTimeZoneControl from '../components/PlayerTimeZoneControl';
@@ -2374,9 +2377,7 @@ export default function Home() {
   const [batchId, setBatchId] = useState(null);
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchSelectedIds, setBatchSelectedIds] = useState(new Set());
-  const [batchRunning, setBatchRunning] = useState(false);
-  const batchRunRef=useRef(null);
-  const [batchResults, setBatchResults] = useState([]); // [{playerId, name, position, status, error}]
+
   const [showSummary, setShowSummary] = useState(false);
 
   const [scheduleEvents, setScheduleEvents] = useState([]);
@@ -2567,7 +2568,8 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
-  useEffect(()=>{batchRunRef.current?.abort();batchRunRef.current=null;setBatchResults([]);setBatchRunning(false);return()=>batchRunRef.current?.abort();},[workspace,date]);
+  const teamQueue=useTeamGenerationQueue({workspace,date,apiKey,onRestoreDate:setDate});
+  const batchResults=teamQueue.results,batchRunning=teamQueue.running;
   const [playerClockNow,setPlayerClockNow] = useState(null);
   useEffect(()=>{const tick=()=>setPlayerClockNow(new Date());tick();const timer=setInterval(tick,30000);return()=>clearInterval(timer);},[]);
   const activePlayerTimeZone = workspace==='nkperf'?playerTimeZone(selectedPlayer?.timeZone):'Europe/Moscow';
@@ -3928,20 +3930,10 @@ export default function Home() {
     }
   }
 
-  async function executeTeamGeneration(selected,retry=false) {
-    if(batchRunRef.current || !selected.length)return;
-    const controller=new AbortController();batchRunRef.current=controller;
-    const request={date,dayGoal,days,focus,trainingType,powerMode,strengthMode,notes,coachRecovery:recoveryStatus,workspace,manualMethodSelection: true,autoSave:true};
-    const resumeIds=retry?Object.fromEntries(batchResults.filter(row=>row.status==='error' && row.retryBatchId).map(row=>[row.playerId,row.retryBatchId])):{};
-    if(!retry)setBatchResults(selected.map(player=>({playerId:player.id,name:player.name,position:player.position,status:'queued',workspace,date})));
-    setBatchRunning(true);
-    try {await runTeamGeneration(selected,{request,apiKey,signal:controller.signal,resumeIds,onUpdate:(id,patch)=>setBatchResults(previous=>controller.signal.aborted?previous:previous.map(row=>row.playerId===id?{...row,...patch}:row))});}
-    finally{if(batchRunRef.current===controller){batchRunRef.current=null;setBatchRunning(false);}}
+  async function executeTeamGeneration(selected) {
+    await teamQueue.start(selected,{date,dayGoal,days,focus,trainingType,powerMode,strengthMode,notes,coachRecovery:recoveryStatus,workspace,manualMethodSelection: true,autoSave:false});
   }
-  async function retryFailedBatch() {
-    const failedIds=new Set(batchResults.filter(row=>row.status==='error').map(row=>row.playerId));
-    await executeTeamGeneration(players.filter(player=>failedIds.has(player.id)),true);
-  }
+  async function retryFailedBatch(){await teamQueue.retry();}
   async function runBatchGeneration() {
     if(matchDayManualReview){setError('В игровой день праймер генерируется индивидуально: откройте игрока, проверьте программу и сохраните вручную. Командное автосохранение отключено.');return;}
     await executeTeamGeneration(players.filter(player=>batchSelectedIds.has(player.id)));
@@ -3954,12 +3946,13 @@ export default function Home() {
     const requestId = draftOpenRequest.current;
     setError('');
     try {
-      const response = await fetch(`/api/programs/get?playerId=${encodeURIComponent(result.playerId)}&date=${encodeURIComponent(result.date || date)}&workspace=${encodeURIComponent(result.workspace || workspace)}`, { headers: { 'x-api-key': apiKey } });
+      const programUrl=result.teamQueueId?`/api/programs/team-queue?workspace=${encodeURIComponent(result.workspace)}&queueId=${encodeURIComponent(result.teamQueueId)}&playerId=${encodeURIComponent(result.playerId)}`:`/api/programs/get?playerId=${encodeURIComponent(result.playerId)}&date=${encodeURIComponent(result.date || date)}&workspace=${encodeURIComponent(result.workspace || workspace)}`;
+      const response = await fetch(programUrl, { headers: { 'x-api-key': apiKey } });
       const data = await response.json();
       if (requestId !== draftOpenRequest.current) return;
       if (!response.ok) throw new Error(data.error || 'Не удалось открыть программу');
       if (data.record) { setPendingSaved(data.record); loadSavedRecord(data.record); }
-      else if (result.batchId) await pollBatchResult(result.batchId, 'Профилактика · черновик');
+      else if (result.batchId) await pollBatchResult(result.batchId, getFocusLabel(period,focus));
       else throw new Error('Программа для выбранной даты не найдена');
     } catch (error) { setError(error.message); }
   }
@@ -4236,6 +4229,7 @@ export default function Home() {
       const savedQuality = data.quality || meta.quality || null;
       if (unchanged && data.quality) setMeta(prev => prev ? { ...prev, quality: data.quality, focusLabel: data.trainingLabel || prev.focusLabel } : prev);
       setJustSaved(unchanged);
+      void teamQueue.refresh();
       setPendingSaved({
         session: data.session || session,
         player: meta.player,
@@ -5375,7 +5369,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={async () => {
-                        setBatchResults([]);
+
                         await runBatchGeneration();
                         loadTeamStatus();
                       }}
@@ -5405,7 +5399,7 @@ export default function Home() {
                     </span>
                     <button
                       type="button"
-                      onClick={() => { setBatchResults([]); setBatchSelectedIds(new Set()); }}
+                      onClick={() => {  setBatchSelectedIds(new Set()); }}
                       className="text-[10px] text-slate-600 hover:text-slate-400 transition"
                     >
                       Сбросить
@@ -6492,6 +6486,7 @@ export default function Home() {
                   <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Production release</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{String(healthData.release?.commit || 'local').slice(0, 12)}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Readiness p95 · тёплый / холодный</div><div className={`mt-2 font-mono text-[12px] font-bold ${healthData.readinessPerformance?.healthy ? 'text-emerald-200' : 'text-amber-200'}`}>{healthData.readinessPerformance?.warm?.p95Ms ?? healthData.readinessPerformance?.p95Ms ?? '—'} мс <span className="text-slate-700">/</span> {healthData.readinessPerformance?.cold?.p95Ms ?? '—'} мс</div><div className="mt-1 text-[10px] text-slate-600">Цели ≤ {healthData.readinessPerformance?.warm?.targetP95Ms || 750} / {healthData.readinessPerformance?.cold?.targetP95Ms || 5000} мс · кеш {healthData.readinessPerformance?.cacheHitRate ?? '—'}% · {healthData.alerting?.channel === 'in-app' ? 'встроенный канал' : healthData.alerting?.channel || 'канал неизвестен'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя резервная копия</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.id || healthData.latestSnapshotId || 'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} ключей · зашифровано` : healthData.backup ? `${healthData.backup.keyCount} ключей · ${healthData.backup.ageHours} ч назад` : 'Ежедневное защищённое копирование'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Контроль восстановления</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-cyan-200">{latestRecoveryDrill?.id || healthData.recovery?.id || 'Ещё не выполнялся'}</div><div className="mt-1 text-[10px] text-slate-600">{latestRecoveryDrill ? `${latestRecoveryDrill.sampledKeyCount} ключей · очищено` : healthData.recovery ? `${healthData.recovery.sampledKeyCount} ключей · ${healthData.recovery.ageHours} ч назад` : 'Еженедельная DR-проверка'}</div></div></div>
                   <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">{Object.entries(healthData.services || {}).map(([name, ok]) => <div key={name} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className={`h-2 w-2 rounded-full ${ok ? 'bg-emerald-300' : 'bg-rose-300'}`} /><div className="mt-3 text-[12px] font-bold text-slate-200">{name === 'redis' ? 'Хранилище' : name === 'readySix' ? 'ReadySix' : name === 'ai' ? 'AI генерация' : name === 'backup' ? 'Резервные копии' : name === 'recovery' ? 'DR-проверка' : 'Доступ тренера'}</div><div className="mt-1 text-[10px] text-slate-600">{ok ? 'Работает' : name === 'backup' ? 'Нет свежей копии' : name === 'recovery' ? 'Нет свежей проверки' : 'Не настроено'}</div></div>)}</div>
                   <div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ошибки за 24 часа</div><div className="mt-2 text-3xl font-black text-rose-200">{healthData.errors24h}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Предупреждения за 24 часа</div><div className="mt-2 text-3xl font-black text-amber-200">{healthData.warnings24h}</div></div></div>
+                  <GenerationMonitor workspace={workspace} apiKey={apiKey} />
                   <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 flex items-center justify-between"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Канал SLO-инцидентов</div><span className="rounded-full border border-cyan-300/12 px-2 py-1 text-[9px] font-bold text-cyan-200">{healthData.alerting?.channel === 'in-app' ? 'Встроенный inbox' : healthData.alerting?.channel}</span></div><div className="space-y-2">{(healthData.notifications || []).length ? healthData.notifications.slice(0, 10).map(notification => <div key={notification.eventId} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${notification.status === 'firing' ? notification.severity === 'critical' || notification.severity === 'error' ? 'bg-rose-300' : 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{notification.title}</div><div className="mt-0.5 text-[10px] leading-relaxed text-slate-600">{notification.message}</div></div><span className="shrink-0 text-[9px] text-slate-700">{compactTime(notification.occurredAt)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Активных SLO-событий нет</div>}</div></div>
                   <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Последние события</div><div className="space-y-2">{(healthData.events || []).length ? healthData.events.slice(0, 12).map((event, index) => <div key={`${event.at}-${index}`} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${event.status === 'error' ? 'bg-rose-300' : event.status === 'warning' ? 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{event.area}</div>{event.message && <div className="mt-0.5 truncate text-[10px] text-slate-600">{event.message}</div>}</div><span className="text-[9px] text-slate-700">{compactTime(event.at)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Событий пока нет</div>}</div></div>
                 </>
@@ -7111,6 +7106,8 @@ export default function Home() {
             </div>
           )}
 
+          {workspaceTab === 'program' && <TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} workspace={workspace} apiKey={apiKey} />}
+
           {workspaceTab === 'program' && !playerId && batchSelectedIds.size > 0 && (
             <div className="mx-auto flex min-h-[58vh] max-w-xl flex-col justify-center print:hidden">
               <div className="rounded-2xl border border-accent/20 bg-accent/[0.05] p-6 text-center shadow-[0_12px_34px_rgba(0,0,0,0.35)]">
@@ -7572,7 +7569,7 @@ export default function Home() {
             {sessionType === 'gym' && apiKey && players.length > 0 && (
               <button
                 type="button"
-                onClick={() => { setBatchOpen(o => !o); setBatchResults([]); }}
+                onClick={() => { setBatchOpen(o => !o);  }}
                 disabled={loading || weekPlanLoading || batchRunning || matchDayManualReview}
                 className={`flex items-center justify-center gap-2 rounded-xl border ${batchOpen ? 'border-accent/40 bg-accent/10 text-accent' : 'border-white/[0.11] bg-white/[0.045] text-slate-300'} px-4 py-3 text-sm font-semibold transition-all hover:border-white/[0.20] hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
                 title="Сгенерировать тренировки для всей команды сразу"
@@ -7634,7 +7631,7 @@ export default function Home() {
                     <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[11px] font-bold text-accent">{batchSelectedIds.size}</span>
                   )}
                 </div>
-                <button onClick={() => { batchRunRef.current?.abort();batchRunRef.current=null;setBatchOpen(false); setBatchResults([]); setBatchRunning(false); }} className="text-slate-600 hover:text-slate-400 transition">
+                <button onClick={() => { setBatchOpen(false); }} className="text-slate-600 hover:text-slate-400 transition">
                   <X size={16} />
                 </button>
               </div>
@@ -7742,7 +7739,7 @@ export default function Home() {
                         )}
                         <button
                           type="button"
-                          onClick={() => { setBatchResults([]); setBatchSelectedIds(new Set()); }}
+                          onClick={() => {  setBatchSelectedIds(new Set()); }}
                           className="flex items-center gap-1.5 text-[11px] font-semibold text-accent hover:text-accent/70 transition"
                         >
                           <RefreshCw size={11} />
