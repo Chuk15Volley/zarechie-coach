@@ -135,3 +135,9 @@ test('strict history distinguishes first session from an outage or corrupt saved
     else assert.deepEqual(await result, []);
   }
 });
+
+ test('single-leg dumbbell RDL is still a repeat when equipment moves to parentheses', () => {
+ const context=buildExerciseVarietyContext([record('2026-10-06','inseason_strength','Single-Leg Romanian Deadlift (DB)')],{targetDate:'2026-10-12',focus:'inseason_strength'});
+ assert.equal(auditExerciseVariety(session('Single-Leg DB Romanian Deadlift'),context).needsCorrection,true);
+ assert.notEqual(varietyExerciseKey('Single-Leg DB Romanian Deadlift'),varietyExerciseKey('Single-Leg KB Romanian Deadlift'));
+ });
