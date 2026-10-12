@@ -1962,6 +1962,32 @@ function StrengthCycleDecisionEditor({cycle,workspace,playerId,apiKey,onSaved}) 
   </div>;
 }
 
+function StrengthCycleComparison({comparison}) {
+  if(!comparison || comparison.status==='no_previous')return <p className="text-xs text-slate-500">Для сравнения нужен предыдущий соседний силовой цикл.</p>;
+  if(comparison.status==='overlapping_cycles')return <p className="rounded-xl border border-amber-300/20 p-3 text-xs text-amber-200">Даты выполнений соседних циклов пересекаются. Проверьте принадлежность занятий к циклам; прямое сравнение пока недоступно.</p>;
+  if(comparison.status==='awaiting_completion')return <p className="rounded-xl border border-white/10 p-3 text-xs text-slate-400">Сравнение появится после завершения обоих соседних циклов: предыдущий {comparison.previousCompleted}/4, выбранный {comparison.currentCompleted}/4. Незавершённый цикл не пропускается.</p>;
+  const chains={full_body:'Общая силовая',anterior_chain:'Передняя цепь',posterior_chain:'Задняя цепь'};
+  const statuses={comparable:'Сопоставимая силовая доза',new_variant:'Новый вариант: кг с другим упражнением не сравниваются',previous_variant:'Вариант остался в предыдущем цикле',adapted:'Локальная адаптация: прямое сравнение ограничено',missing_or_mixed_sets:'Нет полных кг/повторов или подходы различаются',units_changed:'Изменился способ подсчёта повторов',context_unknown:'Не сохранены условия нагрузки',dose_changed:'Изменилась доза или силовой режим'};
+  const delta=value=>value==null?'—':`${value>0?'+':''}${value}`;
+  const point=value=>!value?'—':`${value.date} · ${value.sets.map(set=>`${set.kg ?? '—'} кг × ${set.reps ?? '—'}${set.perSide?'/стор.':''}`).join('; ')} · RPE упражнения ${value.exerciseRpe ?? '—'}`;
+  const contexts=({exposures,adaptedSessions})=>`Занятий с адаптацией: ${adaptedSessions}. `+exposures.map(item=>`${item.date}: партии ${item.playedSets ?? '—'}, площадка ${item.courtLoad ?? '—'}, поездки ${item.travelDates.join(', ') || 'не отмечены'}${item.missing.length?' · данные неполные':''}${item.reasons.length?' · '+item.reasons.map(reason=>reason.text).join(' '):''}`).join('; ');
+  return <section className="rounded-xl border border-cyan-300/20 p-3">
+    <h3 className="text-sm font-bold text-cyan-100">Сравнение соседних циклов</h3>
+    <p className="mt-1 text-xs text-slate-400">{comparison.previousId} → {comparison.currentId}. Сопоставимых вариантов: {comparison.summary.comparable}; новых: {comparison.summary.newVariants}; с ограничениями данных: {comparison.summary.limited}.</p>
+    <p className="my-2 text-xs text-slate-500">Последнее полное выполнение каждого точного варианта в цикле. Это фактическое изменение нагрузки, не оценка прироста силы. Разницу RPE показываем только при одинаковых кг, повторах и дозе.</p>
+    {comparison.rows.map(row=><div key={row.key} className="mt-2 rounded-lg bg-white/[0.025] p-3 text-xs">
+      <p className="font-bold text-slate-200">{chains[row.trainingType] || row.trainingType} · {row.code} · {row.name}</p>
+      <p className="mt-1 text-slate-500">{statuses[row.status]} · {row.loadUnits===2?'кг одного снаряда из пары':'кг одного снаряда'}</p>
+      <dl className="mt-2 grid gap-2 text-slate-300 sm:grid-cols-2"><div><dt className="text-slate-500">Предыдущий цикл</dt><dd>{point(row.before)}</dd></div><div><dt className="text-slate-500">Выбранный цикл</dt><dd>{point(row.after)}</dd></div></dl>
+      {row.delta && <p className="mt-2 text-cyan-200">Δ кг: {delta(row.delta.kg)} · Δ повторов на подход: {delta(row.delta.reps)} · Δ RPE: {delta(row.delta.exerciseRpe)}{row.after.perSide?' · повторы на сторону':''}{!row.effortComparable?' · RPE напрямую не сопоставим':''}</p>}
+      {row.after && !row.decisions.length && <p className="mt-2 text-slate-500">Решение тренера из предыдущего цикла в выполненных планах этого варианта не записано.</p>}
+      {!!row.decisions.length && <details className="mt-2"><summary className="cursor-pointer text-emerald-200">Решения тренера на момент выполнения · {row.decisions.length}</summary>{row.decisions.map((decision,index)=><p key={index} className="mt-1 text-slate-400">{decision.date}: {decision.exercise==='keep'?'сохранить':'сменить'} {decision.requestedName}; {decision.progression==='hold'?'удерживать нагрузку':'прогрессия по истории/RPE'}{decision.effect==='symptom_deferred'?' · отложено по симптомам':decision.effect==='selection_deferred'?' · сохранение варианта было недоступно':''}{decision.note?' · '+decision.note:''}.</p>)}</details>}
+    </div>)}
+    <details className="mt-3 text-xs"><summary className="cursor-pointer text-slate-300">Контекст ReadySix двух циклов</summary><p className="mt-2 text-slate-500">Предыдущий: {contexts(comparison.context.before)}</p><p className="mt-2 text-slate-500">Выбранный: {contexts(comparison.context.after)}</p></details>
+    <p className="mt-2 text-xs text-slate-500">Показаны решения из сохранённых выполненных планов. Поздние правки решения не переписывают историю и не доказывают причину изменения результата.</p>
+  </section>;
+}
+
 function StrengthCycleReviewPanel({workspace, playerId, apiKey, date}) {
   const [open,setOpen]=useState(false);
   const [review,setReview]=useState(null);
@@ -1994,6 +2020,7 @@ function StrengthCycleReviewPanel({workspace, playerId, apiKey, date}) {
         {!!review.cycles.length && <PremiumSelect value={selected} onChange={setSelected} options={review.cycles.map(c=>({value:c.id,label:`${c.startDate} · ${c.status==='completed'?'завершён':'идёт'} · ${c.completedCount}/4`}))} compact />}
         {cycle && <div className="mt-3 space-y-3">
           <div className="rounded-xl bg-white/[0.035] p-3 text-xs text-slate-300"><strong>{cycle.status==='completed'?'Цикл завершён':'Цикл продолжается'} · {cycle.completedCount}/4</strong><p className="mt-1 text-slate-500">Период: {cycle.startDate}{cycle.endDate?' → '+cycle.endDate:''}. Сохранено планов: {cycle.plannedCount}. Полные выполнения: {cycle.completionDates.join(', ') || 'ещё нет'}. Занятий с локальной адаптацией: {cycle.adaptedSessions}.</p></div>
+          <StrengthCycleComparison comparison={cycle.comparison} />
           {cycle.status==='completed' && <StrengthCycleDecisionEditor key={`${workspace}:${playerId}:${cycle.id}:${cycle.decision?.revision || 'new'}`} cycle={cycle} workspace={workspace} playerId={playerId} apiKey={apiKey} onSaved={decision=>setReview(previous=>({...previous,cycles:previous.cycles.map(item=>item.id===cycle.id?{...item,decision}:item)}))} />}
           {cycle.suggestions.map(text=><p key={text} className="text-xs text-amber-200/80">{text}</p>)}
           {!cycle.exercises.length && <p className="text-xs text-slate-500">Пока нет полных выполнений для сравнения основных упражнений.</p>}
