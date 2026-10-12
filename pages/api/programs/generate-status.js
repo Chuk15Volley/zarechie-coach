@@ -1,4 +1,5 @@
-import {loadTeamQueue} from '../../../lib/teamQueueStore';
+import {taskRuntimeKey} from '../../../lib/teamQueuePolicy.mjs';
+import {loadTeamQueue,writeCurrentTeamDraft} from '../../../lib/teamQueueStore';
 import {generationJobTTL} from '../../../lib/teamQueue.mjs';
 import {observeGenerationResponse} from '../../../lib/generationMonitoring';
 import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
@@ -209,7 +210,7 @@ export default async function handler(req, res) {
     });
   }
 
-  if(record.teamQueueId){const queue=await loadTeamQueue(record.workspace,record.teamQueueId);if(!queue || queue.state!=='running')return res.status(409).json({error:'Очередь остановлена',code:'QUEUE_STOPPED'});}
+  if(record.teamQueueId){const queue=await loadTeamQueue(record.workspace,record.teamQueueId);if(queue && !queue.players.some(player=>player.batchId===batchId))return res.status(409).json({error:'Черновик уже обновлён',code:'QUEUE_SUPERSEDED'});const runtimeRaw=await redis('get',taskRuntimeKey(batchId)),runtime=typeof runtimeRaw==='string'?JSON.parse(runtimeRaw):runtimeRaw;if(!queue || queue.state!=='running' || runtime?.stop)return res.status(409).json({error:'Очередь остановлена',code:'QUEUE_STOPPED'});}
 
   // A player can submit a questionnaire after the coach clicks Generate but
   // before the background OpenAI request is actually created. Refresh the
@@ -225,7 +226,7 @@ export default async function handler(req, res) {
         const result = { ...refreshed.readyResult, readySixCheck:refreshed.readySixCheck || null, coachReview:!!record.coachReview, status: 'done',completedAt:new Date().toISOString() };
         if(record.teamQueueId)result.session={...result.session,teamGeneration:{queueId:record.teamQueueId,batchId}};
         const draft = generatedDraftRecord(result, record.generationRequest);
-        if (draft) await redis('set', generatedDraftKey(record.workspace, record.playerId, draft.date), JSON.stringify(draft));
+        if(draft){const key=generatedDraftKey(record.workspace,record.playerId,draft.date);if(record.teamQueueId)await writeCurrentTeamDraft(record,batchId,key,{...draft,batchId,teamQueueId:record.teamQueueId});else await redis('set',key,JSON.stringify(draft));}
         await redis('set', `coach:batch:${batchId}`, JSON.stringify({ ...record, ...result, qualityContext: {} }), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
         return res.status(200).json(result);
       }
@@ -450,7 +451,7 @@ export default async function handler(req, res) {
       date,
       savedAt: new Date().toISOString(),
     };
-    if(record.teamQueueId){await redis('set',generatedDraftKey(workspace,playerId,date),JSON.stringify({...record2,draft:true,generatedAt:new Date().toISOString(),teamQueueId:record.teamQueueId,batchId,trainingLabel:'Командный черновик'}));}
+    if(record.teamQueueId){await writeCurrentTeamDraft(record,batchId,generatedDraftKey(workspace,playerId,date),{...record2,draft:true,generatedAt:new Date().toISOString(),teamQueueId:record.teamQueueId,batchId,trainingLabel:'Командный черновик'});}
     let autoSaved = false;
     let saveWarning = '';
     const preliminary = quality.dose?.prescription?.readySix?.planning?.preliminary === true;

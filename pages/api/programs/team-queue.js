@@ -3,7 +3,7 @@ import {isAuthorized} from '../../../lib/auth';
 import {redis} from '../../../lib/redis';
 import {enforceRateLimit} from '../../../lib/rateLimit';
 import {validWorkspace,validQueueId,teamQueueLatestKey} from '../../../lib/teamQueue.mjs';
-import {createTeamQueue,loadTeamQueue,teamQueueView,retryTeamPlayer,markTeamPlayerReviewed,teamQueueProgram,controlTeamQueue} from '../../../lib/teamQueueStore';
+import {createTeamQueue,loadTeamQueue,teamQueueView,retryTeamPlayer,markTeamPlayerReviewed,teamQueueProgram,controlTeamQueue,mutateTeamQueue} from '../../../lib/teamQueueStore';
 export const config={maxDuration:60};
 export default async function handler(req,res) {
   if(!isAuthorized(req))return res.status(401).json({error:'Unauthorized'});
@@ -22,11 +22,15 @@ export default async function handler(req,res) {
     if(!queue)return res.status(404).json({error:'Очередь не найдена или истекла'});
     if(req.method==='GET' && input.playerId){const record=await teamQueueProgram(queue,input.playerId);return record?res.status(200).json({record}):res.status(404).json({error:'Готовый черновик не найден в этой очереди'});}
     if(req.method==='POST'){
-      if(['pause','resume','cancel'].includes(input.action))queue=await controlTeamQueue(queue,input.action);
-      else if(input.action==='publish'){const publication=await publishTeamQueue(queue,req);return res.status(200).json({queue:await teamQueueView(await loadTeamQueue(workspace,id)),publication});}
-      else if(input.action==='retry')queue=await retryTeamPlayer(queue,input.playerId,input.batchId);
-      else if(input.action==='review')await markTeamPlayerReviewed(queue,input.playerId,input.batchId,input.reviewed===true);
-      else return res.status(400).json({error:'Неизвестное действие'});
+      const result=await mutateTeamQueue(queue,input.expectedRevision,async current=>{
+        if(['pause','resume','cancel'].includes(input.action))await controlTeamQueue(current,input.action);
+        else if(input.action==='publish')return {publication:await publishTeamQueue(current,req)};
+        else if(['retry','refresh-player'].includes(input.action))await retryTeamPlayer(current,input.playerId,input.batchId,input.action==='refresh-player');
+        else if(input.action==='review')await markTeamPlayerReviewed(current,input.playerId,input.batchId,input.reviewed===true);
+        else throw Object.assign(new Error('Неизвестное действие'),{status:400});
+        return {};
+      });
+      return res.status(200).json(result);
     }
     return res.status(200).json({queue:await teamQueueView(queue)});
   }catch(error){return res.status(error.status || 503).json({error:error.status?error.message:'Не удалось восстановить очередь. Повторите проверку.',...(error.queue?{queue:error.queue}:{})});}

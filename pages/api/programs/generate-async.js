@@ -1,9 +1,10 @@
+import {taskRuntimeKey} from '../../../lib/teamQueuePolicy.mjs';
 import {generatedDraftKey,generatedDraftRecord} from '../../../lib/generatedDraft.mjs';
 import {isAuthorized} from '../../../lib/auth';
 import {enforceRateLimit} from '../../../lib/rateLimit';
 import {redis,redisPipeline} from '../../../lib/redis';
 import {buildGenerationInputs,buildSessionTool} from './generate';
-import {loadTeamQueue} from '../../../lib/teamQueueStore';
+import {loadTeamQueue,writeCurrentTeamDraft} from '../../../lib/teamQueueStore';
 import {generationJobTTL} from '../../../lib/teamQueue.mjs';
 import {observeGenerationResponse} from '../../../lib/generationMonitoring';
 import crypto from 'node:crypto';
@@ -21,7 +22,9 @@ export default async function handler(req,res) {
       const player=queue?.players.find(player=>player.playerId===String(request.playerId));
       if(!player)return res.status(404).json({error:'Игрок или очередь не найдены в выбранном пространстве'});
       if(queue.state!=='running')return res.status(409).json({error:queue.state==='cancelled'?'Очередь отменена':'Очередь на паузе',code:'QUEUE_STOPPED'});
-      batchId=player.batchId;teamQueueId=queue.id;request={...queue.request,playerId:player.playerId};
+      batchId=player.batchId;teamQueueId=queue.id;
+      const runtimeRaw=await redis('get',taskRuntimeKey(batchId)),runtime=typeof runtimeRaw==='string'?JSON.parse(runtimeRaw):runtimeRaw;
+      if(runtime?.stop)return res.status(409).json({error:'Ожидание завершено. Повторите подбор игрока.',code:'QUEUE_STOPPED'});request={...queue.request,playerId:player.playerId};
       res.generationContext={workspace:queue.workspace,phase:'submit',batchId};
       const raw=await redis('get','coach:batch:'+batchId),existing=typeof raw==='string'?JSON.parse(raw):raw;
       if(existing && existing.status!=='preparing')return res.status(200).json({batchId,reused:true});
@@ -44,7 +47,7 @@ export default async function handler(req,res) {
       const result={...inputs.readyResult,readySixCheck:inputs.readySixCheck || null,...(teamQueueId?context:{}),status:'done',completedAt:new Date().toISOString()};
       if(teamQueueId)result.session={...result.session,teamGeneration:{queueId:teamQueueId,batchId}};
       const draft=generatedDraftRecord(result,request);
-      if(draft)await redis('set',generatedDraftKey(context.workspace,context.playerId,draft.date),JSON.stringify({...draft,...(teamQueueId?{teamQueueId,batchId}:{})}));
+      if(draft){const key=generatedDraftKey(context.workspace,context.playerId,draft.date),value={...draft,...(teamQueueId?{teamQueueId,batchId}:{})};if(teamQueueId)await writeCurrentTeamDraft(context,batchId,key,value);else await redis('set',key,JSON.stringify(value));}
       await redis('set','coach:batch:'+batchId,JSON.stringify({...result,workspace:context.workspace,playerId:context.playerId}), 'EX',teamQueueId?generationJobTTL(context):3600);
       res.generationContext={workspace:context.workspace,phase:'submit',batchId,outcomeCode:result.quality?.blocking || result.quality?.medicalReviewRequired?'QUALITY_REVIEW':'PREPARED'};
       return res.status(200).json({batchId,estimatedMinutes:0});

@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import * as policy from '../lib/teamQueuePolicy.mjs';
 import * as pure from '../lib/teamQueue.mjs';
 import * as drafts from '../lib/generatedDraft.mjs';
 import {generateTeamPlayer} from '../lib/teamGenerationClient.mjs';
@@ -15,17 +16,17 @@ function compile(path,deps,returned){
  return new Function(...Object.keys(args),body+';return '+returned+';')(...Object.values(args));
 }
 function memory(){const values=new Map(),hashes=new Map(),lists=new Map(),ttl=new Map(),sorted=new Map();
- const redis=async(method,key,...args)=>{method=method.toLowerCase();if(method==='zadd'){if(!sorted.has(key))sorted.set(key,new Map());sorted.get(key).set(args[1],Number(args[0]));return 1;}if(method==='zrange')return [...(sorted.get(key)||new Map()).keys()].slice(Number(args[0]),Number(args[1])+1);if(method==='zrem')return Number(sorted.get(key)?.delete(args[0]));if(method==='eval')return (await redisPipeline([['EVAL',key,...args]]))[0];if(method==='get')return values.get(key) || null;if(method==='set'){if(args.includes('NX') && values.has(key))return null;values.set(key,args[0]);if(args.includes('EX'))ttl.set(key,Number(args[args.indexOf('EX')+1]));return 'OK';}if(method==='del')return Number(values.delete(key));if(method==='hget')return hashes.get(key)?.get(args[0]) || null;if(method==='hset'){if(!hashes.has(key))hashes.set(key,new Map());hashes.get(key).set(args[0],args[1]);return 1;}if(method==='expire'){ttl.set(key,Number(args[0]));return 1;}if(method==='lpush'){if(!lists.has(key))lists.set(key,[]);lists.get(key).unshift(args[0]);return lists.get(key).length;}if(method==='ltrim'){lists.set(key,(lists.get(key)||[]).slice(Number(args[0]),Number(args[1])+1));return 'OK';}if(method==='lrange')return (lists.get(key)||[]).slice(Number(args[0]),Number(args[1])+1);throw Error('Unhandled '+method);};
- const redisPipeline=async commands=>Promise.all(commands.map(async([cmd,...args])=>{if(cmd!=='EVAL')return redis(cmd,...args);const [script,n,key,...argv]=args;if(script.includes('PEXPIRE'))return (await redis('get',key))===argv[0]?1:0;if(script.includes("=='cancelled'")){if(await redis('get',key)==='cancelled')return 0;await redis('set',key,argv[0]);return 1;}if(script.includes('HGET')){const current=await redis('hget',key,argv[0]) || argv[1];if(current!==argv[1])return 0;await redis('hset',key,argv[0],argv[2]);return 1;}if(await redis('get',key)===argv[0])return redis('del',key);return 0;}));return {redis,redisPipeline,values,hashes,ttl,sorted};
+ const redis=async(method,key,...args)=>{method=method.toLowerCase();if(method==='zadd'){if(!sorted.has(key))sorted.set(key,new Map());sorted.get(key).set(args[1],Number(args[0]));return 1;}if(method==='zrevrange')return [...(sorted.get(key)||new Map()).keys()].reverse().slice(Number(args[0]),Number(args[1])+1);if(method==='zrange')return [...(sorted.get(key)||new Map()).keys()].slice(Number(args[0]),Number(args[1])+1);if(method==='zrem')return Number(sorted.get(key)?.delete(args[0]));if(method==='eval')return (await redisPipeline([['EVAL',key,...args]]))[0];if(method==='get')return values.get(key) || null;if(method==='set'){if(args.includes('NX') && values.has(key))return null;values.set(key,args[0]);if(args.includes('EX'))ttl.set(key,Number(args[args.indexOf('EX')+1]));return 'OK';}if(method==='del')return Number(values.delete(key));if(method==='hget')return hashes.get(key)?.get(args[0]) || null;if(method==='hdel')return Number(hashes.get(key)?.delete(args[0]));if(method==='hset'){if(!hashes.has(key))hashes.set(key,new Map());hashes.get(key).set(args[0],args[1]);return 1;}if(method==='expire'){ttl.set(key,Number(args[0]));return 1;}if(method==='lpush'){if(!lists.has(key))lists.set(key,[]);lists.get(key).unshift(args[0]);return lists.get(key).length;}if(method==='ltrim'){lists.set(key,(lists.get(key)||[]).slice(Number(args[0]),Number(args[1])+1));return 'OK';}if(method==='lrange')return (lists.get(key)||[]).slice(Number(args[0]),Number(args[1])+1);throw Error('Unhandled '+method);};
+ const redisPipeline=async commands=>Promise.all(commands.map(async([cmd,...args])=>{if(cmd!=='EVAL')return redis(cmd,...args);const [script,n,key,...argv]=args;if(Number(n)===3){const [latest,draft,player,batch,queue,value]=argv;const current=await redis('hget',key,player);if(current && current!==batch || await redis('get',latest)!==queue)return 0;await redis('set',draft,value);return 1;}if(script.includes('PEXPIRE'))return (await redis('get',key))===argv[0]?1:0;if(script.includes("=='cancelled'")){if(await redis('get',key)==='cancelled')return 0;await redis('set',key,argv[0]);return 1;}if(script.includes('HGET')){const current=await redis('hget',key,argv[0]) || argv[1];if(current!==argv[1])return 0;await redis('hset',key,argv[0],argv[2]);return 1;}if(await redis('get',key)===argv[0])return redis('del',key);return 0;}));return {redis,redisPipeline,values,hashes,ttl,sorted};
 }
-function fixture(){const store=memory(),deps={...store,...pure,...drafts,crypto,isAuthorized:req=>req.authorized!==false,enforceRateLimit:async()=>true};
- Object.assign(deps,compile('lib/teamQueueStore.js',deps,'({loadTeamQueue,createTeamQueue,teamQueueView,retryTeamPlayer,markTeamPlayerReviewed,teamQueueProgram,controlTeamQueue})'));
+function fixture(){const store=memory(),deps={...store,...pure,...drafts,...policy,crypto,isAuthorized:req=>req.authorized!==false,enforceRateLimit:async()=>true};
+ Object.assign(deps,compile('lib/teamQueueStore.js',deps,'({loadTeamQueue,createTeamQueue,teamQueueView,retryTeamPlayer,markTeamPlayerReviewed,teamQueueProgram,controlTeamQueue,mutateTeamQueue,writeCurrentTeamDraft})'));
  Object.assign(deps,compile('lib/generationMonitoring.js',deps,'({recordGenerationEvent,generationMonitor,observeGenerationResponse})'));
  let builds=0,build=async request=>({readyResult:{date:request.date,focus:'inseason_strength',trainingType:request.trainingType,strengthMode:request.strengthMode,autoSaved:false,quality:{valid:true},session:{kind:'strength_training_draft',blocks:[{exercises:[{code:'A1',name:'Goblet Squat',targetSets:['4','4'],weightKg:20}]}]}}});
  const submit=compile('pages/api/programs/generate-async.js',{...deps,buildGenerationInputs:async request=>{builds++;return build(request);}},'handler');
  const poll=compile('pages/api/programs/generate-status.js',deps,'handler');
  const queueApi=compile('pages/api/programs/team-queue.js',deps,'handler'),monitorApi=compile('pages/api/programs/generation-monitor.js',deps,'handler');
- const call=async(handler,body,query,authorized=true)=>{const res={code:200,headers:{},setHeader(key,value){this.headers[key]=value;},status(code){this.code=code;return this;},json(data){this.body=data;return this;}};await handler({method:body?'POST':'GET',body,query,authorized},res);return res;};
+ const call=async(handler,body,query,authorized=true)=>{if(body?.queueId && body.action && body.expectedRevision===undefined)body={...body,expectedRevision:(await deps.loadTeamQueue(body.workspace,body.queueId))?.revision};const res={code:200,headers:{},setHeader(key,value){this.headers[key]=value;},status(code){this.code=code;return this;},json(data){this.body=data;return this;}};await handler({method:body?'POST':'GET',body,query,authorized},res);return res;};
  return {...store,...deps,submit,poll,queueApi,monitorApi,call,builds:()=>builds,setBuild:value=>{build=value;}};
 }
 const request=workspace=>({workspace,date:'2026-10-13',focus:'inseason_strength',trainingType:'posterior_chain',strengthMode:'development',notes:'Private coach context',autoSave:true});
@@ -113,4 +114,69 @@ test('ReadySix publication digest ignores response timestamps but detects region
  const snapshot={readySixMeta:{generatedAt:'first'},readySixDecision:{recommendation:'full',generatedAt:'first'},readySixCalendar:{events:[]},morning:[{date:'2026-10-12',pain:0}]};const before=readySixPublicationCheck(snapshot,[]);
  assert.equal(before,readySixPublicationCheck({...snapshot,readySixMeta:{generatedAt:'second'},readySixDecision:{generatedAt:'second',recommendation:'full'}},[]));
  assert.notEqual(before,readySixPublicationCheck({...snapshot,morning:[{date:'2026-10-12',pain:3}]},[]));assert.notEqual(before,readySixPublicationCheck({...snapshot,readySixCalendar:{events:[{type:'flight'}]}},[]));assert.notEqual(before,readySixPublicationCheck(snapshot,['No loaded calf']));assert.equal(readySixPublicationCheck({},[]),null);
+});
+
+for(const workspace of ['zarechie','nkperf'])test(workspace+': stale tabs fail closed; refreshing one ready draft preserves neighbours and saved programs',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request(workspace),players:[{id:'one'},{id:'two'}]});
+ for(const row of q.players)await f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace,playerId:row.playerId,teamQueueId:q.id,status:'done',completedAt:q.createdAt,session:{blocks:[],teamGeneration:{batchId:row.batchId}}}));
+ const first=q.players[0],neighbour=await f.redis('get','coach:batch:'+q.players[1].batchId);
+ await f.markTeamPlayerReviewed(q,first.playerId,first.batchId,true);
+ const action={workspace,queueId:q.id,playerId:first.playerId,batchId:first.batchId,expectedRevision:0};
+ const updated=await f.call(f.queueApi,{...action,action:'refresh-player'});assert.equal(updated.code,200);assert.equal(updated.body.queue.revision,1);
+ assert.notEqual(updated.body.queue.rows[0].batchId,first.batchId);assert.equal(updated.body.queue.rows[0].reviewed,false);assert.equal(await f.redis('get','coach:batch:'+q.players[1].batchId),neighbour);
+ const stale=await f.call(f.queueApi,{...action,action:'pause'});assert.equal(stale.code,409);assert.equal(stale.body.queue.revision,1);assert.equal(stale.body.queue.state,'running');
+ const prefix=pure.queuePrefix(workspace),two=q.players[1];await f.redis('set',`${prefix}:session:two:${q.date}`,JSON.stringify({savedAt:new Date().toISOString(),session:{teamGeneration:{batchId:two.batchId}}}));
+ const rejected=await f.call(f.queueApi,{...action,action:'refresh-player',playerId:'two',batchId:two.batchId,expectedRevision:1});assert.equal(rejected.code,409);assert.match(rejected.body.error,/уже сохранена/);
+ const draftKey=drafts.generatedDraftKey(workspace,'one',q.date);await f.redis('set',draftKey,'current');
+ await f.writeCurrentTeamDraft({workspace,playerId:'one',teamQueueId:q.id,date:q.date},first.batchId,draftKey,{obsolete:true});assert.equal(await f.redis('get',draftKey),'current');
+ await f.writeCurrentTeamDraft({workspace,playerId:'one',teamQueueId:q.id,date:q.date},updated.body.queue.rows[0].batchId,draftKey,{fresh:true});assert.deepEqual(JSON.parse(await f.redis('get',draftKey)),{fresh:true});
+});
+test('concurrent mutations admit one version; missing version and partial failures invalidate stale actions',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}]});let entered,release;const ready=new Promise(r=>{entered=r;});
+ const first=f.mutateTeamQueue(q,0,async()=>{entered();await new Promise(r=>{release=r;});});await ready;
+ await assert.rejects(f.mutateTeamQueue(q,0,async()=>{}),{status:409});release();await first;
+ await assert.rejects(f.mutateTeamQueue(q,undefined,async()=>{}),{status:409});
+ await assert.rejects(f.mutateTeamQueue(q,1,async()=>{throw Error('network failure after write');}),/network failure/);
+ assert.equal((await f.loadTeamQueue(q.workspace,q.id)).revision,2);await assert.rejects(f.mutateTeamQueue(q,1,async()=>{}),{status:409});
+});
+test('worker stops after five temporary failures, retries only the selected player with a fresh budget',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}]});let calls=0,now=Date.now();
+ for(let i=0;i<6;i++){await runQueueTick({redis:f.redis,now:now+i*121000,request:async()=>{calls++;return {status:503,data:{}};}});}
+ assert.equal(calls,5);let view=await f.teamQueueView(await f.loadTeamQueue(q.workspace,q.id));assert.equal(view.rows[0].runtime.stop,'RETRY_LIMIT');assert.equal(view.rows[0].status,'error');
+ let monitor=await f.generationMonitor(q.workspace);assert.equal(monitor.runtime.stopped,1);assert.ok(monitor.needsAttention);
+ const next=await f.retryTeamPlayer(await f.loadTeamQueue(q.workspace,q.id),'one',q.players[0].batchId);assert.notEqual(next.players[0].batchId,q.players[0].batchId);assert.equal((await f.teamQueueView(next)).rows[0].status,'queued');
+ await f.redis('set','coach:batch:'+next.players[0].batchId,JSON.stringify({workspace:q.workspace,status:'done'}));monitor=await f.generationMonitor(q.workspace);assert.equal(monitor.runtime.stopped,0);assert.equal(monitor.incidents.activeCount,0);
+});
+test('active elapsed time excludes pause; processing/waiting limits and stall detection are bounded',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request('zarechie'),players:[{id:'one'}]}),base=Date.now(),key=pure.teamQueueKey(q.workspace,q.id);
+ await f.redis('set',key+':clock',JSON.stringify({activeMs:120000,at:base-3600000}));await f.redis('set',key+':state','paused');
+ const clock=JSON.parse(await f.redis('get',key+':clock'));assert.equal(policy.queueActiveMs(q,clock,'paused',base),120000);
+ await f.controlTeamQueue(await f.loadTeamQueue(q.workspace,q.id),'resume');const resumed=JSON.parse(await f.redis('get',key+':clock'));assert.equal(resumed.activeMs,120000);
+ assert.equal(policy.taskTiming({startedActiveMs:0,lastProgressActiveMs:0},180000).stalled,true);assert.equal(policy.taskTiming({startedActiveMs:0},900000).stop,'WAIT_LIMIT');assert.equal(policy.taskTiming({seenActiveMs:0},1800000).stop,'QUEUE_WAIT_LIMIT');
+ await f.redis('set',policy.taskRuntimeKey(q.players[0].batchId),JSON.stringify({startedActiveMs:0,lastProgressActiveMs:0,attempts:10}));await f.redis('set',key+':clock',JSON.stringify({activeMs:900000,at:Date.now()}));let calls=0;
+ await runQueueTick({redis:f.redis,request:async()=>{calls++;}});assert.equal(calls,0);assert.equal((await f.teamQueueView(await f.loadTeamQueue(q.workspace,q.id))).rows[0].runtime.stop,'WAIT_LIMIT');
+ const next=await f.retryTeamPlayer(await f.loadTeamQueue(q.workspace,q.id),'one',q.players[0].batchId);assert.notEqual(next.players[0].batchId,q.players[0].batchId);
+});
+test('monitor detects a stuck queue and worker outage even with no historical errors; progress clears stall incident',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}]}),key=pure.teamQueueKey(q.workspace,q.id),batch=q.players[0].batchId;
+ let m=await f.generationMonitor(q.workspace);assert.equal(m.incidents.activeCount,0);assert.equal(m.runtime.pending,1);assert.equal(m.needsAttention,true);
+ await f.redis('set','coach:team-worker:heartbeat',String(Date.now()));await f.redis('set',key+':clock',JSON.stringify({activeMs:200000,at:Date.now()}));await f.redis('set',policy.taskRuntimeKey(batch),JSON.stringify({startedActiveMs:0,lastProgressActiveMs:0,attempts:3}));
+ m=await f.generationMonitor(q.workspace);assert.equal(m.worker.available,true);assert.equal(m.runtime.stalled,1);assert.equal(m.needsAttention,true);
+ await policy.workerEvent(f.redis,{workspace:q.workspace,batchId:batch,code:'TASK_STALLED',now:Date.now()-1000});
+ await f.redis('set',policy.taskRuntimeKey(batch),JSON.stringify({startedActiveMs:0,lastProgressActiveMs:200000,lastProgressAt:Date.now(),attempts:4}));m=await f.generationMonitor(q.workspace);assert.equal(m.runtime.stalled,0);assert.equal(m.incidents.activeCount,0);assert.equal(m.needsAttention,false);
+ await f.redis('set','coach:team-worker:tick-failure',String(Date.now()));m=await f.generationMonitor(q.workspace);assert.equal(m.worker.failed,true);assert.equal(m.worker.available,false);assert.equal(m.needsAttention,true);
+});
+test('a stale completed queue cannot create a replacement after another tab changed its version',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}]});await f.redis('set','coach:batch:'+q.players[0].batchId,JSON.stringify({workspace:q.workspace,teamQueueId:q.id,playerId:'one',status:'done'}));
+ await f.mutateTeamQueue(q,0,async()=>{});
+ await assert.rejects(f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}],expectedLatestId:q.id,expectedRevision:0}),{status:409});
+ assert.equal(await f.redis('get',pure.teamQueueLatestKey(q.workspace,q.date)),q.id);
+});
+test('bounded waiting jobs without a submission can be restarted; request quota terminates successful-but-stuck polling',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}]}),key=pure.teamQueueKey(q.workspace,q.id),batch=q.players[0].batchId;
+ await f.redis('set',key+':clock',JSON.stringify({activeMs:1800000,at:Date.now()}));await f.redis('set',policy.taskRuntimeKey(batch),JSON.stringify({seenActiveMs:0,attempts:0}));
+ let calls=0;await runQueueTick({redis:f.redis,request:async()=>{calls++;}});assert.equal(calls,0);assert.equal((await f.teamQueueView(await f.loadTeamQueue(q.workspace,q.id))).rows[0].runtime.stop,'QUEUE_WAIT_LIMIT');
+ const next=await f.retryTeamPlayer(await f.loadTeamQueue(q.workspace,q.id),'one',batch);assert.notEqual(next.players[0].batchId,batch);
+ const current=next.players[0].batchId;await f.redis('set',policy.taskRuntimeKey(current),JSON.stringify({seenActiveMs:1800000,startedActiveMs:1800000,attempts:80}));
+ await runQueueTick({redis:f.redis,request:async()=>{calls++;}});assert.equal(calls,0);assert.equal((await f.teamQueueView(next)).rows[0].runtime.stop,'REQUEST_LIMIT');
 });
