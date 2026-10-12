@@ -40,7 +40,7 @@ export default async function handler(req, res) {
     const violations=session.blocks.flatMap(b=>b.exercises).filter(e=>hasRestriction(e.name,restrictions)).map(e=>e.name);
     if (violations.length) return res.status(409).json({error:'Программа нарушает ограничения получателя. Нужна индивидуальная замена.',exercises:violations});
     let recent;
-    try {recent=await getRecentSessionRecords(String(toPlayerId),source.focus==='inseason_strength'?42:12,targetWorkspace,targetDate,{strict:true});}
+    try {recent=await getRecentSessionRecords(String(toPlayerId),source.focus==='inseason_strength'?42:12,targetWorkspace,targetDate,{strict:true,includeCycleHistory:source.focus==='inseason_strength'});}
     catch {return res.status(503).json({error:'Не удалось проверить историю получателя. Повторите копирование позже.'});}
     const copyQuality=advisorySessionQuality(assessSessionQuality(session,{
       focus:source.focus||'',trainingType:source.trainingType||'',playerRestrictions:restrictions,

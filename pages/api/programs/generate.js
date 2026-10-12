@@ -1569,7 +1569,7 @@ export async function buildGenerationInputs(body) {
   const manualMatchDayRequested = isManualMatchDayFocus(focus);
   const [snapshot, recentSessionRecords, actualHistory, rawSchedule, raw1RM, raw1RMHistory, strengthAnchors, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan, previousManualMatchDays] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, focus === 'inseason_strength' ? 28 : Number(days) || 7, workspace),
-    getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, targetDate, { strict: true }).catch(() => { prehabHistoryAvailable = false; return []; }),
+    getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, targetDate, { strict: true, includeCycleHistory: focus === 'inseason_strength' }).catch(() => { prehabHistoryAvailable = false; return []; }),
     getRecentActualHistory(String(playerId), workspace, 12, targetDate).catch(() => ({ records:[], summaries:[] })),
     usesSeasonCalendar(workspace) ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
     redis('get', `${wpfx}:1rm:${String(playerId)}`).catch(() => null),
@@ -1615,7 +1615,8 @@ export async function buildGenerationInputs(body) {
   if (focus === 'inseason_strength') {
     if (!gymRecommendation) return { error: 'Для силовой нужны данные ReadySix; внешняя генерация не запускается.', status: 422 };
     try {
-      const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, developmentPlan: parseJSONSafe(rawDevelopmentPlan, null), recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+      const rawEquipment = await redis('get', `${wpfx}:strength:equipment`);
+      const readyResult = buildStrengthDevelopmentDraft({ equipment: parseJSONSafe(rawEquipment, {}), snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, developmentPlan: parseJSONSafe(rawDevelopmentPlan, null), recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
       readyResult.timeZone = timeZone;
       return { targetDate, dayGoal, readyResult };
     } catch (error) {
@@ -2047,7 +2048,7 @@ export default async function handler(req, res) {
     session = sanitizeUnavailableEquipmentExercises(session);
     session = normalizeSessionTempoDescriptions(session);
     qualityContext.varietyContext = buildExerciseVarietyContext(
-      await getRecentSessionRecords(String(req.body.playerId), effectiveFocus === 'inseason_strength' ? 42 : 12, req.body.workspace || 'zarechie', targetDate, { strict: true }),
+      await getRecentSessionRecords(String(req.body.playerId), effectiveFocus === 'inseason_strength' ? 42 : 12, req.body.workspace || 'zarechie', targetDate, { strict: true, includeCycleHistory: effectiveFocus === 'inseason_strength' }),
       { targetDate, focus: effectiveFocus, trainingType: effectiveTrainingType, seasonDecision: qualityContext.seasonDecision },
     );
     let quality = advisorySessionQuality(assessSessionQuality(session, { ...qualityContext, playerRestrictions }));

@@ -1,3 +1,4 @@
+import {STRENGTH_EQUIPMENT, STRENGTH_EXPERIENCE_OPTIONS} from '../lib/strengthEquipment.mjs';
 import {REPLACEMENT_REASONS} from '../lib/strengthCycle.mjs';
 import PlayerTimeZoneControl from '../components/PlayerTimeZoneControl';
 import {playerTimeZone,playerLocalDate} from '../lib/playerTimeZone.mjs';
@@ -1883,6 +1884,38 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery, onApply })
   );
 }
 
+function StrengthEquipmentPanel({workspace, apiKey}) {
+  const [equipment,setEquipment]=useState({});
+  const [status,setStatus]=useState('Загрузка…');
+  const [busy,setBusy]=useState(false);
+  useEffect(()=>{
+    let cancelled=false;
+    setEquipment({});setStatus('Загрузка…');
+    fetch(`/api/players/strength-equipment?workspace=${encodeURIComponent(workspace)}`,{headers:{'x-api-key':apiKey}})
+      .then(async response=>{if(!response.ok)throw new Error();return response.json();})
+      .then(data=>{if(!cancelled){setEquipment(Object.fromEntries(Object.entries(data.equipment).map(([key,values])=>[key,values.join('; ')])));setStatus('');}})
+      .catch(()=>{if(!cancelled)setStatus('Не удалось загрузить инвентарь. Обновите страницу.');});
+    return()=>{cancelled=true;};
+  },[workspace,apiKey]);
+  async function save() {
+    setBusy(true);
+    try {
+      const response=await fetch('/api/players/strength-equipment',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey},body:JSON.stringify({workspace,equipment})});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error || 'Не удалось сохранить');
+      setEquipment(Object.fromEntries(Object.entries(data.equipment).map(([key,values])=>[key,values.join('; ')])));
+      setStatus('Сохранено для пространства');
+    }catch(error){setStatus(error.message || 'Не удалось сохранить');}finally{setBusy(false);}
+  }
+  return <details className="mb-4 rounded-2xl border border-white/10 p-4 print:hidden">
+    <summary className="cursor-pointer text-sm font-bold text-slate-300">Инвентарь силовой · всё пространство</summary>
+    <p className="mt-2 text-xs text-slate-500">Перечислите все доступные веса в кг через точку с запятой, например 10; 12.5; 14 (дробные кг — через точку). Пустой список запрещает автоматическую прибавку. Для разных блоковых тренажёров вес подбирается по RPE.</p>
+    <div className="mt-3 grid gap-3 sm:grid-cols-2">{Object.entries(STRENGTH_EQUIPMENT).map(([key,label])=><label key={key} className="text-xs text-slate-400">{label}<input aria-label={label} value={equipment[key] || ''} onChange={event=>setEquipment({...equipment,[key]:event.target.value})} className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2 text-slate-200" /></label>)}</div>
+    <button type="button" disabled={busy || status==='Загрузка…' || status.includes('загрузить')} onClick={save} className="mt-3 rounded-lg bg-accent/15 px-3 py-2 text-xs font-bold text-accent">{busy?'Сохранение…':'Сохранить инвентарь'}</button>
+    <span role="status" className="ml-2 text-xs text-slate-500">{status}</span>
+  </details>;
+}
+
 function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
   const goals = Array.isArray(plan?.goals) ? plan.goals : [];
   const cycleStart = plan?.cycleStart || todayISO();
@@ -1925,6 +1958,11 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
         </span>
       </summary>
       <div className="border-t border-white/[0.05] px-4 pb-4 pt-3">
+        <div className="mb-3">
+          <div className="mb-1 text-xs text-slate-400">Силовой стаж игрока</div>
+          <PremiumSelect value={plan?.strengthExperience || 'unknown'} onChange={strengthExperience=>onChange({...plan,strengthExperience})} options={STRENGTH_EXPERIENCE_OPTIONS} compact />
+          <p className="mt-1 text-[10px] text-slate-600">Стаж задаёт тренер; он сохраняется после пересмотра целей. Начинающим — RPE до 7, без автоматической прибавки. Неизвестный стаж — удержание подтверждённого веса.</p>
+        </div>
         <div className="mb-3 grid gap-2 sm:grid-cols-2">
           <div>
             <div className="mb-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-600">Начало цикла</div>
@@ -6759,6 +6797,8 @@ export default function Home() {
           )}
 
           {playerId && selectedPlayer && workspaceTab === 'program' && (
+            <>
+            <StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} />
             <DevelopmentPlanPanel
               plan={developmentPlan}
               onChange={next => { setDevelopmentPlan(next); setDevelopmentPlanSaved(false); }}
@@ -6766,6 +6806,7 @@ export default function Home() {
               saving={developmentPlanSaving}
               saved={developmentPlanSaved}
             />
+            </>
           )}
 
           {/* ── История тренировок ── */}

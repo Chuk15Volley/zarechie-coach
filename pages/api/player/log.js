@@ -91,8 +91,12 @@ export default async function handler(req, res) {
       const existingRaw = await redis('get', key).catch(() => null);
       const existing = parseStoredLog(existingRaw) || {};
       const payload = mergeWorkoutProgress(existing, req.body || {});
+      const rawSession = await redis('get', `${pfx(workspace)}:session:${playerId}:${date}`);
+      const sessionRecord = parseStoredLog(rawSession);
+      const strength = (sessionRecord?.focus || sessionRecord?.quality?.focus) === 'inseason_strength';
       await redis('set', key, JSON.stringify(payload));
-      await redis('expire', key, SIXTY_DAYS).catch(() => {});
+      // Strength cycle facts must survive long gaps, even without a feedback form.
+      if (!strength) await redis('expire', key, SIXTY_DAYS).catch(() => {});
       await recordPlatformEvent({ workspace, area: 'player_sync', status: 'ok', durationMs: Date.now() - started }).catch(() => {});
       return res.status(200).json({
         ok: true,

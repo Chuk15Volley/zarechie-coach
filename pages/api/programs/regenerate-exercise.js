@@ -157,7 +157,7 @@ export default async function handler(req, res) {
   const replacementFocus=requestedFocus || record?.focus || (String(session.methodology?.goal || '').startsWith('inseason_strength')?'inseason_strength':'');
   const replacementTrainingType=requestedTrainingType || record?.trainingType || session.methodology?.trainingType || '';
   let recentSessions;
-  try { recentSessions=await getRecentSessionRecords(String(playerId),replacementFocus==='inseason_strength'?42:12,workspace,date,{strict:true}); }
+  try { recentSessions=await getRecentSessionRecords(String(playerId),replacementFocus==='inseason_strength'?42:12,workspace,date,{strict:true,includeCycleHistory:replacementFocus==='inseason_strength'}); }
   catch { return res.status(503).json({error:'Не удалось проверить историю упражнений. Повторите замену позже.'}); }
   const varietyContext=buildExerciseVarietyContext(recentSessions,{targetDate:date,focus:replacementFocus,trainingType:replacementTrainingType});
   const otherSession={...session,blocks:session.blocks.map((b,bi)=>({...b,exercises:(b.exercises||[]).filter((_,ei)=>bi!==blockIndex||ei!==exerciseIndex)}))};
@@ -322,7 +322,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
     const banned=coachBannedSessionExercises(updatedSession);
     if(banned.length)return res.status(409).json({error:'В программе есть упражнения, запрещённые тренером. Замените их перед сохранением.',banned});
     let latestHistory;
-    try{latestHistory=await getRecentSessionRecords(String(playerId),replacementFocus==='inseason_strength'?42:12,workspace,date,{strict:true});}
+    try{latestHistory=await getRecentSessionRecords(String(playerId),replacementFocus==='inseason_strength'?42:12,workspace,date,{strict:true,includeCycleHistory:replacementFocus==='inseason_strength'});}
     catch{return res.status(503).json({error:'Не удалось проверить историю упражнений. Повторите замену позже.'});}
     const replacementQuality = advisorySessionQuality(assessSessionQuality(updatedSession, {
       focus: replacementFocus,

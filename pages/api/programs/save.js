@@ -75,7 +75,7 @@ export default async function handler(req, res) {
   if (requestId && previousRecord?.saveRequestId === requestId) return res.status(200).json({status:'ok',session:previousRecord.session,quality:previousRecord.quality,trainingLabel:previousRecord.trainingLabel,approval:previousRecord.approval,savedAt:previousRecord.savedAt});
   let recentSessions;
   try {
-    recentSessions = await getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, date, { strict: true });
+    recentSessions = await getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, date, { strict: true, includeCycleHistory: focus === 'inseason_strength' });
   } catch {
     return res.status(503).json({ error: 'Не удалось проверить предыдущую тренировку. Повторите сохранение после восстановления истории.' });
   }

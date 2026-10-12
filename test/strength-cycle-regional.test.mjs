@@ -11,7 +11,7 @@ const day=n=>`2026-10-${String(12+n).padStart(2,'0')}`;
 const make=(options={})=>buildStrengthDevelopmentDraft({snapshot:{player:{position:'Диагональная'}},recommendation:{calendar:{daysToGame:5},state:{}},date:day(0),manualMethodSelection:true,strengthMode:'maintenance',...options});
 const ex=(r,code)=>strengthExercises(r.session).find(e=>e.code===code);
 
-for(const strengthMode of ['maintenance','development'])test(`${strengthMode}: four saved dates retain anchors, regenerate idempotently, then start next cycle`,()=>{
+for(const strengthMode of ['maintenance','development'])test(`${strengthMode}: four fully completed dates retain anchors, regenerate idempotently, then start next cycle`,()=>{
  const history=[];let first;
  for(let i=0;i<5;i++){
   const r=make({strengthMode,date:day(i*2),recentSessions:history});
@@ -21,7 +21,7 @@ for(const strengthMode of ['maintenance','development'])test(`${strengthMode}: f
   if(i>0 && i<4) for(const code of ['A1','B1','B2'])assert.equal(ex(r,code).name,ex(first,code).name);
   const regenerated=make({strengthMode,date:day(i*2),recentSessions:[...history,r]});
   assert.deepEqual(regenerated.session.methodology.strengthCycle,r.session.methodology.strengthCycle);
-  history.push(r);
+  history.push({...r,strengthCompletion:{completed:true,source:'player_feedback'}});
  }
  assert.notEqual(ex(history[4],'A1').name,ex(first,'A1').name);
  const shifted=structuredClone(first.session);shifted.blocks[2].exercises[0]={...ex(first,'A1'),code:'C1'};
@@ -72,7 +72,7 @@ test('saved coach replacements retain reasons, change future selection and can b
  assert.equal(recordCoachReplacements(changed,changed,first.date).coachReplacements.length,1,'resave does not duplicate events');
  const next=make({date:day(7),recentSessions:[{...first,session:changed}]});
  assert.equal(ex(next,'B1').name,'DB Incline Bench Press');
- assert.ok(next.session.methodology.strengthCycle.position===2);
+ assert.ok(next.session.methodology.strengthCycle.position===1);
  const transient=structuredClone(changed);transient.coachReplacements[0].reason='one_off';
  assert.deepEqual(buildStrengthCycle([{...first,session:transient}],{targetDate:day(7)}).avoid,[]);
  changed.coachReplacements.push({from:'DB Incline Bench Press',to:original.name,reason:'restore',date:first.date});

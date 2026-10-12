@@ -98,39 +98,39 @@ test('future, missing, malformed and stale reports never provide a green progres
 
 test('progression uses exact exercise, implement count, all completed repetitions and exercise RPE',()=>{
  const evidence=strengthLoadEvidence(weightExercise,[actual()],date);
- const proposal=proposeStrengthLoad(weightExercise,evidence,{targetDate:date,targetRpeMax:8,allowIncrease:true});
+ const proposal=proposeStrengthLoad(weightExercise,evidence,{equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5],dumbbell:[20,22,40,42]},experience:'experienced',targetDate:date,targetRpeMax:8,allowIncrease:true});
  assert.equal(proposal.kg,102.5);assert.equal(proposal.action,'increase');
  const noRpe=strengthLoadEvidence(weightExercise,[actual({actualRpe:null})],date);
- assert.equal(proposeStrengthLoad(weightExercise,noRpe,{targetDate:date,allowIncrease:true}).kg,100);
- assert.equal(proposeStrengthLoad(weightExercise,noRpe,{targetDate:date,allowIncrease:true}).action,'hold');
+ assert.equal(proposeStrengthLoad(weightExercise,noRpe,{equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5],dumbbell:[20,22,40,42]},experience:'experienced',targetDate:date,allowIncrease:true}).kg,100);
+ assert.equal(proposeStrengthLoad(weightExercise,noRpe,{equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5],dumbbell:[20,22,40,42]},experience:'experienced',targetDate:date,allowIncrease:true}).action,'hold');
  const partial=strengthLoadEvidence(weightExercise,[actual({completed:false})],date);
- assert.equal(proposeStrengthLoad(weightExercise,partial,{targetDate:date,allowIncrease:true}).action,'hold');
+ assert.equal(proposeStrengthLoad(weightExercise,partial,{equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5],dumbbell:[20,22,40,42]},experience:'experienced',targetDate:date,allowIncrease:true}).action,'hold');
  const changed={...weightExercise,name:'DB Romanian Deadlift',loadUnits:2};
  assert.equal(strengthLoadEvidence(changed,[actual()],date),null);
  assert.equal(strengthLoadEvidence({...weightExercise,loadUnits:2},[actual()],date),null);
  const unverified=strengthLoadEvidence(weightExercise,[actual({setActuals:[{completed:true,kg:100,reps:4}]})],date);
- assert.notEqual(proposeStrengthLoad(weightExercise,unverified,{targetDate:date,allowIncrease:true}).action,'increase');
+ assert.notEqual(proposeStrengthLoad(weightExercise,unverified,{equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5],dumbbell:[20,22,40,42]},experience:'experienced',targetDate:date,allowIncrease:true}).action,'increase');
 });
 
 test('high effort, missed reps, reentry and pain prevent increases; DB steps never invent tiny increments',()=>{
  for(const extra of [{actualRpe:9},{setActuals:[{completed:true,kg:100,reps:3,repsRecorded:true}]}]){
   const evidence=strengthLoadEvidence(weightExercise,[actual(extra)],date);
-  const p=proposeStrengthLoad(weightExercise,evidence,{targetDate:date,allowIncrease:true});assert.equal(p.action,'reduce');assert.equal(p.kg,95);
+  const p=proposeStrengthLoad(weightExercise,evidence,{equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5],dumbbell:[20,22,40,42]},experience:'experienced',targetDate:date,allowIncrease:true});assert.equal(p.action,'reduce');assert.equal(p.kg,95);
  }
  const painful=strengthLoadEvidence(weightExercise,[actual({pain:true})],date);
- assert.equal(proposeStrengthLoad(weightExercise,painful,{targetDate:date,allowIncrease:true}).kg,null);
+ assert.equal(proposeStrengthLoad(weightExercise,painful,{equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5],dumbbell:[20,22,40,42]},experience:'experienced',targetDate:date,allowIncrease:true}).kg,null);
  const stale=strengthLoadEvidence(weightExercise,[{...actual(),date:'2026-09-25'}],date);
- assert.equal(proposeStrengthLoad(weightExercise,stale,{targetDate:date,allowIncrease:true}).kg,90);
+ assert.equal(proposeStrengthLoad(weightExercise,stale,{equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5],dumbbell:[20,22,40,42]},experience:'experienced',targetDate:date,allowIncrease:true}).kg,90);
  const db={name:'DB Bench Press',loadUnits:2};
  const evidence={date:'2026-10-10',observedKg:20,allRepsMet:true,allSetsCompleted:true,repsVerified:true,rpeScope:'exercise',rpe:6};
- assert.equal(proposeStrengthLoad(db,evidence,{targetDate:date,allowIncrease:true}).kg,20);
- assert.equal(proposeStrengthLoad(db,{...evidence,observedKg:40},{targetDate:date,allowIncrease:true}).kg,42);
+ assert.equal(proposeStrengthLoad(db,evidence,{equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5],dumbbell:[20,22,40,42]},experience:'experienced',targetDate:date,allowIncrease:true}).kg,20);
+ assert.equal(proposeStrengthLoad(db,{...evidence,observedKg:40},{equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5],dumbbell:[20,22,40,42]},experience:'experienced',targetDate:date,allowIncrease:true}).kg,42);
 });
 
 test('new generation exposes an auditable weight proposal and fresh load can block the same increase',()=>{
  const initial=make();const first=find(initial,'A1');
  const history=[actual({name:first.name,loadUnits:first.loadUnits})];
- const r=make({actualHistory:history});assert.equal(r.quality.valid,true,JSON.stringify(r.quality));
+ const r=make({actualHistory:history,equipment:{barbell:[90,95,100,102.5],trap_bar:[90,95,100,102.5]},developmentPlan:{strengthExperience:'experienced'}});assert.equal(r.quality.valid,true,JSON.stringify(r.quality));
  assert.equal(find(r,'A1').weightKg,102.5);
  assert.equal(find(r,'A1').loadEvidence.observedKg,100);
  const missing=make({snapshot:{player:{position:'Диагональная'}},actualHistory:history});
