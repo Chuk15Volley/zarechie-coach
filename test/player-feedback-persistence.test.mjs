@@ -1,4 +1,5 @@
-import { actualTarget } from '../lib/playerGym.mjs';
+import { normalizeExerciseEfforts } from '../lib/strengthProgression.mjs';
+import { actualTarget, validRepetitions } from '../lib/playerGym.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -26,7 +27,7 @@ function fixture({ failWrite = false, failRead = false } = {}) {
     loadUnitsForExercise: () => 1, weightKgFromExercise: ex => ex.weightKg || 0,
     sanitizeUnavailableEquipmentExercises: value => value,
     updateExerciseMemory: async (...args) => memories.push(args), linkPainToExercises: async () => {},
-    FINISH_REASONS, actualRepsFromTarget, normalizeSkips, actualTarget,
+    FINISH_REASONS, actualRepsFromTarget, normalizeSkips, actualTarget, validRepetitions, normalizeExerciseEfforts,
   };
   const source = readFileSync(new URL('../pages/api/player/feedback.js', import.meta.url), 'utf8')
     .replace(/^import[\s\S]*?from\s+['"][^'"]+['"];\s*/gm, '')
@@ -85,4 +86,18 @@ test('submitted repetitions change persisted actuals and tonnage, including each
   const actual = JSON.parse(f.writes.find(cmd => cmd[1] === 'nkperf:session:actual:synthetic:2026-09-17')[2]);
   assert.equal(actual.exercises[0].setActuals[0].reps, 6);
   assert.equal(actual.actualTonnage, 75);
+});
+
+test('exercise effort stays scoped to the named exercise and records actual repetitions', async()=>{
+ const f=fixture();f.request.body.exerciseRpe={'0-0':{name:'DB Row',rpe:6}};
+ f.request.body.repetitions={'0-0-0':'4'};
+ await f.handler(f.request,f.response);assert.equal(f.response.statusCode,200);
+ const actual=JSON.parse(f.writes.find(cmd=>cmd[1]==='nkperf:session:actual:synthetic:2026-09-17')[2]);
+ assert.equal(actual.exercises[0].actualRpe,6);assert.equal(actual.exercises[1].actualRpe,null);
+ assert.equal(actual.exercises[0].setActuals[0].reps,8);assert.equal(actual.exercises[0].setActuals[0].repsRecorded,true);
+});
+
+test('stale exercise effort is rejected before any result is saved',async()=>{
+ const f=fixture();f.request.body.exerciseRpe={'0-0':{name:'Old exercise',rpe:6}};
+ await f.handler(f.request,f.response);assert.equal(f.response.statusCode,400);assert.equal(f.writes.length,0);
 });

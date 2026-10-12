@@ -459,6 +459,7 @@ const FEEL_OPTIONS = [
 
 function FeedbackForm({ token, sessionDate, session, done, weights, repetitions, finishReason, skipped, lastActionAt, initialFeedback, isMatchDayPrimer = false, onRpeChange, onSubmitted }) {
   const [rpe, setRpe] = useState(null);
+  const [exerciseRpe, setExerciseRpe] = useState({});
   const [fatigue, setFatigue] = useState(null);
   const [feel, setFeel] = useState(null);
   const [note, setNote] = useState('');
@@ -474,16 +475,17 @@ function FeedbackForm({ token, sessionDate, session, done, weights, repetitions,
       }).length;
     }, 0), 0);
 
-  const draft = { rpe, fatigue, feel, note, speedFeel, legFeel, shoulderFeel };
+  const draft = { rpe, exerciseRpe, fatigue, feel, note, speedFeel, legFeel, shoulderFeel };
   const { ready, queued, sending, submitted, message, submit, edit } = usePlayerFeedback({
     token, date: sessionDate, draft,
     initialFeedback: initialFeedback?.submittedAt >= (lastActionAt || '') ? initialFeedback : null,
     restore: saved => {
+      setExerciseRpe(saved.exerciseRpe || {});
       setRpe(saved.rpe || null); setFatigue(saved.fatigue || null); setFeel(saved.feel || null); setNote(saved.note || '');
       setSpeedFeel(saved.speedFeel || null); setLegFeel(saved.legFeel || null); setShoulderFeel(saved.shoulderFeel || null);
       onRpeChange?.(saved.rpe || null);
     },
-    payload: { token, date: sessionDate, rpe, fatigue, feel, note, done, weights, repetitions, finishReason, skipped,
+    payload: { token, date: sessionDate, rpe, exerciseRpe, fatigue, feel, note, done, weights, repetitions, finishReason, skipped,
       primerFeedback: isMatchDayPrimer ? { speed: speedFeel, legs: legFeel, shoulder: shoulderFeel } : null },
     onSubmitted: () => onSubmitted?.({ rpe, fatigue, feel }),
   });
@@ -530,6 +532,32 @@ function FeedbackForm({ token, sessionDate, session, done, weights, repetitions,
             ))}
           </div>
         </div>
+
+        {session?.methodology?.individualizationVersion && (
+          <div className="space-y-3 rounded-xl border border-white/10 p-3">
+            <div className="text-[12px] font-bold text-slate-200">Усилие основных упражнений</div>
+            <p className="text-[11px] text-slate-500">RPE самого тяжёлого выполненного подхода каждого упражнения. Можно пропустить; без оценки вес автоматически не увеличивается.</p>
+            {(session.blocks || []).flatMap((block, bi) => (block.exercises || []).map((ex, ei) => ({ ex, bi, ei })))
+              .filter(({ ex, bi, ei }) => ['A1','B1','B2'].includes(ex.code) && !ex.symptomAdapted && !skipped?.[`${bi}-${ei}`] && ex.targetSets?.some((_, si) => done[`${bi}-${ei}-${si}`]))
+              .map(({ ex, bi, ei }) => {
+                const key = `${bi}-${ei}`;
+                return <label key={key} className="flex items-center justify-between gap-3 text-[12px] text-slate-300">
+                  <span>{ex.code} · {ex.name}</span>
+                  <select aria-label={`RPE ${ex.name}`} value={exerciseRpe[key]?.rpe || ''}
+                    onChange={event => setExerciseRpe(previous => {
+                      const next = { ...previous };
+                      if (event.target.value) next[key] = { name: ex.name, rpe: Number(event.target.value) };
+                      else delete next[key];
+                      return next;
+                    })}
+                    className="min-h-11 rounded-lg border border-white/10 bg-[#101a1d] px-3 text-white">
+                    <option value="">—</option>
+                    {[1,2,3,4,5,6,7,8,9,10].map(value => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                </label>;
+              })}
+          </div>
+        )}
 
         {isMatchDayPrimer && (
           <>

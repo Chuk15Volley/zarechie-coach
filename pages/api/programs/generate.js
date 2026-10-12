@@ -1568,7 +1568,7 @@ export async function buildGenerationInputs(body) {
   const prevDate = shiftDateStr(targetDate, -1);
   const manualMatchDayRequested = isManualMatchDayFocus(focus);
   const [snapshot, recentSessionRecords, actualHistory, rawSchedule, raw1RM, raw1RMHistory, strengthAnchors, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan, previousManualMatchDays] = await Promise.all([
-    getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, Number(days) || 7, workspace),
+    getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, focus === 'inseason_strength' ? 28 : Number(days) || 7, workspace),
     getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, targetDate, { strict: true }).catch(() => { prehabHistoryAvailable = false; return []; }),
     getRecentActualHistory(String(playerId), workspace, 12, targetDate).catch(() => ({ records:[], summaries:[] })),
     usesSeasonCalendar(workspace) ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
@@ -1615,7 +1615,7 @@ export async function buildGenerationInputs(body) {
   if (focus === 'inseason_strength') {
     if (!gymRecommendation) return { error: 'Для силовой нужны данные ReadySix; внешняя генерация не запускается.', status: 422 };
     try {
-      const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+      const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, developmentPlan: parseJSONSafe(rawDevelopmentPlan, null), recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
       readyResult.timeZone = timeZone;
       return { targetDate, dayGoal, readyResult };
     } catch (error) {

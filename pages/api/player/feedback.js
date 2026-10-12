@@ -1,4 +1,5 @@
-import { actualTarget } from '../../../lib/playerGym.mjs';
+import { normalizeExerciseEfforts } from '../../../lib/strengthProgression.mjs';
+import { actualTarget, validRepetitions } from '../../../lib/playerGym.mjs';
 import { normalizeSkips } from '../../../lib/playerExperience.mjs';
 // pages/api/player/feedback.js
 // POST regular: { token, date, rpe, fatigue, feel, note }.
@@ -54,6 +55,9 @@ export default async function handler(req, res) {
   let sessionRecord = null;
   try { sessionRecord = sessionRaw ? (typeof sessionRaw === 'string' ? JSON.parse(sessionRaw) : sessionRaw) : null; } catch (_) {}
   if (!sessionRecord?.session) return res.status(404).json({ error: 'Программа не найдена' });
+  let exerciseRpe;
+  try { exerciseRpe = normalizeExerciseEfforts(req.body?.exerciseRpe, sessionRecord.session); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
   const isMatchDayPrimer = sessionRecord?.quality?.seasonDecision?.key === 'match_day';
   const fatigueNum = fatigue == null ? null : Number(fatigue);
   if (!isMatchDayPrimer && (!Number.isInteger(fatigueNum) || fatigueNum < 1 || fatigueNum > 5)) {
@@ -74,6 +78,7 @@ export default async function handler(req, res) {
     skipped: normalizeSkips(submittedSkipped),
     finishReason: FINISH_REASONS.includes(finishReason) ? finishReason : null,
     date: String(date),
+    exerciseRpe,
     rpe: rpeNum,
     fatigue: isMatchDayPrimer ? null : fatigueNum,
     feel: isMatchDayPrimer ? null : (feel || null),
@@ -107,6 +112,7 @@ export default async function handler(req, res) {
               return {
                 set: setIndex + 1,
                 target: String(target ?? ''),
+                repsRecorded: validRepetitions(repetitions[setKey]) != null,
                 reps: actualRepsFromTarget(actualTarget(target, repetitions[setKey])),
                 completed: !!completedSets[setKey],
                 kg: Number.isFinite(kg) && kg > 0 ? kg : 0,
@@ -146,6 +152,7 @@ export default async function handler(req, res) {
               plannedSets: targetSets.length,
               completed: allSetsCompleted,
               loadUnits,
+              actualRpe: completedSetCount > 0 && !record.skipped[`${blockIndex}-${exerciseIndex}`] ? exerciseRpe[`${blockIndex}-${exerciseIndex}`]?.rpe ?? null : null,
               sessionRpe: rpeNum,
             });
           }

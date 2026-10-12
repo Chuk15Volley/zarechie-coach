@@ -1961,6 +1961,24 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
                 placeholder="Например: увеличить силу задней цепи"
                 className="w-full rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[12px] text-slate-200 outline-none placeholder:text-slate-700 focus:border-accent/30"
               />
+              <div className="mt-2">
+                <div className="mb-1 text-[10px] text-slate-500">Подтверждённый приоритет силовой</div>
+                <PremiumSelect
+                  value={goal.strengthPriority || ''}
+                  onChange={strengthPriority => updateGoal(index, { strengthPriority: strengthPriority || null })}
+                  options={[
+                    { value: '', label: 'Без отдельного силового приоритета' },
+                    { value: 'posterior', label: 'Задняя цепь' },
+                    { value: 'unilateral', label: 'Односторонняя сила ног' },
+                    { value: 'adductor', label: 'Приводящие' },
+                    { value: 'calf', label: 'Икроножные' },
+                    { value: 'shoulder', label: 'Плечо / лопатка' },
+                    { value: 'core', label: 'Кор' },
+                  ]}
+                  compact
+                />
+                <div className="mt-1 text-[10px] text-slate-600">Первые два приоритета направляют дополнительные задачи без лишних подходов. Боль и ограничения учитываются отдельно в ReadySix.</div>
+              </div>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <PremiumSelect
                   value={goal.metric || 'manual'}
