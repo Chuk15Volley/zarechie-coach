@@ -12,7 +12,7 @@ export default function useTeamGenerationQueue({workspace,date,apiKey,onRestoreD
   viewRef.current={workspace,date};
   const active=view=>view?.workspace===viewRef.current.workspace && view?.date===viewRef.current.date;
   function apply(next){queueRef.current=next;setQueue(next);setResults(next?.rows || []);if(next)try{localStorage.setItem(hintKey(next.workspace),JSON.stringify({id:next.id,date:next.date}));}catch{}}
-  async function load(id,signal){return (await teamQueueCall(apiKey,'/api/programs/team-queue?workspace='+workspace+(id?'&queueId='+encodeURIComponent(id):'&date='+date),{signal})).queue;}
+  async function load(id,signal){try{return (await teamQueueCall(apiKey,'/api/programs/team-queue?workspace='+workspace+(id?'&queueId='+encodeURIComponent(id):'&date='+date),{signal})).queue;}catch(failure){if(id && failure.status===404)return (await teamQueueCall(apiKey,'/api/programs/team-queue?workspace='+workspace+'&date='+date,{signal})).queue;throw failure;}}
   useEffect(()=>{
     const controller=new AbortController();controllerRef.current=controller;apply(null);setError('');setRecovering(true);let timer;
     async function poll(){
