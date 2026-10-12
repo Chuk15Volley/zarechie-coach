@@ -22,7 +22,7 @@ export default async function handler(req,res) {
     if(req.method==='POST') {
       const cycle=review.cycles.find(c=>c.id===req.body.cycleId);
       const entries=validateCycleDecision(cycle,req.body.entries);
-      if(!entries)return res.status(400).json({error:'Решения доступны только для завершённого цикла. Выберите один вариант каждого слота и допустимые действия.'});
+      if(!entries)return res.status(400).json({error:'Решения доступны только для завершённого цикла. Выберите один вариант каждого слота и допустимые действия; для снижения объёма укажите причину.'});
       const raw=await redis('get',key(cycle.id));
       const previous=raw?JSON.parse(raw):null;
       if((previous?.revision || null)!==(req.body.expectedRevision || null))return res.status(409).json({error:'Решения уже изменены. Обновите обзор перед сохранением.'});

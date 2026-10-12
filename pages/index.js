@@ -1921,20 +1921,21 @@ function StrengthCycleDecisionEditor({cycle,workspace,playerId,apiKey,onSaved}) 
   const [entries,setEntries]=useState(cycle.decision?.entries || []);
   const [saving,setSaving]=useState(false);
   const [message,setMessage]=useState('');
-  const signature=items=>JSON.stringify(items.map(({key,exercise,progression,note})=>({key,exercise,progression,note})).sort((a,b)=>a.key.localeCompare(b.key)));
+  const signature=items=>JSON.stringify(items.map(({key,exercise,progression,note,volume='normal',volumeReason=''})=>({key,exercise,progression,note,volume,volumeReason})).sort((a,b)=>a.key.localeCompare(b.key)));
   const dirty=signature(entries)!==signature(cycle.decision?.entries || []);
   const slots=[...new Set(cycle.exercises.map(row=>row.trainingType+':'+row.code))];
   function change(slot,patch) {
     setEntries(previous=>{
       const old=previous.find(entry=>entry.trainingType+':'+entry.code===slot);
       const row=cycle.exercises.find(row=>row.key===(patch.key || old?.key)) || cycle.exercises.find(row=>row.trainingType+':'+row.code===slot);
-      return [...previous.filter(entry=>entry.trainingType+':'+entry.code!==slot),{...row,exercise:'keep',progression:'auto',note:'',...old,...patch,key:row.key,name:row.name,loadUnits:row.loadUnits}];
+      return [...previous.filter(entry=>entry.trainingType+':'+entry.code!==slot),{...row,exercise:'keep',progression:'auto',note:'',volume:'normal',volumeReason:'',...old,...patch,key:row.key,name:row.name,loadUnits:row.loadUnits}];
     });
   }
   async function save() {
+    if(entries.some(entry=>entry.volume==='reduce_one' && !entry.volumeReason?.trim())){setMessage('Укажите причину снижения объёма каждого выбранного движения.');return;}
     setSaving(true);setMessage('');
     try {
-      const response=await fetch('/api/players/strength-cycle-review',{method:'POST',headers:{'x-api-key':apiKey,'content-type':'application/json'},body:JSON.stringify({workspace,playerId,cycleId:cycle.id,expectedRevision:cycle.decision?.revision || null,entries:entries.map(({key,exercise,progression,note})=>({key,exercise,progression,note}))})});
+      const response=await fetch('/api/players/strength-cycle-review',{method:'POST',headers:{'x-api-key':apiKey,'content-type':'application/json'},body:JSON.stringify({workspace,playerId,cycleId:cycle.id,expectedRevision:cycle.decision?.revision || null,entries:entries.map(({key,exercise,progression,note,volume='normal',volumeReason=''})=>({key,exercise,progression,note,volume,volumeReason}))})});
       const result=await response.json();if(!response.ok)throw new Error(result.error || 'Не удалось сохранить решения');
       onSaved(result.decision);
     } catch(error){setMessage(error.message);}finally{setSaving(false);}
@@ -1953,6 +1954,8 @@ function StrengthCycleDecisionEditor({cycle,workspace,playerId,apiKey,onSaved}) 
         {entry && <>
           <PremiumSelect title={'Вариант '+slot} disabled={saving} value={entry.exercise} onChange={value=>change(slot,{exercise:value})} options={[{value:'keep',label:'Сохранить упражнение'},{value:'rotate',label:'Сменить упражнение в том же движении'}]} compact />
           <PremiumSelect title={'Прогрессия '+slot} disabled={saving} value={entry.progression} onChange={value=>change(slot,{progression:value})} options={[{value:'auto',label:'Прогрессия по фактической истории и RPE'},{value:'hold',label:'Удерживать нагрузку'}]} compact />
+          <PremiumSelect title={'Объём '+slot} disabled={saving} value={entry.volume || 'normal'} onChange={value=>change(slot,{volumeReason:'',volume:value})} options={[{value:'normal',label:'Обычный объём движения'},{value:'reduce_one',label:'На один рабочий подход меньше'}]} compact />
+          {entry.volume==='reduce_one' && <><p className="text-xs text-amber-200">От обычной дозы, минимум 1 подход. Снижение по состоянию не суммируется; прибавка кг и повторов отключена только здесь.</p><input aria-label={'Причина снижения '+slot} disabled={saving} maxLength={300} value={entry.volumeReason || ''} onChange={event=>change(slot,{volumeReason:event.target.value})} placeholder="Обязательная причина снижения объёма" className="w-full rounded bg-slate-900 p-2 text-xs" /></>}
           <input aria-label={'Комментарий '+slot} disabled={saving} maxLength={300} value={entry.note} onChange={event=>change(slot,{note:event.target.value})} placeholder="Причина / комментарий тренера" className="w-full rounded bg-slate-900 p-2 text-xs" />
         </>}
       </div>;
@@ -1980,8 +1983,9 @@ function StrengthCycleComparison({comparison}) {
       <p className="mt-1 text-slate-500">{statuses[row.status]} · {row.loadUnits===2?'кг одного снаряда из пары':'кг одного снаряда'}</p>
       <dl className="mt-2 grid gap-2 text-slate-300 sm:grid-cols-2"><div><dt className="text-slate-500">Предыдущий цикл</dt><dd>{point(row.before)}</dd></div><div><dt className="text-slate-500">Выбранный цикл</dt><dd>{point(row.after)}</dd></div></dl>
       {row.delta && <p className="mt-2 text-cyan-200">Δ кг: {delta(row.delta.kg)} · Δ повторов на подход: {delta(row.delta.reps)} · Δ RPE: {delta(row.delta.exerciseRpe)}{row.after.perSide?' · повторы на сторону':''}{!row.effortComparable?' · RPE напрямую не сопоставим':''}</p>}
+      {row.volumeReview && <div className="mt-2 rounded-lg border border-amber-300/20 p-2 text-amber-100"><p className="font-bold">Оценка снижения объёма движения</p><p>Подходы в последнем полном выполнении: {row.volumeReview.beforeSets ?? '—'} → {row.volumeReview.afterSets ?? '—'}. Выполнений этого варианта: {row.volumeReview.beforeExposures} → {row.volumeReview.afterExposures}.</p><p>{{lower_volume_observed:'Фактически выполнено меньше подходов.',variant_changed:'Вариант изменён; прямое сравнение результата ограничено.',symptom_deferred:'Приоритет у локальной адаптации; отдельное снижение отложено.',already_reduced:'Доза уже снижена по другим основаниям.',not_recorded:'Применение снижения в плане не записано.',no_confirmed_decrease:'Уменьшение относительно предыдущего выполнения не подтверждено.',changed_within_cycle:'Решение об объёме менялось внутри цикла.'}[row.volumeReview.status]}</p><p>Причина: {row.volumeReview.reason || 'см. историю решений'}.</p><p className="mt-1 text-slate-400">Кг, повторы и RPE показаны выше. При меньшем числе подходов разница RPE не доказывает улучшение переносимости или рост силы.</p></div>}
       {row.after && !row.decisions.length && <p className="mt-2 text-slate-500">Решение тренера из предыдущего цикла в выполненных планах этого варианта не записано.</p>}
-      {!!row.decisions.length && <details className="mt-2"><summary className="cursor-pointer text-emerald-200">Решения тренера на момент выполнения · {row.decisions.length}</summary>{row.decisions.map((decision,index)=><p key={index} className="mt-1 text-slate-400">{decision.date}: {decision.exercise==='keep'?'сохранить':'сменить'} {decision.requestedName}; {decision.progression==='hold'?'удерживать нагрузку':'прогрессия по истории/RPE'}{decision.effect==='symptom_deferred'?' · отложено по симптомам':decision.effect==='selection_deferred'?' · сохранение варианта было недоступно':''}{decision.note?' · '+decision.note:''}.</p>)}</details>}
+      {!!row.decisions.length && <details className="mt-2"><summary className="cursor-pointer text-emerald-200">Решения тренера на момент выполнения · {row.decisions.length}</summary>{row.decisions.map((decision,index)=><p key={index} className="mt-1 text-slate-400">{decision.date}: {decision.exercise==='keep'?'сохранить':'сменить'} {decision.requestedName}; {decision.progression==='hold'?'удерживать нагрузку':'прогрессия по истории/RPE'}{decision.effect==='symptom_deferred'?' · отложено по симптомам':decision.effect==='selection_deferred'?' · сохранение варианта было недоступно':''}{decision.volume==='reduce_one'?' · меньше подходов: '+decision.volumeReason:''}{decision.note?' · '+decision.note:''}.</p>)}</details>}
     </div>)}
     <details className="mt-3 text-xs"><summary className="cursor-pointer text-slate-300">Контекст ReadySix двух циклов</summary><p className="mt-2 text-slate-500">Предыдущий: {contexts(comparison.context.before)}</p><p className="mt-2 text-slate-500">Выбранный: {contexts(comparison.context.after)}</p></details>
     <p className="mt-2 text-xs text-slate-500">Показаны решения из сохранённых выполненных планов. Поздние правки решения не переписывают историю и не доказывают причину изменения результата.</p>

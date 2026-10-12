@@ -88,14 +88,15 @@ test('background, exercise replacement and copying cannot silently introduce his
 import {isCoachBannedExercise,coachBannedSessionExercises,hasRestriction} from '../lib/exerciseRestrictions.js';
 import {assessSessionQuality} from '../lib/sessionValidator.js';
 test('coach bans apply without player restrictions and cannot be overridden by strength mode',()=>{
- for(const name of ['Barbell Bench Press','Bench Press (Barbell)','Жим штанги лёжа','Seated Cable Row','Cable Row','Тяга горизонтального блока']){
+ for(const name of ['Barbell Bench Press','Bench Press (Barbell)','Жим штанги лёжа','Seated Cable Row','Cable Row','Тяга горизонтального блока','Machine Hamstring Curl','Seated Hamstring Curl','Lying Leg Curl','Hamstring Curl (Machine)','Сгибание ног в тренажёре']){
   assert.equal(isCoachBannedExercise(name),true,name);
   assert.equal(hasRestriction(name,[]),true,name);
   const session=structuredClone(build({}).session);session.blocks[1].exercises[0].name=name;
   assert.equal(assessSessionQuality(session,{focus:'inseason_strength'}).valid,false,name);
  }
- for(const name of ['DB Bench Press','Inverted Row','Chest-Supported DB Row'])assert.equal(isCoachBannedExercise(name),false,name);
+ for(const name of ['DB Bench Press','Inverted Row','Chest-Supported DB Row','Swiss Ball Hamstring Curl','Slider Hamstring Curl'])assert.equal(isCoachBannedExercise(name),false,name);
  assert.deepEqual(coachBannedSessionExercises({blocks:[{exercises:[{name:'Push-Up',alternatives:[{name:'Seated Cable Row'}]}]}]}),['Seated Cable Row']);
+ assert.deepEqual(coachBannedSessionExercises({blocks:[{exercises:[{name:'Swiss Ball Hamstring Curl',alternatives:['Machine Hamstring Curl']}]}]}),['Machine Hamstring Curl']);
  assert.ok(exercises(build({})).every(ex=>!isCoachBannedExercise(ex.name)));
  for(const path of ['save.js','copy.js'])assert.match(readFileSync(new URL('../pages/api/programs/'+path,import.meta.url),'utf8'),/coachBannedSessionExercises/);
 });

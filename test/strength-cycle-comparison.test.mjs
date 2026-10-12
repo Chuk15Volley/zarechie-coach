@@ -92,3 +92,25 @@ test('malformed saved decision metadata cannot break factual review or become a 
  input[6].session.methodology.coachCycleDecision.entries=[null,{code:'B1',trainingType:'anterior_chain',name:'DB Bench Press',exercise:'force',progression:'force'}];
  assert.equal(compare(input).rows[0].decisions.length,2);
 });
+
+function volumeRecords({name='DB Bench Press',recorded=true,status='reduced',sets=1}={}) {
+ const input=records({name,sets,doseReason:'full+coach_volume',rpe:6});
+ for(const r of input.slice(4)){
+  Object.assign(r.session.methodology.coachCycleDecision.entries[0],{volume:'reduce_one',volumeReason:'Снизить утомление жима'});
+  if(recorded)r.session.blocks[0].exercises[0].coachVolumeDose={status,cap:1,plannedSets:sets};
+ }
+ return input;
+}
+test('volume outcome retains historical reason and actual set counts without a misleading RPE delta',()=>{
+ const input=volumeRecords(),review=buildStrengthCycleReview(input,{asOf});const row=review.cycles[0].comparison.rows[0];
+ assert.equal(row.volumeReview.status,'lower_volume_observed');assert.equal(row.volumeReview.beforeSets,2);assert.equal(row.volumeReview.afterSets,1);assert.equal(row.volumeReview.reason,'Снизить утомление жима');assert.equal(row.status,'dose_changed');assert.equal(row.delta,null);assert.equal(row.after.exerciseRpe,6);
+ review.cycles[1].decision={entries:[]};assert.deepEqual(compareStrengthCycles(review.cycles[0],review.cycles[1]).rows[0].volumeReview,row.volumeReview);
+});
+test('volume review reports absent confirmation, changed variant and already reduced dose honestly',()=>{
+ for(const [options,status] of [[{recorded:false},'not_recorded'],[{name:'DB Incline Bench Press'},'variant_changed'],[{status:'already_reduced'},'already_reduced'],[{sets:2},'no_confirmed_decrease']])assert.equal(compare(volumeRecords(options)).rows[0].volumeReview.status,status);
+ const input=volumeRecords();input[7].session.blocks[0].exercises[0].symptomAdapted=true;assert.equal(compare(input).rows[0].volumeReview.status,'symptom_deferred');
+});
+test('an older reduced-volume decision cannot be attributed to the latest plan without that decision',()=>{
+ const input=volumeRecords();delete input[7].session.methodology.coachCycleDecision;assert.equal(compare(input).rows[0].volumeReview.status,'changed_within_cycle');
+ const changed=volumeRecords();changed[7].session.methodology.coachCycleDecision.entries[0].volume='normal';assert.equal(compare(changed).rows[0].volumeReview.status,'changed_within_cycle');
+});

@@ -1,3 +1,8 @@
+import {buildExerciseVarietyContext} from '../lib/exerciseVariety.mjs';
+import {assessSessionQuality} from '../lib/sessionValidator.js';
+import {previousCycleId} from '../lib/strengthCycleDecisions.mjs';
+import {recordCoachReplacements} from '../lib/strengthCycle.mjs';
+import {coachBannedSessionExercises} from '../lib/exerciseRestrictions.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -77,12 +82,68 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: API persists, r
  const deps={randomUUID,redis,pfx:ws=>ws==='nkperf'?'nkperf':'coach',DECISION_VERSION,validateCycleDecision,SAVE_DECISION_SCRIPT,isAuthorized:req=>req.auth!==false,getRecentSessionRecords:async()=>records,buildStrengthCycleReview,shiftIsoDate};
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
  const response=()=>({setHeader(){},status(code){this.code=code;return this;},json(data){this.data=data;return this;}});
- const body={workspace,playerId:'synthetic-player',cycleId:cycle.id,entries:decision.entries.map(e=>({key:e.key,exercise:e.exercise,progression:e.progression,note:e.note}))};
- let res=response();await handler({method:'POST',body},res);assert.equal(res.code,200);const saved=res.data.decision;
+ const body={workspace,playerId:'synthetic-player',cycleId:cycle.id,entries:decision.entries.map(e=>({key:e.key,exercise:e.exercise,progression:e.progression,note:e.note,volume:'reduce_one',volumeReason:'Плановое снижение'}))};
+ let res=response();await handler({method:'POST',body},res);assert.equal(res.code,200);const saved=res.data.decision;assert.equal(saved.entries[0].volume,'reduce_one');assert.equal(saved.entries[0].volumeReason,'Плановое снижение');
+ res=response();await handler({method:'POST',body:{...body,expectedRevision:saved.revision,entries:[{...body.entries[0],volumeReason:''}]}},res);assert.equal(res.code,400);
  res=response();await handler({method:'POST',body},res);assert.equal(res.code,409);
  res=response();await handler({method:'GET',query:{workspace,playerId:body.playerId}},res);assert.deepEqual(res.data.cycles[0].decision,saved);
  res=response();await handler({method:'POST',body:{...body,expectedRevision:saved.revision}},res);assert.equal(res.code,200);assert.notEqual(res.data.decision.revision,saved.revision);
  res=response();await handler({method:'POST',auth:false,body},res);assert.equal(res.code,401);
  res=response();await handler({method:'POST',body:{...body,workspace:'invalid'}},res);assert.equal(res.code,400);
  assert.ok(keys.every(key=>key.startsWith(workspace==='nkperf'?'nkperf:':'coach:')));
+});
+
+test('volume reduction requires a bounded reason and legacy decisions default to ordinary dose',()=>{
+ const {cycle,decision}=fixture();const input=decision.entries[0];
+ assert.equal(validateCycleDecision(cycle,[input])[0].volume,'normal');
+ for(const patch of [{volume:'other'},{volume:'reduce_one'},{volume:'reduce_one',volumeReason:'  '},{volume:'reduce_one',volumeReason:'x'.repeat(301)}])assert.equal(validateCycleDecision(cycle,[{...input,...patch}]),null);
+ const saved=validateCycleDecision(cycle,[{...input,volume:'reduce_one',volumeReason:'  Контроль утомления  '}])[0];assert.equal(saved.volumeReason,'Контроль утомления');
+ assert.equal(validateCycleDecision(cycle,[{...saved,volume:'normal'}])[0].volumeReason,'');
+});
+for(const strengthMode of ['maintenance','development'])for(const trainingType of ['full_body','anterior_chain','posterior_chain'])test(`${strengthMode}/${trainingType}: reduced movement preserves all other doses and effort`,()=>{
+ const {records,decision}=fixture(strengthMode,trainingType);
+ const entries=decision.entries.map(entry=>({...entry,progression:'auto'}));
+ const args={strengthMode,trainingType,recentSessions:records,actualHistory:[{...records[3].strengthExecutionFacts.actual,date:'2026-10-11'}],equipment:{trap_bar:[100,105],dumbbell:[20,21]}};
+ const baseline=make({...args,cycleDecision:{...decision,entries}});
+ for(const selected of ['A1','B1','B2']){
+  const result=make({...args,cycleDecision:{...decision,entries:entries.map(entry=>entry.code===selected?{...entry,volume:'reduce_one',volumeReason:'Утомление движения'}:entry)}});
+  assert.equal(result.quality.valid,true,JSON.stringify(result.quality.checks.filter(c=>!c.ok)));
+  for(const ex of strengthExercises(result.session)){
+   const before=exercise(baseline,ex.code);
+   assert.equal(ex.targetRpeMax,before.targetRpeMax);
+   if(ex.code===selected){assert.equal(ex.targetSets.length,Math.min(before.targetSets.length,selected==='A1'?2:1));assert.ok(!['increase','increase_reps'].includes(ex.loadProgression?.action));assert.equal(ex.coachVolumeDose.reason,'Утомление движения');}
+   else {assert.deepEqual(ex.targetSets,before.targetSets);assert.equal(ex.weightKg,before.weightKg);}
+  }
+ }
+});
+test('local symptoms take precedence over volume decision without reducing healthy upper body',()=>{
+ const {records,decision}=fixture();const result=make({recentSessions:records,cycleDecision:{...decision,entries:decision.entries.map(entry=>entry.code==='A1'?{...entry,volume:'reduce_one',volumeReason:'Утомление'}:entry)},snapshot:{...snapshot,latestMorning:{date:'2026-10-12',zoneDetails:{'Икроножная левая':{type:'pain',level10:4}}}}});
+ assert.equal(exercise(result,'A1').coachVolumeDose.status,'symptom_deferred');assert.equal(exercise(result,'A1').weightKg,null);assert.equal(exercise(result,'B1').targetSets.length,2);assert.equal(exercise(result,'B1').targetRpeMax,8);
+});
+
+test('ReadySix lower volume is not reduced a second time and healthy slots retain their dose',()=>{
+ const {records,decision}=fixture();const args={recentSessions:records,recommendation:{calendar:{available:true,daysToGame:1,events:[]},state:{}}};
+ const ordinary=make({...args,cycleDecision:decision});
+ const reduced=make({...args,cycleDecision:{...decision,entries:decision.entries.map(entry=>entry.code==='A1'?{...entry,volume:'reduce_one',volumeReason:'Утомление'}:entry)}});
+ assert.equal(exercise(ordinary,'A1').targetSets.length,2);assert.equal(exercise(reduced,'A1').targetSets.length,2);assert.equal(exercise(reduced,'A1').coachVolumeDose.status,'already_reduced');
+ for(const ex of strengthExercises(reduced.session))assert.deepEqual(ex.targetSets,exercise(ordinary,ex.code).targetSets);
+ assert.equal(reduced.quality.valid,true);
+});
+
+for(const workspace of ['zarechie','nkperf'])test(`${workspace}: first next-cycle reduced-volume plan saves with server-confirmed keep decisions, never a forged client exception`,async()=>{
+ const {records,decision}=fixture();const selected={...decision,entries:decision.entries.map(entry=>entry.code==='B2'?{...entry,volume:'reduce_one',volumeReason:'Утомление тяги'}:entry)};
+ const result=make({recentSessions:records,cycleDecision:selected});
+ const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
+ let serverDecision=selected,written=[];
+ const identity=x=>x,prefix=workspace==='nkperf'?'nkperf':'coach';
+ const deps={applyCycleDecision,previousCycleId,pfx:()=>prefix,buildExerciseVarietyContext,assessSessionQuality,recordCoachReplacements,coachBannedSessionExercises,
+  validCopyRepeatException:()=>false,sessionPlayerAliases:id=>[id],getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,
+  redis:async(command,key)=>{assert.ok(key.startsWith(prefix+':'));return key.includes(':cycle-decision:')?JSON.stringify(serverDecision):null;},sessionKey:(ws,id,date)=>`${prefix}:session:${id}:${date}`,sessionsKey:()=>prefix+':sessions:synthetic',
+  getRecentSessionRecords:async(id,depth,ws)=>{assert.equal(ws,workspace);return records;},reconcileReplacementDescriptions:identity,approveProgramSession:identity,normalizeSessionTempoDescriptions:identity,ensureSessionExerciseIds:identity,sanitizeUnavailableEquipmentExercises:identity,
+  weightKgFromExercise:()=>0,loadUnitsForExercise:()=>1,approvedProgramLabel:identity,advisorySessionQuality:identity,buildDosePrescription:()=>({}),redisPipeline:async commands=>{written=commands;}};
+ const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
+ const response=()=>({status(code){this.code=code;return this;},json(data){this.data=data;return this;}});
+ const body={workspace,playerId:'synthetic',date:'2026-10-12',focus:result.focus,trainingType:'full_body',session:result.session,quality:result.quality};
+ let res=response();await handler({method:'POST',body},res);assert.equal(res.code,200,JSON.stringify(res.data));assert.equal(res.data.quality.variety.needsCorrection,false);assert.ok(written.length);
+ written=[];serverDecision={...selected,entries:[]};res=response();await handler({method:'POST',body},res);assert.equal(res.code,409);assert.equal(written.length,0);
 });

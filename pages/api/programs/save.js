@@ -1,3 +1,4 @@
+import {applyCycleDecision,previousCycleId} from '../../../lib/strengthCycleDecisions.mjs';
 import {recordCoachReplacements} from '../../../lib/strengthCycle.mjs';
 import {validCopyRepeatException, sessionPlayerAliases} from '../../../lib/manualCopyRepeat.mjs';
 import {getPlayerTimeZone} from '../../../lib/playerTimeZoneStore';
@@ -16,7 +17,7 @@ import { approveProgramSession, approvedProgramLabel } from '../../../lib/progra
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { normExName } from '../players/progression';
-import { sessionKey, sessionsKey, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey } from '../../../lib/workspacePrefix';
+import { pfx, sessionKey, sessionsKey, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise, weightKgFromExercise } from '../../../lib/tonnage';
 import { assessSessionQuality } from '../../../lib/sessionValidator';
 import { advisorySessionQuality } from '../../../lib/sessionQualityPolicy.mjs';
@@ -85,10 +86,17 @@ export default async function handler(req, res) {
   const normalizedSession = approveProgramSession(normalizeSessionTempoDescriptions(
     ensureSessionExerciseIds(sanitizeUnavailableEquipmentExercises(normalizeSavedWeights(describedSession)))
   ), savedAt);
+  const varietyContext=buildExerciseVarietyContext(recentSessions,{targetDate:date,focus,trainingType,seasonDecision:quality?.seasonDecision});
+  if(varietyContext.strengthCycle) {
+    const sourceCycleId=previousCycleId(recentSessions,varietyContext.strengthCycle.id);
+    const rawDecision=sourceCycleId?await redis('get',`${pfx(workspace)}:strength:cycle-decision:${String(playerId)}:${sourceCycleId}`):null;
+    const decision=typeof rawDecision==='string'?JSON.parse(rawDecision):rawDecision;
+    varietyContext.strengthCycle=applyCycleDecision(varietyContext.strengthCycle,recentSessions,decision);
+  }
   const saveQuality = advisorySessionQuality(assessSessionQuality(normalizedSession, {
     focus,
     trainingType,
-    varietyContext: buildExerciseVarietyContext(recentSessions, { targetDate: date, focus, trainingType, seasonDecision: quality?.seasonDecision }),
+    varietyContext,
     dosePrescription: quality?.dose?.prescription || buildDosePrescription({ focus, trainingType }),
     seasonDecision: quality?.seasonDecision || null,
     medicalReviewRequired: session.kind === 'prehab_training_draft' && (session.methodology?.mode === 'regional' || session.methodology?.preliminary === true),
