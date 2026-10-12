@@ -1,3 +1,4 @@
+import StrengthTeamNextReview from '../components/StrengthTeamNextReview';
 import GenerationMonitor from '../components/GenerationMonitor';
 import useTeamGenerationQueue from '../hooks/useTeamGenerationQueue';
 import TeamQueueReview from '../components/TeamQueueReview';
@@ -6246,7 +6247,7 @@ export default function Home() {
             </div>
           )}
 
-          {keyConnected && ['today','workouts'].includes(mainSection) && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /></div>}
+          {keyConnected && ['today','workouts'].includes(mainSection) && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></div>}
 
           {/* ── Today · smart decision centre ── */}
           {mainSection === 'today' && (
@@ -7106,7 +7107,7 @@ export default function Home() {
             </div>
           )}
 
-          {workspaceTab === 'program' && <TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} />}
+          {workspaceTab === 'program' && <TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onCheckPublication={teamQueue.checkPublication} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} />}
 
           {workspaceTab === 'program' && !playerId && batchSelectedIds.size > 0 && (
             <div className="mx-auto flex min-h-[58vh] max-w-xl flex-col justify-center print:hidden">

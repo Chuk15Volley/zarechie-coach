@@ -8,7 +8,7 @@ export default function useTeamGenerationQueue({workspace,date,apiKey,onRestoreD
   function apply(next){
     if(next && queueRef.current?.id===next.id && next.revision<queueRef.current.revision)return;
     queueRef.current=next;setQueue(next);setResults(next?.rows || []);
-    if(next)try{localStorage.setItem(hintKey(next.workspace),JSON.stringify({id:next.id,date:next.date}));}catch{}
+    if(next)try{localStorage.setItem(hintKey(next.workspace),JSON.stringify({id:next.id,date:next.date,revision:next.revision}));}catch{}
   }
   useEffect(()=>{
     const gate=queueResponseGate(),controller=new AbortController();let timer;
@@ -54,5 +54,5 @@ export default function useTeamGenerationQueue({workspace,date,apiKey,onRestoreD
     retry:()=>mutate(current=>current?.rows.filter(row=>row.status==='error').map(row=>({action:'retry',workspace:current.workspace,queueId:current.id,playerId:row.playerId,batchId:row.batchId}))),
     refreshPlayer:row=>action('refresh-player',{playerId:row.playerId,batchId:row.batchId}),
     review:(row,reviewed)=>action('review',{playerId:row.playerId,batchId:row.batchId,reviewed}),
-    refresh:()=>scope.current?.poll(),resume:()=>action('resume'),pause:()=>action('pause'),cancel:()=>action('cancel'),publish:()=>action('publish'),controllerRef};
+    refresh:()=>scope.current?.poll(),resume:()=>action('resume'),pause:()=>action('pause'),cancel:()=>action('cancel'),checkPublication:()=>action('check-publication'),publish:()=>action('publish'),controllerRef};
 }

@@ -1,3 +1,5 @@
+import * as publicationPolicy from '../lib/teamPublicationPolicy.mjs';
+import * as fingerprint from '../lib/readySixPublication.mjs';
 import {runQueueTick} from '../lib/teamQueueWorker.mjs';
 import {readySixPublicationCheck} from '../lib/readySixPublication.mjs';
 import test from 'node:test';
@@ -19,10 +21,13 @@ function memory(){const values=new Map(),hashes=new Map(),lists=new Map(),ttl=ne
  const redis=async(method,key,...args)=>{method=method.toLowerCase();if(method==='zadd'){if(!sorted.has(key))sorted.set(key,new Map());sorted.get(key).set(args[1],Number(args[0]));return 1;}if(method==='zrevrange')return [...(sorted.get(key)||new Map()).keys()].reverse().slice(Number(args[0]),Number(args[1])+1);if(method==='zrange')return [...(sorted.get(key)||new Map()).keys()].slice(Number(args[0]),Number(args[1])+1);if(method==='zrem')return Number(sorted.get(key)?.delete(args[0]));if(method==='eval')return (await redisPipeline([['EVAL',key,...args]]))[0];if(method==='get')return values.get(key) || null;if(method==='set'){if(args.includes('NX') && values.has(key))return null;values.set(key,args[0]);if(args.includes('EX'))ttl.set(key,Number(args[args.indexOf('EX')+1]));return 'OK';}if(method==='del')return Number(values.delete(key));if(method==='hget')return hashes.get(key)?.get(args[0]) || null;if(method==='hdel')return Number(hashes.get(key)?.delete(args[0]));if(method==='hset'){if(!hashes.has(key))hashes.set(key,new Map());hashes.get(key).set(args[0],args[1]);return 1;}if(method==='expire'){ttl.set(key,Number(args[0]));return 1;}if(method==='lpush'){if(!lists.has(key))lists.set(key,[]);lists.get(key).unshift(args[0]);return lists.get(key).length;}if(method==='ltrim'){lists.set(key,(lists.get(key)||[]).slice(Number(args[0]),Number(args[1])+1));return 'OK';}if(method==='lrange')return (lists.get(key)||[]).slice(Number(args[0]),Number(args[1])+1);throw Error('Unhandled '+method);};
  const redisPipeline=async commands=>Promise.all(commands.map(async([cmd,...args])=>{if(cmd!=='EVAL')return redis(cmd,...args);const [script,n,key,...argv]=args;if(Number(n)===3){const [latest,draft,player,batch,queue,value]=argv;const current=await redis('hget',key,player);if(current && current!==batch || await redis('get',latest)!==queue)return 0;await redis('set',draft,value);return 1;}if(script.includes('PEXPIRE'))return (await redis('get',key))===argv[0]?1:0;if(script.includes("=='cancelled'")){if(await redis('get',key)==='cancelled')return 0;await redis('set',key,argv[0]);return 1;}if(script.includes('HGET')){const current=await redis('hget',key,argv[0]) || argv[1];if(current!==argv[1])return 0;await redis('hset',key,argv[0],argv[2]);return 1;}if(await redis('get',key)===argv[0])return redis('del',key);return 0;}));return {redis,redisPipeline,values,hashes,ttl,sorted};
 }
-function fixture(){const store=memory(),deps={...store,...pure,...drafts,...policy,crypto,isAuthorized:req=>req.authorized!==false,enforceRateLimit:async()=>true};
+function fixture(){const store=memory(),deps={...store,...pure,...drafts,...policy,...publicationPolicy,...fingerprint,crypto,getPlayerSnapshot:async()=>({readySixMeta:{},readySixDecision:{recommendation:'full'}}),isAuthorized:req=>req.authorized!==false,enforceRateLimit:async()=>true};
  Object.assign(deps,compile('lib/teamQueueStore.js',deps,'({loadTeamQueue,createTeamQueue,teamQueueView,retryTeamPlayer,markTeamPlayerReviewed,teamQueueProgram,controlTeamQueue,mutateTeamQueue,writeCurrentTeamDraft})'));
+ Object.assign(deps,compile('lib/teamPublicationChecks.js',deps,'({checkTeamPublication})'));
+ Object.assign(deps,compile('lib/teamQueuePublication.js',{...deps,saveProgram:async()=>{throw Error('No actual save in default fixture');}},'({publishTeamQueue})'));
+ Object.assign(deps,compile('lib/teamPublicationRun.js',deps,'({startPublicationRun,stepPublicationRun})'));
  Object.assign(deps,compile('lib/generationMonitoring.js',deps,'({recordGenerationEvent,generationMonitor,observeGenerationResponse})'));
- let builds=0,build=async request=>({readyResult:{date:request.date,focus:'inseason_strength',trainingType:request.trainingType,strengthMode:request.strengthMode,autoSaved:false,quality:{valid:true},session:{kind:'strength_training_draft',blocks:[{exercises:[{code:'A1',name:'Goblet Squat',targetSets:['4','4'],weightKg:20}]}]}}});
+ let builds=0,build=async request=>({readySixState:fingerprint.readySixPublicationState({readySixMeta:{},readySixDecision:{recommendation:'full'}},[]),readySixCheck:fingerprint.readySixPublicationCheck({readySixMeta:{},readySixDecision:{recommendation:'full'}},[]),readyResult:{date:request.date,focus:'inseason_strength',trainingType:request.trainingType,strengthMode:request.strengthMode,autoSaved:false,quality:{valid:true},session:{kind:'strength_training_draft',blocks:[{exercises:[{code:'A1',name:'Goblet Squat',targetSets:['4','4'],weightKg:20}]}]}}});
  const submit=compile('pages/api/programs/generate-async.js',{...deps,buildGenerationInputs:async request=>{builds++;return build(request);}},'handler');
  const poll=compile('pages/api/programs/generate-status.js',deps,'handler');
  const queueApi=compile('pages/api/programs/team-queue.js',deps,'handler'),monitorApi=compile('pages/api/programs/generation-monitor.js',deps,'handler');
@@ -105,7 +110,8 @@ for(const workspace of ['zarechie','nkperf'])test(workspace+': publication check
  const f=fixture(),q=await f.createTeamQueue({request:request(workspace),players:[{id:'one'},{id:'two'},{id:'unreviewed'}]});
  const snapshot={targetDate:q.date,readySixMeta:{generatedAt:'first'},readySixDecision:{recommendation:'full'},injuryLog:[]};let changed=false,saved=[];
  for(const row of q.players){await f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace,playerId:row.playerId,teamQueueId:q.id,status:'done',readySixCheck:readySixPublicationCheck(snapshot,[]),quality:{valid:true},session:{kind:'strength_training_draft',blocks:[],teamGeneration:{queueId:q.id,batchId:row.batchId}}}));if(row.playerId!=='unreviewed')await f.markTeamPlayerReviewed(await f.loadTeamQueue(workspace,q.id),row.playerId,row.batchId,true);}
- const publish=compile('lib/teamQueuePublication.js',{...f,crypto,readySixPublicationCheck,getPlayerSnapshot:async()=>({...snapshot,...(changed?{injuryLog:[{zone:'calf'}]}:{})}),saveProgram:async(req,res,guard)=>{assert.ok(guard.batchId);saved.push(req.body.playerId);return res.status(req.body.playerId==='two'?409:200).json({error:'Changed saved edition'});}},'publishTeamQueue');
+ const checkTeamPublication=compile('lib/teamPublicationChecks.js',{...f,...fingerprint,getPlayerSnapshot:async()=>({...snapshot,...(changed?{injuryLog:[{zone:'calf'}]}:{})})},'checkTeamPublication');
+ const publish=compile('lib/teamQueuePublication.js',{...f,crypto,checkTeamPublication,saveProgram:async(req,res,guard)=>{assert.ok(guard.batchId);saved.push(req.body.playerId);return res.status(req.body.playerId==='two'?409:200).json({error:'Changed saved edition'});}},'publishTeamQueue');
  let result=await publish(await f.loadTeamQueue(workspace,q.id),{authorized:true});assert.deepEqual(saved,['one','two']);assert.equal(result[0].status,'published');assert.equal(result[1].status,'blocked');
  saved=[];changed=true;result=await publish(await f.loadTeamQueue(workspace,q.id),{authorized:true});assert.equal(saved.length,0);assert.ok(result.every(row=>row.status==='blocked'));assert.ok((await f.teamQueueView(await f.loadTeamQueue(workspace,q.id))).rows.every(row=>!row.reviewed));
  const one=q.players[0],job=JSON.parse(await f.redis('get','coach:batch:'+one.batchId));await f.redis('set','coach:batch:'+one.batchId,JSON.stringify({...job,quality:{medicalReviewRequired:true}}));await f.markTeamPlayerReviewed(q,'one',one.batchId,true);changed=false;result=await publish(await f.loadTeamQueue(workspace,q.id),{authorized:true});assert.equal(saved.length,0);assert.match(result[0].message,/индивидуальная/);
@@ -179,4 +185,66 @@ test('bounded waiting jobs without a submission can be restarted; request quota 
  const next=await f.retryTeamPlayer(await f.loadTeamQueue(q.workspace,q.id),'one',batch);assert.notEqual(next.players[0].batchId,batch);
  const current=next.players[0].batchId;await f.redis('set',policy.taskRuntimeKey(current),JSON.stringify({seenActiveMs:1800000,startedActiveMs:1800000,attempts:80}));
  await runQueueTick({redis:f.redis,request:async()=>{calls++;}});assert.equal(calls,0);assert.equal((await f.teamQueueView(next)).rows[0].runtime.stop,'REQUEST_LIMIT');
+});
+
+function readyJobs(f,q,snapshot){return Promise.all(q.players.map(row=>f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace:q.workspace,playerId:row.playerId,teamQueueId:q.id,status:'done',completedAt:q.createdAt,readySixState:fingerprint.readySixPublicationState(snapshot,[]),readySixCheck:fingerprint.readySixPublicationCheck(snapshot,[]),quality:{valid:true},session:{blocks:[],teamGeneration:{queueId:q.id,batchId:row.batchId}}}))));}
+function publicationEngine(f,getPlayerSnapshot,saveProgram){
+ const checkTeamPublication=compile('lib/teamPublicationChecks.js',{...f,...fingerprint,getPlayerSnapshot},'checkTeamPublication');
+ const publishTeamQueue=compile('lib/teamQueuePublication.js',{...f,checkTeamPublication,saveProgram},'publishTeamQueue');
+ return {...compile('lib/teamPublicationRun.js',{...f,checkTeamPublication,publishTeamQueue},'({startPublicationRun,stepPublicationRun})'),publishTeamQueue};
+}
+for(const workspace of ['zarechie','nkperf'])test(workspace+': durable publication resumes after ambiguous save, retains checkpoints and never repeats a committed program',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request(workspace),players:[{id:'one'},{id:'two'}]}),snapshot={readySixMeta:{},readySixDecision:{recommendation:'full'}};await readyJobs(f,q,snapshot);
+ for(const row of q.players)await f.markTeamPlayerReviewed(q,row.playerId,row.batchId,true);
+ let saves=0,ambiguous=true;
+ const engine=publicationEngine(f,async()=>snapshot,async(req,res,guard)=>{
+  saves++;const record={...req.body,savedAt:new Date(Date.now()+100).toISOString(),publicationReceipt:guard.receipt};await f.redis('set',pure.queuePrefix(workspace)+':session:'+req.body.playerId+':'+q.date,JSON.stringify(record));
+  if(ambiguous){ambiguous=false;throw Object.assign(new Error('Connection dropped after commit'),{status:503});}
+  return res.status(200).json({status:'ok'});
+ });
+ await assert.rejects(engine.startPublicationRun(q,'publish'),/Сначала проверьте/);
+ const check=await engine.startPublicationRun(q,'check');await assert.rejects(engine.startPublicationRun(q,'check'),{status:409});
+ await engine.stepPublicationRun(q,{},check.id);let view=await f.teamQueueView(await f.loadTeamQueue(workspace,q.id));assert.equal(view.publicationRun.processed,1);assert.equal(view.publicationRun.status,'running');assert.equal(view.rows[0].readySixCheck.status,'unchanged');
+ await engine.stepPublicationRun(q,{},check.id);view=await f.teamQueueView(await f.loadTeamQueue(workspace,q.id));assert.equal(view.publicationRun.status,'completed');assert.equal(view.publicationRun.counts.checked,2);assert.equal(saves,0);
+ const run=await engine.startPublicationRun(q,'publish');await engine.stepPublicationRun(q,{},run.id);assert.equal(saves,1);
+ view=await f.teamQueueView(await f.loadTeamQueue(workspace,q.id));assert.equal(view.rows[0].saved,true);assert.equal(view.rows[0].publication.status,'published','atomic receipt outranks an ambiguous error response');assert.equal(view.rows[1].saved,false);
+ let state=JSON.parse(await f.redis('get',publicationPolicy.publicationRunKey(workspace,q.id)));state.items[0].nextAttemptAt=0;await f.redis('set',publicationPolicy.publicationRunKey(workspace,q.id),JSON.stringify(state));
+ await engine.stepPublicationRun(q,{},run.id);assert.equal(saves,2,'recover first row and save only the remaining neighbour');
+ await engine.stepPublicationRun(q,{},run.id);view=await f.teamQueueView(await f.loadTeamQueue(workspace,q.id));assert.equal(saves,2);assert.equal(view.publicationRun.counts.published,2);assert.equal(view.publicationRun.status,'completed');
+ await engine.stepPublicationRun(q,{},run.id);assert.equal(saves,2);await assert.rejects(engine.startPublicationRun(q,'publish'),/Отметьте/);
+});
+for(const workspace of ['zarechie','nkperf'])test(workspace+': ReadySix changes after preflight block the save, explain changed sections and clear review',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request(workspace),players:[{id:'one'}]}),snapshot={readySixMeta:{},readySixDecision:{recommendation:'full'}};await readyJobs(f,q,snapshot);await f.markTeamPlayerReviewed(q,'one',q.players[0].batchId,true);let changed=false,saves=0;
+ const engine=publicationEngine(f,async()=>changed?{...snapshot,injuryLog:[{private:'do not copy symptoms'}]}:snapshot,async()=>{saves++;});
+ const check=await engine.startPublicationRun(q,'check');await engine.stepPublicationRun(q,{},check.id);const run=await engine.startPublicationRun(q,'publish');changed=true;await engine.stepPublicationRun(q,{},run.id);
+ const view=await f.teamQueueView(await f.loadTeamQueue(workspace,q.id));assert.equal(saves,0);assert.equal(view.rows[0].reviewed,false);assert.equal(view.rows[0].readySixCheck.status,'changed');assert.equal(view.rows[0].readySixCheck.changes[0].key,'medical');assert.equal(view.publicationRun.counts.blocked,1);assert.ok(!JSON.stringify(view).includes('do not copy symptoms'));
+});
+test('publication worker dispatches persisted runs in both spaces, and temporary row failures stop after three attempts',async()=>{
+ const f=fixture(),snapshot={readySixMeta:{},readySixDecision:{recommendation:'full'}},queues=[];let calls=0;
+ const engine=publicationEngine(f,async()=>snapshot,async()=>{calls++;throw Object.assign(new Error('outage'),{status:503});});
+ for(const workspace of ['zarechie','nkperf']){const q=await f.createTeamQueue({request:request(workspace),players:[{id:'one'}]});await readyJobs(f,q,snapshot);await f.markTeamPlayerReviewed(q,'one',q.players[0].batchId,true);const check=await engine.startPublicationRun(q,'check');await engine.stepPublicationRun(q,{},check.id);queues.push({q,run:await engine.startPublicationRun(q,'publish')});}
+ const seen=[];await publicationPolicy.runPublicationTick({redis:f.redis,request:async(path,body)=>{seen.push(body.workspace);await engine.stepPublicationRun(await f.loadTeamQueue(body.workspace,body.queueId),{},body.runId);}});assert.deepEqual(seen.sort(),['nkperf','zarechie']);assert.equal(calls,2);
+ for(const {q,run} of queues){for(let i=0;i<2;i++){const state=JSON.parse(await f.redis('get',publicationPolicy.publicationRunKey(q.workspace,q.id)));state.items[0].nextAttemptAt=0;await f.redis('set',publicationPolicy.publicationRunKey(q.workspace,q.id),JSON.stringify(state));await engine.stepPublicationRun(q,{},run.id);}const view=await f.teamQueueView(await f.loadTeamQueue(q.workspace,q.id));assert.equal(view.publicationRun.status,'completed');assert.equal(view.publicationRun.counts.error,1);assert.equal(view.publicationRun.items[0].attempts,3);assert.equal((await f.generationMonitor(q.workspace)).publication.failed,1);}
+ assert.equal(calls,6);
+});
+test('section fingerprints ignore transport timestamps, detect court history and never copy source health data',()=>{
+ const snapshot={readySixMeta:{},readySixDecision:{recommendation:'full'},chronicSurveys:[{secret:'clinical',date:'2026-10-10',duration:10}]};const first=fingerprint.readySixPublicationState(snapshot,[]);
+ assert.ok(!JSON.stringify(first).includes('clinical'));assert.equal(fingerprint.readySixPublicationChanges(first,fingerprint.readySixPublicationState({...snapshot,readySixMeta:{generatedAt:'new'}},[])).status,'unchanged');
+ const change=fingerprint.readySixPublicationChanges(first,fingerprint.readySixPublicationState({...snapshot,chronicSurveys:[{duration:20}]},[]));assert.equal(change.status,'changed');assert.equal(change.changes[0].key,'calendar');
+ assert.equal(fingerprint.readySixPublicationChanges(null,first,first.digest).status,'unchanged');assert.equal(fingerprint.readySixPublicationChanges(null,first).status,'unknown');
+ assert.equal(publicationPolicy.freshPublicationCheck({batchId:'one',status:'unchanged',checkedAt:new Date(Date.now()-300001).toISOString()},'one'),false);
+});
+test('background publication endpoint enforces auth, workspace and captured run identity',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}]}),handler=compile('pages/api/programs/team-publication.js',f,'handler');
+ assert.equal((await f.call(handler,{workspace:'nkperf',queueId:q.id,runId:crypto.randomUUID()},undefined,false)).code,401);
+ assert.equal((await f.call(handler,{workspace:'zarechie',queueId:q.id,runId:crypto.randomUUID()})).code,404);
+ assert.equal((await f.call(handler,{workspace:'nkperf',queueId:q.id,runId:'forged'})).code,400);
+ const snapshot={readySixMeta:{},readySixDecision:{recommendation:'full'}};await readyJobs(f,q,snapshot);const run=await f.startPublicationRun(q,'check');await f.call(handler,{workspace:'nkperf',queueId:q.id,runId:crypto.randomUUID()});assert.equal((await f.teamQueueView(await f.loadTeamQueue(q.workspace,q.id))).publicationRun.processed,0);
+ const result=await f.call(handler,{workspace:'nkperf',queueId:q.id,runId:run.id});assert.equal(result.code,200);assert.equal(result.body.queue.publicationRun.counts.checked,1);
+});
+test('publication deadline retains committed receipts while stopping only unfinished rows',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'},{id:'two'}]}),snapshot={readySixMeta:{},readySixDecision:{recommendation:'full'}};await readyJobs(f,q,snapshot);for(const row of q.players)await f.markTeamPlayerReviewed(q,row.playerId,row.batchId,true);
+ const engine=publicationEngine(f,async()=>snapshot,async()=>{throw Error('must not resave');});const check=await engine.startPublicationRun(q,'check');await engine.stepPublicationRun(q,{},check.id);await engine.stepPublicationRun(q,{},check.id);const run=await engine.startPublicationRun(q,'publish'),row=q.players[0];
+ await f.redis('set','nkperf:session:one:'+q.date,JSON.stringify({savedAt:new Date(Date.now()+100).toISOString(),session:{teamGeneration:{batchId:row.batchId}},publicationReceipt:{status:'published',batchId:row.batchId,runId:run.id,message:'committed'}}));
+ run.createdAt=new Date(Date.now()-1800001).toISOString();await f.redis('set',publicationPolicy.publicationRunKey(q.workspace,q.id),JSON.stringify(run));await engine.stepPublicationRun(q,{},run.id);const view=await f.teamQueueView(await f.loadTeamQueue(q.workspace,q.id));assert.equal(view.publicationRun.counts.published,1);assert.equal(view.publicationRun.counts.error,1);assert.equal(view.rows[0].saved,true);
 });

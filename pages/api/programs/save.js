@@ -130,6 +130,7 @@ export async function saveProgram(req, res, publicationGuard=null) {
     quality: persistenceQuality,
     date,
     savedAt,
+    ...(publicationGuard?.receipt?{publicationReceipt:publicationGuard.receipt}:{}),
     ...(requestId ? {saveRequestId:requestId} : {}),
   };
 
@@ -180,6 +181,7 @@ export async function saveProgram(req, res, publicationGuard=null) {
       ...tonnageCmds,
     ];
     if(publicationGuard){
+      if(publicationGuard.receipt)cmds.push(['HSET',publicationGuard.key+':publication',String(playerId),JSON.stringify(publicationGuard.receipt)],['EXPIRE',publicationGuard.key+':publication',604800]);
       // CAS all writes against the reviewed job and absence of an independently saved edition.
       const script="if redis.call('GET',KEYS[1]) or redis.call('GET',KEYS[4])~=ARGV[4] then return 0 end; for i=5,#KEYS do if redis.call('EXISTS',KEYS[i])==1 then return 0 end end; if redis.call('HGET',KEYS[2],ARGV[1])~=ARGV[2] then return 0 end; local current=redis.call('HGET',KEYS[3],ARGV[1]); if current and current~=ARGV[2] then return 0 end; local cmds=cjson.decode(ARGV[3]); for _,cmd in ipairs(cmds) do redis.call(unpack(cmd)) end; return 1";
       const [written]=await redisPipeline([['EVAL',script,4+sessionPlayerAliases(playerId).filter(id=>String(id)!==String(playerId)).length,sessionKey(workspace,playerId,date),publicationGuard.key+':reviews',publicationGuard.key+':jobs',publicationGuard.lock,...sessionPlayerAliases(playerId).filter(id=>String(id)!==String(playerId)).map(id=>sessionKey(workspace,id,date)),String(playerId),publicationGuard.batchId,JSON.stringify(cmds),publicationGuard.token]]);

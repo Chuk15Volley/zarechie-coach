@@ -44,7 +44,7 @@ export default async function handler(req,res) {
       return res.status(inputs.status || 400).json({error:inputs.error});
     }
     if(inputs.readyResult){
-      const result={...inputs.readyResult,readySixCheck:inputs.readySixCheck || null,...(teamQueueId?context:{}),status:'done',completedAt:new Date().toISOString()};
+      const result={...inputs.readyResult,readySixCheck:inputs.readySixCheck || null,readySixState:inputs.readySixState || null,...(teamQueueId?context:{}),status:'done',completedAt:new Date().toISOString()};
       if(teamQueueId)result.session={...result.session,teamGeneration:{queueId:teamQueueId,batchId}};
       const draft=generatedDraftRecord(result,request);
       if(draft){const key=generatedDraftKey(context.workspace,context.playerId,draft.date),value={...draft,...(teamQueueId?{teamQueueId,batchId}:{})};if(teamQueueId)await writeCurrentTeamDraft(context,batchId,key,value);else await redis('set',key,JSON.stringify(value));}
@@ -55,7 +55,7 @@ export default async function handler(req,res) {
     const {userPrompt,systemPrompt,dataSummary,targetDate,playerRestrictions=[],qualityContext={},questionnaireContext={}}=inputs;
     const sessionTool=buildSessionTool({includeImgPrompt:true});
     await redis('set','coach:batch:'+batchId,JSON.stringify({...context,date:targetDate,dayGoal:request.dayGoal || '',focus:request.focus || '',trainingType:request.trainingType || '',autoSave:teamQueueId?false:request.autoSave!==false,
-      readySixCheck:inputs.readySixCheck || null,userPrompt,systemPrompt,dataSummary,playerRestrictions,qualityContext,questionnaireContext,generationRequest:request,sessionTool,status:'pending',submittedAt:new Date().toISOString()}),'EX',teamQueueId?generationJobTTL(context):3600);
+      readySixCheck:inputs.readySixCheck || null,readySixState:inputs.readySixState || null,userPrompt,systemPrompt,dataSummary,playerRestrictions,qualityContext,questionnaireContext,generationRequest:request,sessionTool,status:'pending',submittedAt:new Date().toISOString()}),'EX',teamQueueId?generationJobTTL(context):3600);
     return res.status(200).json({batchId,estimatedMinutes:2});
   }catch(error){
     res.generationContext={workspace:request.workspace || 'zarechie',phase:'submit',batchId,outcomeCode:'PREPARATION_FAILED'};

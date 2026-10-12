@@ -223,7 +223,7 @@ export default async function handler(req, res) {
         return res.status(refreshed.status || 400).json({ error: refreshed.error });
       }
       if (refreshed.readyResult) {
-        const result = { ...refreshed.readyResult, readySixCheck:refreshed.readySixCheck || null, coachReview:!!record.coachReview, status: 'done',completedAt:new Date().toISOString() };
+        const result = { ...refreshed.readyResult, readySixCheck:refreshed.readySixCheck || null,readySixState:refreshed.readySixState || null, coachReview:!!record.coachReview, status: 'done',completedAt:new Date().toISOString() };
         if(record.teamQueueId)result.session={...result.session,teamGeneration:{queueId:record.teamQueueId,batchId}};
         const draft = generatedDraftRecord(result, record.generationRequest);
         if(draft){const key=generatedDraftKey(record.workspace,record.playerId,draft.date);if(record.teamQueueId)await writeCurrentTeamDraft(record,batchId,key,{...draft,batchId,teamQueueId:record.teamQueueId});else await redis('set',key,JSON.stringify(draft));}
@@ -240,7 +240,7 @@ export default async function handler(req, res) {
         playerRestrictions: refreshed.playerRestrictions || [],
         qualityContext: refreshed.qualityContext || {},
         questionnaireContext: refreshed.questionnaireContext || {},
-        readySixCheck: refreshed.readySixCheck || null,
+        readySixCheck: refreshed.readySixCheck || null,readySixState:refreshed.readySixState || null,
         inputsRefreshedAt: new Date().toISOString(),
       };
       await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
