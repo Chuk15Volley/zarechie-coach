@@ -25,14 +25,14 @@ test('inventory uses actual ladders and implement units, not inferred increments
  assert.equal(proposeStrengthLoad(exercise,{...evidence,rpe:9},{...options,equipment:{barbell:[80,92.5,100]}}).kg,92.5);
  assert.equal(proposeStrengthLoad(exercise,{...evidence,rpe:9},options).kg,null);
 });
-test('experience is explicit, survives goal review, and gates progression',()=>{
+test('coach cohort experience supersedes legacy player fields; generic unknown/novice evidence stays gated',()=>{
  for(const experience of ['unknown','novice']) assert.equal(proposeStrengthLoad(exercise,evidence,{...options,experience,equipment:{barbell:[100,102.5]}}).action,'hold');
  assert.equal(normalizeDevelopmentPlan({strengthExperience:'experienced',cycleStart:'2020-01-01'}).strengthExperience,'experienced');
- assert.equal(normalizeDevelopmentPlan({strengthExperience:'invented'}).strengthExperience,'unknown');
+ assert.equal(normalizeDevelopmentPlan({strengthExperience:'invented'}).strengthExperience,'experienced');
  for(const mode of ['maintenance','development']){
   const draft=buildStrengthDevelopmentDraft({snapshot:{player:{position:'Диагональная'}},recommendation:{calendar:{daysToGame:5},state:{}},date:'2026-10-12',manualMethodSelection:true,strengthMode:mode,developmentPlan:{strengthExperience:'novice'}});
   assert.equal(draft.quality.valid,true,JSON.stringify(draft.quality.checks.filter(c=>!c.ok)));
-  const main=draft.session.blocks[0].exercises[0];assert.equal(main.targetRpeMax,7);assert.equal(main.targetSets.length,3);
+  const main=draft.session.blocks[0].exercises[0];assert.equal(main.targetRpeMax,8);assert.equal(draft.session.methodology.strengthExperienceBasis.label,'Силовой стаж всех игроков: 5+ лет');assert.equal(main.targetSets.length,3);
  }
 });
 const record={date:'2026-10-10',savedAt:'2026-10-10T08:00:00Z',focus:'inseason_strength',session:{methodology:{strengthCycle:{version:STRENGTH_CYCLE_VERSION,id:'2026-10-10'}},blocks:[{label:'A',exercises:[{code:'A1',name:'Barbell Squat',targetSets:['4','4']}]}]}};

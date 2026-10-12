@@ -1,4 +1,4 @@
-import {STRENGTH_EQUIPMENT, STRENGTH_EXPERIENCE_OPTIONS} from '../lib/strengthEquipment.mjs';
+import {STRENGTH_EQUIPMENT, STRENGTH_COHORT_EXPERIENCE} from '../lib/strengthEquipment.mjs';
 import {REPLACEMENT_REASONS} from '../lib/strengthCycle.mjs';
 import PlayerTimeZoneControl from '../components/PlayerTimeZoneControl';
 import {playerTimeZone,playerLocalDate} from '../lib/playerTimeZone.mjs';
@@ -1908,11 +1908,59 @@ function StrengthEquipmentPanel({workspace, apiKey}) {
     }catch(error){setStatus(error.message || 'Не удалось сохранить');}finally{setBusy(false);}
   }
   return <details className="mb-4 rounded-2xl border border-white/10 p-4 print:hidden">
-    <summary className="cursor-pointer text-sm font-bold text-slate-300">Инвентарь силовой · всё пространство</summary>
-    <p className="mt-2 text-xs text-slate-500">Перечислите все доступные веса в кг через точку с запятой, например 10; 12.5; 14 (дробные кг — через точку). Пустой список запрещает автоматическую прибавку. Для разных блоковых тренажёров вес подбирается по RPE.</p>
+    <summary className="cursor-pointer text-sm font-bold text-slate-300">Инвентарь силовой · {workspace==='nkperf'?'NK Performance':'Заречье'} · все игроки<span className="mt-1 block text-xs font-normal text-slate-500">Силовой стаж всех игроков: 5+ лет · заполнить инвентарь один раз</span></summary>
+    <p className="mt-2 text-xs text-slate-400">{STRENGTH_COHORT_EXPERIENCE.label} · подтверждено тренером</p>
+    <p className="mt-2 text-xs text-slate-500">Заполните один раз для всех игроков этого пространства. Перечислите все доступные веса в кг через точку с запятой, например 10; 12.5; 14 (дробные кг — через точку). Пустой список запрещает автоматическую прибавку. Для разных блоковых тренажёров вес подбирается по RPE.</p>
     <div className="mt-3 grid gap-3 sm:grid-cols-2">{Object.entries(STRENGTH_EQUIPMENT).map(([key,label])=><label key={key} className="text-xs text-slate-400">{label}<input aria-label={label} value={equipment[key] || ''} onChange={event=>setEquipment({...equipment,[key]:event.target.value})} className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2 text-slate-200" /></label>)}</div>
     <button type="button" disabled={busy || status==='Загрузка…' || status.includes('загрузить')} onClick={save} className="mt-3 rounded-lg bg-accent/15 px-3 py-2 text-xs font-bold text-accent">{busy?'Сохранение…':'Сохранить инвентарь'}</button>
     <span role="status" className="ml-2 text-xs text-slate-500">{status}</span>
+  </details>;
+}
+
+function StrengthCycleReviewPanel({workspace, playerId, apiKey, date}) {
+  const [open,setOpen]=useState(false);
+  const [review,setReview]=useState(null);
+  const [selected,setSelected]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState('');
+  const [refresh,setRefresh]=useState(0);
+  useEffect(()=>{
+    if(!open || !apiKey || !playerId)return;
+    let cancelled=false;setLoading(true);setError('');setReview(null);
+    fetch(`/api/players/strength-cycle-review?workspace=${encodeURIComponent(workspace)}&playerId=${encodeURIComponent(playerId)}&asOf=${encodeURIComponent(date || todayISO())}`,{headers:{'x-api-key':apiKey}})
+      .then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error || 'Не удалось загрузить обзор');return data;})
+      .then(data=>{if(!cancelled){setReview(data);setSelected(previous=>data.cycles.some(c=>c.id===previous)?previous:(data.cycles.find(c=>c.status==='completed') || data.cycles[0])?.id || '');}})
+      .catch(error=>{if(!cancelled)setError(error.message);})
+      .finally(()=>{if(!cancelled)setLoading(false);});
+    return()=>{cancelled=true;};
+  },[open,workspace,playerId,apiKey,date,refresh]);
+  const cycle=review?.cycles.find(c=>c.id===selected);
+  const chains={full_body:'Общая силовая',anterior_chain:'Передняя цепь',posterior_chain:'Задняя цепь'};
+  const formatSet=set=>`${set.kg==null?'кг не записаны':set.kg+' кг'} × ${set.reps==null?'повторы не записаны':set.reps+(set.perSide?'/стор.':'')}`;
+  return <details onToggle={event=>setOpen(event.currentTarget.open)} className="mb-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.025] print:hidden">
+    <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-slate-300">Обзор силового цикла</summary>
+    {open && <div className="border-t border-white/5 p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-slate-500">Четыре полностью выполненных занятия. Кг, повторы и RPE показаны по факту; это не оценка 1ПМ.</p><button type="button" onClick={()=>setRefresh(value=>value+1)} disabled={loading} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Обновить обзор</button></div>
+      {loading && <p role="status" className="text-xs text-slate-500">Проверяем выполнение…</p>}
+      {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
+      {review && <>
+        <p className="mb-2 text-xs text-slate-500">По состоянию на {review.asOf}. {review.legacySessions>0?'Занятия старой версии не включены в счётчик выполненных циклов.':''}</p>
+        {!review.cycles.length && <p className="text-sm text-slate-400">Пока нет силового цикла новой версии. После сохранения и выполнения занятий здесь появится обзор.</p>}
+        {!!review.cycles.length && <PremiumSelect value={selected} onChange={setSelected} options={review.cycles.map(c=>({value:c.id,label:`${c.startDate} · ${c.status==='completed'?'завершён':'идёт'} · ${c.completedCount}/4`}))} compact />}
+        {cycle && <div className="mt-3 space-y-3">
+          <div className="rounded-xl bg-white/[0.035] p-3 text-xs text-slate-300"><strong>{cycle.status==='completed'?'Цикл завершён':'Цикл продолжается'} · {cycle.completedCount}/4</strong><p className="mt-1 text-slate-500">Период: {cycle.startDate}{cycle.endDate?' → '+cycle.endDate:''}. Сохранено планов: {cycle.plannedCount}. Полные выполнения: {cycle.completionDates.join(', ') || 'ещё нет'}. Занятий с локальной адаптацией: {cycle.adaptedSessions}.</p></div>
+          {cycle.suggestions.map(text=><p key={text} className="text-xs text-amber-200/80">{text}</p>)}
+          {!cycle.exercises.length && <p className="text-xs text-slate-500">Пока нет полных выполнений для сравнения основных упражнений.</p>}
+          {cycle.exercises.map(row=><div key={row.key} className="overflow-hidden rounded-xl border border-white/10">
+            <div className="bg-white/[0.035] p-3 text-xs font-bold text-slate-300">{row.code} · {row.name}<span className="mt-1 block font-normal text-slate-500">{chains[row.trainingType] || row.trainingType} · {row.loadUnits===2?'кг одной гантели / снаряда из пары':'кг одного снаряда'} · повторы на сторону обозначены отдельно</span></div>
+            <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-500"><tr><th className="p-2">Дата</th><th className="p-2">Выполненные подходы</th><th className="p-2">RPE упражнения</th><th className="p-2">RPE занятия</th></tr></thead><tbody>{row.observations.map(point=><tr key={point.date} className="border-t border-white/5 text-slate-300"><td className="whitespace-nowrap p-2">{point.date}{point.adapted?' · адаптация':''}</td><td className="min-w-[180px] p-2">{point.sets.filter(set=>set.completed).map(formatSet).join('; ') || 'Нет записанных подходов'}</td><td className="p-2">{point.exerciseRpe ?? '—'}</td><td className="p-2">{point.sessionRpe ?? '—'}</td></tr>)}</tbody></table></div>
+          </div>)}
+          {!!cycle.replacements.length && <div className="rounded-xl border border-white/10 p-3"><p className="mb-2 text-xs font-bold text-slate-300">Замены тренера и причины</p>{cycle.replacements.map((event,i)=><p key={i} className="mt-1 text-xs text-slate-400">{event.date} · {event.code}: {event.from} → {event.to}. {REPLACEMENT_REASONS[event.reason] || 'Причина не задана'}{event.note?' · '+event.note:''}</p>)}</div>}
+          <details className="rounded-xl border border-white/10 p-3"><summary className="cursor-pointer text-xs text-slate-300">Контекст ReadySix на момент планов</summary>{cycle.context.map(item=><p key={item.date} className="mt-2 text-xs text-slate-500">{item.date} · {item.source==='ReadySix' && <>Партии: {item.playedSets ?? '—'}; площадка: {item.courtLoad ?? '—'} sRPE×мин; поездки: {item.travelDates.join(', ') || 'не отмечены'}. </>}{item.source==='ReadySix'?(item.reasons.map(reason=>reason.text).join(' ') || 'Ограничивающие факторы не отмечены.'):'Контекст не сохранён.'}{item.missing.length?' Часть данных отсутствовала; прибавка нагрузки не подтверждалась.':''}</p>)}</details>
+          {!!cycle.otherPlans.length && <details className="rounded-xl border border-white/10 p-3"><summary className="cursor-pointer text-xs text-slate-400">Остальные сохранённые планы · {cycle.otherPlans.length}</summary>{cycle.otherPlans.map(plan=><p key={plan.date} className="mt-1 text-xs text-slate-500">{plan.date}{plan.finishReason?' · завершена раньше: '+plan.finishReason:' · не входит в четыре полных выполнения'}</p>)}</details>}
+        </div>}
+      </>}
+    </div>}
   </details>;
 }
 
@@ -1958,11 +2006,6 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
         </span>
       </summary>
       <div className="border-t border-white/[0.05] px-4 pb-4 pt-3">
-        <div className="mb-3">
-          <div className="mb-1 text-xs text-slate-400">Силовой стаж игрока</div>
-          <PremiumSelect value={plan?.strengthExperience || 'unknown'} onChange={strengthExperience=>onChange({...plan,strengthExperience})} options={STRENGTH_EXPERIENCE_OPTIONS} compact />
-          <p className="mt-1 text-[10px] text-slate-600">Стаж задаёт тренер; он сохраняется после пересмотра целей. Начинающим — RPE до 7, без автоматической прибавки. Неизвестный стаж — удержание подтверждённого веса.</p>
-        </div>
         <div className="mb-3 grid gap-2 sm:grid-cols-2">
           <div>
             <div className="mb-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-600">Начало цикла</div>
@@ -6209,6 +6252,8 @@ export default function Home() {
             </div>
           )}
 
+          {keyConnected && ['today','workouts'].includes(mainSection) && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /></div>}
+
           {/* ── Today · smart decision centre ── */}
           {mainSection === 'today' && (
             <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
@@ -6697,6 +6742,8 @@ export default function Home() {
             <></>
           )}
 
+          {playerId && selectedPlayer && <StrengthCycleReviewPanel key={`${workspace}:${playerId}`} workspace={workspace} playerId={playerId} apiKey={apiKey} date={date} />}
+
           {/* ── Workspace tabs: Программа / История ── */}
           {playerId && selectedPlayer && (
             <div className="premium-workspace-tabs mb-5 flex rounded-2xl border border-white/[0.08] bg-black/15 p-1 print:hidden">
@@ -6798,7 +6845,6 @@ export default function Home() {
 
           {playerId && selectedPlayer && workspaceTab === 'program' && (
             <>
-            <StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} />
             <DevelopmentPlanPanel
               plan={developmentPlan}
               onChange={next => { setDevelopmentPlan(next); setDevelopmentPlanSaved(false); }}
