@@ -45,6 +45,7 @@ export default async function handler(req,res) {
       const draft=generatedDraftRecord(result,request);
       if(draft)await redis('set',generatedDraftKey(context.workspace,context.playerId,draft.date),JSON.stringify({...draft,...(teamQueueId?{teamQueueId,batchId}:{})}));
       await redis('set','coach:batch:'+batchId,JSON.stringify({...result,workspace:context.workspace,playerId:context.playerId}), 'EX',teamQueueId?generationJobTTL(context):3600);
+      res.generationContext={workspace:context.workspace,phase:'submit',batchId,outcomeCode:result.quality?.blocking || result.quality?.medicalReviewRequired?'QUALITY_REVIEW':'PREPARED'};
       return res.status(200).json({batchId,estimatedMinutes:0});
     }
     const {userPrompt,systemPrompt,dataSummary,targetDate,playerRestrictions=[],qualityContext={},questionnaireContext={}}=inputs;

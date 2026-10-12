@@ -31,7 +31,7 @@ for(const workspace of ['zarechie','nkperf'])test(workspace+': actual queue/API/
  const old=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='synthetic';t.after(()=>{if(old===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=old;});
  const f=fixture(),created=await f.call(f.queueApi,{action:'create',request:request(workspace),players:[{id:'athlete',name:'Synthetic'}]});assert.equal(created.code,200);const queue=created.body.queue,row=queue.rows[0];
  const body={workspace,playerId:'athlete',teamQueueId:queue.id,date:'2099-01-01',focus:'forged'};
- const submitted=await f.call(f.submit,body);assert.equal(submitted.code,200);assert.equal(submitted.body.batchId,row.batchId);assert.equal(f.builds(),1);
+ const submitted=await f.call(f.submit,body);assert.equal(submitted.code,200);assert.equal(submitted.body.batchId,row.batchId);assert.equal(f.builds(),1);assert.equal((await f.generationMonitor(workspace)).counts.PREPARED,1,'ready submit must be monitored before any poll');
  const restored=await f.call(f.queueApi,null,{workspace,date:queue.date});assert.equal(restored.body.queue.rows[0].status,'done');assert.equal(restored.body.queue.rows[0].draft,true);assert.equal(restored.body.queue.request.notes,'Private coach context');
  const result=await generateTeamPlayer(body,{apiKey:'synthetic',wait:async()=>{},fetchImpl:async(url,options)=>{const res=options.method?await f.call(f.submit,JSON.parse(options.body)):await f.call(f.poll,null,Object.fromEntries(new URL(url,'http://local').searchParams));return {ok:res.code<400,status:res.code,json:async()=>res.body};}});
  assert.equal((await f.call(f.poll,null,{workspace,batchId:row.batchId})).headers['Cache-Control'],'no-store');

@@ -17,7 +17,7 @@ export default function useTeamGenerationQueue({workspace,date,apiKey,onRestoreD
   const active=current=>current?.workspace===viewRef.current.workspace && current?.date===viewRef.current.date;
   function apply(next){setQueue(next);queueRef.current=next;setResults(next?.rows || []);if(next)remember(next);}
   async function load(id,signal){const data=await teamQueueCall(apiKey,'/api/programs/team-queue?workspace='+workspace+(id?'&queueId='+encodeURIComponent(id):'&date='+date),{signal});return data.queue;}
-  async function report(current,row,code){try{await teamQueueCall(apiKey,'/api/programs/generation-monitor',{body:{workspace:current.workspace,queueId:current.id,batchId:row.batchId,code}});}catch{}}
+  async function report(current,row,code){if(document.hidden)return;try{await teamQueueCall(apiKey,'/api/programs/generation-monitor',{body:{workspace:current.workspace,queueId:current.id,batchId:row.batchId,code}});}catch{}}
   async function execute(current,selected=current.rows.filter(row=>['queued','generating'].includes(row.status)),existingController=null){
     if(!active(current) || (controllerRef.current && controllerRef.current!==existingController))return;
     if(!selected.length)return;
@@ -39,6 +39,7 @@ export default function useTeamGenerationQueue({workspace,date,apiKey,onRestoreD
     controllerRef.current?.abort();controllerRef.current=null;apply(null);setRunning(false);setRecovering(false);setError('');
     if(!apiKey)return;
     const controller=new AbortController();setRecovering(true);
+    const leaving=()=>{controller.abort();controllerRef.current?.abort();};window.addEventListener('pagehide',leaving);
     (async()=>{
       let hint=null;
       if(!restored.current.has(workspace) && !new URLSearchParams(window.location.search).has('assignedDate')){restored.current.add(workspace);try{hint=JSON.parse(localStorage.getItem(hintKey(workspace)));}catch{}}
@@ -51,7 +52,7 @@ export default function useTeamGenerationQueue({workspace,date,apiKey,onRestoreD
       if(controller.signal.aborted)return;apply(next);setRecovering(false);
       if(next)await execute(next,next.rows.filter(row=>['queued','generating'].includes(row.status)));
     })().catch(failure=>{if(!controller.signal.aborted)setError(failure.message);}).finally(()=>{if(!controller.signal.aborted)setRecovering(false);});
-    return()=>{controller.abort();controllerRef.current?.abort();};
+    return()=>{window.removeEventListener('pagehide',leaving);leaving();};
   },[workspace,date,apiKey]);
   async function refresh(){if(running || recovering)return;const view={workspace,date};setRecovering(true);setError('');try{const next=await load(queueRef.current?.id);if(active(view))apply(next);}catch(failure){if(active(view))setError(failure.message);}finally{if(active(view))setRecovering(false);}}
   async function start(players,request){
