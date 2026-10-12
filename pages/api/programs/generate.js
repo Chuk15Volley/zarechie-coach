@@ -1612,10 +1612,10 @@ export async function buildGenerationInputs(body) {
   if (adaptedResult) return { targetDate, dayGoal, readyResult: adaptedResult };
   const methodRecommendation = manualMethodRecommendation(gymRecommendation, manualMethod);
   // Server-only development generation: clinical data never enter a model prompt.
-  if (focus === 'inseason_strength' && strengthMode === 'development') {
-    if (!gymRecommendation) return { error: 'Для развивающей силовой нужны данные ReadySix; внешняя генерация не запускается.', status: 422 };
+  if (focus === 'inseason_strength') {
+    if (!gymRecommendation) return { error: 'Для силовой нужны данные ReadySix; внешняя генерация не запускается.', status: 422 };
     try {
-      const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+      const readyResult = buildStrengthDevelopmentDraft({ snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
       readyResult.timeZone = timeZone;
       return { targetDate, dayGoal, readyResult };
     } catch (error) {

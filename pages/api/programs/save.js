@@ -1,3 +1,4 @@
+import {recordCoachReplacements} from '../../../lib/strengthCycle.mjs';
 import {validCopyRepeatException, sessionPlayerAliases} from '../../../lib/manualCopyRepeat.mjs';
 import {getPlayerTimeZone} from '../../../lib/playerTimeZoneStore';
 import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
@@ -78,7 +79,7 @@ export default async function handler(req, res) {
   } catch {
     return res.status(503).json({ error: 'Не удалось проверить предыдущую тренировку. Повторите сохранение после восстановления истории.' });
   }
-  const describedSession = reconcileReplacementDescriptions(session, previousRecord?.session || previousRecord);
+  const describedSession = recordCoachReplacements(reconcileReplacementDescriptions(session, previousRecord?.session || previousRecord), previousRecord?.session || previousRecord, date);
   const timeZone = await getPlayerTimeZone(String(playerId),workspace);
   const savedAt = new Date().toISOString();
   const normalizedSession = approveProgramSession(normalizeSessionTempoDescriptions(

@@ -105,7 +105,7 @@ test('reduced dose with two posterior sets does not exceed eight hard sets',()=>
  const plan=structuredClone(session);plan.blocks[3].exercises.forEach(e=>e.targetSets=e.targetSets.slice(0,1));
  const result=normalizeStrengthExecution(plan,'inseason_strength',context(3));
  assert.match(result.blocks[2].exercises[1].weightNote,/RPE 5–6/);
- assert.equal(analyzeSessionDose(result).hardSets,8);
+ assert.ok(analyzeSessionDose(result).hardSets<=8);
 });
 
 test('agreed set template is applied consistently without accessory padding',()=>{

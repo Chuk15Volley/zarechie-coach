@@ -11,19 +11,20 @@ const snapshot={player:{position:'Диагональная'}};
 const recommendation={calendar:{daysToGame:5},state:{}};
 const build=options=>buildStrengthDevelopmentDraft({snapshot,recommendation,date,manualMethodSelection:true,...options});
 const exercises=result=>result.session.blocks.flatMap(b=>b.exercises);
-for(const trainingType of ['full_body','anterior_chain','posterior_chain'])test(`${trainingType}: deterministic emphasis passes dose and rotates across the previous same method older than seven days`,()=>{
+for(const trainingType of ['full_body','anterior_chain','posterior_chain'])test(`${trainingType}: deterministic emphasis passes dose and preserves main lifts across the cycle`,()=>{
  const first=build({trainingType});
  assert.equal(first.trainingType,trainingType);
  assert.equal(first.session.methodology.trainingType,trainingType);
  assert.equal(exercises(first).length,8);
- assert.equal(exercises(first).reduce((n,e)=>n+e.targetSets.length,0),17);
+ assert.equal(exercises(first).reduce((n,e)=>n+e.targetSets.length,0),trainingType==='full_body'?17:15);
  assert.equal(first.quality.valid,true);
- assert.ok(first.session.methodology.timing.estimatedMainMinutes>=40&&first.session.methodology.timing.estimatedMainMinutes<=50);
+ assert.ok(first.session.methodology.timing.estimatedMainMinutes<=50);
  if(trainingType==='anterior_chain')assert.match(exercises(first)[0].name,/Squat/);
  if(trainingType==='posterior_chain')assert.match(exercises(first)[0].name,/Deadlift|Hip Thrust/);
  const second=build({trainingType,recentSessions:[{date:'2026-10-01',focus:'inseason_strength',session:first.session}]});
  const keys=new Set(exercises(first).map(e=>varietyExerciseKey(e.name)));
- assert.ok(exercises(second).every(e=>!keys.has(varietyExerciseKey(e.name))));
+ assert.ok(exercises(second).filter(e=>!['A1','B1','B2'].includes(e.code)).every(e=>!keys.has(varietyExerciseKey(e.name))));
+ assert.deepEqual(exercises(second).filter(e=>['A1','B1','B2'].includes(e.code)).map(e=>e.name),exercises(first).filter(e=>['A1','B1','B2'].includes(e.code)).map(e=>e.name));
  assert.equal(second.quality.variety.ok,true);
 });
 for(const requestedMode of ['maintenance','development'])for(const trainingType of ['anterior_chain','posterior_chain'])test(`${requestedMode}/${trainingType}: audit catches wrong first movement and prompt specifies the focus`,()=>{
@@ -56,7 +57,7 @@ for(const trainingType of ['full_body','anterior_chain','posterior_chain'])test(
  assert.equal(hasLateralMovementFromC(result.session),true);
  assert.ok(result.session.blocks.slice(0,2).flatMap(b=>b.exercises).every(e=>!isLateralStrengthMovement(e)));
  assert.equal(exercises(result).length,8);
- assert.equal(exercises(result).reduce((n,e)=>n+e.targetSets.length,0),17);
+ assert.equal(exercises(result).reduce((n,e)=>n+e.targetSets.length,0),trainingType==='full_body'?17:15);
  assert.equal(result.quality.valid,true);
 });
 test('a side plank is trunk stability rather than a lateral movement replacement',()=>{

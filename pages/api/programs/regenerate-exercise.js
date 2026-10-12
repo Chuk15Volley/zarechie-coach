@@ -1,3 +1,10 @@
+import {strengthReplacementCandidate} from '../../../lib/strengthDevelopmentDraft.mjs';
+import {prehabSymptoms} from '../../../lib/prehabMethodology.mjs';
+import {medicalHoldReason} from '../../../lib/medicalHold.mjs';
+import {getPlayerSnapshot} from '../../../lib/playerData';
+import {recommendGymSession} from '../../../lib/readySixGym.mjs';
+import {restrictionsKey} from '../../../lib/workspacePrefix';
+import {recordCoachReplacements} from '../../../lib/strengthCycle.mjs';
 import { isCoachBannedExercise, coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import {getRecentSessionRecords} from '../../../lib/sessionHistory';
 import {buildExerciseVarietyContext,varietyExerciseKey,formatExerciseVarietyForPrompt,auditExerciseVariety} from '../../../lib/exerciseVariety.mjs';
@@ -194,6 +201,26 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
 
 Верни замену только через инструмент replace_exercise. Не добавляй текстовый ответ.`;
 
+  if(replacementFocus === 'inseason_strength' && exercise.strengthFamily) {
+    try {
+      const snapshot=await getPlayerSnapshot(String(playerId),7,date,7,workspace);
+      if(!snapshot?.readySixMeta) return res.status(422).json({error:'Обновите данные ReadySix перед заменой упражнения.'});
+      const state=recommendGymSession({snapshot,targetDate:date})?.state || {};
+      const hold=medicalHoldReason(snapshot,state,date);
+      if(hold) return res.status(422).json({error:hold});
+      const symptoms=prehabSymptoms(snapshot,state,date,[],{hip:/пах|тазобедр|groin|hip/i,ankle:/икронож|икр[ауы]|calf|голеностоп|голен[ьи]|стоп[аыуе]|foot|shin|ankle/i});
+      const rawRestrictions=await redis('get',restrictionsKey(workspace,String(playerId)));
+      const playerRestrictions=typeof rawRestrictions==='string'?JSON.parse(rawRestrictions):rawRestrictions || [];
+      const candidate=strengthReplacementCandidate({exercise,session,varietyContext,playerRestrictions,symptoms});
+      if(!candidate) return res.status(422).json({error:'Нет подходящей новой замены в проверенном каталоге. Выберите вариант вручную и укажите причину.'});
+      // Keep edits in the coach draft until Save, including the reason entered next.
+      const normalized=normalizeSessionTempoDescriptions({blocks:[{exercises:[candidate]}]});
+      return res.status(200).json({exercise:normalized.blocks[0].exercises[0]});
+    } catch {
+      return res.status(503).json({error:'Не удалось проверить ограничения и подобрать замену. Правки остаются на экране.'});
+    }
+  }
+
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(503).json({ error: 'OPENAI_API_KEY не настроен' });
 
@@ -269,6 +296,9 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
       return res.status(502).json({ error: 'Не удалось подобрать безопасную замену. Нажмите «Заменить» ещё раз.' });
     }
     newExercise.code = exercise.code;
+    newExercise.replacementFrom=exercise.replacementFrom || exercise.name;
+    newExercise.weightKg=null; newExercise.loadEvidence=null;
+    newExercise.weightNote='Вес нового упражнения подобрать подводящими подходами по технике и целевому RPE; вес прежнего варианта не переносить.';
     newExercise.tempo = newExercise.tempo || exercise.tempo || '';
     newExercise.targetSets = Array.isArray(newExercise.targetSets) && newExercise.targetSets.length
       ? newExercise.targetSets
@@ -306,7 +336,7 @@ ${(session.blocks || []).map((b, i) => `Блок ${i + 1} (${b.label || b.code |
       if (replacementQuality.blocking) {
         return res.status(422).json({ error: replacementQuality.reviewMessage, quality: replacementQuality });
       }
-      const toSave = record.session ? { ...record, session: updatedSession, quality: replacementQuality } : updatedSession;
+      const toSave = record.session ? { ...record, session: recordCoachReplacements(updatedSession,record.session,date), quality: replacementQuality } : updatedSession;
       await redis('set', sessionKey(workspace, playerId, date), JSON.stringify(toSave));
     }
 

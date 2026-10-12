@@ -9,7 +9,7 @@ test('library, alternatives and typed names refresh all inherited description fi
  for(const name of ['Goblet Squat ISO','45° Hyperextension','Copenhagen Adductor Plank ISO Hold','DB Bench Press','Seated Ankle Circles','Custom Movement']) {
   const next=replaceExerciseDescription(original,{name});const text=exerciseDescription(next);
   assert.ok(text);assert.doesNotMatch(text,/Стар|пяткой/);assert.equal(next.descriptionOverride,undefined);assert.equal(next.compactDescription,undefined);assert.equal(next.coaching_note,undefined);
-  assert.equal(next.descriptionExerciseId,canonicalExerciseId(name));assert.deepEqual(next.targetSets,original.targetSets);assert.equal(next.weightKg,22);assert.equal(next.symptomAdapted,true);assert.equal(next.controlledExecution,true);
+  assert.equal(next.descriptionExerciseId,canonicalExerciseId(name));assert.deepEqual(next.targetSets,original.targetSets);assert.equal(next.weightKg,null);assert.equal(next.symptomAdapted,true);assert.equal(next.controlledExecution,true);
  }
  assert.match(exerciseDescription(replaceExerciseDescription(original,{name:'Goblet Squat ISO'})),/у груди.*стопы.*Удерживать/);
  assert.match(exerciseDescription(replaceExerciseDescription(original,{name:'45° Hyperextension'})),/сгиба таза.*тазобедренных/);

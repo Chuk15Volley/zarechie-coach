@@ -1,3 +1,4 @@
+import {REPLACEMENT_REASONS} from '../lib/strengthCycle.mjs';
 import PlayerTimeZoneControl from '../components/PlayerTimeZoneControl';
 import {playerTimeZone,playerLocalDate} from '../lib/playerTimeZone.mjs';
 import { saveProgramRequest } from '../lib/programSaveClient.mjs';
@@ -1287,6 +1288,7 @@ function ExerciseCard({
   actualRpe,
   onActualRpeChange,
   onChangeName,
+  replacementFrom, replacementReason, replacementNote, onChangeReplacementReason, onChangeReplacementNote,
   onChangeSet,
   onAddSet,
   onRemoveSet,
@@ -1446,6 +1448,16 @@ function ExerciseCard({
           minRows={1}
           className="mt-1.5 w-full resize-none bg-transparent text-[16px] font-bold leading-snug text-white outline-none placeholder:text-slate-500 print:text-slate-900"
         />
+        {focus === 'inseason_strength' && replacementFrom && (
+          <div className="mt-2 rounded-xl border border-white/10 bg-black/15 p-2 print:hidden">
+            <div className="text-[11px] text-slate-400">Замена: {replacementFrom}</div>
+            <label className="mt-1 block text-[11px] text-slate-300">Причина замены
+              <PremiumSelect value={replacementReason || ''} onChange={value => onChangeReplacementReason?.(value)} options={[{value:'',label:'Не указана — не учитывать при подборе'},...Object.entries(REPLACEMENT_REASONS).map(([value,label])=>({value,label}))]} className="mt-1 w-full rounded-lg bg-slate-900 p-2 text-xs text-white" />
+            </label>
+            <input aria-label="Комментарий к замене" placeholder="Комментарий к замене" value={replacementNote || ''} maxLength={300} onChange={e => onChangeReplacementNote?.(e.target.value)} className="mt-2 w-full rounded-lg bg-slate-900 p-2 text-xs text-white" />
+            <div className="mt-1 text-[10px] text-slate-500">Учитывается для этого игрока после сохранения. Разовая замена не создаёт запрет.</div>
+          </div>
+        )}
         {hasConflict && (
           <div className="mt-1 flex flex-wrap items-center gap-2 print:hidden">
             <span className="text-[10px] font-semibold text-rose-400">⚠ Ограничение · заменить ↑</span>
@@ -4334,6 +4346,8 @@ export default function Home() {
   }
 
   function updateExercise(blockIdx, exIdx, patch) {
+    setJustSaved(false);
+    setAutoSaved(false);
     setSession(prev => ({
       ...prev,
       blocks: prev.blocks.map((b, bi) =>
@@ -5130,6 +5144,8 @@ export default function Home() {
                     title={focus === 'inseason_strength' ? 'Акцент силовой тренировки' : 'Ручной тип тренировки'}
                     compact
                   />
+
+                  {focus === 'inseason_strength' && <p className="text-[10px] leading-relaxed text-slate-500">Основные упражнения — цикл 4 занятия. Для соседних дней выбирайте разные цепи; пересекающаяся нагрузка снижается.</p>}
 
                   {/* Day goal */}
                   <input
@@ -7401,6 +7417,7 @@ export default function Home() {
                   className={`${inputBase} ${focusRing} mb-2 [color-scheme:dark]`}
                   title="Выберите тип тренировки"
                 />
+                {focus === 'inseason_strength' && <p className="mb-2 text-[11px] text-slate-500">Основные упражнения — цикл 4 занятия. Передняя / задняя цепь; соседние дни учитываются автоматически.</p>}
                 <input
                   type="text"
                   value={dayGoal}
@@ -8123,6 +8140,11 @@ export default function Home() {
                           onActualKgChange={pendingSaved ? (v => updateExercise(bi, ei, { actualKg: v })) : undefined}
                           actualRpe={ex.actualRpe ?? null}
                           onActualRpeChange={pendingSaved ? (v => updateExercise(bi, ei, { actualRpe: v })) : undefined}
+                          replacementFrom={ex.replacementFrom}
+                          replacementReason={ex.replacementReason}
+                          replacementNote={ex.replacementNote}
+                          onChangeReplacementReason={v => updateExercise(bi, ei, { replacementReason: v })}
+                          onChangeReplacementNote={v => updateExercise(bi, ei, { replacementNote: v })}
                           onChangeName={v => updateExercise(bi, ei, { name: v })}
                           onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
                           onAddSet={() => addSetRow(bi, ei)}
