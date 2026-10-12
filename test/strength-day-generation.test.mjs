@@ -1,3 +1,4 @@
+import {generateTeamPlayer,runTeamGeneration} from '../lib/teamGenerationClient.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -47,5 +48,8 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: actual daily in
   history=[];store.delete(prefix+':strength:cycle-decision:synthetic:2026-10-01');
 
  }
+ const updates=[];
+ await runTeamGeneration(Array.from({length:10},(_,i)=>({id:'team-synthetic-'+i})),{apiKey:'synthetic',request:{workspace,date:'2026-10-13',focus:'inseason_strength',trainingType:'posterior_chain',strengthMode:'development',manualMethodSelection:true,autoSave:true},onUpdate:(id,patch)=>updates.push({id,...patch}),generate:(body,options)=>generateTeamPlayer(body,{...options,wait:async()=>{},fetchImpl:async(url,init)=>{const res=response();if(init.method==='POST')await submit({method:'POST',body:JSON.parse(init.body)},res);else await poll({method:'GET',query:{batchId:new URL(url,'http://localhost').searchParams.get('batchId')}},res);return {ok:res.code<400,status:res.code,json:async()=>res.body};}})});
+ assert.equal(updates.filter(row=>row.status==='done' && row.draft && row.date==='2026-10-13').length,10);assert.equal(updates.filter(row=>row.status==='error').length,0);
  assert.ok(readKeys.filter(key=>!key.startsWith('coach:batch:')).every(key=>key.startsWith(prefix+':')));
 });

@@ -1,3 +1,5 @@
+import TeamGenerationResults from '../components/TeamGenerationResults';
+import {isCoachReviewDraft,runTeamGeneration} from '../lib/teamGenerationClient.mjs';
 import {STRENGTH_EQUIPMENT, STRENGTH_COHORT_EXPERIENCE} from '../lib/strengthEquipment.mjs';
 import {REPLACEMENT_REASONS} from '../lib/strengthCycle.mjs';
 import PlayerTimeZoneControl from '../components/PlayerTimeZoneControl';
@@ -2373,6 +2375,7 @@ export default function Home() {
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchSelectedIds, setBatchSelectedIds] = useState(new Set());
   const [batchRunning, setBatchRunning] = useState(false);
+  const batchRunRef=useRef(null);
   const [batchResults, setBatchResults] = useState([]); // [{playerId, name, position, status, error}]
   const [showSummary, setShowSummary] = useState(false);
 
@@ -2564,6 +2567,7 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
+  useEffect(()=>{batchRunRef.current?.abort();batchRunRef.current=null;setBatchResults([]);setBatchRunning(false);return()=>batchRunRef.current?.abort();},[workspace,date]);
   const [playerClockNow,setPlayerClockNow] = useState(null);
   useEffect(()=>{const tick=()=>setPlayerClockNow(new Date());tick();const timer=setInterval(tick,30000);return()=>clearInterval(timer);},[]);
   const activePlayerTimeZone = workspace==='nkperf'?playerTimeZone(selectedPlayer?.timeZone):'Europe/Moscow';
@@ -3924,104 +3928,23 @@ export default function Home() {
     }
   }
 
+  async function executeTeamGeneration(selected,retry=false) {
+    if(batchRunRef.current || !selected.length)return;
+    const controller=new AbortController();batchRunRef.current=controller;
+    const request={date,dayGoal,days,focus,trainingType,powerMode,strengthMode,notes,coachRecovery:recoveryStatus,workspace,manualMethodSelection: true,autoSave:true};
+    const resumeIds=retry?Object.fromEntries(batchResults.filter(row=>row.status==='error' && row.retryBatchId).map(row=>[row.playerId,row.retryBatchId])):{};
+    if(!retry)setBatchResults(selected.map(player=>({playerId:player.id,name:player.name,position:player.position,status:'queued',workspace,date})));
+    setBatchRunning(true);
+    try {await runTeamGeneration(selected,{request,apiKey,signal:controller.signal,resumeIds,onUpdate:(id,patch)=>setBatchResults(previous=>controller.signal.aborted?previous:previous.map(row=>row.playerId===id?{...row,...patch}:row))});}
+    finally{if(batchRunRef.current===controller){batchRunRef.current=null;setBatchRunning(false);}}
+  }
   async function retryFailedBatch() {
-    const failedIds = new Set(batchResults.filter(r => r.status === 'error').map(r => r.playerId));
-    const failed = players.filter(p => failedIds.has(p.id));
-    if (!failed.length) return;
-    setBatchResults(prev => prev.map(r => failedIds.has(r.playerId) ? { ...r, status: 'queued', error: undefined } : r));
-    setBatchRunning(true);
-
-    const CONCURRENCY = 5;
-    const queue = [...failed];
-    async function worker() {
-      while (queue.length) {
-        const player = queue.shift();
-        try {
-          const result = await generatePlayerAsync(player);
-          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done', draft: !result?.autoSaved } : r));
-        } catch (err) {
-          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
-        }
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, failed.length) }, worker));
-
-    setBatchRunning(false);
+    const failedIds=new Set(batchResults.filter(row=>row.status==='error').map(row=>row.playerId));
+    await executeTeamGeneration(players.filter(player=>failedIds.has(player.id)),true);
   }
-
-  // Generate + poll one player's gym session via the async generation path.
-  // Batch generation keeps autoSave enabled so no separate save call is needed.
-  async function generatePlayerAsync(player) {
-    setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'generating' } : r));
-
-    // 1. Submit the batch.
-    const submitRes = await fetch('/api/programs/generate-async', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ playerId: player.id, date, dayGoal, days, focus, trainingType, powerMode, strengthMode, notes, coachRecovery: recoveryStatus, workspace, manualMethodSelection: true, autoSave: true }),
-    });
-    const submitData = await submitRes.json().catch(() => ({}));
-    if (!submitRes.ok) throw new Error(submitData.error || 'Ошибка постановки в очередь');
-    const batchId = submitData.batchId;
-    if (!batchId) throw new Error('Сервер не вернул идентификатор задачи');
-    setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, batchId } : r));
-
-    // 2. Poll every 6s, up to 8 minutes (80 attempts).
-    const MAX_ATTEMPTS = 80;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      await new Promise(r => setTimeout(r, 6000));
-      let statusData;
-      try {
-        const statusRes = await fetch(`/api/programs/generate-status?batchId=${encodeURIComponent(batchId)}`, {
-          headers: { 'x-api-key': apiKey },
-        });
-        statusData = await statusRes.json();
-        if (!statusRes.ok) {
-          const terminalError = new Error(statusData.error || 'Ошибка проверки статуса');
-          terminalError.terminal = true;
-          throw terminalError;
-        }
-      } catch (pollError) {
-        if (pollError?.terminal) throw pollError;
-        // Transient network blip during polling — keep trying until the attempt cap.
-        continue;
-      }
-      if (statusData.status === 'done') {
-        if (!statusData.autoSaved && !['prehab_training_draft', 'restricted_training_draft', 'restricted_day_plan'].includes(statusData.session?.kind)) throw new Error(statusData.saveWarning || 'Тренировка создана, но не прошла безопасное автосохранение.');
-        return statusData;
-      }
-      // status 'pending' → loop again
-    }
-    throw new Error('Генерация заняла слишком долго');
-  }
-
   async function runBatchGeneration() {
-    if (matchDayManualReview) {
-      setError('В игровой день праймер генерируется индивидуально: откройте игрока, проверьте программу и сохраните вручную. Командное автосохранение отключено.');
-      return;
-    }
-    const selected = players.filter(p => batchSelectedIds.has(p.id));
-    if (!selected.length) return;
-    setBatchResults(selected.map(p => ({ playerId: p.id, name: p.name, position: p.position, status: 'queued' })));
-    setBatchRunning(true);
-
-    // Run players through a pool, max 5 concurrent.
-    const CONCURRENCY = 5;
-    const queue = [...selected];
-    async function worker() {
-      while (queue.length) {
-        const player = queue.shift();
-        try {
-          const result = await generatePlayerAsync(player);
-          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'done', draft: !result?.autoSaved } : r));
-        } catch (err) {
-          setBatchResults(prev => prev.map(r => r.playerId === player.id ? { ...r, status: 'error', error: err.message } : r));
-        }
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, selected.length) }, worker));
-
-    setBatchRunning(false);
+    if(matchDayManualReview){setError('В игровой день праймер генерируется индивидуально: откройте игрока, проверьте программу и сохраните вручную. Командное автосохранение отключено.');return;}
+    await executeTeamGeneration(players.filter(player=>batchSelectedIds.has(player.id)));
   }
 
   async function openBatchDraft(result) {
@@ -4031,7 +3954,7 @@ export default function Home() {
     const requestId = draftOpenRequest.current;
     setError('');
     try {
-      const response = await fetch(`/api/programs/get?playerId=${encodeURIComponent(result.playerId)}&date=${encodeURIComponent(date)}&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } });
+      const response = await fetch(`/api/programs/get?playerId=${encodeURIComponent(result.playerId)}&date=${encodeURIComponent(result.date || date)}&workspace=${encodeURIComponent(result.workspace || workspace)}`, { headers: { 'x-api-key': apiKey } });
       const data = await response.json();
       if (requestId !== draftOpenRequest.current) return;
       if (!response.ok) throw new Error(data.error || 'Не удалось открыть программу');
@@ -4150,7 +4073,7 @@ export default function Home() {
         setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel: statusData.session?.kind === 'restricted_day_plan' ? 'План дня · без нагрузки' : statusData.session?.kind === 'restricted_training_draft' ? 'Верх тела с ограничениями' : statusData.session?.kind === 'prehab_training_draft' ? 'Профилактика · индивидуальная программа' : focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
         setShowSummary(false);
         setAutoSaved(!!statusData.autoSaved);
-        if (!['restricted_day_plan', 'restricted_training_draft', 'prehab_training_draft'].includes(statusData.session?.kind) && (statusData.saveWarning || statusData.quality?.medicalReviewRequired)) {
+        if (!isCoachReviewDraft(statusData.session) && (statusData.saveWarning || statusData.quality?.medicalReviewRequired)) {
           setError(statusData.saveWarning || statusData.quality.medicalReviewReason);
         }
         stopGenProgress(true);
@@ -7205,23 +7128,7 @@ export default function Home() {
                   {batchRunning ? <Loader2 size={15} className="animate-spin" /> : <Zap size={15} />}
                   {batchRunning ? 'Генерация...' : 'Сгенерировать выбранным'}
                 </button>
-                {batchResults.length > 0 && (
-                  <div className="mt-4 grid grid-cols-2 gap-2 text-left">
-                    {batchResults.map(r => (
-                      <div key={r.playerId} className={`rounded-xl border px-3 py-2 ${
-                        r.status === 'done' ? 'border-emerald-500/25 bg-emerald-500/[0.07]' :
-                        r.status === 'error' ? 'border-rose-500/25 bg-rose-500/[0.07]' :
-                        r.status === 'generating' ? 'border-accent/25 bg-accent/[0.07]' :
-                        'border-white/[0.07] bg-white/[0.03]'
-                      }`}>
-                        <div className="truncate text-[12px] font-semibold text-slate-200">{r.name}</div>
-                        <div className="mt-0.5 text-[10px] text-slate-600">
-                          {r.status === 'done' ? (r.draft ? 'Черновик' : 'Сохранено') : r.status === 'error' ? 'Ошибка' : r.status === 'generating' ? 'Генерирую...' : 'В очереди'}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <TeamGenerationResults results={batchResults} running={batchRunning} onOpen={openBatchDraft} onRetry={retryFailedBatch} />
                 <p className="mt-3 text-[11px] text-slate-600">Выбранная методика имеет приоритет. Автоматические лимиты ReadySix не применяются; боли и медицинские ограничения учитываются.</p>
               </div>
             </div>
@@ -7727,7 +7634,7 @@ export default function Home() {
                     <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[11px] font-bold text-accent">{batchSelectedIds.size}</span>
                   )}
                 </div>
-                <button onClick={() => { setBatchOpen(false); setBatchResults([]); setBatchRunning(false); }} className="text-slate-600 hover:text-slate-400 transition">
+                <button onClick={() => { batchRunRef.current?.abort();batchRunRef.current=null;setBatchOpen(false); setBatchResults([]); setBatchRunning(false); }} className="text-slate-600 hover:text-slate-400 transition">
                   <X size={16} />
                 </button>
               </div>
