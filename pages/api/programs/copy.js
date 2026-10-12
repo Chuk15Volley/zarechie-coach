@@ -1,3 +1,4 @@
+import {createCopyRepeatException} from '../../../lib/manualCopyRepeat.mjs';
 import { getPlayerTimeZone } from '../../../lib/playerTimeZoneStore';
 import { coachBannedSessionExercises, hasRestriction } from '../../../lib/exerciseRestrictions';
 import { getRecentSessionRecords } from '../../../lib/sessionHistory';
@@ -18,7 +19,7 @@ const identityAliases = id => /^\d+$/.test(String(id).replace(/^whoop_/,'')) ? [
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({error:'Unauthorized'});
   if (req.method !== 'POST') return res.status(405).end();
-  const {fromPlayerId,toPlayerId,date,workspace='zarechie',targetWorkspace=workspace,targetDate=date,dryRun=false,sourceSession=null} = req.body || {};
+  const {fromPlayerId,toPlayerId,date,workspace='zarechie',targetWorkspace=workspace,targetDate=date,dryRun=false,sourceSession=null,allowRepeatedExercises=false} = req.body || {};
   if (!validProgramWorkspace(workspace) || !validProgramWorkspace(targetWorkspace) || !fromPlayerId || !toPlayerId || !/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate || '')) return res.status(400).json({error:'Выберите команды, игроков и даты.'});
   if (workspace===targetWorkspace && String(fromPlayerId).replace(/^whoop_/,'')===String(toPlayerId).replace(/^whoop_/,'') && date===targetDate) return res.status(400).json({error:'Выберите другого получателя или другую дату.'});
   try {
@@ -47,7 +48,11 @@ export default async function handler(req, res) {
       dosePrescription:buildDosePrescription({focus:source.focus,trainingType:source.trainingType}),
       medicalReviewRequired:true,medicalReviewReason:'Проверьте ReadySix и индивидуальную дозировку получателя перед назначением.',
     }));
-    if (source.focus==='inseason_strength' && copyQuality.variety?.needsCorrection) return res.status(409).json({error:'У получателя уже были эти упражнения. Нужны замены перед копированием.',repeated:copyQuality.variety.repeated});
+    if (source.focus==='inseason_strength' && copyQuality.variety?.needsCorrection && allowRepeatedExercises !== true) return res.status(409).json({error:'У получателя уже были эти упражнения. Нужны замены перед копированием.',repeated:copyQuality.variety.repeated});
+    if (allowRepeatedExercises === true && copyQuality.variety?.needsCorrection) {
+      session.copyRepeatException=createCopyRepeatException(session,{workspace:targetWorkspace,playerId:toPlayerId,date:targetDate,sourceWorkspace:workspace,sourcePlayerId:fromPlayerId,sourceDate:date});
+      copyQuality.copyRepeatException=session.copyRepeatException;
+    }
     const record={session,player:targetPlayer,date:targetDate,timeZone:await getPlayerTimeZone(String(toPlayerId),targetWorkspace),focus:source.focus||'',trainingType:source.trainingType||'',strengthMode:source.strengthMode||null,trainingLabel:'Копия программы · проверка тренером',quality:copyQuality,draft:true,generatedAt:new Date().toISOString(),copiedFromPlayerId:String(fromPlayerId),copiedFromWorkspace:workspace,copiedFromDate:date};
     if (dryRun === true) return res.status(200).json({ok:true,draft:true,preview:true,record});
     await redis('set',generatedDraftKey(targetWorkspace,String(toPlayerId),targetDate),JSON.stringify(record));

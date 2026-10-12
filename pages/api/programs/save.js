@@ -1,3 +1,4 @@
+import {validCopyRepeatException, sessionPlayerAliases} from '../../../lib/manualCopyRepeat.mjs';
 import {getPlayerTimeZone} from '../../../lib/playerTimeZoneStore';
 import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import { reconcileReplacementDescriptions } from '../../../lib/exerciseReplacement.mjs';
@@ -92,7 +93,9 @@ export default async function handler(req, res) {
     medicalReviewRequired: session.kind === 'prehab_training_draft' && (session.methodology?.mode === 'regional' || session.methodology?.preliminary === true),
     medicalReviewReason: session.kind === 'prehab_training_draft' ? String(quality?.medicalReviewReason || 'Проверить ограничения и допуск перед выполнением.') : '',
   }));
-  if (focus === 'inseason_strength' && saveQuality.variety?.needsCorrection) {
+  const repeatException=validCopyRepeatException(normalizedSession,{workspace,playerId,date});
+  if (repeatException) saveQuality.copyRepeatException=normalizedSession.copyRepeatException;
+  if (focus === 'inseason_strength' && saveQuality.variety?.needsCorrection && !repeatException) {
     return res.status(409).json({ error: 'Силовая содержит упражнения из предыдущих программ. Замените повторы перед сохранением.', repeated: saveQuality.variety.repeated });
   }
   const persistenceQuality = saveQuality.blocking
@@ -155,13 +158,14 @@ export default async function handler(req, res) {
 
   try {
     const versionEntry = JSON.stringify({ ...record, savedAt: new Date().toISOString() });
-    const versionsKey = `${sessionKey(workspace, playerId, date)}:versions`;
+    // Keep legacy player links and the ReadySix coach id on the same saved edition.
     const cmds = [
-      ['SET', sessionKey(workspace, playerId, date), JSON.stringify(record)],
-      ['ZADD', sessionsKey(workspace, playerId), dateScore, date],
-      // #14: Audit trail — keep up to 10 versions per session (newest first)
-      ['LPUSH', versionsKey, versionEntry],
-      ['LTRIM', versionsKey, '0', '9'],
+      ...sessionPlayerAliases(playerId).flatMap(id => [
+        ['SET', sessionKey(workspace, id, date), JSON.stringify(record)],
+        ['ZADD', sessionsKey(workspace, id), dateScore, date],
+        ['LPUSH', `${sessionKey(workspace, id, date)}:versions`, versionEntry],
+        ['LTRIM', `${sessionKey(workspace, id, date)}:versions`, '0', '9'],
+      ]),
       ...exweightCmds,
       ...tonnageCmds,
     ];

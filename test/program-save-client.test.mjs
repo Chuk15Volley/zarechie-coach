@@ -1,3 +1,4 @@
+import {validCopyRepeatException,sessionPlayerAliases} from '../lib/manualCopyRepeat.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -29,7 +30,7 @@ test('replayed save after a lost reply does not add another version or re-read h
  const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
  let record=null,writes=0,historyReads=0;
  const identity=value=>value;
- const deps={getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,coachBannedSessionExercises,
+ const deps={validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,coachBannedSessionExercises,
   redis:async()=>record,sessionKey:()=> 'session',sessionsKey:()=> 'sessions',
   getRecentSessionRecords:async()=>{historyReads++;return [];},reconcileReplacementDescriptions:identity,
   approveProgramSession:identity,normalizeSessionTempoDescriptions:identity,ensureSessionExerciseIds:identity,sanitizeUnavailableEquipmentExercises:identity,

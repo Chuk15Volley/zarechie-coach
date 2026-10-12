@@ -2232,6 +2232,7 @@ export default function Home() {
   const [copyDate, setCopyDate] = useState('');
   const [copyPlayers, setCopyPlayers] = useState([]);
   const [copyError, setCopyError] = useState('');
+  const [copyKeepExact, setCopyKeepExact] = useState(false);
   const [copyPlayersLoading, setCopyPlayersLoading] = useState(false);
   useEffect(() => {
     if (!copyModalOpen || !apiKey) return;
@@ -3116,10 +3117,10 @@ export default function Home() {
       const response = await fetch('/api/programs/copy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ fromPlayerId: playerId, toPlayerId: targetPlayerId, date, workspace, targetWorkspace:copyWorkspace, targetDate:copyDate, sourceSession:session }),
+        body: JSON.stringify({ fromPlayerId: playerId, toPlayerId: targetPlayerId, date, workspace, targetWorkspace:copyWorkspace, targetDate:copyDate, sourceSession:session, allowRepeatedExercises:copyKeepExact }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Не удалось скопировать программу');
+      if (!response.ok) throw new Error([data.error || 'Не удалось скопировать программу', ...(data.repeated || []).map(e=>e.name)].join(' · '));
       const target = copyPlayers.find(p => String(p.id) === String(targetPlayerId));
       setCopyDone({name:target?.name || 'Игрок',workspace:copyWorkspace,playerId:String(targetPlayerId),date:copyDate});
       setCopyModalOpen(false);
@@ -7755,7 +7756,7 @@ export default function Home() {
                     {(justSaved || autoSaved || pendingSaved) && (
                       <button
                         type="button"
-                        onClick={() => {setCopyWorkspace(workspace==='zarechie'?'nkperf':'zarechie');setCopyDate(date);setCopyError('');setCopyModalOpen(true);}}
+                        onClick={() => {setCopyWorkspace(workspace==='zarechie'?'nkperf':'zarechie');setCopyDate(date); setCopyKeepExact(false);setCopyError('');setCopyModalOpen(true);}}
                         className={`grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
                         title="Скопировать тренировку другому игроку"
                       >
@@ -8481,6 +8482,7 @@ export default function Home() {
             <label className="mb-3 block text-xs text-slate-300">Дата программы получателя
               <input aria-label="Дата программы получателя" type="date" value={copyDate} disabled={copying} onChange={e=>setCopyDate(e.target.value)} className="mt-1 block min-h-11 w-full rounded-xl bg-slate-900 p-2 text-white" />
             </label>
+            <label className="mb-3 flex items-start gap-2 text-xs text-slate-300"><input type="checkbox" checked={copyKeepExact} disabled={copying} onChange={e=>setCopyKeepExact(e.target.checked)} />Сохранить состав точно: разово разрешить повторы для этой программы. Запреты тренера сохраняются.</label>
             {copyError && <p role="alert" className="mb-3 text-xs text-rose-300">{copyError}</p>}
             {copyPlayersLoading && <p className="py-3 text-xs text-slate-400">Загрузка игроков…</p>}
             <div className="space-y-1 max-h-64 overflow-y-auto">
