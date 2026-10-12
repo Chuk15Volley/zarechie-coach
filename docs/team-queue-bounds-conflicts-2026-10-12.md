@@ -27,3 +27,11 @@ Every team result writes the shared player draft through an atomic Valkey check 
 Automated checks cover both spaces: stale and concurrent mutations, independent refresh and saved-program protection, obsolete draft writes, five-error stop, wait/processing/request limits, pause timing, worker outage/stall monitoring, bounded client HTTP waits and response ordering. Production verification must use unsaved/disposable probes and preserve existing programs and coach edits.
 
 Next package: show what changed in ReadySix before publication, persist group-publication progress and per-player retry, and add a combined coach review of cycle progress and actual load.
+
+## Release verification
+
+Published application revision **51b8686** on gym.readysix.app, 2026-10-12. 791 tests passed, one existing skipped test; webpack production build passed. The read-only isolated server candidate passed both workspaces: fresh ReadySix digest, pause/resume/cancel, explicit player refresh, stale-version rejection, real Valkey draft CAS and synthetic atomic save guards. Production background worker independently prepared valid unsaved probes for both workspaces with saved programs unchanged.
+
+Browser verification used a disposable paused synthetic queue. Two simultaneous tabs visibly returned the version conflict; independent refresh rotated the first job, cleared its review, preserved the neighbouring ready job and survived reload. Fixture was removed and original NK Pro three unsaved, unreviewed drafts restored. Monitor shows zero active incidents, zero stalled/stopped tasks and healthy worker. Original Safari and real athlete execution data were not changed.
+
+Only gym was recreated. Image sha256:f3fb6e19875ce9fbfe67d92bc0effcefb656d3fc82953a1dfe4ec4c3d6e31bf7; rollback compose /srv/readysix-ru-production/apps.private.compose.yaml.before-team-bounds-51b8686 retains c731771. Screenshot: /private/tmp/team-bounds-production-51b8686.png.
