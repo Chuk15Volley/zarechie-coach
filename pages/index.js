@@ -2228,6 +2228,22 @@ export default function Home() {
   // Copy program to another player
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [copyWorkspace, setCopyWorkspace] = useState('nkperf');
+  const [copyDate, setCopyDate] = useState('');
+  const [copyPlayers, setCopyPlayers] = useState([]);
+  const [copyError, setCopyError] = useState('');
+  const [copyPlayersLoading, setCopyPlayersLoading] = useState(false);
+  useEffect(() => {
+    if (!copyModalOpen || !apiKey) return;
+    let cancelled = false;
+    setCopyPlayersLoading(true); setCopyPlayers([]); setCopyError('');
+    fetch(`/api/players/list?workspace=${copyWorkspace}`, {headers:{'x-api-key':apiKey}})
+      .then(async response => {const data=await response.json(); if(!response.ok)throw new Error(data.error || 'Не удалось загрузить игроков'); return data;})
+      .then(data => {if(!cancelled)setCopyPlayers(data.players || []);})
+      .catch(error => {if(!cancelled)setCopyError(error.message);})
+      .finally(() => {if(!cancelled)setCopyPlayersLoading(false);});
+    return () => {cancelled=true;};
+  }, [copyModalOpen,copyWorkspace,apiKey]);
   const [copyDone, setCopyDone] = useState(null);
 
   // Player photo editing
@@ -2486,6 +2502,18 @@ export default function Home() {
     setJustSaved(false);
     setAutoSaved(false);
   }
+
+  const assignedProgramOpened = useRef(false);
+  useEffect(() => {
+    if (!apiKey || assignedProgramOpened.current) return;
+    const query = new URLSearchParams(window.location.search);
+    const ws=query.get('assignedWorkspace'), id=query.get('assignedPlayer'), d=query.get('assignedDate');
+    if (!['zarechie','nkperf'].includes(ws) || !id || !/^\d{4}-\d{2}-\d{2}$/.test(d || '')) return;
+    assignedProgramOpened.current=true;
+    switchWorkspace(ws); setPlayerId(id); setDate(d); setMainSection('workouts'); setWorkspaceTab('program');setMobileView('workspace');
+    fetch(`/api/players/list?workspace=${ws}`, {headers:{'x-api-key':apiKey}})
+      .then(r=>r.json()).then(data=>setSelectedPlayer((data.players||[]).find(p=>String(p.id)===id)||null)).catch(()=>{});
+  }, [apiKey]);
 
   async function loadNKPlayers(forceSync = false, shouldCommit = () => true) {
     if (shouldCommit()) setPlayersError('');
@@ -3083,19 +3111,20 @@ export default function Home() {
   }
 
   async function copyTo(targetPlayerId) {
-    setCopying(true);
+    setCopying(true); setCopyError('');
     try {
-      await fetch('/api/programs/copy', {
+      const response = await fetch('/api/programs/copy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ fromPlayerId: playerId, toPlayerId: targetPlayerId, date, workspace }),
+        body: JSON.stringify({ fromPlayerId: playerId, toPlayerId: targetPlayerId, date, workspace, targetWorkspace:copyWorkspace, targetDate:copyDate, sourceSession:session }),
       });
-      const target = players.find(p => p.id === targetPlayerId);
-      setCopyDone(target?.name || 'Игрок');
-      setTimeout(() => setCopyDone(null), 3000);
-    } catch (_) {}
-    setCopying(false);
-    setCopyModalOpen(false);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось скопировать программу');
+      const target = copyPlayers.find(p => String(p.id) === String(targetPlayerId));
+      setCopyDone({name:target?.name || 'Игрок',workspace:copyWorkspace,playerId:String(targetPlayerId),date:copyDate});
+      setCopyModalOpen(false);
+    } catch (error) {setCopyError(error.message);}
+    finally {setCopying(false);}
   }
 
   async function savePhoto(url) {
@@ -7726,7 +7755,7 @@ export default function Home() {
                     {(justSaved || autoSaved || pendingSaved) && (
                       <button
                         type="button"
-                        onClick={() => setCopyModalOpen(true)}
+                        onClick={() => {setCopyWorkspace(workspace==='zarechie'?'nkperf':'zarechie');setCopyDate(date);setCopyError('');setCopyModalOpen(true);}}
                         className={`grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
                         title="Скопировать тренировку другому игроку"
                       >
@@ -8438,21 +8467,29 @@ export default function Home() {
       {copyModalOpen && (
         <div
           className="premium-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
-          onClick={() => setCopyModalOpen(false)}
+          onClick={() => !copying && setCopyModalOpen(false)}
         >
           <div
             className="premium-modal-card w-full max-w-xs rounded-3xl border border-white/[0.12] p-5"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="mb-1 text-sm font-bold text-white">Скопировать тренировку</h3>
-            <p className="mb-4 text-[11px] text-slate-500">Кому скопировать программу на {date}?</p>
+            <h3 className="mb-1 text-sm font-bold text-white">Скопировать программу игроку</h3>
+            <p className="mb-4 text-[11px] text-slate-400">{meta?.player?.name} · {date}. Копия появится у получателя как черновик для проверки. Индивидуальные веса не переносятся.</p>
+            <label className="mb-3 block text-xs text-slate-300">Команда получателя
+              <PremiumSelect title="Команда получателя" value={copyWorkspace} disabled={copying} onChange={setCopyWorkspace} options={[{value:'zarechie',label:'Заречье'},{value:'nkperf',label:'NK Pro'}]} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 p-2 text-white" />
+            </label>
+            <label className="mb-3 block text-xs text-slate-300">Дата программы получателя
+              <input aria-label="Дата программы получателя" type="date" value={copyDate} disabled={copying} onChange={e=>setCopyDate(e.target.value)} className="mt-1 block min-h-11 w-full rounded-xl bg-slate-900 p-2 text-white" />
+            </label>
+            {copyError && <p role="alert" className="mb-3 text-xs text-rose-300">{copyError}</p>}
+            {copyPlayersLoading && <p className="py-3 text-xs text-slate-400">Загрузка игроков…</p>}
             <div className="space-y-1 max-h-64 overflow-y-auto">
-              {players.filter(p => p.id !== playerId).map(p => (
+              {copyPlayers.filter(p => copyWorkspace !== workspace || String(p.id) !== String(playerId) || copyDate !== date).map(p => (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => copyTo(p.id)}
-                  disabled={copying}
+                  disabled={copying || !copyDate}
                   className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white/[0.06] disabled:opacity-50"
                 >
                   {p.photo ? (
@@ -8472,7 +8509,7 @@ export default function Home() {
             </div>
             <button
               type="button"
-              onClick={() => setCopyModalOpen(false)}
+              onClick={() => !copying && setCopyModalOpen(false)}
               className="mt-3 w-full rounded-xl border border-white/[0.07] py-2 text-xs text-slate-500 hover:text-slate-300 transition"
             >
               Отмена
@@ -8484,7 +8521,9 @@ export default function Home() {
       {/* ── Copy done toast ── */}
       {copyDone && (
         <div className="premium-toast fixed bottom-5 right-5 z-50 rounded-2xl border border-emerald-300/20 px-4 py-3 text-sm font-semibold text-emerald-200 animate-fade-in">
-          ✓ Скопировано → {copyDone}
+          <div>✓ Черновик скопирован → {copyDone.name}</div>
+          <a className="mt-2 block underline" target="_blank" rel="noopener noreferrer" href={`/?assignedWorkspace=${copyDone.workspace}&assignedPlayer=${encodeURIComponent(copyDone.playerId)}&assignedDate=${copyDone.date}`}>Открыть, проверить и сохранить</a>
+          <button type="button" aria-label="Закрыть уведомление копирования" className="ml-3 text-xs" onClick={()=>setCopyDone(null)}>Закрыть</button>
         </div>
       )}
 

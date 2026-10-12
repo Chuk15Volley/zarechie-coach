@@ -1,0 +1,5 @@
+# Cross-team program copying — 2026-10-12
+
+The coach copy dialog selects recipient workspace, player and date. Both directions are supported; qualified workspace/id/date keys prevent collisions. A successful copy creates a recipient review draft, leaving the published program and athlete logs intact. The result links to the recipient editor in a new tab, preserving edits in the source tab. Publish through the existing manual Save action.
+
+Only movement structure, sets, execution instructions, equipment counts and rest prescriptions transfer. Source athlete weights, load evidence, readiness/medical metadata, approval, results, alternatives and assessment do not. Unloaded exercise prescriptions stay unloaded. The recipient has their own profile and timezone. The server checks coach bans, recipient prohibitions and strict recipient exercise history; failed validation never writes or produces a success toast. No actual athletes were assigned programs by the release audit. A dryRun request performs all checks and returns the review draft without persistence.
