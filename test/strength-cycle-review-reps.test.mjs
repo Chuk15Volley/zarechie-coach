@@ -84,7 +84,7 @@ test('review keeps exact variants, implement count and chain separate, retains r
 });
 for(const workspace of ['zarechie','nkperf'])test(`${workspace}: review endpoint authenticates, scopes history and fails closed`,async()=>{
  const source=readFileSync(new URL('../pages/api/players/strength-cycle-review.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
- const calls=[];const deps={isAuthorized:()=>true,shiftIsoDate,buildStrengthCycleReview,getRecentSessionRecords:async(...args)=>{calls.push(args);return [record(1)];}};
+ const calls=[];const deps={redis:async()=>null,pfx:ws=>ws==='nkperf'?'nkperf':'coach',isAuthorized:()=>true,shiftIsoDate,buildStrengthCycleReview,getRecentSessionRecords:async(...args)=>{calls.push(args);return [record(1)];}};
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
  const response={headers:{},setHeader(key,value){this.headers[key]=value;},status(code){this.code=code;return this;},json(data){this.data=data;return this;}};
  await handler({method:'GET',query:{workspace,playerId:'123',asOf:date}},response);assert.equal(response.code,200);assert.equal(calls[0][2],workspace);assert.equal(calls[0][4].includeStrengthExecution,true);assert.equal(response.headers['Cache-Control'],'no-store');

@@ -1,3 +1,5 @@
+import {buildStrengthCycle} from '../../../lib/strengthCycle.mjs';
+import {previousCycleId} from '../../../lib/strengthCycleDecisions.mjs';
 import {getPlayerTimeZone} from '../../../lib/playerTimeZoneStore';
 import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import { MANUAL_METHOD_POLICY, manualMethodRecommendation } from '../../../lib/manualMethod.mjs';
@@ -1615,8 +1617,11 @@ export async function buildGenerationInputs(body) {
   if (focus === 'inseason_strength') {
     if (!gymRecommendation) return { error: 'Для силовой нужны данные ReadySix; внешняя генерация не запускается.', status: 422 };
     try {
+      const decisionCycle=buildStrengthCycle(recentSessionRecords,{targetDate,trainingType:trainingType || 'full_body'});
+      const sourceCycleId=previousCycleId(recentSessionRecords,decisionCycle.id);
+      const rawDecision=sourceCycleId?await redis('get',`${wpfx}:strength:cycle-decision:${String(playerId)}:${sourceCycleId}`):null;
       const rawEquipment = await redis('get', `${wpfx}:strength:equipment`);
-      const readyResult = buildStrengthDevelopmentDraft({ equipment: parseJSONSafe(rawEquipment, {}), snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, developmentPlan: parseJSONSafe(rawDevelopmentPlan, null), recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+      const readyResult = buildStrengthDevelopmentDraft({ cycleDecision:parseJSONSafe(rawDecision,null), equipment: parseJSONSafe(rawEquipment, {}), snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, developmentPlan: parseJSONSafe(rawDevelopmentPlan, null), recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
       readyResult.timeZone = timeZone;
       return { targetDate, dayGoal, readyResult };
     } catch (error) {
