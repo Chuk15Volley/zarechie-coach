@@ -20,6 +20,7 @@ export default async function handler(req,res) {
       const queue=await loadTeamQueue(request.workspace,request.teamQueueId);
       const player=queue?.players.find(player=>player.playerId===String(request.playerId));
       if(!player)return res.status(404).json({error:'Игрок или очередь не найдены в выбранном пространстве'});
+      if(queue.state!=='running')return res.status(409).json({error:queue.state==='cancelled'?'Очередь отменена':'Очередь на паузе',code:'QUEUE_STOPPED'});
       batchId=player.batchId;teamQueueId=queue.id;request={...queue.request,playerId:player.playerId};
       res.generationContext={workspace:queue.workspace,phase:'submit',batchId};
       const raw=await redis('get','coach:batch:'+batchId),existing=typeof raw==='string'?JSON.parse(raw):raw;
@@ -40,7 +41,7 @@ export default async function handler(req,res) {
       return res.status(inputs.status || 400).json({error:inputs.error});
     }
     if(inputs.readyResult){
-      const result={...inputs.readyResult,...(teamQueueId?context:{}),status:'done',completedAt:new Date().toISOString()};
+      const result={...inputs.readyResult,readySixCheck:inputs.readySixCheck || null,...(teamQueueId?context:{}),status:'done',completedAt:new Date().toISOString()};
       if(teamQueueId)result.session={...result.session,teamGeneration:{queueId:teamQueueId,batchId}};
       const draft=generatedDraftRecord(result,request);
       if(draft)await redis('set',generatedDraftKey(context.workspace,context.playerId,draft.date),JSON.stringify({...draft,...(teamQueueId?{teamQueueId,batchId}:{})}));
@@ -51,7 +52,7 @@ export default async function handler(req,res) {
     const {userPrompt,systemPrompt,dataSummary,targetDate,playerRestrictions=[],qualityContext={},questionnaireContext={}}=inputs;
     const sessionTool=buildSessionTool({includeImgPrompt:true});
     await redis('set','coach:batch:'+batchId,JSON.stringify({...context,date:targetDate,dayGoal:request.dayGoal || '',focus:request.focus || '',trainingType:request.trainingType || '',autoSave:teamQueueId?false:request.autoSave!==false,
-      userPrompt,systemPrompt,dataSummary,playerRestrictions,qualityContext,questionnaireContext,generationRequest:request,sessionTool,status:'pending',submittedAt:new Date().toISOString()}),'EX',teamQueueId?generationJobTTL(context):3600);
+      readySixCheck:inputs.readySixCheck || null,userPrompt,systemPrompt,dataSummary,playerRestrictions,qualityContext,questionnaireContext,generationRequest:request,sessionTool,status:'pending',submittedAt:new Date().toISOString()}),'EX',teamQueueId?generationJobTTL(context):3600);
     return res.status(200).json({batchId,estimatedMinutes:2});
   }catch(error){
     res.generationContext={workspace:request.workspace || 'zarechie',phase:'submit',batchId,outcomeCode:'PREPARATION_FAILED'};

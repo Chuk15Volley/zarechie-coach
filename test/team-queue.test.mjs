@@ -1,3 +1,5 @@
+import {runQueueTick} from '../lib/teamQueueWorker.mjs';
+import {readySixPublicationCheck} from '../lib/readySixPublication.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -12,12 +14,12 @@ function compile(path,deps,returned){
  const body=source.replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\s*/gm,'').replace(/export default /g,'').replace(/^export /gm,'');
  return new Function(...Object.keys(args),body+';return '+returned+';')(...Object.values(args));
 }
-function memory(){const values=new Map(),hashes=new Map(),lists=new Map(),ttl=new Map();
- const redis=async(method,key,...args)=>{method=method.toLowerCase();if(method==='get')return values.get(key) || null;if(method==='set'){if(args.includes('NX') && values.has(key))return null;values.set(key,args[0]);if(args.includes('EX'))ttl.set(key,Number(args[args.indexOf('EX')+1]));return 'OK';}if(method==='del')return Number(values.delete(key));if(method==='hget')return hashes.get(key)?.get(args[0]) || null;if(method==='hset'){if(!hashes.has(key))hashes.set(key,new Map());hashes.get(key).set(args[0],args[1]);return 1;}if(method==='expire'){ttl.set(key,Number(args[0]));return 1;}if(method==='lpush'){if(!lists.has(key))lists.set(key,[]);lists.get(key).unshift(args[0]);return lists.get(key).length;}if(method==='ltrim'){lists.set(key,(lists.get(key)||[]).slice(Number(args[0]),Number(args[1])+1));return 'OK';}if(method==='lrange')return (lists.get(key)||[]).slice(Number(args[0]),Number(args[1])+1);throw Error('Unhandled '+method);};
- const redisPipeline=async commands=>Promise.all(commands.map(async([cmd,...args])=>{if(cmd!=='EVAL')return redis(cmd,...args);const [script,n,key,...argv]=args;if(script.includes('HGET')){const current=await redis('hget',key,argv[0]) || argv[1];if(current!==argv[1])return 0;await redis('hset',key,argv[0],argv[2]);return 1;}if(await redis('get',key)===argv[0])return redis('del',key);return 0;}));return {redis,redisPipeline,values,hashes,ttl};
+function memory(){const values=new Map(),hashes=new Map(),lists=new Map(),ttl=new Map(),sorted=new Map();
+ const redis=async(method,key,...args)=>{method=method.toLowerCase();if(method==='zadd'){if(!sorted.has(key))sorted.set(key,new Map());sorted.get(key).set(args[1],Number(args[0]));return 1;}if(method==='zrange')return [...(sorted.get(key)||new Map()).keys()].slice(Number(args[0]),Number(args[1])+1);if(method==='zrem')return Number(sorted.get(key)?.delete(args[0]));if(method==='eval')return (await redisPipeline([['EVAL',key,...args]]))[0];if(method==='get')return values.get(key) || null;if(method==='set'){if(args.includes('NX') && values.has(key))return null;values.set(key,args[0]);if(args.includes('EX'))ttl.set(key,Number(args[args.indexOf('EX')+1]));return 'OK';}if(method==='del')return Number(values.delete(key));if(method==='hget')return hashes.get(key)?.get(args[0]) || null;if(method==='hset'){if(!hashes.has(key))hashes.set(key,new Map());hashes.get(key).set(args[0],args[1]);return 1;}if(method==='expire'){ttl.set(key,Number(args[0]));return 1;}if(method==='lpush'){if(!lists.has(key))lists.set(key,[]);lists.get(key).unshift(args[0]);return lists.get(key).length;}if(method==='ltrim'){lists.set(key,(lists.get(key)||[]).slice(Number(args[0]),Number(args[1])+1));return 'OK';}if(method==='lrange')return (lists.get(key)||[]).slice(Number(args[0]),Number(args[1])+1);throw Error('Unhandled '+method);};
+ const redisPipeline=async commands=>Promise.all(commands.map(async([cmd,...args])=>{if(cmd!=='EVAL')return redis(cmd,...args);const [script,n,key,...argv]=args;if(script.includes('PEXPIRE'))return (await redis('get',key))===argv[0]?1:0;if(script.includes("=='cancelled'")){if(await redis('get',key)==='cancelled')return 0;await redis('set',key,argv[0]);return 1;}if(script.includes('HGET')){const current=await redis('hget',key,argv[0]) || argv[1];if(current!==argv[1])return 0;await redis('hset',key,argv[0],argv[2]);return 1;}if(await redis('get',key)===argv[0])return redis('del',key);return 0;}));return {redis,redisPipeline,values,hashes,ttl,sorted};
 }
 function fixture(){const store=memory(),deps={...store,...pure,...drafts,crypto,isAuthorized:req=>req.authorized!==false,enforceRateLimit:async()=>true};
- Object.assign(deps,compile('lib/teamQueueStore.js',deps,'({loadTeamQueue,createTeamQueue,teamQueueView,retryTeamPlayer,markTeamPlayerReviewed,teamQueueProgram})'));
+ Object.assign(deps,compile('lib/teamQueueStore.js',deps,'({loadTeamQueue,createTeamQueue,teamQueueView,retryTeamPlayer,markTeamPlayerReviewed,teamQueueProgram,controlTeamQueue})'));
  Object.assign(deps,compile('lib/generationMonitoring.js',deps,'({recordGenerationEvent,generationMonitor,observeGenerationResponse})'));
  let builds=0,build=async request=>({readyResult:{date:request.date,focus:'inseason_strength',trainingType:request.trainingType,strengthMode:request.strengthMode,autoSaved:false,quality:{valid:true},session:{kind:'strength_training_draft',blocks:[{exercises:[{code:'A1',name:'Goblet Squat',targetSets:['4','4'],weightKg:20}]}]}}});
  const submit=compile('pages/api/programs/generate-async.js',{...deps,buildGenerationInputs:async request=>{builds++;return build(request);}},'handler');
@@ -70,4 +72,45 @@ test('queue and monitor enforce authentication, scoped requests, bounded input a
 test('concurrent queue creation admits only one manifest for the same space and date',async()=>{
  const f=fixture(),body={request:request('nkperf'),players:[{id:'one'}]};
  const results=await Promise.allSettled([f.createTeamQueue(body),f.createTeamQueue(body)]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(results.find(r=>r.status==='rejected').reason.status,409);
+});
+
+for(const workspace of ['zarechie','nkperf'])test(workspace+': background worker survives reload/restart, respects pause/cancel and isolates workspaces',async t=>{
+ const old=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='synthetic';t.after(()=>{if(old===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=old;});
+ const f=fixture(),q=await f.createTeamQueue({request:request(workspace),players:[{id:'one'},{id:'two'}]});
+ let calls=0;
+ const tick=()=>runQueueTick({redis:f.redis,request:async(path,body)=>{calls++;const res=body?await f.call(f.submit,body):await f.call(f.poll,null,Object.fromEntries(new URL(path,'http://local').searchParams));return {status:res.code,data:res.body};}});
+ await f.controlTeamQueue(q,'pause');await tick();assert.equal(calls,0);assert.equal((await f.call(f.submit,{workspace,teamQueueId:q.id,playerId:'one'})).body.code,'QUEUE_STOPPED');
+ await f.controlTeamQueue(q,'resume');await tick();assert.equal(f.builds(),2);assert.ok((await f.teamQueueView(await f.loadTeamQueue(workspace,q.id))).rows.every(row=>row.status==='done'));
+ await tick();assert.equal(f.builds(),2,'a restarted worker must not regenerate ready jobs');assert.equal((await f.redis('zrange',pure.queuePrefix(workspace)+':team-queue-active',0,31)).length,0);
+ const next=await f.createTeamQueue({request:{...request(workspace),date:'2026-10-14'},players:[{id:'three'}]});
+ await f.controlTeamQueue(next,'cancel');await tick();assert.equal(f.builds(),2);assert.equal((await f.teamQueueView(await f.loadTeamQueue(workspace,next.id))).rows[0].status,'cancelled');await assert.rejects(f.controlTeamQueue(next,'resume'),/отменена/);await assert.rejects(f.retryTeamPlayer(await f.loadTeamQueue(workspace,next.id),'three',next.players[0].batchId),/Отменённую/);
+ assert.equal(await f.loadTeamQueue(workspace==='nkperf'?'zarechie':'nkperf',q.id),null);
+});
+test('worker honours a shared lease and deferred provider quota without losing durable jobs',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}]});let calls=0;
+ await f.redis('set','coach:team-worker:lease','another');await runQueueTick({redis:f.redis,request:async()=>{calls++;}});assert.equal(calls,0);await f.redis('del','coach:team-worker:lease');
+ const options={redis:f.redis,now:100,request:async()=>{calls++;return {status:429,retryAfter:60,data:{}};}};
+ await runQueueTick(options);assert.equal(calls,1);await runQueueTick({...options,now:200});assert.equal(calls,1);await runQueueTick({...options,now:60200});assert.equal(calls,2);assert.equal((await f.teamQueueView(q)).rows[0].status,'queued');
+});
+test('monitor retains failure history and separates resolved jobs, retry lineage and active failures',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'},{id:'two'}]});const [one,two]=q.players;
+ for(const row of q.players){await f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace:'nkperf',teamQueueId:q.id,playerId:row.playerId,status:'failed'}));await f.recordGenerationEvent({workspace:'nkperf',code:'GENERATION_FAILED',batchId:row.batchId});}
+ let m=await f.generationMonitor('nkperf');assert.equal(m.incidents.activeCount,2);
+ const retried=await f.retryTeamPlayer(q,one.playerId,one.batchId),next=retried.players[0];await f.redis('set','coach:batch:'+next.batchId,JSON.stringify({workspace:'nkperf',status:'done'}));
+ m=await f.generationMonitor('nkperf');assert.equal(m.incidents.activeCount,1);assert.equal(m.incidents.resolvedCount,1);assert.equal(m.counts.GENERATION_FAILED,2);assert.equal(m.needsAttention,true);
+ await f.redis('set','coach:batch:'+two.batchId,JSON.stringify({workspace:'nkperf',status:'done'}));m=await f.generationMonitor('nkperf');assert.equal(m.incidents.activeCount,0);assert.equal(m.incidents.resolvedCount,2);assert.equal(m.needsAttention,false);
+});
+for(const workspace of ['zarechie','nkperf'])test(workspace+': publication checks ReadySix, only reviewed current jobs, medical review and individual-save conflicts',async()=>{
+ const f=fixture(),q=await f.createTeamQueue({request:request(workspace),players:[{id:'one'},{id:'two'},{id:'unreviewed'}]});
+ const snapshot={targetDate:q.date,readySixMeta:{generatedAt:'first'},readySixDecision:{recommendation:'full'},injuryLog:[]};let changed=false,saved=[];
+ for(const row of q.players){await f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace,playerId:row.playerId,teamQueueId:q.id,status:'done',readySixCheck:readySixPublicationCheck(snapshot,[]),quality:{valid:true},session:{kind:'strength_training_draft',blocks:[],teamGeneration:{queueId:q.id,batchId:row.batchId}}}));if(row.playerId!=='unreviewed')await f.markTeamPlayerReviewed(await f.loadTeamQueue(workspace,q.id),row.playerId,row.batchId,true);}
+ const publish=compile('lib/teamQueuePublication.js',{...f,crypto,readySixPublicationCheck,getPlayerSnapshot:async()=>({...snapshot,...(changed?{injuryLog:[{zone:'calf'}]}:{})}),saveProgram:async(req,res,guard)=>{assert.ok(guard.batchId);saved.push(req.body.playerId);return res.status(req.body.playerId==='two'?409:200).json({error:'Changed saved edition'});}},'publishTeamQueue');
+ let result=await publish(await f.loadTeamQueue(workspace,q.id),{authorized:true});assert.deepEqual(saved,['one','two']);assert.equal(result[0].status,'published');assert.equal(result[1].status,'blocked');
+ saved=[];changed=true;result=await publish(await f.loadTeamQueue(workspace,q.id),{authorized:true});assert.equal(saved.length,0);assert.ok(result.every(row=>row.status==='blocked'));assert.ok((await f.teamQueueView(await f.loadTeamQueue(workspace,q.id))).rows.every(row=>!row.reviewed));
+ const one=q.players[0],job=JSON.parse(await f.redis('get','coach:batch:'+one.batchId));await f.redis('set','coach:batch:'+one.batchId,JSON.stringify({...job,quality:{medicalReviewRequired:true}}));await f.markTeamPlayerReviewed(q,'one',one.batchId,true);changed=false;result=await publish(await f.loadTeamQueue(workspace,q.id),{authorized:true});assert.equal(saved.length,0);assert.match(result[0].message,/индивидуальная/);
+});
+test('ReadySix publication digest ignores response timestamps but detects regional, calendar and coach restriction changes',()=>{
+ const snapshot={readySixMeta:{generatedAt:'first'},readySixDecision:{recommendation:'full',generatedAt:'first'},readySixCalendar:{events:[]},morning:[{date:'2026-10-12',pain:0}]};const before=readySixPublicationCheck(snapshot,[]);
+ assert.equal(before,readySixPublicationCheck({...snapshot,readySixMeta:{generatedAt:'second'},readySixDecision:{generatedAt:'second',recommendation:'full'}},[]));
+ assert.notEqual(before,readySixPublicationCheck({...snapshot,morning:[{date:'2026-10-12',pain:3}]},[]));assert.notEqual(before,readySixPublicationCheck({...snapshot,readySixCalendar:{events:[{type:'flight'}]}},[]));assert.notEqual(before,readySixPublicationCheck(snapshot,['No loaded calf']));assert.equal(readySixPublicationCheck({},[]),null);
 });

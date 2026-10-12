@@ -17,6 +17,8 @@ COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
 COPY --from=build --chown=node:node /app/scripts/gym-container-env.mjs ./scripts/gym-container-env.mjs
 COPY --from=build --chown=node:node /app/lib/gymValkeyTransport.mjs /app/lib/gymBackupStore.mjs ./lib/
+COPY --from=build --chown=node:node /app/scripts/gym-runtime.mjs /app/scripts/gym-team-worker.mjs ./scripts/
+COPY --from=build --chown=node:node /app/lib/teamQueue.mjs /app/lib/teamQueueWorker.mjs ./lib/
 USER 1000:1000
 EXPOSE 3000
-CMD ["node", "--import", "./scripts/gym-container-env.mjs", "server.js"]
+CMD ["node", "--import", "./scripts/gym-container-env.mjs", "./scripts/gym-runtime.mjs"]

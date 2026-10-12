@@ -31,7 +31,7 @@ const common = {
 test('synchronous generation repairs a repeated main exercise and retains a reviewable draft if repair fails', async t => {
   apiKey(t);
   const source = readFileSync(new URL('../pages/api/programs/generate.js', import.meta.url), 'utf8');
-  const handlerSource = source.slice(source.indexOf('export default async function handler'), source.indexOf('// ── Extracted prompt assembly')).replace('export default ', '');
+  const handlerSource = source.slice(source.indexOf('export default async function handler'), source.indexOf('// ── Extracted prompt assembly')).replace('export default ', '').replace(/^export /gm,'');
   for (const fresh of [true, false]) {
     let calls = 0;
     const deps = { recordCoachReplacements, ...common, validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow', coachBannedSessionExercises,
@@ -52,7 +52,7 @@ test('synchronous generation repairs a repeated main exercise and retains a revi
 test('queued generation rechecks current history and does not auto-save unresolved repeats', async t => {
   apiKey(t);
   const source = readFileSync(new URL('../pages/api/programs/generate-status.js', import.meta.url), 'utf8')
-    .replace(/^import[\s\S]*?;\n/gm, '').replace('export const config', 'const config').replace('export default ', '');
+    .replace(/^import[\s\S]*?;\n/gm, '').replace('export const config', 'const config').replace('export default ', '').replace(/^export /gm,'');
   for (const historyFails of [false, true]) {
     const writes = [];
     let refreshes = 0;
@@ -98,7 +98,7 @@ test('queued generation rechecks current history and does not auto-save unresolv
 
 test('manual save recomputes history and records the coach override; an outage prevents writes', async () => {
   const source = readFileSync(new URL('../pages/api/programs/save.js', import.meta.url), 'utf8')
-    .replace(/^import[^\n]+\n/gm, '').replace('export default ', '');
+    .replace(/^import[^\n]+\n/gm, '').replace('export default ', '').replace(/^export /gm,'');
   for (const historyFails of [false, true]) {
     let commands = [];
     const deps = { recordCoachReplacements, ...common, validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow', coachBannedSessionExercises,

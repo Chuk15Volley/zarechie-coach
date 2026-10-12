@@ -78,7 +78,7 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: API persists, r
   if(command==='get')return storage.get(key)||null;
   assert.equal(args[0],SAVE_DECISION_SCRIPT);if((storage.get(key)||'')!==args[3])return 0;storage.set(key,args[4]);return 1;
  };
- const source=readFileSync(new URL('../pages/api/players/strength-cycle-review.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
+ const source=readFileSync(new URL('../pages/api/players/strength-cycle-review.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
  const deps={randomUUID,redis,pfx:ws=>ws==='nkperf'?'nkperf':'coach',DECISION_VERSION,validateCycleDecision,SAVE_DECISION_SCRIPT,isAuthorized:req=>req.auth!==false,getRecentSessionRecords:async()=>records,buildStrengthCycleReview,shiftIsoDate};
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
  const response=()=>({setHeader(){},status(code){this.code=code;return this;},json(data){this.data=data;return this;}});
@@ -133,7 +133,7 @@ test('ReadySix lower volume is not reduced a second time and healthy slots retai
 for(const workspace of ['zarechie','nkperf'])test(`${workspace}: first next-cycle reduced-volume plan saves with server-confirmed keep decisions, never a forged client exception`,async()=>{
  const {records,decision}=fixture();const selected={...decision,entries:decision.entries.map(entry=>entry.code==='B2'?{...entry,volume:'reduce_one',volumeReason:'Утомление тяги'}:entry)};
  const result=make({recentSessions:records,cycleDecision:selected});
- const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
+ const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
  let serverDecision=selected,written=[];
  const identity=x=>x,prefix=workspace==='nkperf'?'nkperf':'coach';
  const deps={applyCycleDecision,previousCycleId,pfx:()=>prefix,buildExerciseVarietyContext,assessSessionQuality,recordCoachReplacements,coachBannedSessionExercises,

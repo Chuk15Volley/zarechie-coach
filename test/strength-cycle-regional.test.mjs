@@ -92,7 +92,7 @@ test('reviewed single-exercise replacement preserves regional effort and refuses
 });
 
 for(const workspace of ['zarechie','nkperf'])test(`${workspace}: save persists replacement learning with the workout and refuses cross-workspace leakage`,async()=>{
- const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
+ const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
  const first=make();let next=structuredClone(first.session);
  next.blocks[1].exercises[0]={...replaceExerciseDescription(ex(first,'B1'),{name:'DB Incline Bench Press'}),replacementReason:'technique',replacementNote:'Сохраняем устойчивую позицию'};
  const identity=v=>v;let written=[];
@@ -110,7 +110,7 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: save persists r
 });
 
 for(const workspace of ['zarechie','nkperf'])test(`${workspace}: new strength replacement stays server-side, checks fresh symptoms and waits for coach save`,async()=>{
- const source=readFileSync(new URL('../pages/api/programs/regenerate-exercise.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
+ const source=readFileSync(new URL('../pages/api/programs/regenerate-exercise.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
  const first=make();let writes=0,external=0;
  const identity=v=>v;
  const deps={recordCoachReplacements,strengthReplacementCandidate,prehabSymptoms:()=>({zones:['shoulder']}),medicalHoldReason:()=>'',

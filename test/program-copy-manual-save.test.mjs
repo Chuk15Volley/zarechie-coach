@@ -2,7 +2,7 @@ import {recordCoachReplacements} from '../lib/strengthCycle.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
 import {createCopyRepeatException,validCopyRepeatException,sessionPlayerAliases} from '../lib/manualCopyRepeat.mjs';
 import {coachBannedSessionExercises} from '../lib/exerciseRestrictions.js';
-const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
+const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
 const ctx={workspace:'nkperf',playerId:'12',date:'2026-10-12',sourceWorkspace:'zarechie',sourcePlayerId:'23',sourceDate:'2026-10-12'};
 async function save(session){let writes=[];const identity=s=>s;
  const deps={recordCoachReplacements,validCopyRepeatException:(s,c)=>validCopyRepeatException(s,c,'test'),sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,coachBannedSessionExercises,redis:async()=>null,sessionKey:(ws,id,date)=>`${ws}:session:${id}:${date}`,sessionsKey:(ws,id)=>`${ws}:sessions:${id}`,getRecentSessionRecords:async()=>[],reconcileReplacementDescriptions:identity,approveProgramSession:identity,normalizeSessionTempoDescriptions:identity,ensureSessionExerciseIds:identity,sanitizeUnavailableEquipmentExercises:identity,weightKgFromExercise:()=>0,loadUnitsForExercise:()=>1,approvedProgramLabel:identity,advisorySessionQuality:identity,assessSessionQuality:()=>({blocking:false,variety:{needsCorrection:true}}),buildExerciseVarietyContext:()=>({}),buildDosePrescription:()=>({}),redisPipeline:async c=>{writes=c;}};

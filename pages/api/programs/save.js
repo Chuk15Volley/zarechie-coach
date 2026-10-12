@@ -54,7 +54,8 @@ function normalizeSavedWeights(session) {
   };
 }
 
-export default async function handler(req, res) {
+export default async function handler(req,res){return saveProgram(req,res);}
+export async function saveProgram(req, res, publicationGuard=null) {
   if (!isAuthorized(req)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -178,7 +179,12 @@ export default async function handler(req, res) {
       ...exweightCmds,
       ...tonnageCmds,
     ];
-    await redisPipeline(cmds);
+    if(publicationGuard){
+      // CAS all writes against the reviewed job and absence of an independently saved edition.
+      const script="if redis.call('GET',KEYS[1]) or redis.call('GET',KEYS[4])~=ARGV[4] then return 0 end; for i=5,#KEYS do if redis.call('EXISTS',KEYS[i])==1 then return 0 end end; if redis.call('HGET',KEYS[2],ARGV[1])~=ARGV[2] then return 0 end; local current=redis.call('HGET',KEYS[3],ARGV[1]); if current and current~=ARGV[2] then return 0 end; local cmds=cjson.decode(ARGV[3]); for _,cmd in ipairs(cmds) do redis.call(unpack(cmd)) end; return 1";
+      const [written]=await redisPipeline([['EVAL',script,4+sessionPlayerAliases(playerId).filter(id=>String(id)!==String(playerId)).length,sessionKey(workspace,playerId,date),publicationGuard.key+':reviews',publicationGuard.key+':jobs',publicationGuard.lock,...sessionPlayerAliases(playerId).filter(id=>String(id)!==String(playerId)).map(id=>sessionKey(workspace,id,date)),String(playerId),publicationGuard.batchId,JSON.stringify(cmds),publicationGuard.token]]);
+      if(Number(written)!==1)return res.status(409).json({error:'Программа или проверка изменились. Откройте игрока и проверьте актуальную версию.'});
+    }else await redisPipeline(cmds);
     return res.status(200).json({ status: 'ok', quality: persistenceQuality, session: normalizedSession, trainingLabel: record.trainingLabel, approval: record.approval, savedAt });
   } catch (e) {
     return res.status(503).json({ error: 'Не удалось подтвердить сохранение. Правки остаются на экране; повторите сохранение.' });

@@ -28,7 +28,7 @@ test('expired authentication returns to reauthentication and an incomplete succe
  await assert.rejects(saveProgramRequest(payload,'session',{fetchImpl:async()=>response(200,{})}),/не подтвердил сохранение/);
 });
 test('replayed save after a lost reply does not add another version or re-read history',async()=>{
- const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
+ const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
  let record=null,writes=0,historyReads=0;
  const identity=value=>value;
  const deps={recordCoachReplacements,validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,coachBannedSessionExercises,

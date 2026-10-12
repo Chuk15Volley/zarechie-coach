@@ -1,3 +1,4 @@
+import {loadTeamQueue} from '../../../lib/teamQueueStore';
 import {generationJobTTL} from '../../../lib/teamQueue.mjs';
 import {observeGenerationResponse} from '../../../lib/generationMonitoring';
 import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
@@ -208,6 +209,8 @@ export default async function handler(req, res) {
     });
   }
 
+  if(record.teamQueueId){const queue=await loadTeamQueue(record.workspace,record.teamQueueId);if(!queue || queue.state!=='running')return res.status(409).json({error:'Очередь остановлена',code:'QUEUE_STOPPED'});}
+
   // A player can submit a questionnaire after the coach clicks Generate but
   // before the background OpenAI request is actually created. Refresh the
   // complete input exactly at that boundary so the model always receives the
@@ -219,7 +222,7 @@ export default async function handler(req, res) {
         return res.status(refreshed.status || 400).json({ error: refreshed.error });
       }
       if (refreshed.readyResult) {
-        const result = { ...refreshed.readyResult, coachReview:!!record.coachReview, status: 'done',completedAt:new Date().toISOString() };
+        const result = { ...refreshed.readyResult, readySixCheck:refreshed.readySixCheck || null, coachReview:!!record.coachReview, status: 'done',completedAt:new Date().toISOString() };
         if(record.teamQueueId)result.session={...result.session,teamGeneration:{queueId:record.teamQueueId,batchId}};
         const draft = generatedDraftRecord(result, record.generationRequest);
         if (draft) await redis('set', generatedDraftKey(record.workspace, record.playerId, draft.date), JSON.stringify(draft));
@@ -236,6 +239,7 @@ export default async function handler(req, res) {
         playerRestrictions: refreshed.playerRestrictions || [],
         qualityContext: refreshed.qualityContext || {},
         questionnaireContext: refreshed.questionnaireContext || {},
+        readySixCheck: refreshed.readySixCheck || null,
         inputsRefreshedAt: new Date().toISOString(),
       };
       await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
