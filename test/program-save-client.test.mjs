@@ -1,3 +1,4 @@
+import {coachAuditCommands,EXECUTE_AUDIT_COMMANDS} from '../lib/coachAudit.mjs';
 import {recordCoachReplacements} from '../lib/strengthCycle.mjs';
 import {validCopyRepeatException,sessionPlayerAliases} from '../lib/manualCopyRepeat.mjs';
 import test from 'node:test';
@@ -31,13 +32,13 @@ test('replayed save after a lost reply does not add another version or re-read h
  const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
  let record=null,writes=0,historyReads=0;
  const identity=value=>value;
- const deps={recordCoachReplacements,validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,coachBannedSessionExercises,
+ const deps={coachAuditCommands,EXECUTE_AUDIT_COMMANDS,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}),recordCoachReplacements,validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,coachBannedSessionExercises,
   redis:async()=>record,sessionKey:()=> 'session',sessionsKey:()=> 'sessions',
   getRecentSessionRecords:async()=>{historyReads++;return [];},reconcileReplacementDescriptions:identity,
   approveProgramSession:identity,normalizeSessionTempoDescriptions:identity,ensureSessionExerciseIds:identity,sanitizeUnavailableEquipmentExercises:identity,
   weightKgFromExercise:()=>0,loadUnitsForExercise:()=>1,approvedProgramLabel:identity,
   advisorySessionQuality:identity,assessSessionQuality:()=>({blocking:false,variety:{needsCorrection:false}}),buildExerciseVarietyContext:()=>({}),buildDosePrescription:()=>({}),
-  redisPipeline:async commands=>{writes++;record=commands.find(c=>c[0]==='SET')[2];},
+  redisPipeline:async commands=>{writes++;record=JSON.parse(commands[0][3]).find(c=>c[0]==='SET')[2];},
  };
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
  const req={method:'POST',body:{...payload,saveRequestId:'synthetic-request-12345'}};

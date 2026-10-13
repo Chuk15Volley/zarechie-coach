@@ -1,3 +1,4 @@
+import {coachAuditCommands,EXECUTE_AUDIT_COMMANDS} from '../lib/coachAudit.mjs';
 import {recordCoachReplacements} from '../lib/strengthCycle.mjs';
 import {validCopyRepeatException,sessionPlayerAliases} from '../lib/manualCopyRepeat.mjs';
 import {coachBannedSessionExercises} from '../lib/exerciseRestrictions.js';
@@ -34,7 +35,7 @@ test('synchronous generation repairs a repeated main exercise and retains a revi
   const handlerSource = source.slice(source.indexOf('export default async function handler'), source.indexOf('// ── Extracted prompt assembly')).replace('export default ', '').replace(/^export /gm,'');
   for (const fresh of [true, false]) {
     let calls = 0;
-    const deps = { recordCoachReplacements, ...common, validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow', coachBannedSessionExercises,
+    const deps = { coachAuditCommands,EXECUTE_AUDIT_COMMANDS,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}), recordCoachReplacements, ...common, validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow', coachBannedSessionExercises,
       getRecentSessionRecords: async () => past,
       buildGenerationInputs: async () => ({ snapshot: { player: { id: 'p1' } }, targetDate: date, effectiveFocus: 'strength', qualityContext: { varietyContext } }),
       callOpenAIForSession: async () => ++calls === 1 ? { session: makeSession('DB Row') } : fresh ? { session: makeSession('Inverted Row') } : { error: 'repair unavailable' },
@@ -56,7 +57,7 @@ test('queued generation rechecks current history and does not auto-save unresolv
   for (const historyFails of [false, true]) {
     const writes = [];
     let refreshes = 0;
-    const deps = { recordCoachReplacements, ...common, validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow', coachBannedSessionExercises,
+    const deps = { coachAuditCommands,EXECUTE_AUDIT_COMMANDS,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}), recordCoachReplacements, ...common, validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow', coachBannedSessionExercises,
       crypto: { randomUUID: () => 'lock' }, SYSTEM_PROMPT: 'system',
       getRecentSessionRecords: async (player, count, workspace, target, options) => {
         refreshes++;
@@ -101,13 +102,13 @@ test('manual save recomputes history and records the coach override; an outage p
     .replace(/^import[^\n]+\n/gm, '').replace('export default ', '').replace(/^export /gm,'');
   for (const historyFails of [false, true]) {
     let commands = [];
-    const deps = { recordCoachReplacements, ...common, validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow', coachBannedSessionExercises,
+    const deps = { coachAuditCommands,EXECUTE_AUDIT_COMMANDS,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}), recordCoachReplacements, ...common, validCopyRepeatException,sessionPlayerAliases,getPlayerTimeZone:async()=>'Europe/Moscow', coachBannedSessionExercises,
       getRecentSessionRecords: async () => { if (historyFails) throw new Error('offline'); return past; },
       approveProgramSession: identity, approvedProgramLabel: identity,
       redis: async () => null, reconcileReplacementDescriptions,
       buildDosePrescription: () => ({}), weightKgFromExercise: () => 0,
       loadUnitsForExercise: () => 1, sessionKey: () => 'session:p1', sessionsKey: () => 'sessions:p1',
-      redisPipeline: async value => { commands = value; },
+      redisPipeline: async value => { commands = JSON.parse(value[0][3]); },
     };
     const handler = new Function(...Object.keys(deps), `${source}; return handler;`)(...Object.values(deps));
     const res = response();

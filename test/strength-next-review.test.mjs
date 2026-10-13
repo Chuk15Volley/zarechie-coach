@@ -38,10 +38,21 @@ import {previousCycleId} from '../lib/strengthCycleDecisions.mjs';
 for(const workspace of ['zarechie','nkperf'])test(workspace+': actual next-review endpoint validates auth, isolates keys and fails closed on incomplete history',async()=>{
  const source=fs.readFileSync(new URL('../pages/api/players/strength-next-cycle.js',import.meta.url),'utf8').replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\s*/gm,'').replace('export default ','');
  let unavailable=false;const keys=[];
- const deps={isAuthorized:req=>req.authorized!==false,enforceRateLimit:async()=>true,redis:async(cmd,key)=>{keys.push(key);return null;},getPlayerSnapshot:async(id,days,target,chronic,ws)=>{assert.equal(ws,workspace);return snapshot;},getRecentSessionRecords:async(id,limit,ws,before,options)=>{assert.equal(ws,workspace);assert.equal(options.strict,true);assert.equal(options.includeStrengthExecution,true);if(unavailable)throw Error('storage outage');return [];},buildStrengthNextReview,buildStrengthCycle,previousCycleId,shiftIsoDate,queuePrefix,parseQueueJSON,validWorkspace};
+ const deps={isAuthorized:req=>req.authorized!==false,enforceRateLimit:async()=>true,redis:async(cmd,key)=>{keys.push(key);return null;},getPlayerSnapshot:async(id,days,target,chronic,ws)=>{assert.equal(ws,workspace);return snapshot;},getRecentSessionRecords:async(id,limit,ws,before,options)=>{assert.equal(ws,workspace);assert.equal(options.strict,true);assert.equal(options.includeStrengthExecution,true);if(unavailable)throw Error('storage outage');return [];},buildStrengthCycleReview,buildStrengthNextReview,buildStrengthCycle,previousCycleId,shiftIsoDate,queuePrefix,parseQueueJSON,validWorkspace};
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
  const call=async(query,authorized=true)=>{const res={code:200,setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};await handler({method:'GET',query,authorized},res);return res;};
  const query={workspace,playerId:'synthetic',date,trainingType:'anterior_chain',strengthMode:'maintenance'};
  assert.equal((await call(query,false)).code,401);assert.equal((await call({...query,workspace:'other'})).code,400);assert.equal((await call({...query,date:'2026-02-30'})).code,400);
  const result=await call(query);assert.equal(result.code,200);assert.equal(result.body.facts.completedMainSets,0);assert.ok(keys.every(key=>key.startsWith(queuePrefix(workspace)+':')));unavailable=true;assert.equal((await call(query)).code,503);
+});
+
+test('missing actual data lists exact date, exercise and set; bodyweight adaptation never demands kg and stale effort never substitutes session RPE',()=>{
+ const history=records('full_body'),first=history[0],exercises=first.session.blocks.flatMap(block=>block.exercises),facts=first.strengthExecutionFacts.actual.exercises;
+ const index=exercises.findIndex(ex=>ex.code==='B1'),name=exercises[index].name;
+ facts[index].setActuals[0].kg=null;facts[index].setActuals[1].repsRecorded=false;facts[index].actualRpe=null;first.strengthExecutionFacts.actual.sessionRpe=7;
+ const review=buildStrengthNextReview({records:history,snapshot,date,asOf:date,trainingType:'full_body',strengthMode:'maintenance'}),missing=review.facts.missing.find(point=>point.date===first.date && point.name===name);
+ assert.deepEqual(missing.sets,[{set:1,fields:['kg']},{set:2,fields:['reps']}]);assert.equal(missing.exerciseRpe,true);assert.equal(missing.source,'player_feedback');
+ exercises[index].symptomAdapted=true;exercises[index].weightKg=null;const adapted=buildStrengthNextReview({records:history,snapshot,date,asOf:date,trainingType:'full_body',strengthMode:'maintenance'}).facts.missing.find(point=>point.date===first.date && point.name===name);assert.deepEqual(adapted.sets,[{set:2,fields:['reps']}]);
+ const cycle=buildStrengthCycleReview(history,{asOf:date}).cycles[0],currentDecision={cycleId:cycle.id,revision:'actual-editor-version',entries:validateCycleDecision(cycle,cycle.exercises.map(row=>({key:row.key,exercise:'keep',progression:'hold',note:'Проверено'})))};
+ const editor=buildStrengthNextReview({records:history,snapshot,date,asOf:date,trainingType:'full_body',strengthMode:'maintenance',currentDecision}).decisionEditor;assert.equal(editor.expectedRevision,'actual-editor-version');assert.equal(editor.rows.length,3);assert.equal(editor.entries.length,3);
 });

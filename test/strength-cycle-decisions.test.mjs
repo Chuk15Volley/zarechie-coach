@@ -1,3 +1,4 @@
+import {coachAuditCommands,EXECUTE_AUDIT_COMMANDS} from '../lib/coachAudit.mjs';
 import {buildExerciseVarietyContext} from '../lib/exerciseVariety.mjs';
 import {assessSessionQuality} from '../lib/sessionValidator.js';
 import {previousCycleId} from '../lib/strengthCycleDecisions.mjs';
@@ -79,7 +80,7 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: API persists, r
   assert.equal(args[0],SAVE_DECISION_SCRIPT);if((storage.get(key)||'')!==args[3])return 0;storage.set(key,args[4]);return 1;
  };
  const source=readFileSync(new URL('../pages/api/players/strength-cycle-review.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
- const deps={randomUUID,redis,pfx:ws=>ws==='nkperf'?'nkperf':'coach',DECISION_VERSION,validateCycleDecision,SAVE_DECISION_SCRIPT,isAuthorized:req=>req.auth!==false,getRecentSessionRecords:async()=>records,buildStrengthCycleReview,shiftIsoDate};
+ const deps={coachAuditCommands,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}),randomUUID,redis,pfx:ws=>ws==='nkperf'?'nkperf':'coach',DECISION_VERSION,validateCycleDecision,SAVE_DECISION_SCRIPT,isAuthorized:req=>req.auth!==false,getRecentSessionRecords:async()=>records,buildStrengthCycleReview,shiftIsoDate};
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
  const response=()=>({setHeader(){},status(code){this.code=code;return this;},json(data){this.data=data;return this;}});
  const body={workspace,playerId:'synthetic-player',cycleId:cycle.id,entries:decision.entries.map(e=>({key:e.key,exercise:e.exercise,progression:e.progression,note:e.note,volume:'reduce_one',volumeReason:'Плановое снижение'}))};
@@ -136,7 +137,7 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: first next-cycl
  const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
  let serverDecision=selected,written=[];
  const identity=x=>x,prefix=workspace==='nkperf'?'nkperf':'coach';
- const deps={applyCycleDecision,previousCycleId,pfx:()=>prefix,buildExerciseVarietyContext,assessSessionQuality,recordCoachReplacements,coachBannedSessionExercises,
+ const deps={coachAuditCommands,EXECUTE_AUDIT_COMMANDS,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}),applyCycleDecision,previousCycleId,pfx:()=>prefix,buildExerciseVarietyContext,assessSessionQuality,recordCoachReplacements,coachBannedSessionExercises,
   validCopyRepeatException:()=>false,sessionPlayerAliases:id=>[id],getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,
   redis:async(command,key)=>{assert.ok(key.startsWith(prefix+':'));return key.includes(':cycle-decision:')?JSON.stringify(serverDecision):null;},sessionKey:(ws,id,date)=>`${prefix}:session:${id}:${date}`,sessionsKey:()=>prefix+':sessions:synthetic',
   getRecentSessionRecords:async(id,depth,ws)=>{assert.equal(ws,workspace);return records;},reconcileReplacementDescriptions:identity,approveProgramSession:identity,normalizeSessionTempoDescriptions:identity,ensureSessionExerciseIds:identity,sanitizeUnavailableEquipmentExercises:identity,

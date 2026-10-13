@@ -1,4 +1,6 @@
 import {randomUUID} from 'node:crypto';
+import {coachAuditActor} from '../../../lib/auth';
+import {coachAuditCommands} from '../../../lib/coachAudit.mjs';
 import {redis} from '../../../lib/redis';
 import {pfx} from '../../../lib/workspacePrefix';
 import {DECISION_VERSION,validateCycleDecision,SAVE_DECISION_SCRIPT} from '../../../lib/strengthCycleDecisions.mjs';
@@ -26,8 +28,8 @@ export default async function handler(req,res) {
       const raw=await redis('get',key(cycle.id));
       const previous=raw?JSON.parse(raw):null;
       if((previous?.revision || null)!==(req.body.expectedRevision || null))return res.status(409).json({error:'Решения уже изменены. Обновите обзор перед сохранением.'});
-      const decision={version:DECISION_VERSION,cycleId:cycle.id,entries,savedAt:new Date().toISOString(),revision:randomUUID()};
-      const saved=await redis('eval',SAVE_DECISION_SCRIPT,1,key(cycle.id),raw || '',JSON.stringify(decision));
+      const decision={version:DECISION_VERSION,cycleId:cycle.id,entries,savedAt:new Date().toISOString(),revision:randomUUID(),actor:coachAuditActor(req)};
+      const saved=await redis('eval',SAVE_DECISION_SCRIPT,1,key(cycle.id),raw || '',JSON.stringify(decision),JSON.stringify(coachAuditCommands(workspace,{type:'cycle_decision',playerId,cycleId:cycle.id,actor:decision.actor,revision:decision.revision,previousRevision:previous?.revision || null,before:previous?.entries || [],after:entries,at:decision.savedAt})));
       if(Number(saved)!==1)return res.status(409).json({error:'Решения уже изменены. Обновите обзор перед сохранением.'});
       return res.status(200).json({decision});
     }

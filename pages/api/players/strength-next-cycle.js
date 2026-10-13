@@ -3,6 +3,7 @@ import {enforceRateLimit} from '../../../lib/rateLimit';
 import {redis} from '../../../lib/redis';
 import {getPlayerSnapshot} from '../../../lib/playerData';
 import {getRecentSessionRecords} from '../../../lib/sessionHistory';
+import {buildStrengthCycleReview} from '../../../lib/strengthCycleReview.mjs';
 import {buildStrengthNextReview} from '../../../lib/strengthNextReview.mjs';
 import {buildStrengthCycle} from '../../../lib/strengthCycle.mjs';
 import {previousCycleId} from '../../../lib/strengthCycleDecisions.mjs';
@@ -24,6 +25,7 @@ export default async function handler(req,res){
     if(!snapshot?.readySixMeta || !snapshot?.readySixDecision)return res.status(503).json({error:'Нет актуального контекста ReadySix. Повторите обзор.'});
     const next=buildStrengthCycle(records,{targetDate:date,trainingType}),source=previousCycleId(records,next.id);
     const decision=source?parseQueueJSON(await redis('get',prefix+':strength:cycle-decision:'+playerId+':'+source)):null;
-    return res.status(200).json(buildStrengthNextReview({records,snapshot,date,asOf,trainingType,strengthMode,equipment:parseQueueJSON(equipment) || {},developmentPlan:parseQueueJSON(developmentPlan),restrictions:parseQueueJSON(restrictions) || [],decision}));
+    const current=buildStrengthCycleReview(records,{asOf}).cycles[0],currentDecision=current?.status==='completed'?parseQueueJSON(await redis('get',prefix+':strength:cycle-decision:'+playerId+':'+current.id)):null;
+    return res.status(200).json(buildStrengthNextReview({records,snapshot,date,asOf,trainingType,strengthMode,currentDecision,equipment:parseQueueJSON(equipment) || {},developmentPlan:parseQueueJSON(developmentPlan),restrictions:parseQueueJSON(restrictions) || [],decision}));
   }catch{return res.status(503).json({error:'Не удалось проверить нагрузку и выполнение. Повторите обзор игрока.'});}
 }

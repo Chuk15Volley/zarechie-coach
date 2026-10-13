@@ -1,5 +1,5 @@
 import {startPublicationRun} from '../../../lib/teamPublicationRun';
-import {isAuthorized} from '../../../lib/auth';
+import {isAuthorized,coachAuditActor} from '../../../lib/auth';
 import {redis} from '../../../lib/redis';
 import {enforceRateLimit} from '../../../lib/rateLimit';
 import {validWorkspace,validQueueId,teamQueueLatestKey} from '../../../lib/teamQueue.mjs';
@@ -24,9 +24,9 @@ export default async function handler(req,res) {
     if(req.method==='POST'){
       const result=await mutateTeamQueue(queue,input.expectedRevision,async current=>{
         if(['pause','resume','cancel'].includes(input.action))await controlTeamQueue(current,input.action);
-        else if(['publish','check-publication'].includes(input.action))await startPublicationRun(current,input.action==='publish'?'publish':'check');
+        else if(['publish','check-publication'].includes(input.action))await startPublicationRun(current,input.action==='publish'?'publish':'check',coachAuditActor(req));
         else if(['retry','refresh-player'].includes(input.action))await retryTeamPlayer(current,input.playerId,input.batchId,input.action==='refresh-player');
-        else if(input.action==='review')await markTeamPlayerReviewed(current,input.playerId,input.batchId,input.reviewed===true);
+        else if(input.action==='review')await markTeamPlayerReviewed(current,input.playerId,input.batchId,input.reviewed===true,coachAuditActor(req));
         else throw Object.assign(new Error('Неизвестное действие'),{status:400});
         return {};
       });

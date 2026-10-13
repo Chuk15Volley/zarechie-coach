@@ -1,3 +1,4 @@
+import {coachAuditCommands,EXECUTE_AUDIT_COMMANDS} from '../lib/coachAudit.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -96,14 +97,14 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: save persists r
  const first=make();let next=structuredClone(first.session);
  next.blocks[1].exercises[0]={...replaceExerciseDescription(ex(first,'B1'),{name:'DB Incline Bench Press'}),replacementReason:'technique',replacementNote:'Сохраняем устойчивую позицию'};
  const identity=v=>v;let written=[];
- const deps={recordCoachReplacements,validCopyRepeatException:()=>false,sessionPlayerAliases:id=>[id],getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,coachBannedSessionExercises:()=>[],
+ const deps={coachAuditCommands,EXECUTE_AUDIT_COMMANDS,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}),recordCoachReplacements,validCopyRepeatException:()=>false,sessionPlayerAliases:id=>[id],getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,coachBannedSessionExercises:()=>[],
   redis:async(_cmd,key)=>{assert.match(key,new RegExp('^'+workspace+':'));return JSON.stringify(first);},sessionKey:(ws,id,date)=>`${ws}:session:${id}:${date}`,sessionsKey:(ws,id)=>`${ws}:sessions:${id}`,
   getRecentSessionRecords:async(_id,_depth,ws)=>{assert.equal(ws,workspace);return [];},reconcileReplacementDescriptions:identity,approveProgramSession:identity,normalizeSessionTempoDescriptions:identity,ensureSessionExerciseIds:identity,sanitizeUnavailableEquipmentExercises:identity,
-  weightKgFromExercise:()=>0,loadUnitsForExercise:()=>1,approvedProgramLabel:identity,advisorySessionQuality:identity,assessSessionQuality:()=>({blocking:false,variety:{needsCorrection:false}}),buildExerciseVarietyContext:()=>({}),buildDosePrescription:()=>({}),redisPipeline:async cmds=>{written=cmds;}};
+  weightKgFromExercise:()=>0,loadUnitsForExercise:()=>1,approvedProgramLabel:identity,advisorySessionQuality:identity,assessSessionQuality:()=>({blocking:false,variety:{needsCorrection:false}}),buildExerciseVarietyContext:()=>({}),buildDosePrescription:()=>({}),redisPipeline:async cmds=>{written=JSON.parse(cmds[0][3]);}};
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
  const res={status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
  await handler({method:'POST',body:{playerId:'synthetic',workspace,date:first.date,focus:first.focus,session:next}},res);
- assert.equal(res.code,200);assert.ok(written.every(command=>String(command[1]).startsWith(workspace+':')));
+ assert.equal(res.code,200);assert.ok(written.every(command=>String(command[1]).startsWith(command[0].startsWith('Z') && String(command[1]).endsWith(':coach-audit')?(workspace==='nkperf'?'nkperf:':'coach:'):workspace+':')));
  const saved=JSON.parse(written.find(command=>command[0]==='SET')[2]);
  assert.equal(saved.session.coachReplacements.at(-1).reason,'technique');
  assert.equal(saved.session.coachReplacements.at(-1).from,ex(first,'B1').name);
@@ -113,7 +114,7 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: new strength re
  const source=readFileSync(new URL('../pages/api/programs/regenerate-exercise.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
  const first=make();let writes=0,external=0;
  const identity=v=>v;
- const deps={recordCoachReplacements,strengthReplacementCandidate,prehabSymptoms:()=>({zones:['shoulder']}),medicalHoldReason:()=>'',
+ const deps={coachAuditCommands,EXECUTE_AUDIT_COMMANDS,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}),recordCoachReplacements,strengthReplacementCandidate,prehabSymptoms:()=>({zones:['shoulder']}),medicalHoldReason:()=>'',
   getPlayerSnapshot:async(_id,_days,_date,_history,ws)=>{assert.equal(ws,workspace);return {readySixMeta:{},player:{}};},recommendGymSession:()=>({state:{}}),restrictionsKey:(ws,id)=>`${ws}:restrictions:${id}`,
   isAuthorized:()=>true,enforceRateLimit:async()=>true,redis:async cmd=>{if(cmd!=='get') writes++;return null;},sessionKey:(ws,id,date)=>`${ws}:${id}:${date}`,getRecentSessionRecords:async()=>[],
   buildExerciseVarietyContext,auditExerciseVariety,varietyExerciseKey,formatExerciseVarietyForPrompt,
