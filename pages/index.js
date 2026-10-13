@@ -1,3 +1,6 @@
+import ExercisePrescription from '../components/ExercisePrescription';
+import StrengthProgressionHint from '../components/StrengthProgressionHint';
+import {requestCoachProgression} from '../lib/coachProgressionRequest.mjs';
 import CoachNavigation from '../components/CoachNavigation';
 import CoachHome from '../components/CoachHome';
 import StrengthEquipmentPanel from '../components/StrengthEquipmentPanel';
@@ -1275,6 +1278,7 @@ function ExerciseCard({
   targetSets,
   weightNote,
   weightKg,
+  targetRpeMax,
   loadUnits,
   tempo,
   prehabRegion,
@@ -1296,7 +1300,7 @@ function ExerciseCard({
   progressionDecision,
   progressionConfidence,
   progressionTrend,
-  strengthProposal,onApplyStrengthProgression,progressionError,
+  strengthProposal,onApplyStrengthProgression,progressionError,progressionLoading,onRetryProgression,
   restrictions,
   exHistory,
   actualKg,
@@ -1386,7 +1390,7 @@ function ExerciseCard({
   }
 
   return (
-    <div className={`premium-exercise-card group h-fit overflow-hidden rounded-2xl border border-white/[0.10] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.18] print:break-inside-avoid print:border-slate-300 print:bg-white ${hasConflict ? 'ring-1 ring-rose-500/30' : ''}`}>
+    <div className={`premium-exercise-card coach-exercise-card group h-fit overflow-hidden rounded-2xl border border-white/[0.10] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.18] print:break-inside-avoid print:border-slate-300 print:bg-white ${hasConflict ? 'ring-1 ring-rose-500/30' : ''}`}>
       {/* Header */}
       <div className={`bg-gradient-to-r ${bc.headerFrom} to-transparent px-3 pt-2.5 pb-2 print:bg-slate-100`}>
         {/* Row 1: badges + regenerate button */}
@@ -1494,12 +1498,11 @@ function ExerciseCard({
         )}
       </div>
 
-      {/* Exercise video */}
-      <ExerciseVideoPanel name={name} apiKey={apiKey} />
+      <ExercisePrescription weightKg={weightKg} sets={targetSets} targetRpeMax={targetRpeMax} loadUnits={loadUnitsForExercise({name,loadUnits})} />
 
       {/* Sets & notes */}
       <div className="space-y-2.5 p-3">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="coach-set-inputs flex flex-wrap gap-1.5" aria-label="Редактирование подходов">
           {targetSets.map((s, i) => (
             <div
               key={i}
@@ -1507,6 +1510,7 @@ function ExerciseCard({
             >
               <span className="px-1.5 py-1 text-[10px] font-semibold text-slate-500">{i + 1}</span>
               <input
+                aria-label={`${code} · подход ${i+1} · повторы или время`}
                 value={s}
                 onChange={e => onChangeSet(i, e.target.value)}
                 placeholder="—"
@@ -1528,6 +1532,7 @@ function ExerciseCard({
           <button
             type="button"
             onClick={onAddSet}
+            aria-label={`${code} · добавить подход`}
             className="rounded-lg border border-dashed border-white/[0.08] px-2 text-xs text-slate-600 transition hover:border-accent/40 hover:text-accent print:hidden"
           >
             +
@@ -1535,11 +1540,12 @@ function ExerciseCard({
         </div>
 
         {/* Structured weight input */}
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <div className="flex items-center rounded-lg border border-white/[0.08] bg-white/[0.04] pr-2.5 transition-all focus-within:border-accent/50 focus-within:bg-accent/[0.05]">
+        <div className="coach-load-inputs flex flex-wrap items-center gap-2 print:hidden">
+          <div className="coach-weight-input flex items-center rounded-lg border border-white/[0.08] bg-white/[0.04] pr-2.5 transition-all focus-within:border-accent/50 focus-within:bg-accent/[0.05]">
             <input
               type="number"
-              step="2"
+              step="any"
+              aria-label={`${code} · плановый вес в кг`}
               min="0"
               value={weightKg ?? ''}
               onChange={e => {
@@ -1570,7 +1576,8 @@ function ExerciseCard({
               <span className="text-[10px] font-medium text-emerald-400/60">факт</span>
               <input
                 type="number"
-                step="2"
+                step="any"
+                aria-label={`${code} · фактический вес в кг`}
                 min="0"
                 value={actualKg ?? ''}
                 onChange={e => {
@@ -1589,6 +1596,7 @@ function ExerciseCard({
                     step="0.5"
                     min="1"
                     max="10"
+                    aria-label={`${code} · фактический RPE упражнения`}
                     value={actualRpe ?? ''}
                     onChange={e => {
                       const raw = e.target.value;
@@ -1609,7 +1617,7 @@ function ExerciseCard({
         )}
 
         {/* Progression hint */}
-        {focus==='inseason_strength'?<div className="mt-2 rounded-lg border border-cyan-300/15 p-2 text-xs text-slate-300 print:hidden"><p className="font-bold text-cyan-200">Прогрессия · единый силовой подбор</p>{strengthProposal?<><p className="mt-1">{strengthProposal.kg!=null?'Выполнено: '+strengthProposal.kg+' кг на снаряд':''}{strengthProposal.sourceDate?' · '+strengthProposal.sourceDate:''}{strengthProposal.rpe!=null?' · RPE упражнения '+strengthProposal.rpe:strengthProposal.rpeScope?' · RPE упражнения не записан':''}</p><p className="mt-1">{strengthProposal.decision}</p>{strengthProposal.suggestedKg!=null && <p className="mt-1">Предложение: {strengthProposal.suggestedKg} кг{strengthProposal.targetSets?' · '+strengthProposal.targetSets.join(' / '):''}</p>}{strengthProposal.applicable && <button type="button" onClick={onApplyStrengthProgression} className="mt-2 rounded border border-cyan-300/20 px-2 py-1 text-cyan-200">Применить предложение генератора</button>}</>:<p className="mt-1 text-slate-400">{progressionError || 'Проверяю предложение по ReadySix и фактическому выполнению.'} Вес при недоступности данных подбирает тренер по RPE.</p>}</div>:prevKg ? (
+        {focus==='inseason_strength'?<StrengthProgressionHint proposal={strengthProposal} error={progressionError} loading={progressionLoading} onRetry={onRetryProgression} onApply={onApplyStrengthProgression}/>:prevKg ? (
           <div className="mt-1 flex flex-wrap items-center gap-1.5 print:hidden">
             <span className="text-[11px] text-slate-600">
               ↑ {prevKg} кг{prevRpe ? ` · RPE ${prevRpe}` : ''}{prevPain ? ' · боль' : ''}
@@ -1694,6 +1702,8 @@ function ExerciseCard({
           </details>
         )}
 
+        <details className="coach-exercise-details print:hidden"><summary>Видео техники</summary><ExerciseVideoPanel name={name} apiKey={apiKey}/></details>
+        <details className="coach-exercise-details" open={hasDescriptionOverride || undefined}><summary>Описание для игрока</summary>
         <div className="rounded-lg border border-sky-400/[0.10] bg-sky-400/[0.035] px-2.5 py-2">
           <div className="mb-1 flex items-center justify-between gap-2 print:hidden">
             <span className="text-[10px] font-bold uppercase tracking-wider text-sky-300/45">Описание для игрока</span>
@@ -1717,7 +1727,7 @@ function ExerciseCard({
             className="w-full resize-none border-0 bg-transparent px-0 py-0.5 text-[13px] leading-snug text-sky-100/65 outline-none transition placeholder:text-slate-700 focus:text-sky-100 print:text-slate-700"
           />
           <p className="mt-1 text-[10px] leading-snug text-slate-700 print:hidden">Изменение увидит игрок после сохранения программы.</p>
-        </div>
+        </div></details>
       </div>
     </div>
   );
@@ -2375,6 +2385,9 @@ export default function Home() {
   const [savingActual, setSavingActual] = useState(false);
   const [saving, setSaving] = useState(false);
   const [progressionError,setProgressionError] = useState('');
+  const [progressionLoading,setProgressionLoading] = useState(false);
+  const [progressionRefresh,setProgressionRefresh] = useState(0);
+  const [editorActionsOpen,setEditorActionsOpen] = useState(false);
   const [progressionMap, setProgressionMap] = useState({}); // exerciseName → { kg, rpe, suggestedKg }
   const [tonnageData, setTonnageData] = useState(null);
   const [tonnageLoading, setTonnageLoading] = useState(false);
@@ -2548,6 +2561,7 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
+  useEffect(()=>setEditorActionsOpen(false),[workspace,playerId,date]);
   useEffect(()=>{const refresh=event=>{if(event.detail?.workspace!==workspace)return;setFactsRefresh(value=>value+1);setTrendsData(null);setProgressionMap({});};window.addEventListener('gym-strength-facts-updated',refresh);window.addEventListener('gym-strength-inventory-updated',refresh);return()=>{window.removeEventListener('gym-strength-facts-updated',refresh);window.removeEventListener('gym-strength-inventory-updated',refresh);};},[workspace]);
   const teamQueue=useTeamGenerationQueue({workspace,date,apiKey,onRestoreDate:setDate});
   const batchResults=teamQueue.results,batchRunning=teamQueue.running;
@@ -2917,16 +2931,19 @@ export default function Home() {
 
   // Cards and generation share the exact server prescription, never 1RM fallback.
   useEffect(() => {
-    if (!session || !playerId || !apiKey) { setProgressionMap({}); setExHistoryMap({}); return; }
+    if (!session || !playerId || !apiKey) { setProgressionMap({}); setExHistoryMap({}); setProgressionLoading(false);setProgressionError('');return; }
     const exercises=(session.blocks || []).flatMap(b=>(b.exercises || []).map(e=>({...e,exerciseId:e.exerciseId || canonicalExerciseId(e.name)}))).filter(e=>e.name);
-    if(!exercises.length)return;
-    const controller=new AbortController();setProgressionMap({});setProgressionError('');
-    const request={playerId:String(playerId),exercises,workspace,date:meta?.date || date,focus:meta?.focus || focus,trainingType:meta?.trainingType || trainingType,strengthMode:meta?.strengthMode || strengthMode,dayGoal,notes};
-    const timer=setTimeout(()=>{const opts={method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey},signal:controller.signal,body:JSON.stringify(request)};
-      Promise.all([fetch('/api/players/progression',opts).then(async r=>{if(!r.ok)throw new Error('Не удалось проверить прогрессию. Повторите проверку данных.');return r.json();}).catch(error=>({progressionError:error.message})),fetch('/api/players/ex-history',opts).then(r=>r.json()).catch(()=>({}))]).then(([prog,hist])=>{if(controller.signal.aborted)return;setProgressionError(prog.progressionError || '');setProgressionMap(prog.engine==='strength-generator-v2'?prog.progressionBySlot || {}:{...(prog.progression || {}),...(prog.progressionById || {})});setExHistoryMap({...(hist.histories || {}),...(hist.historiesById || {})});});
+    if(!exercises.length){setProgressionMap({});setProgressionLoading(false);return;}
+    const controller=new AbortController();setProgressionMap({});setExHistoryMap({});setProgressionError('');setProgressionLoading(true);
+    const input={playerId:String(playerId),exercises,workspace,date:meta?.date || date,focus:meta?.focus || focus,trainingType:meta?.trainingType || trainingType,strengthMode:meta?.strengthMode || strengthMode,dayGoal,notes};
+    const timer=setTimeout(()=>{
+      requestCoachProgression({input,apiKey,signal:controller.signal})
+       .then(data=>{if(!controller.signal.aborted){setProgressionMap(data.progression);setExHistoryMap(data.history);}})
+       .catch(error=>{if(!controller.signal.aborted)setProgressionError(error.message);})
+       .finally(()=>{if(!controller.signal.aborted)setProgressionLoading(false);});
     },300);
     return()=>{clearTimeout(timer);controller.abort();};
-  },[session,playerId,apiKey,workspace,factsRefresh,date,focus,trainingType,strengthMode,meta?.date,meta?.focus,meta?.trainingType,meta?.strengthMode,dayGoal,notes]);
+  },[session,playerId,apiKey,workspace,factsRefresh,progressionRefresh,date,focus,trainingType,strengthMode,meta?.date,meta?.focus,meta?.trainingType,meta?.strengthMode,dayGoal,notes]);
 
   // Load team tonnage when switching to the Нагрузка section.
   useEffect(() => {
@@ -7646,7 +7663,7 @@ export default function Home() {
             <div className="premium-session-card mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
 
               {/* Result toolbar */}
-              <div className="mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden">
+              <div className="coach-editor-toolbar mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden" role="region" aria-label="Сохранение программы">
                 <div className="flex flex-wrap items-center gap-2.5">
                   <h2 className="text-base font-black tracking-tight text-white">Тренировка</h2>
                   <span className="rounded-full border border-accent/25 bg-accent/[0.09] px-3 py-1 text-xs font-semibold text-accent">
@@ -7658,7 +7675,9 @@ export default function Home() {
                 </div>
                 <div className="flex items-center gap-2">
                   {/* Icon-only secondary actions */}
-                  <div className="flex items-center rounded-xl border border-white/[0.07] bg-white/[0.025] p-1 gap-0.5">
+                  <div className="coach-editor-secondary" data-open={editorActionsOpen}>
+                  <button type="button" className="coach-editor-more" aria-label="Дополнительные действия программы" aria-expanded={editorActionsOpen} onClick={()=>setEditorActionsOpen(value=>!value)}>•••</button>
+                  <div className="coach-editor-secondary-items flex items-center rounded-xl border border-white/[0.07] bg-white/[0.025] p-1 gap-0.5">
                     <button
                       type="button"
                       onClick={() => window.print()}
@@ -7703,26 +7722,30 @@ export default function Home() {
                       </button>
                     )}
                   </div>
+                  </div>
                   {/* Primary save */}
                   <button
                     type="button"
                     onClick={handleSave}
+                    aria-label="Сохранить программу"
                     disabled={saving || session.kind === 'restricted_day_plan'}
                     title={session.kind === 'restricted_day_plan' ? 'План дня не заменяет тренировку игрока' : undefined}
                     className={`flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3.5 py-2 text-xs font-bold text-[#04212b] shadow-[0_2px_12px_-2px_rgba(34,211,238,0.35)] transition hover:bg-cyan-400 disabled:opacity-50 ${focusRing}`}
                   >
                     {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                    {justSaved ? 'Сохранено ✓' : (autoSaved || pendingSaved ? 'Сохранить изменения' : 'Сохранить')}
+                    <span className="coach-save-label-long">{saving?'Сохранение…':justSaved ? 'Сохранено ✓' : (autoSaved || pendingSaved ? 'Сохранить изменения' : 'Сохранить программу')}</span><span className="coach-save-label-short">{saving?'Сохраняю…':justSaved?'Сохранено':'Сохранить'}</span>
                   </button>
                   {pendingSaved && session && (
                     <button
                       type="button"
                       onClick={handleCompleteWorkout}
+                      aria-label="Завершить тренировку"
+                      title="Завершить тренировку"
                       disabled={savingActual}
                       className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] font-semibold text-emerald-400 transition hover:bg-emerald-500/20 disabled:opacity-50"
                     >
                       {savingActual ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                      Завершить
+                      <span className="coach-complete-label">Завершить</span>
                     </button>
                   )}
                 </div>
@@ -8020,6 +8043,7 @@ export default function Home() {
                           targetSets={ex.targetSets || []}
                           weightNote={ex.weightNote || ''}
                           weightKg={ex.weightKg != null ? ex.weightKg : parseKgFromNote(ex.weightNote)}
+                          targetRpeMax={ex.targetRpeMax}
                           loadUnits={loadUnitsForExercise(ex)}
                           tempo={ex.tempo || ''}
                           prehabRegion={ex.prehabRegion}
@@ -8031,6 +8055,8 @@ export default function Home() {
                           compactDescription={ex.compactDescription}
                           controlledExecution={ex.controlledExecution}
                           focus={meta?.focus || focus}
+                          progressionLoading={progressionLoading}
+                          onRetryProgression={()=>{setProgressionMap({});setProgressionError('');setProgressionLoading(true);setProgressionRefresh(value=>value+1);}}
                           progressionError={progressionError}
                           strengthProposal={(meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)]:null}
                           onApplyStrengthProgression={()=>{const proposed=applyStrengthCardProposal(ex,progressionMap[strengthProgressionKey(ex)],strengthProgressionScope({workspace,playerId,date:meta?.date || date,focus:'inseason_strength',trainingType:meta?.trainingType || trainingType,strengthMode:meta?.strengthMode || strengthMode}));if(proposed!==ex)updateExercise(bi,ei,proposed);}}

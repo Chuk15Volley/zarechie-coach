@@ -153,3 +153,101 @@
 }
 
 .coach-premium .premium-sidebar--collapsed .sidebar-sync {display:none;}
+/* Coach package 2: prescription, editor and draft review share one hierarchy. */
+.coach-prescription {display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.35fr) minmax(0,.85fr);gap:1px;margin:12px;background:#34413a;border:1px solid #34413a;border-radius:12px;overflow:hidden;}
+.coach-prescription > div {min-width:0;padding:12px 10px;background:#202a24;}
+.coach-prescription dt {color:#b4c3ba;font-size:10px;font-weight:600;line-height:1.5;}
+.coach-prescription dd {margin:6px 0 0;color:#edf5ef;font-size:21px;line-height:1.3;font-weight:700;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.coach-prescription small {font-size:11px;color:#b4c3ba;font-weight:500;}
+.coach-prescription .coach-value-missing {font-size:13px;font-weight:500;color:#bdcec2;}
+.coach-prescription--compact {margin:10px 0;}
+.coach-prescription--compact > div {padding:9px 8px;}
+.coach-prescription--compact dd {font-size:17px;}
+.coach-premium .coach-exercise-card {background:#181e1b;border-color:#344039;box-shadow:none;transform:none;}
+.coach-premium .coach-exercise-card:hover {transform:none;border-color:#617b6b;}
+.coach-premium .coach-exercise-card > div:first-child {background:#1b231e;padding:16px 14px 10px;}
+.coach-premium .coach-exercise-card textarea {line-height:1.55;}
+.coach-premium .coach-exercise-card button[title="Заменить упражнение из библиотеки"] {opacity:1;min-width:32px;min-height:32px;color:#b0c5b9;}
+.coach-set-inputs input {min-height:38px;font-size:16px;font-variant-numeric:tabular-nums;}
+.coach-set-inputs > button {min-width:38px;min-height:38px;}
+.coach-load-inputs {padding-block:5px;}
+.coach-load-inputs input {min-height:40px;font-size:15px;}
+.coach-weight-input input {width:90px;font-size:22px;}
+.coach-exercise-details {border:1px solid #344039;border-radius:10px;background:#171e19;padding:10px 12px;}
+.coach-exercise-details > summary {cursor:pointer;color:#bcd4c5;font-size:12px;font-weight:600;line-height:1.5;}
+.coach-exercise-details[open] > summary {margin-bottom:10px;}
+.coach-exercise-details textarea {color:#ccd9d0;}
+.coach-progression {border:1px solid #3b5143;border-radius:12px;background:#202b24;padding:12px;line-height:1.6;color:#c6d8cc;font-size:12px;}
+.coach-progression-heading {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:7px;}
+.coach-progression-heading > strong {color:#d8e9df;font-size:13px;}
+.coach-premium .coach-recheck {min-height:36px;padding:6px 9px;border:1px solid #607e6b;border-radius:7px;background:#26392d;color:#d0ead9;font-size:11px;}
+.coach-recheck:disabled {opacity:.6;cursor:wait;}
+.coach-progression p {margin:6px 0;}
+.coach-progression-error {color:#f2d39c;}
+.coach-progression-history {color:#b1c4b8;}
+.coach-progression-proposal {color:#d7edde;}
+.coach-premium .coach-progression-apply {min-height:38px;padding:7px 10px;border:1px solid #6b937b;border-radius:8px;color:#d4efdf;background:#2b4635;font-size:12px;}
+.coach-premium .coach-editor-toolbar {position:sticky;top:0;z-index:30;margin:-1px -1px 24px;padding:12px 14px;border:1px solid #3c5143;border-radius:12px;background:#1c2921;box-shadow:0 8px 24px #0005;}
+.coach-editor-toolbar > div:last-child {flex-wrap:wrap;}
+.coach-editor-toolbar button[aria-label="Сохранить программу"] {min-height:42px;background:#96cbb6;color:#10231a;box-shadow:none;}
+.coach-editor-toolbar button[aria-label="Сохранить программу"]:hover {background:#b1dfcb;}
+.coach-premium .coach-team-review {background:#181e1b;border-color:#344039;}
+.coach-queue-stats {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:16px 0;}
+.coach-queue-stats > div {padding:10px 12px;border:1px solid #35433b;border-radius:10px;background:#202923;}
+.coach-queue-stats dt {font-size:10px;color:#adbdB2;line-height:1.5;}
+.coach-queue-stats dd {margin:4px 0 0;font-size:22px;font-weight:650;color:#e0ede4;font-variant-numeric:tabular-nums;}
+.coach-queue-guidance {margin:14px 0;font-size:12px;line-height:1.7;color:#c2d1c7;}
+.coach-queue-help {margin-block:12px;}
+.coach-premium .coach-queue-actions {position:sticky;top:8px;z-index:15;padding:12px;border:1px solid #4a6353;border-radius:12px;background:#1e2c23;box-shadow:0 6px 20px #0004;}
+.coach-queue-actions button {min-height:38px;}
+.coach-draft-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;}
+.coach-draft-card {min-width:0;background:#1b231e;}
+.coach-draft-card > h3 {font-size:15px;line-height:1.5;}
+.coach-draft-status {display:inline-block;margin:8px 0 0;padding:4px 9px;border:1px solid #4d6757;border-radius:6px;color:#c6dfcf;font-size:11px;}
+.coach-draft-exercise {border-top:1px solid #344039;padding-top:10px;font-size:12px;line-height:1.6;}
+.coach-draft-exercise > strong {color:#e0ebe4;}
+@media (max-width:767px) {
+ .coach-draft-grid {grid-template-columns:1fr;}
+ .coach-queue-stats {grid-template-columns:repeat(3,minmax(0,1fr));}
+ .coach-premium .coach-editor-toolbar {padding:10px;gap:9px;}
+ .coach-editor-toolbar > div:first-child {gap:5px;}
+ .coach-editor-toolbar > div:first-child > h2 {display:none;}
+ .coach-editor-toolbar > div:first-child > span {font-size:10px;padding:4px 7px;}
+ .coach-prescription > div {padding:10px 7px;}
+ .coach-prescription dd {font-size:18px;}
+ .coach-prescription dt {font-size:9px;}
+}
+@media print {
+ .coach-editor-toolbar,.coach-queue-actions {display:none !important;}
+ .coach-exercise-details {border:0;}
+ .coach-exercise-details > summary {display:none;}
+ .coach-exercise-details > div {display:block !important;}
+}
+/* A clipped ancestor would make sticky controls scroll away in Safari. */
+.coach-premium .premium-session-card {overflow:visible;}
+.coach-premium .premium-session-card::after {display:none;}
+.coach-draft-basis {color:#b8cabe;font-size:11px;line-height:1.6;}
+.coach-draft-basis > summary {cursor:pointer;}
+.coach-draft-basis p {margin:8px 0;}
+@media (max-width:639px) {
+ /* Mobile scroll belongs to the document, so do not create a non-scrolling
+    overflow ancestor that traps Safari's sticky editor and queue controls. */
+ .coach-premium .workspace-main {overflow:visible;}
+}
+.coach-editor-secondary {position:relative;}
+.coach-premium .coach-editor-more,.coach-save-label-short {display:none;}
+@media (max-width:639px) {
+ .coach-premium {overflow-x:clip;}
+ .coach-editor-toolbar > div:last-child {width:100%;flex-wrap:nowrap;gap:7px;}
+ .coach-editor-toolbar > div:first-child {flex-wrap:nowrap;min-width:0;}
+ .coach-editor-toolbar > div:first-child > span:first-of-type {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+ .coach-editor-toolbar > div:first-child > span:last-of-type {flex-shrink:0;}
+ .coach-editor-secondary {order:3;flex-shrink:0;}
+ .coach-premium .coach-editor-more {display:grid;place-items:center;min-width:36px;min-height:40px;border:1px solid #4a6353;border-radius:8px;color:#c9dfd1;background:#26392d;font-size:13px;}
+ .coach-editor-secondary-items {display:none;}
+ .coach-editor-secondary[data-open="true"] .coach-editor-secondary-items {display:flex;position:absolute;right:0;top:calc(100% + 8px);z-index:40;max-width:calc(100vw - 64px);width:230px;flex-wrap:wrap;padding:9px;background:#1c2921;border-color:#607e6b;box-shadow:0 8px 24px #0007;}
+ .coach-editor-toolbar button[aria-label="Сохранить программу"] {order:1;flex:1;justify-content:center;min-width:0;padding:8px;font-size:12px;}
+ .coach-editor-toolbar button[aria-label="Завершить тренировку"] {order:2;min-width:36px;min-height:40px;padding:8px;flex-shrink:0;}
+ .coach-complete-label,.coach-save-label-long {display:none;}
+ .coach-save-label-short {display:inline;}
+}
