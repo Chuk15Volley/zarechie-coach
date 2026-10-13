@@ -31,3 +31,13 @@ This is a coach operational journal, not tamper-proof legal identity/audit certi
 1. Workspace/player/date filters and pagination for the audit, with an explicit comparison between selected program versions.
 2. Save the trainer's selected chain/mode and pending decision edits locally per workspace, and explicitly recover after reload.
 3. Add a focused data-completion workflow for the exact historical session, preserving actual execution timestamps and invalidating dependent progression when a recorded fact changes.
+
+## Published verification
+
+Published application revision **0e58e73** to https://gym.readysix.app on 2026-10-13 for both spaces. Live image: `sha256:0dab3adff505aa929da9dbd7906f01d5c35bf542a6ab7d7bf016e8aa2bc8b691`. Only gym was recreated. Rollback compose: `/srv/readysix-ru-production/apps.private.compose.yaml.before-coach-operations-0e58e73`, retaining application 827417c / image `sha256:5baf1c622011746f29ecbaa4c00317d715a376b2ba7a79c1cee7d34f3b86c936`.
+
+- Real candidate batch API + strict stored execution history passed in both spaces on disposable synthetic player ids. Real Valkey Lua verified all-group CAS, lost-response replay without extra versions/events, stale individual revision preserving another player, individual decision journaling, ordinary save/alias/version audit and guarded publication receipt/audit atomicity. All exact synthetic keys/events removed afterward.
+- Candidate overviews loaded all 15 Zarechie and 3 NK Pro players. Actual day queues generated valid unsaved posterior/development drafts for both spaces; existing programs unchanged. All coach-wide exercise bans preserved.
+- Production worker autonomously generated separate unsaved probes and completed durable ReadySix preflight in both spaces. Original queue pointers/drafts restored; no real programs were published by tests. Final audit: healthy worker/storage, zero active incidents, zero pending/failed publication items, authenticated new journal route; no synthetic journal records or fixture route remaining.
+- Production browser loaded 15/15 + 3/3 players with zero overview errors. Missing-data/group-decision/journal sections rendered correctly. No new completed cycles were fabricated: real players without four current-cycle completions correctly have no eligible batch editor. Original NK Pro queue restored to 3 ready, 0 reviewed, 0 saved, 0 errors. Existing 11 Zarechie date programs and Safari edits preserved.
+- Evidence: `/private/tmp/coach-operations-production-0e58e73.png`; synthetic editor interaction evidence: `/private/tmp/coach-decisions-ui-fixture.png`. Own browser tabs and local dev server closed; temporary candidate removed, rollback images retained.
