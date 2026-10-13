@@ -15,4 +15,10 @@ Validation:
 - Additional responsive checks use the same compiled page in the in-app browser at 390px (menu and home) and tablet width. Test fixtures live outside this checkout and are not deployed.
 - Screenshots: `/private/tmp/premium-shell-safari-zarechie.png`, `/private/tmp/premium-shell-safari-nkperf.png`.
 
-Release state: NOT PUBLISHED. Automatic approval review rejected uploading the source archive to the ReadySix production server because this new revision's transfer/destination lacked explicit permission. Obtain explicit permission to transfer the final revision, build/test the server candidate, then publish to gym.readysix.app by recreating only gym. Preserve rollback to a815f6b and verify authenticated full-page Safari against production after publication. No server candidate for this package has been created.
+Release state: PUBLISHED as 7c80d65 on gym.readysix.app in both workspaces on 2026-10-13, after explicit user approval of source transfer, candidate verification and publication. The earlier approval-review rejection was resolved by that permission.
+
+Server build and isolated candidate passed: actual ReadySix rosters 15 / 3, inventory, original queues, monitor, compiled Home JS and CSS. Only gym was recreated. Active image: `sha256:8a886a5079f1f6e967385adfc8e0fc83020f57ee4710bad3e7eca08a0a2d2618`. Rollback to a815f6b is retained in `/srv/readysix-ru-production/apps.private.compose.yaml.before-premium-shell-7c80d65`.
+
+Post-publication storage/worker checks passed. Both spaces have zero pending/failed publication runs; NK keeps its original three ready unsaved drafts. One pre-existing unlinked Zarechie preparation incident remains visible. No real programs/results/inventory were rewritten by verification.
+
+Authenticated production Safari: full-page reload, both real workspace homes, 15 / 3 players, workspace switching, collapse/expand and opening Darya's card passed. Safari returned to the original Zarechie home. Proof: `/private/tmp/premium-shell-production-zarechie.png`, `/private/tmp/premium-shell-production-nkperf.png`.
