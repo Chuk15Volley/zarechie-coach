@@ -67,7 +67,9 @@ test('both workspaces offer manual match day and never load a team schedule', ()
   assert.match(source, /const matchDayManualReview = isManualMatchDayFocus\(focus\)/);
   assert.match(source, /if \(!usesSeasonCalendar\(workspace\)\) \{\s*setScheduleEvents\(\[\]\);\s*setShowSchedule\(false\)/);
   assert.match(source, /phasesForWorkspace\(period, workspace\)/);
-  assert.match(source, /s\.id !== 'planner' \|\| usesSeasonCalendar\(workspace\)/);
+  const navigation = fs.readFileSync(new URL('../components/CoachNavigation.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(navigation, /\['planner'/); // hidden season planner is not linked from either workspace
+  assert.match(source, /<CoachNavigation current=\{mainSection\}/);
   assert.match(source, /mainSection === 'planner' && usesSeasonCalendar\(workspace\)/);
   assert.match(source, /Режим Заречье/);
   assert.match(source, /Режим NK Performance/);

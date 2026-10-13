@@ -1,3 +1,5 @@
+import CoachNavigation from '../components/CoachNavigation';
+import CoachHome from '../components/CoachHome';
 import useCoachEdits from '../hooks/useCoachEdits';
 import CoachEditsRecovery from '../components/CoachEditsRecovery';
 import StrengthTeamNextReview from '../components/StrengthTeamNextReview';
@@ -4749,20 +4751,12 @@ export default function Home() {
         />
       </Head>
 
-      {/* Ambient background orbs — fixed behind everything */}
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden print:hidden">
-        <div className="absolute -top-40 -left-40 h-[600px] w-[600px] rounded-full bg-accent/[0.09] blur-[110px]" />
-        <div className="absolute bottom-0 -right-20 h-[500px] w-[500px] rounded-full bg-blue-500/[0.09] blur-[120px]" />
-        <div className="absolute top-1/3 right-1/4 h-[320px] w-[320px] rounded-full bg-violet-500/[0.05] blur-[100px]" />
-      </div>
-
-      <div className="app-shell relative flex min-h-screen text-slate-100">
-        <div className="nk-background-mark print:hidden" aria-hidden="true" />
+      <div className="app-shell coach-premium relative flex min-h-screen text-slate-100">
 
         {/* ══════════════════════════════════════
             SIDEBAR — desktop only (sm+)
         ══════════════════════════════════════ */}
-        <aside className={`premium-sidebar sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden print:hidden sm:flex ${sidebarCollapsed ? 'premium-sidebar--collapsed w-[88px]' : 'w-[344px]'}`}>
+        <aside className={`premium-sidebar sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden print:hidden sm:flex ${sidebarCollapsed ? 'premium-sidebar--collapsed w-[88px]' : 'w-[312px]'}`}>
 
           {/* Logo + API Key */}
           <div className="sidebar-brand border-b border-white/[0.06] p-4">
@@ -4789,7 +4783,7 @@ export default function Home() {
                   }`}
                 >
                   <span className={`relative flex h-1.5 w-1.5 shrink-0 rounded-full ${keyConnected ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.9)]' : 'bg-slate-600'}`} />
-                  <span className="sidebar-copy">Выйти</span>
+                  <span className="sidebar-copy">Выход</span>
                 </button>
                 <button
                   type="button"
@@ -4817,6 +4811,7 @@ export default function Home() {
                     key={w.id}
                     type="button"
                     onClick={() => switchWorkspace(w.id)}
+                    aria-pressed={workspace === w.id}
                     className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-1.5 text-[10px] font-bold transition-all ${
                       workspace === w.id ? w.activeClass : 'border-transparent text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
                     }`}
@@ -4828,63 +4823,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* Section switcher — 2×3 grid */}
-          {keyConnected && (
-            <div className="sidebar-nav-grid border-b border-white/[0.06] px-3 py-2.5">
-              {[
-                [
-                  { id: 'today', label: 'Сегодня', ariaLabel: 'Сегодня — умный центр решений', icon: <Target size={14} />, tone: 'tone-cyan', activeClass: 'border-cyan-300/30 bg-gradient-to-r from-cyan-300/[0.18] to-emerald-300/[0.1] text-cyan-100 shadow-[0_8px_24px_-15px_rgba(34,211,238,0.95)]' },
-                ],
-                [
-                  { id: 'readiness', label: 'ReadySix', icon: <Activity size={14} />, tone: 'tone-emerald', activeClass: 'border-emerald-300/25 bg-emerald-300/[0.13] text-emerald-200 shadow-[0_8px_22px_-16px_rgba(52,211,153,0.9)]' },
-                  { id: 'workouts',  label: 'Зал',        icon: <Dumbbell size={14} />, tone: 'tone-cyan', activeClass: 'border-cyan-300/25 bg-cyan-300/[0.13] text-cyan-100 shadow-[0_8px_22px_-16px_rgba(34,211,238,0.9)]' },
-                  { id: 'warmup',    label: 'Разминка',   icon: <Zap size={14} />, tone: 'tone-violet', activeClass: 'border-violet-300/25 bg-violet-300/[0.13] text-violet-200 shadow-[0_8px_22px_-16px_rgba(167,139,250,0.9)]' },
-                ],
-                [
-                  { id: 'tonnage',  label: 'Нагрузка', icon: <BarChart2 size={14} />, tone: 'tone-amber', activeClass: 'border-amber-300/25 bg-amber-300/[0.13] text-amber-200 shadow-[0_8px_22px_-16px_rgba(251,191,36,0.9)]' },
-                  { id: 'calendar', label: 'Неделя',   icon: <CalendarDays size={14} />, tone: 'tone-rose', activeClass: 'border-rose-300/25 bg-rose-300/[0.13] text-rose-200 shadow-[0_8px_22px_-16px_rgba(251,113,133,0.9)]' },
-                  { id: 'planner',  label: 'Месяц',    icon: <CalendarRange size={14} />, tone: 'tone-blue', activeClass: 'border-blue-300/25 bg-blue-300/[0.13] text-blue-200 shadow-[0_8px_22px_-16px_rgba(96,165,250,0.9)]' },
-                  { id: 'library', label: 'База', ariaLabel: 'Библиотека упражнений', icon: <BookOpen size={14} />, tone: 'tone-pink', activeClass: '' },
-                ],
-                [
-                  { id: 'live', label: 'LIVE', ariaLabel: 'Командная тренировка LIVE', icon: <Users size={14} />, tone: 'tone-emerald', activeClass: 'border-emerald-300/30 bg-gradient-to-br from-emerald-300/[0.18] to-cyan-300/[0.08] text-emerald-100 shadow-[0_8px_22px_-16px_rgba(52,211,153,0.95)]' },
-                  { id: 'attention', label: 'Внимание', ariaLabel: 'Центр внимания тренера', icon: <AlertTriangle size={14} />, tone: 'tone-amber', activeClass: 'border-amber-300/25 bg-amber-300/[0.13] text-amber-100 shadow-[0_8px_22px_-16px_rgba(251,191,36,0.9)]' },
-                  { id: 'health', label: 'Система', ariaLabel: 'Здоровье платформы', icon: <Shield size={14} />, tone: 'tone-blue', activeClass: 'border-blue-300/25 bg-blue-300/[0.13] text-blue-100 shadow-[0_8px_22px_-16px_rgba(96,165,250,0.9)]' },
-                ],
-              ].map((row, ri) => (
-                <div key={ri} className="sidebar-nav-row">
-                  {row.filter(s => s.id !== 'attention' && (s.id !== 'planner' || usesSeasonCalendar(workspace))).map(s => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => {
-                        if (s.id === 'readiness') {
-                          window.open('https://readysix.app/dashboard', '_blank', 'noopener,noreferrer');
-                          return;
-                        }
-                        if (s.id === 'library') {
-                          window.location.assign('/library');
-                          return;
-                        }
-                        setMainSection(s.id);
-                        if (s.id === 'warmup') loadWarmupHistory();
-                      }}
-                      aria-label={s.ariaLabel || s.label}
-                      title={s.ariaLabel || s.label}
-                      className={`sidebar-nav-item ${s.tone} flex flex-1 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[10px] font-bold transition-all ${
-                        mainSection === s.id
-                          ? s.activeClass
-                          : 'border-white/[0.035] text-slate-500 hover:border-white/[0.10] hover:bg-white/[0.045] hover:text-slate-200'
-                      }`}
-                    >
-                      {s.icon}
-                      <span className="leading-none">{s.label}</span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
+          {keyConnected && <CoachNavigation current={mainSection} onSelect={section => {setMainSection(section);if(section==='warmup')loadWarmupHistory();}} />}
 
           {/* Tab switcher: Players | Day (workouts section only) */}
           {mainSection === 'workouts' && keyConnected && players.length > 0 && (
@@ -5478,7 +5417,7 @@ export default function Home() {
                     : 'border-white/[0.045] bg-white/[0.018] text-slate-400 hover:border-cyan-300/15 hover:bg-gradient-to-r hover:from-cyan-300/[0.06] hover:to-violet-300/[0.035] hover:text-slate-100'
                 }`}
               >
-                <button type="button" onClick={() => selectPlayer(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                <button type="button" onClick={() => selectPlayer(p)} aria-pressed={playerId === p.id} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                 <div className="relative h-9 w-9 shrink-0">
                   {p.photo ? (
                     <img src={p.photo} alt="" className="h-9 w-9 rounded-xl object-cover object-top ring-1 ring-white/[0.14]" />
@@ -5610,6 +5549,7 @@ export default function Home() {
                       key={w.id}
                       type="button"
                       onClick={() => switchWorkspace(w.id)}
+                    aria-pressed={workspace === w.id}
                       className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-black transition-all ${
                         workspace === w.id
                           ? w.id === 'zarechie'
@@ -5739,7 +5679,7 @@ export default function Home() {
             WORKSPACE
         ══════════════════════════════════════ */}
         <div className={`workspace-main h-screen min-w-0 flex-1 overflow-y-auto flex-col${mobileView === 'players' ? ' hidden sm:flex' : ' flex'}`}>
-          <div className="h-[2px] w-full bg-gradient-to-r from-transparent via-accent/80 to-transparent print:hidden" />
+          <div className="coach-top-rule print:hidden" />
 
           {/* ── Warmup workspace ── */}
           {mainSection === 'warmup' && (
@@ -6253,6 +6193,7 @@ export default function Home() {
             </div>
           )}
 
+          {keyConnected && mainSection==='workouts' && workspaceTab==='program' && !playerId && batchSelectedIds.size===0 && <CoachHome workspace={workspace} players={players} date={date} onSelectPlayer={selectPlayer} onNavigate={setMainSection} calendar={<DatePicker navigate timeZone={activePlayerTimeZone} value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(playerToday,1)} size="sm" />} />}
           {keyConnected && ['today','workouts'].includes(mainSection) && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></div>}
 
           {/* ── Today · smart decision centre ── */}
@@ -6672,10 +6613,10 @@ export default function Home() {
 
           {mainSection === 'workouts' && (<>
           <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
-          <section className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] pb-2 print:hidden" aria-label="Календарь тренера">
+          {(playerId || batchSelectedIds.size>0) && <section className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] pb-2 print:hidden" aria-label="Календарь тренера">
             <p className="hidden text-xs font-semibold text-slate-400 sm:block">Дата тренировки{leftTab === 'day' && Object.values(teamStatus).some(status => status.hasDraft) && <span className="ml-3 text-cyan-300">Черновики: {Object.values(teamStatus).filter(status => status.hasDraft).length}</span>}</p>
             <DatePicker navigate timeZone={activePlayerTimeZone} value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(playerToday, 1)} size="sm" className="w-full sm:w-[310px]" />
-          </section>
+          </section>}
 
           {/* ── Workspace header (player selected) ── */}
           {playerId && selectedPlayer ? (
@@ -7019,98 +6960,6 @@ export default function Home() {
                   })}
                 </div>
               )}
-            </div>
-          )}
-
-          {workspaceTab === 'program' && !playerId && batchSelectedIds.size === 0 && (
-            <div className="hidden min-h-[calc(100vh-66px)] items-center py-8 sm:flex print:hidden">
-              <div className="premium-command-center w-full rounded-[32px] border border-white/[0.10] p-7 lg:p-9">
-                <div className="relative z-10 flex flex-col gap-7">
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="max-w-2xl">
-                      <div className="mb-3 flex items-center gap-2">
-                        <span className="h-px w-8 bg-gradient-to-r from-emerald-300 to-cyan-300" />
-                        <span className="bg-gradient-to-r from-emerald-300 via-cyan-300 to-violet-300 bg-clip-text text-[10px] font-black uppercase tracking-[0.24em] text-transparent">
-                          Performance command center
-                        </span>
-                      </div>
-                      <h2 className="text-[30px] font-black leading-[1.05] tracking-[-0.035em] text-white lg:text-[38px]">
-                        Управляйте подготовкой<br className="hidden lg:block" /> в одном пространстве
-                      </h2>
-                      <p className="mt-4 max-w-xl text-[13px] leading-relaxed text-slate-400">
-                        Выберите спортсмена из состава, оцените актуальное состояние и соберите персональную тренировку под методику дня.
-                      </p>
-                    </div>
-                    <div className={`inline-flex w-fit items-center gap-2 rounded-2xl border px-3.5 py-2 text-[11px] font-black ${
-                      workspace === 'zarechie'
-                        ? 'border-cyan-300/20 bg-cyan-300/[0.08] text-cyan-200'
-                        : 'border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-200'
-                    }`}>
-                      <span className={`h-2 w-2 rounded-full ${workspace === 'zarechie' ? 'bg-cyan-300' : 'bg-emerald-300'} shadow-[0_0_12px_currentColor]`} />
-                      {workspace === 'zarechie' ? 'Заречье' : 'NK Performance'}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    {[
-                      { label: 'Спортсмены', value: players.length || '—', sub: 'активный состав', color: 'text-cyan-200', icon: <Users size={15} /> },
-                      { label: 'Программы', value: players.filter(p => p.lastSessionDate === date).length, sub: `на ${date.slice(5).replace('-', '.')}`, color: 'text-emerald-200', icon: <CheckCircle2 size={15} /> },
-                      { label: 'Данные', value: keyConnected ? 'LIVE' : 'OFF', sub: 'ReadySix', color: keyConnected ? 'text-emerald-200' : 'text-rose-200', icon: <Activity size={15} /> },
-                      { label: 'Режим', value: 'PRO', sub: 'coach workspace', color: 'text-violet-200', icon: <Orbit size={15} /> },
-                    ].map(item => (
-                      <div key={item.label} className="command-stat rounded-2xl border border-white/[0.075] p-4">
-                        <div className={`mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] ${item.color}`}>
-                          {item.icon}{item.label}
-                        </div>
-                        <div className="text-[24px] font-black leading-none tracking-tight text-white">{item.value}</div>
-                        <div className="mt-1.5 text-[10px] text-slate-500">{item.sub}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div>
-                    <div className="mb-3 flex items-end justify-between gap-4">
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Быстрый выбор</div>
-                        <div className="mt-1 text-[15px] font-bold text-slate-200">Состав команды</div>
-                      </div>
-                      <div className="text-[10px] text-slate-500">Все спортсмены доступны в панели слева</div>
-                    </div>
-                    {players.length > 0 ? (
-                      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-                        {players.slice(0, 6).map(p => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => selectPlayer(p)}
-                            className="command-player-card group flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.075] p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300/20"
-                          >
-                            <div className="relative h-11 w-11 shrink-0">
-                              {p.photo ? (
-                                <img src={p.photo} alt="" className="h-11 w-11 rounded-[14px] object-cover object-top ring-1 ring-white/[0.14]" />
-                              ) : (
-                                <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-gradient-to-br from-cyan-300/20 to-violet-400/15 text-[11px] font-black text-cyan-100 ring-1 ring-white/[0.08]">
-                                  {initials(p.name)}
-                                </div>
-                              )}
-                              <span className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0b1820] ${positionDot(p.position)}`} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-[12px] font-black text-slate-100">{p.name}</div>
-                              <div className="mt-0.5 truncate text-[10px] text-slate-500">{p.position || 'Позиция не указана'}</div>
-                            </div>
-                            <ArrowRight size={14} className="shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-cyan-200" />
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-white/[0.07] bg-black/15 px-5 py-8 text-center text-[12px] text-slate-500">
-                        Загружаю актуальный состав из ReadySix…
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
             </div>
           )}
 
@@ -7548,7 +7397,7 @@ export default function Home() {
             <button
               type="submit"
               disabled={loading || weekPlanLoading || !apiKey || !playerId}
-              className={`flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-b from-[#55f08a] to-[#14b8c8] px-5 py-3.5 text-[15px] font-black text-[#031411] shadow-[0_14px_38px_-18px_rgba(34,211,238,0.95),0_0_0_1px_rgba(255,255,255,0.12)_inset] transition-all duration-200 hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none ${focusRing} ${sessionType === 'gym' ? 'flex-1' : 'w-full'}`}
+              className={`coach-primary flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-b from-[#55f08a] to-[#14b8c8] px-5 py-3.5 text-[15px] font-black text-[#031411] shadow-[0_14px_38px_-18px_rgba(34,211,238,0.95),0_0_0_1px_rgba(255,255,255,0.12)_inset] transition-all duration-200 hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none ${focusRing} ${sessionType === 'gym' ? 'flex-1' : 'w-full'}`}
             >
               {loading ? (
                 <>

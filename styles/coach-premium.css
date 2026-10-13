@@ -1,0 +1,128 @@
+/* Coach shell only: athlete timers, public programs and clinical status colours
+   keep their existing presentation. Both workspaces share these tokens. */
+.coach-premium {
+ --coach-bg:#101315; --coach-panel:#181c1e; --coach-panel-hover:#202627;
+ --coach-border:#2b3335; --coach-ink:#edf1ef; --coach-muted:#a4b0ad;
+ --coach-jade:#96cbb6; --coach-jade-ink:#12251d;
+ --type-display:var(--font-manrope),system-ui,sans-serif;
+ background:var(--coach-bg); color:var(--coach-ink); letter-spacing:-.012em;
+}
+.coach-premium::before,.coach-premium .premium-sidebar::after,.coach-premium .sidebar-brand::after,
+.coach-premium .premium-player-header::after,.coach-premium .premium-form::before {display:none;}
+.coach-premium .workspace-main {background:var(--coach-bg);}
+.coach-premium .workspace-main h1,.coach-premium .workspace-main h2 {font-family:var(--font-manrope),system-ui,sans-serif;font-weight:650;letter-spacing:-.035em;line-height:1.2;}
+.coach-premium .workspace-main h2 {font-size:clamp(1.25rem,1.8vw,1.7rem);}
+.coach-premium .font-black {font-weight:700;}
+.coach-premium .uppercase {letter-spacing:.09em;}
+.coach-premium .text-slate-700 {color:#83938e;}
+.coach-premium .text-slate-600 {color:#8e9e99;}
+.coach-premium .text-slate-500 {color:#a4b0ad;}
+.coach-premium .text-slate-400 {color:#b3beba;}
+.coach-premium :is(.text-cyan-100,.text-cyan-200,.text-cyan-300,.text-emerald-200,.text-emerald-300,.text-accent) {color:var(--coach-jade);}
+.coach-premium button {transition:background-color 160ms,border-color 160ms,color 160ms;}
+.coach-premium button:disabled {cursor:not-allowed;}
+.coach-premium :is(button,a,input,select,textarea,summary):focus-visible {outline:2px solid var(--coach-jade);outline-offset:3px;box-shadow:none;}
+.coach-premium :is(input:not([type='checkbox']):not([type='radio']),textarea,select) {border-color:#3b4542;background-color:#121718;color:var(--coach-ink);box-shadow:none;}
+.coach-premium :is(input,textarea)::placeholder {color:#83938e;}
+.coach-premium :is(input,textarea,select):disabled {color:#8e9e99;}
+.coach-premium :is(.premium-form,.premium-session-card,.premium-player-header,.premium-workspace-tabs,.mobile-command-header) {background:var(--coach-panel);background-image:none;border-color:var(--coach-border);box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;}
+.coach-premium .premium-player-header {border-radius:16px;}
+.coach-premium .premium-player-header h1 {font-size:clamp(1.3rem,2vw,1.8rem);}
+.coach-premium .premium-sidebar {background:#15191b;border-color:var(--coach-border);box-shadow:none;backdrop-filter:none;}
+.coach-premium .sidebar-brand {background:none;padding:16px 14px;}
+.coach-premium .sidebar-brand > div {gap:10px;}
+.coach-premium .sidebar-brand > div > div:first-child > div {display:none;}
+.coach-premium .sidebar-brand img {border-radius:10px;box-shadow:none;}
+.coach-premium .sidebar-brand .sidebar-copy > div:last-child {background:none;color:var(--coach-muted);font-size:9px;letter-spacing:.08em;}
+.coach-premium .sidebar-brand .sidebar-copy > div:first-child {font-size:12px;}
+.coach-premium .sidebar-connected {padding:0;width:28px;height:28px;border:none;background:transparent;color:#99aaa3;box-shadow:none;}
+.coach-premium .sidebar-connected > span:first-child {display:none;}
+.coach-premium .sidebar-connected .sidebar-copy {font-size:0;}
+.coach-premium .sidebar-connected .sidebar-copy::after {content:'↗';font-size:18px;}
+.coach-premium .sidebar-collapse-button {height:28px;width:28px;border-color:var(--coach-border);background:transparent;}
+.coach-premium .sidebar-workspace {padding:8px 14px;}
+.coach-premium .sidebar-workspace-switcher,.coach-premium .sidebar-roster-tabs {background:#101416;border-color:var(--coach-border);box-shadow:none;border-radius:10px;}
+.coach-premium button[aria-pressed='true']:not(.sidebar-player-row button) {background:#293b33;background-image:none;color:#c5e2d5;border-color:#40594d;box-shadow:none;}
+.coach-premium .sidebar-workspace-switcher button {border-radius:7px;min-height:34px;font-size:11px;}
+.coach-premium .sidebar-workspace-switcher button > span:first-child {display:none;}
+.coach-premium .coach-navigation {padding:9px 12px 12px;border-bottom:1px solid var(--coach-border);flex:0 0 auto;}
+.coach-nav-group + .coach-nav-group {margin-top:10px;}
+.coach-nav-label {padding:0 10px;margin:0 0 5px;font-size:9px;color:#82968d;letter-spacing:.1em;text-transform:uppercase;}
+.coach-nav-link {position:relative;display:flex;align-items:center;gap:11px;min-height:31px;width:100%;padding:6px 10px;border-radius:7px;text-align:left;font-size:12px;font-weight:550;color:#acb8b3;}
+.coach-nav-link svg {flex-shrink:0;color:#8da197;}
+.coach-nav-link .coach-external {margin-left:auto;}
+.coach-nav-link:hover {background:#222b27;color:#f2f5f3;}
+.coach-nav-link[aria-current='page'] {background:#27372f;color:#d0e9dd;}
+.coach-nav-link[aria-current='page']::before {position:absolute;content:'';left:-12px;top:9px;bottom:9px;width:2px;background:#96cbb6;}
+.coach-nav-link[aria-current='page'] svg {color:#a9d8c1;}
+.coach-premium .sidebar-player-scroll {background:none;padding-inline:10px;}
+.coach-premium .sidebar-player-row {min-height:56px;border:1px solid transparent;border-radius:10px;background:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;}
+.coach-premium .sidebar-player-row:hover {background:#202a25;border-color:#303c35;box-shadow:none;}
+.coach-premium .sidebar-player-row:has(button[aria-pressed='true']) {background:#26372e;border-color:#3c5345;}
+.coach-premium .sidebar-player-row button[aria-pressed='true'] {background:none;color:inherit;}
+.coach-premium .sidebar-player-row button > div:last-child > div:first-child {flex-wrap:wrap;row-gap:4px;}
+.coach-premium .sidebar-player-row .truncate {white-space:normal;overflow:visible;text-overflow:clip;}
+.coach-premium .sidebar-player-row img {border-radius:9px;}
+.coach-premium .sidebar-player-row button[title='Скопировать ссылку игрока'] {opacity:1;}
+.coach-premium .premium-sidebar--collapsed .coach-nav-label,.coach-premium .premium-sidebar--collapsed .coach-nav-link span,.coach-premium .premium-sidebar--collapsed .coach-external {display:none;}
+.coach-premium .premium-sidebar--collapsed .coach-nav-link {justify-content:center;min-height:38px;padding:8px;}
+.coach-premium .premium-sidebar--collapsed .coach-navigation {padding:10px;}
+.coach-premium .premium-sidebar--collapsed .sidebar-brand-actions {flex-direction:row;gap:2px;}
+.coach-premium .premium-sidebar--collapsed .sidebar-brand {padding:12px 8px;}
+.coach-premium .coach-primary,.coach-premium button[class*='bg-gradient-']:not([class*='from-amber']):not([class*='from-rose']) {background:#96cbb6;background-image:none;color:#12251d;box-shadow:none;}
+.coach-premium .coach-primary:hover:not(:disabled),.coach-premium button[class*='bg-gradient-']:hover:not(:disabled):not([class*='from-amber']):not([class*='from-rose']) {background:#b1ddc9;filter:none;transform:none;}
+.coach-premium .coach-primary:disabled {background:#35483e;color:#98a99e;opacity:1;}
+.coach-top-rule {height:1px;background:#2b3335;flex-shrink:0;}
+.coach-home {width:100%;max-width:1480px;margin:0 auto;padding:32px 40px 8px;}
+.coach-home-header {display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:24px;}
+.coach-eyebrow {margin:0 0 8px;color:#97ac9f;font-size:10px;letter-spacing:.13em;text-transform:uppercase;}
+.coach-home h1 {font-size:clamp(1.7rem,2.8vw,2.5rem);margin:0;}
+.coach-home-subtitle {margin-top:10px;color:#a4b0ad;font-size:13px;}
+.coach-home-subtitle span {margin:0 9px;color:#4e6258;}
+.coach-home-calendar {min-width:265px;flex-shrink:0;}
+.coach-home-calendar > span {display:block;font-size:10px;color:#a4b0ad;margin-bottom:7px;}
+.coach-home-actions {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:24px;}
+.coach-home-action {display:flex;align-items:center;gap:14px;padding:18px;border:1px solid #303b35;background:#181e1a;border-radius:12px;text-align:left;min-width:0;}
+.coach-home-action > svg:first-child {color:#96cbb6;flex-shrink:0;}
+.coach-home-action > svg:last-child {margin-left:auto;color:#8fa798;flex-shrink:0;}
+.coach-home-action strong {font-size:13px;display:block;font-weight:650;color:#e8eeea;}
+.coach-home-action small {display:block;margin-top:5px;font-size:11px;line-height:1.5;color:#a4b3a9;}
+.coach-home-action--featured {background:#24392c;border-color:#47624e;}
+.coach-home-action:hover {border-color:#729b7e;background:#2b4031;}
+.coach-home-roster {padding:22px;background:#181c1e;border:1px solid #2b3335;border-radius:16px;}
+.coach-section-heading {display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.coach-home .coach-section-heading h2 {font-size:19px;margin:0;}
+.coach-count {display:flex;align-items:center;gap:7px;border:1px solid #35433b;border-radius:7px;padding:5px 9px;font-size:12px;color:#b3c9bc;}
+.coach-home-players {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.coach-home-player {display:flex;align-items:center;gap:12px;min-width:0;padding:12px;border:1px solid #2f3933;border-radius:10px;background:#1b211e;text-align:left;}
+.coach-home-player:hover {background:#26372c;border-color:#56765e;}
+.coach-home-player > img,.coach-avatar-fallback {width:40px;height:40px;border-radius:8px;object-fit:cover;object-position:top;flex-shrink:0;}
+.coach-avatar-fallback {display:grid;place-items:center;background:#2d4032;color:#c0d8c6;font-size:12px;}
+.coach-player-copy {min-width:0;flex:1;}
+.coach-player-copy strong {display:block;font-size:12px;font-weight:650;line-height:1.4;color:#e3ebe5;}
+.coach-player-copy small {display:block;font-size:10px;margin-top:4px;color:#a4b3a9;line-height:1.4;}
+.coach-home-player > svg {color:#88a890;flex-shrink:0;}
+.coach-home-footnote {font-size:11px;color:#9dada3;margin:14px 0 0;line-height:1.6;}
+.coach-empty {color:#a4b0ad;padding:24px 0;font-size:13px;}
+@media (min-width:640px) and (max-width:1100px) {
+ .coach-premium .premium-sidebar:not(.premium-sidebar--collapsed) {width:288px !important;}
+ .coach-premium .premium-sidebar:not(.premium-sidebar--collapsed):not(:hover) :is(.sidebar-copy,.sidebar-context,.sidebar-player-scroll) {display:revert !important;}
+ .coach-premium .premium-sidebar:not(.premium-sidebar--collapsed):not(:hover) .sidebar-brand {padding:16px 14px;}
+ .coach-premium .premium-sidebar:not(.premium-sidebar--collapsed):not(:hover) .sidebar-brand > div:first-child {flex-direction:row;gap:10px;}
+ .coach-premium .premium-sidebar:not(.premium-sidebar--collapsed):not(:hover) .sidebar-brand-actions {flex-direction:row;}
+ .coach-home {padding:24px 24px 8px;}
+ .coach-home-header {align-items:flex-start;flex-direction:column;gap:16px;}
+ .coach-home-actions {grid-template-columns:1fr;gap:8px;}
+ .coach-home-action {padding:12px 16px;}
+ .coach-home-players {grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media (max-width:639px) {
+ .coach-home {padding:20px 16px 8px;}
+ .coach-home-header {flex-direction:column;align-items:stretch;gap:16px;}
+ .coach-home-actions,.coach-home-players {grid-template-columns:1fr;}
+ .coach-home-roster {padding:16px;}
+ .coach-home-calendar {min-width:0;}
+ .coach-premium button {touch-action:manipulation;}
+}
+@media (prefers-reduced-motion:reduce) {.coach-premium * {transition:none !important;animation:none !important;scroll-behavior:auto !important;}}
+@media print {.coach-home {display:none;}}
