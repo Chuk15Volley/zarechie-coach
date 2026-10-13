@@ -28,6 +28,7 @@ export default async function handler(req, res) {
     const savedRaw = await redis('get', sessionKey(workspace, playerId, date));
     let draft = typeof draftRaw === 'string' ? JSON.parse(draftRaw) : draftRaw;
     let saved = typeof savedRaw === 'string' ? JSON.parse(savedRaw) : savedRaw;
+    let draftOwner=String(playerId),savedOwner=String(playerId);
     // ReadySix uses numeric IDs; older player links and programs retain WHOOP IDs.
     // Read both editions without migrating records or rotating the player's link.
     const numeric=String(playerId).replace(/^whoop_/,'');
@@ -39,17 +40,18 @@ export default async function handler(req, res) {
       ]);
       const parse=value=>typeof value==='string'?JSON.parse(value):value;
       const aliasDraft=parse(aliasDraftRaw),aliasSaved=parse(aliasSavedRaw);
-      if(aliasDraft && (!draft || String(aliasDraft.generatedAt || '')>String(draft.generatedAt || '')))draft=aliasDraft;
-      if(aliasSaved && (!saved || String(aliasSaved.savedAt || aliasSaved.generatedAt || '')>String(saved.savedAt || saved.generatedAt || '')))saved=aliasSaved;
+      if(aliasDraft && (!draft || String(aliasDraft.generatedAt || '')>String(draft.generatedAt || ''))){draft=aliasDraft;draftOwner=alias;}
+      if(aliasSaved && (!saved || String(aliasSaved.savedAt || aliasSaved.generatedAt || '')>String(saved.savedAt || saved.generatedAt || ''))){saved=aliasSaved;savedOwner=alias;}
     }
     const raw = draft && (!saved || draft.generatedAt > saved.savedAt) ? draft : saved;
     if (!raw) return res.status(200).json({ record: null });
     const { record } = raw?.draft ? { record: raw } : parseSavedSession(raw);
+    const sourcePlayerId=raw===draft?draftOwner:savedOwner;
     if (record?.session) record.session = sanitizeUnavailableEquipmentExercises(record.session);
     if (record?.session?.kind === 'prehab_training_draft') {
-      [record.prehabReaction] = await getPrehabReactions(String(playerId), [date], workspace);
+      [record.prehabReaction] = await getPrehabReactions(sourcePlayerId, [date], workspace);
     }
-    return res.status(200).json({ record });
+    return res.status(200).json({ record:record?{...record,sourcePlayerId}:record });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

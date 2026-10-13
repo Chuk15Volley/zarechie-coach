@@ -10,6 +10,7 @@ const nextConfig = {
       "form-action 'self'",
       "frame-ancestors 'none'",
       "object-src 'none'",
+      "frame-src 'self' https://www.youtube-nocookie.com",
       `script-src 'self' 'unsafe-inline'${isProduction ? '' : " 'unsafe-eval'"}`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",

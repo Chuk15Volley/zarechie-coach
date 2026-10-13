@@ -1,3 +1,5 @@
+import ProgramOverview from '../components/ProgramOverview';
+import {programEditPlayerId} from '../lib/programEditIdentity.mjs';
 import PlayerHistory from '../components/PlayerHistory';
 import {teamQueueCall} from '../lib/teamQueueClient.mjs';
 import {TodayOverview,TeamLoadOverview,OverviewFreshness,OverviewSignals} from '../components/CoachOverview';
@@ -1057,201 +1059,60 @@ const PENCIL_ICON = (
   </svg>
 );
 
-function ExerciseVideoPanel({ name, apiKey }) {
-  const bankUrl = findExerciseUrl(name);
-  const [manualVideoUrl, setManualVideoUrl] = useState(undefined); // undefined = checking
-  const [editingVideo, setEditingVideo] = useState(false);
-  const [videoInput, setVideoInput] = useState('');
-  const [savingVideo, setSavingVideo] = useState(false);
-  const [videoSaveError, setVideoSaveError] = useState(null);
-
-  useEffect(() => {
-    setManualVideoUrl(undefined);
-    setEditingVideo(false);
-    setVideoInput('');
-    setSavingVideo(false);
-    setVideoSaveError(null);
-  }, [name]);
-
-  // Fetch manual override
-  useEffect(() => {
-    if (!name?.trim() || !apiKey) return;
-    let cancelled = false;
-    fetch(`/api/exercises/manual-video?name=${encodeURIComponent(name)}`, { headers: { 'x-api-key': apiKey } })
-      .then(r => r.json())
-      .then(d => { if (!cancelled) setManualVideoUrl(d.url || null); })
-      .catch(() => { if (!cancelled) setManualVideoUrl(null); });
-    return () => { cancelled = true; };
-  }, [name, apiKey]);
-
-  // Priority: trainer's manual link → existing curated bank. New exercises
-  // deliberately stay without video until the trainer saves a chosen link.
-  const videoUrl = manualVideoUrl || bankUrl;
-  const isManual = !!manualVideoUrl;
-  const videoId = youtubeVideoId(videoUrl);
-  const watchUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : videoUrl;
-
-  async function handleSaveVideo() {
-    const trimmed = videoInput.trim();
-    if (!trimmed) return;
-    setSavingVideo(true);
-    setVideoSaveError(null);
-    try {
-      const res = await fetch('/api/exercises/manual-video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ name, url: trimmed }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok || !data.url) {
-        throw new Error(data.error || `Ошибка сохранения ${res.status}`);
-      }
-      setManualVideoUrl(data.url);
-      setVideoInput(data.url);
-      setEditingVideo(false);
-    } catch (e) {
-      setVideoSaveError(e.message || 'Не удалось сохранить видео');
-    }
-    setSavingVideo(false);
+function ExerciseVideoPanel({name,apiKey,editable=true}) {
+  const bankUrl=findExerciseUrl(name);
+  const [manualVideoUrl,setManualVideoUrl]=useState(null),[editingVideo,setEditingVideo]=useState(false),[videoInput,setVideoInput]=useState(''),[savingVideo,setSavingVideo]=useState(false),[videoError,setVideoError]=useState(''),[playing,setPlaying]=useState(false),[reload,setReload]=useState(0);
+  const epoch=useRef(0),mutation=useRef(null);
+  useEffect(()=>{const version=++epoch.current;setManualVideoUrl(null);setEditingVideo(false);setVideoInput('');setSavingVideo(false);setVideoError('');setPlaying(false);return()=>{epoch.current++;mutation.current?.abort();};},[name,apiKey]);
+  useEffect(()=>{
+    if(!name?.trim() || !apiKey)return;
+    const controller=new AbortController(),version=epoch.current;
+    teamQueueCall(apiKey,`/api/exercises/manual-video?name=${encodeURIComponent(name)}`,{signal:controller.signal,timeoutMs:15000})
+      .then(data=>{if(!controller.signal.aborted && version===epoch.current){setManualVideoUrl(data.url || null);setVideoError('');}})
+      .catch(()=>{if(!controller.signal.aborted && version===epoch.current)setVideoError('Не удалось проверить видео тренера. Повторите загрузку.');});
+    return()=>controller.abort();
+  },[name,apiKey,reload]);
+  const videoUrl=manualVideoUrl || bankUrl,videoId=youtubeVideoId(videoUrl),watchUrl=videoId?`https://www.youtube.com/watch?v=${videoId}`:videoUrl;
+  useEffect(()=>setPlaying(false),[videoUrl]);
+  async function handleSaveVideo(){
+    const url=videoInput.trim();if(!url || savingVideo)return;
+    const version=++epoch.current,controller=new AbortController();mutation.current=controller;setSavingVideo(true);setVideoError('');
+    try{const data=await teamQueueCall(apiKey,'/api/exercises/manual-video',{body:{name,url},signal:controller.signal,timeoutMs:20000});if(!data.ok || !data.url)throw Error('Ссылка не сохранена.');if(version===epoch.current){setManualVideoUrl(data.url);setVideoInput(data.url);setEditingVideo(false);}}
+    catch(error){if(version===epoch.current)setVideoError(error.message || 'Не удалось сохранить видео.');}
+    finally{if(version===epoch.current)setSavingVideo(false);}
   }
-
-  async function handleDeleteVideo() {
-    await fetch(`/api/exercises/manual-video?name=${encodeURIComponent(name)}`, {
-      method: 'DELETE', headers: { 'x-api-key': apiKey },
-    }).catch(() => {});
-    setManualVideoUrl(null);
-    setEditingVideo(false);
+  async function handleDeleteVideo(){
+    if(savingVideo)return;const version=++epoch.current,controller=new AbortController();mutation.current=controller;setSavingVideo(true);setVideoError('');const timer=setTimeout(()=>controller.abort(),20000);
+    try{const response=await fetch(`/api/exercises/manual-video?name=${encodeURIComponent(name)}`,{method:'DELETE',headers:{'x-api-key':apiKey},signal:controller.signal});const data=await response.json();if(!response.ok || !data.ok)throw Error(data.error || 'Не удалось сбросить видео.');if(version===epoch.current){setManualVideoUrl(null);setEditingVideo(false);}}
+    catch(error){if(version===epoch.current)setVideoError(error.message || 'Не удалось сбросить видео.');}
+    finally{clearTimeout(timer);if(version===epoch.current)setSavingVideo(false);}
   }
-
-  function openEditVideo() {
-    setVideoInput(videoUrl || '');
-    setEditingVideo(true);
-  }
-
-  return (
-    <div className="print:hidden">
-      <div className="mx-4 mt-2 overflow-hidden rounded-2xl border border-white/[0.10] bg-[#05090f] shadow-[0_14px_32px_-22px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.05)]">
-        {videoId ? (
-          <a
-            href={watchUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="relative block aspect-video w-full overflow-hidden bg-black text-left"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover opacity-80"
-            />
-            <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-            <span className="absolute inset-0 grid place-items-center">
-              <span className="grid h-12 w-12 place-items-center rounded-full bg-red-600 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="ml-1">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </span>
-            </span>
-            <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold text-white">
-              Смотреть технику
-            </span>
-          </a>
-        ) : (
-          <button
-            type="button"
-            onClick={openEditVideo}
-            className="flex aspect-video w-full flex-col items-center justify-center gap-2 text-slate-600 transition hover:bg-white/[0.04] hover:text-slate-400"
-          >
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-red-500/10 text-red-300">{YT_ICON}</span>
-            <span className="text-[11px] font-semibold">Добавить YouTube-видео</span>
-          </button>
-        )}
-      </div>
-
-      {/* Inline URL editor */}
-      {editingVideo && (
-        <div className="border-t border-white/[0.06] px-3.5 py-2">
-          <div className="flex items-center gap-1.5">
-            <input
-              autoFocus
-              type="url"
-              value={videoInput}
-              onChange={e => { setVideoInput(e.target.value); setVideoSaveError(null); }}
-              onKeyDown={e => { if (e.key === 'Enter') handleSaveVideo(); if (e.key === 'Escape') setEditingVideo(false); }}
-              placeholder="https://youtube.com/watch?v=..."
-              className="min-w-0 flex-1 rounded-md bg-white/[0.06] px-2.5 py-1.5 text-[11px] text-slate-200 outline-none placeholder:text-slate-600 focus:bg-white/[0.1] focus:ring-1 focus:ring-accent/40"
-            />
-            <button
-              onClick={handleSaveVideo}
-              disabled={savingVideo || !videoInput.trim()}
-              className="rounded-md bg-accent/20 px-2.5 py-1.5 text-[11px] font-semibold text-accent hover:bg-accent/30 disabled:opacity-40"
-            >
-              {savingVideo ? <Loader2 size={11} className="animate-spin" /> : 'Сохранить'}
-            </button>
-            {isManual && (
-              <button onClick={handleDeleteVideo} className="rounded-md bg-rose-500/10 px-2 py-1.5 text-[11px] text-rose-400 hover:bg-rose-500/20">
-                Сбросить
-              </button>
-            )}
-            <button onClick={() => setEditingVideo(false)} className="rounded-md px-2 py-1.5 text-[11px] text-slate-500 hover:text-slate-300">
-              ✕
-            </button>
-          </div>
-          {videoSaveError && (
-            <div className="mt-1.5 rounded-md bg-rose-500/10 px-2 py-1 text-[11px] text-rose-300">
-              {videoSaveError}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Video controls stay compact: preview is the primary action. */}
-      <div className="flex items-center justify-end gap-1 px-3 pb-2">
-        {videoUrl ? (
-          <div className="flex items-center gap-1">
-            <button
-              onClick={openEditVideo}
-              title={isManual ? 'Изменить своё видео' : 'Указать своё видео'}
-              className={`grid h-7 w-7 place-items-center rounded-md transition ${isManual ? 'bg-accent/[0.16] text-accent hover:bg-accent/[0.26]' : 'bg-white/[0.045] text-slate-500 hover:bg-white/[0.08] hover:text-slate-300'}`}
-            >
-              {PENCIL_ICON}
-            </button>
-            <a
-              href={watchUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="grid h-7 w-7 place-items-center rounded-md bg-white/[0.045] text-slate-500 transition hover:bg-white/[0.08] hover:text-slate-300"
-              title="Открыть YouTube в новой вкладке"
-            >
-              <ArrowUpRight size={13} />
-            </a>
-          </div>
-        ) : (
-          <button
-            onClick={openEditVideo}
-            title="Добавить YouTube-видео"
-            className="grid h-7 w-7 place-items-center rounded-md bg-white/[0.045] text-slate-500 transition hover:bg-white/[0.1] hover:text-slate-300"
-          >
-            {YT_ICON}
-          </button>
-        )}
-      </div>
-    </div>
-  );
+  const openEdit=()=>{setVideoInput(videoUrl || '');setVideoError('');setEditingVideo(true);};
+  return <div className="coach-video-panel print:hidden">
+    <div className="coach-video-frame">{videoId?playing?<iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`} title={`Видео техники · ${name}`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:<button type="button" className="coach-video-poster" aria-label={`Смотреть видео техники: ${name}`} onClick={()=>setPlaying(true)}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt={`Техника ${name}`} loading="lazy"/><span className="coach-video-shade"/><span className="coach-video-play"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 5v14l11-7z"/></svg></span><span className="coach-video-caption">Смотреть технику<span>↗</span></span>
+    </button>:<div className="coach-video-empty"><span>{YT_ICON}</span><strong>Видео ещё не добавлено</strong>{editable?<button type="button" onClick={openEdit}>Добавить YouTube-видео</button>:<p>Техника выполнения описана ниже.</p>}</div>}</div>
+    <div className="coach-video-meta"><span>{manualVideoUrl?'Видео тренера':videoId?'Библиотека техники':'Техника упражнения'}</span><div>{videoUrl && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке"><ArrowUpRight size={14}/>YouTube</a>}{editable && <button type="button" onClick={openEdit} title={manualVideoUrl?'Изменить своё видео':'Указать своё видео'}>{PENCIL_ICON}{videoId?'Изменить':'Добавить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
+    {editable && editingVideo && <div className="coach-video-edit"><label>Ссылка на видео<input autoFocus type="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onChange={e=>{setVideoInput(e.target.value);setVideoError('');}} placeholder="https://youtube.com/watch?v=…" onKeyDown={e=>{if(e.key==='Enter')handleSaveVideo();if(e.key==='Escape')setEditingVideo(false);}}/></label><p>Сохраняется отдельно в общей библиотеке этого упражнения.</p><div><button type="button" onClick={handleSaveVideo} disabled={savingVideo || !videoInput.trim()}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить</button>}<button type="button" onClick={()=>setEditingVideo(false)} disabled={savingVideo}>Отмена</button></div></div>}
+    {videoError && <div className="coach-video-error" role="alert"><p>{videoError}</p><button type="button" onClick={()=>setReload(value=>value+1)}>Проверить видео</button></div>}
+  </div>;
 }
 
-function AutoResizeTextarea({ value, onChange, className, placeholder, minRows = 1 }) {
+function AutoResizeTextarea({ value, onChange, className, placeholder, minRows = 1, ariaLabel }) {
   const ref = useRef(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = el.scrollHeight + 'px';
+    const resize=()=>{el.style.height='auto';el.style.height=el.scrollHeight+'px';};
+    resize();let width=el.parentElement?.clientWidth;
+    const observer=new ResizeObserver(entries=>{const next=entries[0]?.contentRect.width;if(next!==width){width=next;resize();}});
+    if(el.parentElement)observer.observe(el.parentElement);
+    return()=>observer.disconnect();
   }, [value]);
   return (
     <textarea
       ref={ref}
+      aria-label={ariaLabel}
       value={value}
       onChange={e => onChange(e.target.value)}
       rows={minRows}
@@ -1278,9 +1139,11 @@ function targetSetReps(value) {
 
 function ExerciseCard({
   apiKey,
+  preview=false,
+  onChangeTargetRpeMax,
   code,
   name,
-  targetSets,
+  targetSets=[],
   weightNote,
   weightKg,
   targetRpeMax,
@@ -1395,234 +1258,41 @@ function ExerciseCard({
   }
 
   return (
-    <div className={`premium-exercise-card coach-exercise-card group h-fit overflow-hidden rounded-2xl border border-white/[0.10] transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.18] print:break-inside-avoid print:border-slate-300 print:bg-white ${hasConflict ? 'ring-1 ring-rose-500/30' : ''}`}>
-      {/* Header */}
-      <div className={`bg-gradient-to-r ${bc.headerFrom} to-transparent px-3 pt-2.5 pb-2 print:bg-slate-100`}>
-        {/* Row 1: badges + regenerate button */}
-        <div className="flex items-center gap-1.5">
-          <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-black tracking-wide ${bc.codeBg} print:bg-slate-200 print:text-slate-700`}>
-            {code}
-          </span>
-          <div className="flex-1" />
-          <button
-            type="button"
-            onClick={openSwap}
-            title="Заменить упражнение из библиотеки"
-            className={`shrink-0 rounded-md p-1 transition-all hover:bg-white/[0.08] print:hidden ${swapOpen ? 'text-accent opacity-100' : hasConflict ? 'text-rose-400 opacity-100' : 'text-slate-600 opacity-0 group-hover:opacity-100'}`}
-          >
-            <ArrowLeftRight size={13} />
-          </button>
-          {onRegenerate && (
-            <button
-              type="button"
-              onClick={handleRegenerate}
-              disabled={regenerating}
-              title="Перегенерировать упражнение"
-              className="flex shrink-0 items-center gap-1 rounded-md border border-white/[0.09] bg-white/[0.04] px-1.5 py-1 text-[10px] font-semibold text-slate-400 transition-all hover:border-accent/40 hover:bg-accent/[0.08] hover:text-accent disabled:cursor-not-allowed disabled:opacity-50 print:hidden"
-            >
-              {regenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-              <span className="hidden lg:inline">Заменить</span>
-            </button>
-          )}
-        </div>
-
-        {regenerateError && (
-          <p className="mt-2 rounded-lg border border-rose-400/20 bg-rose-500/[0.08] px-2 py-1.5 text-[10px] font-medium leading-snug text-rose-200 print:hidden">
-            {regenerateError}
-          </p>
-        )}
-
-        {/* Swap panel */}
-        {swapOpen && (
-          <div className="mt-2 mb-1 rounded-xl border border-white/[0.10] bg-[#071018] p-2 print:hidden">
-            <input
-              autoFocus
-              value={swapSearch}
-              onChange={e => setSwapSearch(e.target.value)}
-              placeholder="Поиск по библиотеке..."
-              className="w-full rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-[13px] text-slate-200 outline-none placeholder:text-slate-600 focus:bg-white/[0.08]"
-            />
-            <div className="mt-1.5 max-h-44 overflow-y-auto">
-              {swapLoading ? (
-                <div className="py-3 text-center text-[12px] text-slate-600">Загрузка...</div>
-              ) : swapLibrary.filter(ex => !swapSearch.trim() || (ex.title || '').toLowerCase().includes(swapSearch.toLowerCase())).length === 0 ? (
-                <div className="py-3 text-center text-[12px] text-slate-600">Не найдено</div>
-              ) : (
-                swapLibrary
-                  .filter(ex => !swapSearch.trim() || (ex.title || '').toLowerCase().includes(swapSearch.toLowerCase()))
-                  .slice(0, 18)
-                  .map(ex => (
-                    <button
-                      key={ex.canonicalId}
-                      type="button"
-                      onClick={() => doSwap(ex.title)}
-                      className="w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] text-slate-300 transition hover:bg-white/[0.08] hover:text-white"
-                    >
-                      {ex.title}
-                    </button>
-                  ))
-              )}
+    <article className={`premium-exercise-card coach-exercise-card coach-exercise-studio ${hasConflict ? 'coach-exercise-conflict' : ''}`} aria-label={`${code || ''} ${name}`}>
+      <header className="coach-exercise-heading">
+        <span className="coach-exercise-code">{code || '＋'}</span>
+        <div className="coach-exercise-title"><span>Упражнение</span>{preview?<h3>{name}</h3>:<AutoResizeTextarea value={name} onChange={onChangeName} ariaLabel={`${code} · название упражнения`} className="coach-exercise-name"/>}</div>
+        {!preview && <div className="coach-exercise-actions"><button type="button" onClick={openSwap} title="Заменить упражнение из библиотеки"><ArrowLeftRight size={15}/><span>Библиотека</span></button>{onRegenerate && <button type="button" onClick={handleRegenerate} disabled={regenerating} title="Перегенерировать упражнение">{regenerating?<Loader2 size={15} className="animate-spin"/>:<RefreshCw size={15}/>}<span>Подобрать замену</span></button>}</div>}
+      </header>
+      {regenerateError && <p role="alert" className="coach-exercise-notice">{regenerateError}</p>}
+      {!preview && swapOpen && <div className="coach-exercise-swap"><input autoFocus aria-label={`${code} · поиск замены`} value={swapSearch} onChange={e=>setSwapSearch(e.target.value)} placeholder="Поиск упражнения в библиотеке…"/><div>{swapLoading?<p>Загрузка…</p>:swapLibrary.filter(ex=>!swapSearch.trim() || (ex.title || '').toLowerCase().includes(swapSearch.toLowerCase())).slice(0,18).map(ex=><button key={ex.canonicalId} type="button" onClick={()=>doSwap(ex.title)}>{ex.title}<ArrowUpRight size={14}/></button>)}</div></div>}
+      {hasConflict && <div className="coach-exercise-notice">⚠ Ограничение для этого упражнения.{!preview && <button type="button" onClick={handleSuggestAlt} disabled={altLoading}>{altLoading?'Подбор…':'Подобрать альтернативу'}</button>}{altSuggestion && <p>{altSuggestion}</p>}</div>}
+      <div className="coach-exercise-body">
+        <aside className="coach-exercise-technique">
+          <div className="coach-section-caption"><span>01</span> Видео техники</div>
+          <ExerciseVideoPanel name={name} apiKey={apiKey} editable={!preview}/>
+          <div className="coach-exercise-instruction"><div className="coach-section-caption"><span>02</span> Выполнение {hasDescriptionOverride && !preview && <button type="button" onClick={onResetDescription} title="Вернуть автоматически сформированное описание"><RotateCcw size={12}/>Исходное</button>}</div>
+            {preview?<p>{displayedDescription || 'Описание пока не добавлено.'}</p>:<AutoResizeTextarea value={displayedDescription} onChange={onChangeDescription} ariaLabel={`${code} · описание выполнения`} minRows={3} placeholder="Опишите технику выполнения…" className="coach-description-input"/>}
+            {!preview && <small>Правки увидит игрок после сохранения программы.</small>}
+          </div>
+        </aside>
+        <div className="coach-exercise-prescription">
+          <div className="coach-section-caption"><span>03</span> Нагрузка по плану</div>
+          <ExercisePrescription weightKg={weightKg} sets={targetSets} targetRpeMax={targetRpeMax} loadUnits={loadUnitsForExercise({name,loadUnits})}/>
+          {!preview && <div className="coach-exercise-plan-editor">
+            <div className="coach-field-heading">Повторы / время каждого подхода</div>
+            <div className="coach-set-inputs" aria-label="Редактирование подходов">{targetSets.map((set,i)=><div key={i}><span>{String(i+1).padStart(2,'0')}</span><input aria-label={`${code} · подход ${i+1} · повторы или время`} value={set} onChange={e=>onChangeSet(i,e.target.value)} placeholder="—"/>{targetSets.length > 1 && onRemoveSet && <button type="button" aria-label={`Удалить подход ${i + 1}`} onClick={()=>onRemoveSet(i)}><X size={12}/></button>}</div>)}<button type="button" aria-label={`${code} · добавить подход`} onClick={onAddSet}><Plus size={15}/></button></div>
+            <div className="coach-plan-fields">
+              <label><span>Вес {isPairableFreeWeightExercise(name)?'одного снаряда':'упражнения'}, кг</span><input type="number" step="any" min="0" aria-label={`${code} · плановый вес в кг`} value={weightKg ?? ''} onChange={e=>onChangeWeightKg(e.target.value===''?null:Number(e.target.value))} placeholder="По усилию"/></label>
+              <label><span>Целевой RPE, максимум</span><input type="number" step="0.5" min="1" max="10" aria-label={`${code} · целевой RPE упражнения`} value={targetRpeMax ?? ''} onChange={e=>onChangeTargetRpeMax?.(e.target.value===''?null:Number(e.target.value))} placeholder="Не задан"/></label>
+              <label><span>Темп</span><input aria-label={`${code} · темп упражнения`} value={tempo || ''} onChange={e=>onChangeTempo(e.target.value)} placeholder="Например, 5-0-X-0"/></label>
+              {isPairableFreeWeightExercise(name) && <label><span>Количество снарядов</span><PremiumSelect value={loadUnitsForExercise({name,loadUnits})} onChange={value=>onChangeLoadUnits?.(Number(value))} options={[{value:1,label:'1 снаряд'},{value:2,label:'2 снаряда'}]} title="Количество гантелей или гирь для расчёта тоннажа" compact/></label>}
             </div>
-          </div>
-        )}
-
-        {/* Row 2: full exercise name */}
-        <AutoResizeTextarea
-          value={name}
-          onChange={onChangeName}
-          minRows={1}
-          className="mt-1.5 w-full resize-none bg-transparent text-[16px] font-bold leading-snug text-white outline-none placeholder:text-slate-500 print:text-slate-900"
-        />
-        {focus === 'inseason_strength' && replacementFrom && (
-          <div className="mt-2 rounded-xl border border-white/10 bg-black/15 p-2 print:hidden">
-            <div className="text-[11px] text-slate-400">Замена: {replacementFrom}</div>
-            <label className="mt-1 block text-[11px] text-slate-300">Причина замены
-              <PremiumSelect value={replacementReason || ''} onChange={value => onChangeReplacementReason?.(value)} options={[{value:'',label:'Не указана — не учитывать при подборе'},...Object.entries(REPLACEMENT_REASONS).map(([value,label])=>({value,label}))]} className="mt-1 w-full rounded-lg bg-slate-900 p-2 text-xs text-white" />
-            </label>
-            <input aria-label="Комментарий к замене" placeholder="Комментарий к замене" value={replacementNote || ''} maxLength={300} onChange={e => onChangeReplacementNote?.(e.target.value)} className="mt-2 w-full rounded-lg bg-slate-900 p-2 text-xs text-white" />
-            <div className="mt-1 text-[10px] text-slate-500">Учитывается для этого игрока после сохранения. Разовая замена не создаёт запрет.</div>
-          </div>
-        )}
-        {hasConflict && (
-          <div className="mt-1 flex flex-wrap items-center gap-2 print:hidden">
-            <span className="text-[10px] font-semibold text-rose-400">⚠ Ограничение · заменить ↑</span>
-            <button
-              type="button"
-              onClick={handleSuggestAlt}
-              disabled={altLoading}
-              className="text-[10px] text-rose-400/70 hover:text-rose-300 underline disabled:opacity-50"
-            >
-              {altLoading ? 'Подбор…' : 'AI замена'}
-            </button>
-          </div>
-        )}
-        {altSuggestion && (
-          <div className="mt-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] px-2 py-1.5 text-[11px] leading-snug text-emerald-300 print:hidden">
-            {altSuggestion}
-          </div>
-        )}
-      </div>
-
-      <ExercisePrescription weightKg={weightKg} sets={targetSets} targetRpeMax={targetRpeMax} loadUnits={loadUnitsForExercise({name,loadUnits})} />
-
-      {/* Sets & notes */}
-      <div className="space-y-2.5 p-3">
-        <div className="coach-set-inputs flex flex-wrap gap-1.5" aria-label="Редактирование подходов">
-          {targetSets.map((s, i) => (
-            <div
-              key={i}
-              className="group/set flex items-center overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.04] transition-colors focus-within:border-accent/40 print:border-slate-300"
-            >
-              <span className="px-1.5 py-1 text-[10px] font-semibold text-slate-500">{i + 1}</span>
-              <input
-                aria-label={`${code} · подход ${i+1} · повторы или время`}
-                value={s}
-                onChange={e => onChangeSet(i, e.target.value)}
-                placeholder="—"
-                className="w-12 bg-transparent px-1 py-1 text-center text-[13px] font-semibold text-slate-100 outline-none print:text-slate-900"
-              />
-              {targetSets.length > 1 && onRemoveSet && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveSet(i)}
-                  aria-label={`Удалить подход ${i + 1}`}
-                  title={`Удалить подход ${i + 1}`}
-                  className="mr-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md text-slate-600 transition hover:bg-rose-500/[0.12] hover:text-rose-400 focus-visible:bg-rose-500/[0.12] focus-visible:text-rose-400 focus-visible:outline-none print:hidden"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={onAddSet}
-            aria-label={`${code} · добавить подход`}
-            className="rounded-lg border border-dashed border-white/[0.08] px-2 text-xs text-slate-600 transition hover:border-accent/40 hover:text-accent print:hidden"
-          >
-            +
-          </button>
-        </div>
-
-        {/* Structured weight input */}
-        <div className="coach-load-inputs flex flex-wrap items-center gap-2 print:hidden">
-          <div className="coach-weight-input flex items-center rounded-lg border border-white/[0.08] bg-white/[0.04] pr-2.5 transition-all focus-within:border-accent/50 focus-within:bg-accent/[0.05]">
-            <input
-              type="number"
-              step="any"
-              aria-label={`${code} · плановый вес в кг`}
-              min="0"
-              value={weightKg ?? ''}
-              onChange={e => {
-                const raw = e.target.value;
-                const v = raw === '' ? null : parseFloat(raw);
-                onChangeWeightKg(isNaN(v) ? null : v);
-              }}
-              placeholder="—"
-              className="w-16 bg-transparent px-2.5 py-1.5 text-right text-[16px] font-bold text-slate-100 outline-none tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-            <span className="text-[12px] font-medium text-slate-500">{isPairableFreeWeightExercise(name) ? 'кг/снаряд' : 'кг'}</span>
-          </div>
-          {isPairableFreeWeightExercise(name) && (
-            <PremiumSelect
-              value={loadUnitsForExercise({ name, loadUnits })}
-              onChange={nextValue => onChangeLoadUnits?.(Number(nextValue))}
-              options={[
-                { value: 1, label: '1 снаряд' },
-                { value: 2, label: '2 снаряда' },
-              ]}
-              title="Количество гантелей или гирь для расчёта тоннажа"
-              className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-[11px] font-semibold text-slate-400 outline-none transition focus:border-accent/50"
-              compact
-            />
-          )}
-          {onActualKgChange && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-medium text-emerald-400/60">факт</span>
-              <input
-                type="number"
-                step="any"
-                aria-label={`${code} · фактический вес в кг`}
-                min="0"
-                value={actualKg ?? ''}
-                onChange={e => {
-                  const raw = e.target.value;
-                  const v = raw === '' ? null : parseFloat(raw);
-                  onActualKgChange(isNaN(v) ? null : v);
-                }}
-                placeholder={isPairableFreeWeightExercise(name) ? 'факт кг/снаряд' : 'факт кг'}
-                className="w-20 bg-transparent text-[11px] text-emerald-400/70 border-b border-white/[0.07] outline-none focus:border-emerald-400/50"
-              />
-              {onActualRpeChange && (
-                <div className="ml-2 flex items-center gap-1.5">
-                  <span className="text-[10px] font-medium text-sky-400/60">RPE</span>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="1"
-                    max="10"
-                    aria-label={`${code} · фактический RPE упражнения`}
-                    value={actualRpe ?? ''}
-                    onChange={e => {
-                      const raw = e.target.value;
-                      const v = raw === '' ? null : parseFloat(raw);
-                      onActualRpeChange(isNaN(v) ? null : v);
-                    }}
-                    placeholder="1-10"
-                    className="w-14 bg-transparent text-[11px] text-sky-400/70 border-b border-white/[0.07] outline-none focus:border-sky-400/50"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        {/* Print fallback */}
-        {weightKg != null && (
-          <div className="hidden text-[14px] font-medium text-slate-300 print:block">{weightKg} кг{loadUnitsForExercise({ name, loadUnits }) === 2 ? ' на снаряд × 2' : ''}</div>
-        )}
-
-        {/* Progression hint */}
-        {focus==='inseason_strength'?<StrengthProgressionHint proposal={strengthProposal} error={progressionError} loading={progressionLoading} onRetry={onRetryProgression} onApply={onApplyStrengthProgression}/>:prevKg ? (
+            <label className="coach-plan-comment"><span>Комментарий к нагрузке</span><AutoResizeTextarea ariaLabel={`${code} · комментарий к нагрузке`} value={weightNote || ''} onChange={onChangeWeight} minRows={2} className="coach-load-comment-input" placeholder="Например, по усилию RPE 7–8"/></label>
+          </div>}
+          {preview && tempo && <p className="coach-preview-tempo">Темп <strong>{tempo}</strong></p>}
+          {preview && weightNote && <p className="coach-preview-note">{weightNote}</p>}
+          {!preview && <div className="coach-exercise-progression">{focus==='inseason_strength'?<StrengthProgressionHint proposal={strengthProposal} error={progressionError} loading={progressionLoading} onRetry={onRetryProgression} onApply={onApplyStrengthProgression}/>:prevKg ? (
           <div className="mt-1 flex flex-wrap items-center gap-1.5 print:hidden">
             <span className="text-[11px] text-slate-600">
               ↑ {prevKg} кг{prevRpe ? ` · RPE ${prevRpe}` : ''}{prevPain ? ' · боль' : ''}
@@ -1665,76 +1335,14 @@ function ExerciseCard({
               </div>
             );
           })()
-        )}
-
-        {/* Weight history sparkline */}
-        {exHistory && exHistory.length >= 2 && (
-          <div className="mt-1.5 flex items-center gap-2 print:hidden">
-            <Sparkline values={exHistory.map(e => e.kg)} width={56} height={16} />
-            <span className="text-[10px] text-slate-600">
-              {exHistory[0].kg}→{exHistory[exHistory.length - 1].kg} кг
-              <span className="ml-1 text-slate-700">· {exHistory.length} тр.</span>
-            </span>
-          </div>
-        )}
-
-        {autoReg && (
-          <div className="flex items-start gap-1.5 border-l-2 border-amber-400/40 pl-2.5 py-0.5">
-            <span className="text-[10px] text-amber-400/70 mt-px shrink-0">⚡</span>
-            <AutoResizeTextarea
-              value={autoReg}
-              onChange={onChangeAutoReg}
-              className="min-w-0 flex-1 resize-none border-0 bg-transparent text-[13px] leading-snug text-amber-300/70 outline-none placeholder:text-amber-700/50 print:text-amber-800"
-            />
-          </div>
-        )}
-
-        {Array.isArray(alternatives) && alternatives.length > 0 && (
-          <details className="rounded-lg border border-white/[0.06] bg-white/[0.025] px-2.5 py-2 print:hidden">
-            <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-wider text-slate-500 marker:text-slate-600">Альтернативы ({alternatives.length})</summary>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {alternatives.slice(0, 3).map((alt, i) => (
-                <button
-                  key={`${alt}-${i}`}
-                  type="button"
-                  onClick={() => doSwap(alt)}
-                  className="rounded-md bg-white/[0.05] px-2 py-1 text-[11px] text-slate-400 transition hover:bg-white/[0.09] hover:text-slate-200"
-                >
-                  {alt}
-                </button>
-              ))}
-            </div>
-          </details>
-        )}
-
-        <details className="coach-exercise-details print:hidden"><summary>Видео техники</summary><ExerciseVideoPanel name={name} apiKey={apiKey}/></details>
-        <details className="coach-exercise-details" open={hasDescriptionOverride || undefined}><summary>Описание для игрока</summary>
-        <div className="rounded-lg border border-sky-400/[0.10] bg-sky-400/[0.035] px-2.5 py-2">
-          <div className="mb-1 flex items-center justify-between gap-2 print:hidden">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-sky-300/45">Описание для игрока</span>
-            {hasDescriptionOverride && (
-              <button
-                type="button"
-                onClick={onResetDescription}
-                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-white/[0.05] hover:text-slate-300"
-                title="Вернуть автоматически сформированное описание"
-              >
-                <RotateCcw size={10} />
-                Вернуть исходное
-              </button>
-            )}
-          </div>
-          <AutoResizeTextarea
-            value={displayedDescription}
-            onChange={onChangeDescription}
-            minRows={2}
-            placeholder="Введите описание выполнения упражнения"
-            className="w-full resize-none border-0 bg-transparent px-0 py-0.5 text-[13px] leading-snug text-sky-100/65 outline-none transition placeholder:text-slate-700 focus:text-sky-100 print:text-slate-700"
-          />
-          <p className="mt-1 text-[10px] leading-snug text-slate-700 print:hidden">Изменение увидит игрок после сохранения программы.</p>
-        </div></details>
+        )}</div>}
+          {autoReg && <div className="coach-exercise-regulation"><span>Коррекция по качеству</span>{preview?<p>{autoReg}</p>:<AutoResizeTextarea value={autoReg} onChange={onChangeAutoReg} ariaLabel={`${code} · коррекция нагрузки`} className="coach-regulation-input"/>}</div>}
+          {!preview && onActualKgChange && <details className="coach-exercise-facts" open={actualKg!=null || actualRpe!=null || undefined}><summary>Фактическое выполнение <span>кг / RPE</span></summary><div className="coach-plan-fields"><label><span>Выполненный вес, кг / снаряд</span><input type="number" step="any" min="0" aria-label={`${code} · фактический вес в кг`} value={actualKg ?? ''} onChange={e=>onActualKgChange(e.target.value===''?null:Number(e.target.value))} placeholder="Факт кг"/></label>{onActualRpeChange && <label><span>RPE упражнения по факту</span><input type="number" step="0.5" min="1" max="10" aria-label={`${code} · фактический RPE упражнения`} value={actualRpe ?? ''} onChange={e=>onActualRpeChange(e.target.value===''?null:Number(e.target.value))} placeholder="1–10"/></label>}</div></details>}
+          {!preview && Array.isArray(alternatives) && alternatives.length>0 && <details className="coach-exercise-alternatives"><summary>Альтернативы <span>{alternatives.length}</span></summary><div>{alternatives.slice(0,3).map((alt,i)=><button key={`${alt}-${i}`} type="button" onClick={()=>doSwap(alt)}>{alt}<ArrowUpRight size={12}/></button>)}</div></details>}
+        </div>
       </div>
-    </div>
+      {focus==='inseason_strength' && replacementFrom && <div className="coach-replacement-review"><p>Замена: {replacementFrom}</p>{preview?<p>{REPLACEMENT_REASONS[replacementReason] || 'Разовая замена'}{replacementNote?' · '+replacementNote:''}</p>:<><label>Причина замены<PremiumSelect value={replacementReason || ''} onChange={value=>onChangeReplacementReason?.(value)} options={[{value:'',label:'Не указана — не учитывать при подборе'},...Object.entries(REPLACEMENT_REASONS).map(([value,label])=>({value,label}))]}/></label><input aria-label="Комментарий к замене" placeholder="Комментарий к замене" value={replacementNote || ''} maxLength={300} onChange={e=>onChangeReplacementNote?.(e.target.value)}/><small>Учитывается для этого игрока после сохранения. Разовая замена не создаёт запрет.</small></>}</div>}
+    </article>
   );
 }
 
@@ -2393,6 +2001,7 @@ export default function Home() {
   const [progressionLoading,setProgressionLoading] = useState(false);
   const [progressionRefresh,setProgressionRefresh] = useState(0);
   const [editorActionsOpen,setEditorActionsOpen] = useState(false);
+  const [editorPreview,setEditorPreview] = useState(false);
   const [progressionMap, setProgressionMap] = useState({}); // exerciseName → { kg, rpe, suggestedKg }
   const [tonnageData, setTonnageData] = useState(null);
   const [tonnageLoading, setTonnageLoading] = useState(false);
@@ -4163,6 +3772,7 @@ export default function Home() {
       date: record.date,
       quality: record.quality || null,
       focusLabel: record.trainingLabel || '',
+      sourcePlayerId: record.sourcePlayerId || null,
       focus: record.focus || focus,
       trainingType: record.trainingType || trainingType,
       strengthMode: savedStrengthMode,
@@ -4174,11 +3784,12 @@ export default function Home() {
     if (!session || !meta || session.kind === 'restricted_day_plan' || programSaveLockRef.current) return;
     programSaveLockRef.current = true;
     const submittedSession = session;
+    const editPlayerId=programEditPlayerId(playerId,meta.sourcePlayerId);
     const isCurrentView = () => {const view=currentSaveViewRef.current; return view.workspace === workspace && view.playerId === playerId && view.date === date;};
     setSaving(true);
     try {
       const {res,data} = await saveProgramRequest({
-        playerId, date:meta.date, session:submittedSession, player:meta.player,
+        playerId:editPlayerId, date:meta.date, session:submittedSession, player:meta.player,
         dataSummary:meta.dataSummary, dayGoal:meta.dayGoal || '', focus:meta.focus || focus,
         trainingType:meta.trainingType || trainingType, trainingLabel:meta.focusLabel || getFocusLabel(period,focus),
         strengthMode:meta.strengthMode || strengthMode, quality:meta.quality || null, workspace,
@@ -4199,6 +3810,7 @@ export default function Home() {
       setJustSaved(unchanged);
       void teamQueue.refresh();
       setPendingSaved({
+        sourcePlayerId:editPlayerId,
         session: data.session || session,
         player: meta.player,
         dataSummary: meta.dataSummary,
@@ -7300,7 +6912,7 @@ export default function Home() {
 
           {/* ── Session result ── */}
           {session && meta && (
-            <div className="premium-session-card mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
+            <div data-preview={editorPreview} className="premium-session-card coach-session-workspace mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
 
               {/* Result toolbar */}
               <div className="coach-editor-toolbar mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden" role="region" aria-label="Сохранение программы">
@@ -7314,7 +6926,8 @@ export default function Home() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* Icon-only secondary actions */}
+                  <button type="button" className="coach-editor-view-toggle" aria-pressed={editorPreview} onClick={()=>setEditorPreview(value=>!value)} title={editorPreview?'Перейти к редактированию':'Просмотреть программу без полей ввода'}>{editorPreview?<>{PENCIL_ICON}<span>Редактировать</span></>:<><BookOpen size={14}/><span>Просмотр</span></>}</button>
+                  {/* Secondary actions */}
                   <div className="coach-editor-secondary" data-open={editorActionsOpen}>
                   <button type="button" className="coach-editor-more" aria-label="Дополнительные действия программы" aria-expanded={editorActionsOpen} onClick={()=>setEditorActionsOpen(value=>!value)}>•••</button>
                   <div className="coach-editor-secondary-items flex items-center rounded-xl border border-white/[0.07] bg-white/[0.025] p-1 gap-0.5">
@@ -7390,6 +7003,11 @@ export default function Home() {
                   )}
                 </div>
               </div>
+
+              <ProgramOverview blocks={session.blocks || []} title={meta.focusLabel || getFocusLabel(period,focus)} preview={editorPreview} onPreview={setEditorPreview} onNavigate={index=>{
+                const block=session.blocks[index];setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
+                requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
+              }}/>
 
               {rescheduleOpen && pendingSaved && (
                 <div className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 print:hidden">
@@ -7504,7 +7122,7 @@ export default function Home() {
                         {continuitySummary.pain > 0 ? ` · ${continuitySummary.pain} с ограничением по боли` : ''}
                       </p>
                     </div>
-                    {continuitySummary.recommendations > 0 && (
+                    {continuitySummary.recommendations > 0 && !editorPreview && (
                       <button
                         type="button"
                         onClick={applyProgressionRecommendations}
@@ -7576,7 +7194,7 @@ export default function Home() {
 
               {/* Volume stats bar */}
               {sessionVolume && (
-                <div className="mb-6 flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 print:hidden">
+                <div className="coach-program-dose-summary mb-6 flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 print:hidden">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Упр.</span>
                     <span className="text-[18px] font-black text-slate-200">{sessionVolume.exCount}</span>
@@ -7629,12 +7247,13 @@ export default function Home() {
               {/* Blocks — screen only */}
               <div className="space-y-8 print:hidden">
                 {(session.blocks || []).map((block, bi) => (
-                  <div key={block.blockId || block.label || bi}>
+                  <div id={`coach-program-block-${bi}`} className="coach-program-block" key={block.blockId || block.label || bi}>
                     {(() => {
                       const bc = blockCfg(block.label);
                       const isCollapsed = collapsedBlocks.has(block.label);
                       return (
-                        <div className="mb-4 flex items-start gap-2">
+                        <div className="coach-program-block-header">
+                        <div className="coach-program-block-heading flex items-start gap-2">
                         <button
                           type="button"
                           onClick={() => toggleBlock(block.label)}
@@ -7645,9 +7264,6 @@ export default function Home() {
                           </span>
                           <div className="min-w-0">
                             <div className={`text-[11px] font-black uppercase tracking-[0.18em] ${bc.sub}`}>Блок {block.label}</div>
-                            {block.rest_note && (
-                              <div className="text-[13px] leading-none text-slate-500 mt-0.5">⏱ {block.rest_note}</div>
-                            )}
                           </div>
                           {isCollapsed && (
                             <span className="shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 text-[10px] font-bold text-slate-500">
@@ -7662,14 +7278,16 @@ export default function Home() {
                         <button type="button" onClick={() => removeBlock(bi)} disabled={saving}
                           aria-label={`Удалить блок ${block.label || bi + 1}`}
                           title="Удалить блок вместе со всеми упражнениями"
-                          className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-rose-400/20 px-3 text-xs font-semibold text-rose-300 transition hover:bg-rose-400/10 disabled:opacity-40 ${focusRing}`}>
+                          className={`coach-edit-only flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-rose-400/20 px-3 text-xs font-semibold text-rose-300 transition hover:bg-rose-400/10 disabled:opacity-40 ${focusRing}`}>
                           <X size={14} /><span className="hidden sm:inline">Удалить блок</span>
                         </button>
+                        </div>
+                        {block.rest_note && <p className="coach-program-block-order">⏱ {block.rest_note}</p>}
                         </div>
                       );
                     })()}
                     {!collapsedBlocks.has(block.label) && (
-                    <div className="grid items-start gap-5 lg:grid-cols-2">
+                    <div className="coach-exercise-grid">
                       {(block.exercises || []).map((ex, ei) => {
                         const identity = ex.exerciseId || canonicalExerciseId(ex.name);
                         const progression = (meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)] || {}:progressionMap[identity] || progressionMap[ex.name] || {};
@@ -7678,6 +7296,7 @@ export default function Home() {
                         <ExerciseCard
                           key={ex.code || ei}
                           apiKey={apiKey}
+                          preview={editorPreview}
                           code={ex.code}
                           name={prehabEnglishName(ex.name)}
                           targetSets={ex.targetSets || []}
@@ -7732,6 +7351,7 @@ export default function Home() {
                           })}
                           onChangeLoadUnits={v => updateExercise(bi, ei, { loadUnits: v })}
                           onChangeTempo={v => updateExercise(bi, ei, { tempo: v })}
+                          onChangeTargetRpeMax={v => updateExercise(bi, ei, { targetRpeMax: v })}
                           onChangeAutoReg={v => updateExercise(bi, ei, { autoReg: v })}
                           onChangeDescription={v => updateExercise(bi, ei, { descriptionOverride: v })}
                           onResetDescription={() => updateExercise(bi, ei, { descriptionOverride: undefined })}
@@ -7741,7 +7361,7 @@ export default function Home() {
                       })}
                     </div>
                     )}
-                    {!collapsedBlocks.has(block.label) && pendingSaved && (
+                    {!editorPreview && !collapsedBlocks.has(block.label) && pendingSaved && (
                       <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 print:hidden">
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Факт блока {block.label}</span>
                         <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
@@ -7778,7 +7398,7 @@ export default function Home() {
                       </div>
                     )}
                     {/* Quick-add exercise */}
-                    {!collapsedBlocks.has(block.label) && (
+                    {!editorPreview && !collapsedBlocks.has(block.label) && (
                       addExBlock === bi ? (
                         <div className="mt-3 flex items-center gap-2 print:hidden">
                           <input

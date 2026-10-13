@@ -15,7 +15,7 @@ for(const workspace of ['zarechie','nkperf'])test(workspace+': coach opens legac
  const store=new Map([[prefix+':session:whoop_39474730:'+date,JSON.stringify(saved)]]);
  const deps={isAuthorized:()=>true,redis:async(_,key)=>store.get(key),sessionKey:(ws,id,d)=>(ws==='nkperf'?'nkperf':'coach')+':session:'+id+':'+d,generatedDraftKey,parseSavedSession:record=>({record}),sanitizeUnavailableEquipmentExercises:x=>x,getPrehabReactions:async()=>[null]};
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps)),res={status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
- await handler({method:'GET',query:{workspace,playerId:'39474730',date}},res);assert.equal(res.code,200);assert.equal(res.body.record.focus,'camp_ecc_posterior');assert.equal(store.size,1);
+ await handler({method:'GET',query:{workspace,playerId:'39474730',date}},res);assert.equal(res.code,200);assert.equal(res.body.record.focus,'camp_ecc_posterior');assert.equal(res.body.record.sourcePlayerId,'whoop_39474730');assert.equal(store.size,1);
  const newer={...saved,savedAt:'2026-10-13T21:00:00Z',focus:'inseason_strength'};store.set(prefix+':session:39474730:'+date,JSON.stringify(newer));
- await handler({method:'GET',query:{workspace,playerId:'whoop_39474730',date}},res);assert.equal(res.body.record.focus,'inseason_strength');assert.equal(store.size,2);
+ await handler({method:'GET',query:{workspace,playerId:'whoop_39474730',date}},res);assert.equal(res.body.record.focus,'inseason_strength');assert.equal(res.body.record.sourcePlayerId,'39474730');assert.equal(store.size,2);
 });

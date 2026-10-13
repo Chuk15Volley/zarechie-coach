@@ -340,3 +340,195 @@
 .coach-premium .coach-player-history .coach-cycle-review{background:#151d1b;border-color:#b5c9bb24;padding:8px}
 .coach-premium .coach-player-history .coach-cycle-review table{min-width:460px}
 @media(max-width:640px){.coach-premium .coach-history-card{padding:16px}.coach-premium .coach-history-dose{grid-template-columns:1fr 1fr}.coach-premium .coach-history-dose>div:last-child{grid-column:1/-1}.coach-premium .coach-history-card>header>button{width:100%}.coach-premium .coach-history-dose strong{font-size:16px}}
+
+/* Program studio: generous editorial cards, visible technique and precise controls. */
+.coach-premium .coach-session-workspace {--studio-line:#323b3e;--studio-metal:#cbbb9e;background:#14191b;border-color:#303a3d;padding:24px;}
+.coach-premium .coach-session-workspace .coach-editor-toolbar {background:#1b2225;border-color:#465052;box-shadow:0 10px 28px #0005;border-radius:14px;}
+.coach-premium .coach-session-workspace .coach-editor-toolbar h2 {font-size:17px;letter-spacing:-.03em;}
+.coach-premium .coach-session-workspace .coach-editor-toolbar>div:first-child>span {background:transparent;border-color:#3b4649;color:#c7d0cd;}
+.coach-program-overview {display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:36px;padding:24px 0 32px;margin-bottom:26px;border-bottom:1px solid #333d40;align-items:center;}
+.coach-program-kicker {font-size:10px;letter-spacing:.18em;color:#b4a68c;margin-bottom:14px;}
+.coach-premium .coach-program-intro h2 {max-width:580px;font-size:clamp(25px,2.5vw,38px);font-weight:500;line-height:1.2;letter-spacing:-.045em;color:#f1f2ec;}
+.coach-program-intro>p:last-of-type {font-size:13px;line-height:1.7;color:#aebbb7;margin:14px 0 24px;}
+.coach-program-modes {display:inline-flex;gap:4px;padding:4px;background:#101517;border:1px solid #354145;border-radius:11px;}
+.coach-premium .coach-program-modes button {min-height:40px;padding:8px 20px;border:1px solid transparent;border-radius:7px;color:#a9b5b1;font-size:12px;}
+.coach-premium .coach-program-modes button[aria-pressed='true'] {background:#303c40;border-color:#586367;color:#f2f3ed;box-shadow:0 2px 6px #0003;}
+.coach-program-structure {border:1px solid #354043;border-radius:16px;background:linear-gradient(125deg,#20292c,#171e21);padding:22px 24px 16px;box-shadow:inset 0 1px 0 #ffffff05;}
+.coach-program-structure header {display:flex;justify-content:space-between;gap:20px;align-items:center;}
+.coach-program-structure header span {display:block;color:#aab7b2;font-size:11px;}
+.coach-program-structure header strong {display:block;font-weight:500;font-size:42px;line-height:1.2;letter-spacing:-.055em;color:#f1f3eb;font-variant-numeric:tabular-nums;}
+.coach-program-structure header small {font-size:12px;letter-spacing:0;color:#aebbb6;margin-left:10px;}
+.coach-program-structure header p {color:#a8b6b1;font-size:11px;line-height:1.9;}
+.coach-program-chart {display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:18px;margin-top:16px;}
+.coach-premium .coach-program-chart button {display:flex;min-width:0;align-items:center;flex-direction:column;gap:6px;padding:4px 2px;border-radius:6px;}
+.coach-program-chart-value {color:#dfe7df;font-size:11px;font-variant-numeric:tabular-nums;}
+.coach-program-chart-track {height:64px;width:100%;position:relative;display:flex;align-items:end;border-bottom:1px solid #4c585b;background:repeating-linear-gradient(to top,transparent 0,transparent 20px,#ffffff06 21px,#ffffff06 22px);}
+.coach-program-chart-track i {display:block;width:100%;max-width:60px;margin-inline:auto;border:1px solid #a5b5ab50;border-bottom:0;border-radius:3px 3px 0 0;background:linear-gradient(0deg,#4c645a,#b2c7b8);box-shadow:inset 0 1px #e2e9d6a0;transition:height 200ms;}
+.coach-program-chart button:nth-child(2n) i {background:linear-gradient(0deg,#58584c,#c9c2aa);border-color:#c9c2aa50;}
+.coach-program-chart button:hover {background:#ffffff06;}
+.coach-program-chart-label {color:#b6c2bc;font-size:11px;letter-spacing:.05em;}
+.coach-program-chart-caption {margin-top:12px;color:#94a49d;font-size:10px;line-height:1.5;}
+.coach-program-block {scroll-margin-top:100px;}
+.coach-exercise-grid {display:grid;grid-template-columns:minmax(0,1fr);gap:20px;}
+.coach-premium .coach-exercise-studio {min-width:0;border:1px solid #374247;border-radius:18px;background:#1b2225;box-shadow:0 6px 24px #0002,inset 0 1px 0 #ffffff05;overflow:hidden;}
+.coach-premium .coach-exercise-studio:hover {border-color:#586762;}
+.coach-exercise-heading {display:flex;gap:18px;align-items:center;padding:22px 24px;border-bottom:1px solid #354044;background:linear-gradient(110deg,#242d30,#1d2629);}
+.coach-exercise-code {display:grid;place-items:center;flex:none;width:44px;height:48px;border:1px solid #7e8a7850;border-radius:10px;background:linear-gradient(135deg,#48594f,#2d3a36);color:#e0e7d7;font-size:15px;font-weight:650;letter-spacing:-.03em;box-shadow:inset 0 1px 0 #c5d2b815;}
+.coach-exercise-title {flex:1;min-width:0;}
+.coach-exercise-title>span {display:block;font-size:10px;color:#9aa9a2;margin-bottom:6px;letter-spacing:.04em;}
+.coach-exercise-title h3 {margin:0;color:#f1f4ee;font-size:21px;font-weight:550;letter-spacing:-.035em;line-height:1.4;overflow-wrap:anywhere;}
+.coach-premium .coach-exercise-title .coach-exercise-name {display:block;width:100%;min-height:32px;border:1px solid transparent;background:transparent;padding:0 2px;margin-left:-2px;border-radius:4px;resize:none;color:#f1f4ee;font-size:21px;font-weight:550;letter-spacing:-.035em;line-height:1.4;}
+.coach-premium .coach-exercise-name:hover {border-color:#56665e;background:#ffffff03;}
+.coach-exercise-actions {display:flex;gap:8px;flex:none;}
+.coach-premium .coach-exercise-actions button {display:flex;gap:7px;align-items:center;min-height:38px;padding:8px 10px;border:1px solid #455253;border-radius:8px;color:#bacac0;font-size:10px;}
+.coach-exercise-actions button:hover {background:#ffffff08;border-color:#7b8b7f;}
+.coach-exercise-body {display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.25fr);gap:28px;padding:24px;align-items:start;}
+.coach-exercise-technique,.coach-exercise-prescription {min-width:0;}
+.coach-section-caption {display:flex;gap:9px;align-items:center;font-size:11px;font-weight:550;letter-spacing:.015em;color:#cbd3c9;margin-bottom:14px;}
+.coach-section-caption>span {font-size:9px;color:#a39276;letter-spacing:.03em;}
+.coach-section-caption>button {display:flex;align-items:center;gap:4px;margin-left:auto;font-size:10px;font-weight:400;color:#aabbb0;min-height:30px;}
+.coach-video-frame {aspect-ratio:16/9;overflow:hidden;border-radius:11px;border:1px solid #4a5655;background:#111719;box-shadow:0 7px 18px #0003;}
+.coach-video-frame iframe {display:block;width:100%;height:100%;border:0;}
+.coach-video-poster {position:relative;display:block;width:100%;height:100%;overflow:hidden;}
+.coach-video-poster img {display:block;width:100%;height:100%;object-fit:cover;transition:transform 300ms,filter 300ms;filter:saturate(.7);}
+.coach-video-poster:hover img {transform:scale(1.025);filter:saturate(1);}
+.coach-video-shade {position:absolute;inset:0;background:linear-gradient(0deg,#090e11bb,transparent 65%);}
+.coach-video-play {position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:grid;place-items:center;width:48px;height:48px;border:1px solid #e3e8d6b0;border-radius:50%;color:#eff4e5;background:#16241db3;box-shadow:0 2px 15px #0005;backdrop-filter:blur(8px);}
+.coach-video-caption {position:absolute;bottom:12px;left:14px;right:14px;display:flex;justify-content:space-between;color:#f4f6e9;font-size:11px;}
+.coach-video-empty {display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:#a5b6ae;background:radial-gradient(ellipse at 50% 20%,#34433d,#151d20 80%);padding:16px;text-align:center;}
+.coach-video-empty>span {display:grid;place-items:center;width:34px;height:34px;border:1px solid #5b6b62;border-radius:10px;color:#b9cabb;}
+.coach-video-empty strong {font-size:12px;font-weight:500;}
+.coach-video-empty p {font-size:11px;}
+.coach-premium .coach-video-empty button {font-size:11px;color:#e0e8d4;min-height:32px;padding:4px 10px;border:1px solid #5b6c60;border-radius:5px;}
+.coach-video-meta {display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:7px;margin-top:10px;font-size:10px;line-height:1.5;color:#98aaa0;}
+.coach-video-meta>div {display:flex;flex-wrap:wrap;align-items:center;gap:12px;}
+.coach-video-meta :is(a,button) {display:inline-flex;align-items:center;gap:4px;color:#b7c8bd;min-height:30px;}
+.coach-video-edit {padding:14px;margin-top:12px;border:1px solid #485951;border-radius:10px;background:#161f22;}
+.coach-video-edit label {font-size:11px;color:#b8c5bc;}
+.coach-premium .coach-video-edit input {display:block;width:100%;min-height:40px;margin-top:7px;padding:8px;border:1px solid #4b5a54;border-radius:6px;font-size:12px;}
+.coach-video-edit p {font-size:10px;line-height:1.6;color:#9baca1;margin:8px 0;}
+.coach-video-edit>div {display:flex;gap:12px;flex-wrap:wrap;}
+.coach-video-edit button {font-size:11px;color:#c8dccd;min-height:32px;}
+.coach-video-error {margin-top:10px;padding:10px;border:1px solid #6b5d42;border-radius:7px;font-size:11px;line-height:1.6;color:#dccaab;}
+.coach-video-error button {min-height:30px;text-decoration:underline;}
+.coach-exercise-instruction {margin-top:22px;border-top:1px solid #354045;padding-top:18px;}
+.coach-exercise-instruction .coach-section-caption {margin-bottom:10px;}
+.coach-premium .coach-exercise-instruction .coach-description-input {display:block;width:100%;min-height:78px;padding:10px 12px;border:1px solid #42504d;border-radius:8px;background:#171e21;color:#d5dfd5;font-size:13px;line-height:1.8;resize:none;}
+.coach-exercise-instruction>p {white-space:pre-wrap;color:#d7dfd5;font-size:14px;line-height:1.85;}
+.coach-exercise-instruction>small {display:block;font-size:10px;line-height:1.6;color:#94a69b;margin-top:9px;}
+.coach-premium .coach-exercise-studio .coach-prescription {margin:0 0 20px;border-color:#45534f;border-radius:11px;}
+.coach-premium .coach-exercise-studio .coach-prescription>div {background:#26312f;padding:14px 12px;}
+.coach-premium .coach-exercise-studio .coach-prescription dt {font-size:10px;color:#b8c7bc;}
+.coach-premium .coach-exercise-studio .coach-prescription dd {font-size:23px;font-weight:550;letter-spacing:-.035em;color:#f0f5e8;}
+.coach-field-heading {font-size:11px;color:#b5c3ba;margin-bottom:9px;}
+.coach-exercise-studio .coach-set-inputs {display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px;}
+.coach-exercise-studio .coach-set-inputs>div {display:flex;align-items:center;overflow:hidden;border:1px solid #43514d;border-radius:8px;background:#222d2c;}
+.coach-exercise-studio .coach-set-inputs>div>span {font-size:9px;color:#9cafa1;padding-left:9px;}
+.coach-premium .coach-exercise-studio .coach-set-inputs input {width:62px;min-height:40px;background:transparent;border:0;text-align:center;font-size:16px;color:#e8efdf;font-variant-numeric:tabular-nums;outline-offset:-3px;}
+.coach-exercise-studio .coach-set-inputs button {display:grid;place-items:center;min-height:36px;min-width:27px;color:#9bb3a2;}
+.coach-exercise-studio .coach-set-inputs>button {min-width:38px;border:1px dashed #54665b;border-radius:7px;}
+.coach-plan-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.coach-plan-fields>label,.coach-plan-comment {display:block;min-width:0;}
+.coach-plan-fields label>span,.coach-plan-comment>span {display:block;font-size:10px;line-height:1.5;color:#aebeb4;margin-bottom:7px;}
+.coach-premium .coach-plan-fields input,.coach-premium .coach-plan-comment input {width:100%;min-height:44px;padding:9px 12px;border:1px solid #465650;border-radius:8px;background:#141c20;color:#e8f1e4;font-size:15px;font-variant-numeric:tabular-nums;}
+.coach-premium .coach-plan-fields input[type='number'] {font-size:20px;font-weight:550;}
+.coach-premium .coach-plan-fields button {min-height:44px;width:100%;padding:8px 12px;border:1px solid #465650;border-radius:8px;background:#141c20;color:#c5d3c8;}
+.coach-premium .coach-plan-fields button>span {overflow:hidden;text-overflow:ellipsis;}
+.coach-plan-comment {margin-top:14px;}
+.coach-premium .coach-plan-comment input {font-size:12px;}
+.coach-exercise-progression {margin-top:18px;}
+.coach-exercise-progression:empty {display:none;}
+.coach-exercise-regulation {margin-top:18px;padding:12px 14px;border-left:2px solid #a29578;background:#272b25;border-radius:0 8px 8px 0;}
+.coach-exercise-regulation>span {display:block;font-size:10px;color:#cbbd9e;margin-bottom:6px;}
+.coach-exercise-regulation>p {font-size:13px;color:#d1d3bf;line-height:1.65;}
+.coach-premium .coach-exercise-regulation textarea {display:block;min-height:30px;width:100%;resize:none;border:0;background:transparent;padding:0;color:#d1d3bf;font-size:13px;line-height:1.65;}
+.coach-exercise-facts,.coach-exercise-alternatives {margin-top:16px;padding-top:14px;border-top:1px solid #3c4847;font-size:11px;color:#b0c2b5;}
+.coach-exercise-facts summary,.coach-exercise-alternatives summary {cursor:pointer;min-height:28px;line-height:1.7;}
+.coach-exercise-facts summary span,.coach-exercise-alternatives summary span {font-size:10px;color:#8fa395;margin-left:8px;}
+.coach-exercise-facts[open] summary,.coach-exercise-alternatives[open] summary {margin-bottom:14px;}
+.coach-exercise-alternatives>div {display:flex;gap:8px;flex-wrap:wrap;}
+.coach-exercise-alternatives button {display:flex;gap:7px;align-items:center;padding:7px 10px;border:1px solid #43534a;border-radius:6px;font-size:11px;color:#b8d0be;}
+.coach-exercise-notice {padding:12px 24px;border-bottom:1px solid #604d3e;background:#362c25;color:#ead0ac;font-size:12px;line-height:1.7;}
+.coach-exercise-notice button {margin-left:12px;text-decoration:underline;}
+.coach-premium .coach-exercise-conflict {border-color:#997e63;}
+.coach-exercise-swap {padding:16px 24px;border-bottom:1px solid #46534a;background:#172022;}
+.coach-exercise-swap input {width:100%;min-height:42px;padding:10px 12px;border:1px solid #4e6155;border-radius:7px;font-size:13px;}
+.coach-exercise-swap>div {max-height:230px;overflow-y:auto;margin-top:10px;}
+.coach-exercise-swap button {display:flex;align-items:center;justify-content:space-between;width:100%;gap:10px;padding:10px;border-bottom:1px solid #35433b;font-size:13px;color:#c7d8ca;text-align:left;}
+.coach-replacement-review {padding:18px 24px;border-top:1px solid #49594f;background:#222c28;color:#becdbf;font-size:12px;line-height:1.7;}
+.coach-replacement-review label {display:block;margin-top:10px;}
+.coach-replacement-review input {display:block;width:100%;margin-top:10px;padding:8px;border:1px solid #465b4b;border-radius:7px;}
+.coach-replacement-review small {display:block;color:#9daf9e;font-size:10px;margin-top:8px;}
+.coach-preview-tempo {display:flex;gap:12px;color:#a6b9ab;font-size:12px;margin-top:14px;}
+.coach-preview-tempo strong {font-weight:550;color:#d6e0cc;}
+.coach-preview-note {font-size:13px;color:#bdccbb;line-height:1.7;margin-top:12px;}
+.coach-session-workspace[data-preview='true'] .coach-edit-only {display:none;}
+@media(max-width:1100px) {
+ .coach-exercise-heading {flex-wrap:wrap;gap:12px;}
+ .coach-exercise-actions {margin-left:62px;}
+ .coach-exercise-body {gap:22px;}
+ .coach-program-overview {gap:24px;}
+}
+@media(max-width:850px) {
+ .coach-program-overview {grid-template-columns:minmax(0,1fr);}
+ .coach-exercise-body {grid-template-columns:minmax(0,1fr);}
+ .coach-exercise-technique {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:20px;align-items:start;}
+ .coach-exercise-technique>.coach-section-caption {grid-column:1;}
+ .coach-exercise-technique>.coach-video-panel {grid-column:1;grid-row:2;}
+ .coach-exercise-instruction {grid-column:2;grid-row:1 / span 2;margin:0;padding:0;border:0;}
+ .coach-program-block {scroll-margin-top:125px;}
+}
+@media(max-width:600px) {
+ .coach-premium .coach-session-workspace {padding:12px;}
+ .coach-program-overview {padding:12px 2px 22px;gap:22px;}
+ .coach-premium .coach-program-intro h2 {font-size:26px;}
+ .coach-program-structure {padding:18px 16px 14px;}
+ .coach-program-chart {gap:12px;}
+ .coach-exercise-heading {padding:16px;gap:12px;}
+ .coach-exercise-code {width:36px;height:42px;font-size:13px;}
+ .coach-premium .coach-exercise-title .coach-exercise-name,.coach-exercise-title h3 {font-size:18px;}
+ .coach-exercise-actions {margin-left:0;width:100%;gap:8px;}
+ .coach-exercise-actions button {flex:1;justify-content:center;}
+ .coach-exercise-body {padding:16px;gap:24px;}
+ .coach-exercise-technique {display:block;}
+ .coach-exercise-instruction {margin-top:20px;border-top:1px solid #354045;padding-top:16px;}
+ .coach-premium .coach-exercise-studio .coach-prescription>div {padding:10px 7px;}
+ .coach-premium .coach-exercise-studio .coach-prescription dd {font-size:18px;}
+ .coach-premium .coach-exercise-studio .coach-prescription dt {font-size:9px;}
+ .coach-plan-fields {gap:12px;}
+ .coach-exercise-notice,.coach-replacement-review {padding:14px 16px;}
+ .coach-exercise-swap {padding:14px 16px;}
+ .coach-program-modes {display:flex;}
+ .coach-program-modes button {flex:1;}
+}
+@media(prefers-reduced-motion:reduce) {
+ .coach-program-chart-track i,.coach-video-poster img {transition:none;}
+}
+.coach-premium .coach-session-workspace .coach-editor-view-toggle {display:flex;gap:7px;align-items:center;min-height:36px;padding:8px 10px;border:1px solid #4b5a55;border-radius:8px;color:#c4d5c8;font-size:11px;}
+.coach-premium .coach-session-workspace .coach-program-modes button[aria-pressed='true'] {background:#303c40;border-color:#586367;color:#f2f3ed;}
+.coach-session-workspace .coach-editor-secondary {position:relative;}
+.coach-premium .coach-session-workspace .coach-editor-more {display:grid;place-items:center;min-width:36px;min-height:36px;border:1px solid #455451;border-radius:8px;color:#b8cbbd;background:transparent;}
+.coach-session-workspace .coach-editor-secondary-items {display:none;position:absolute;right:0;top:calc(100% + 10px);z-index:45;min-width:260px;padding:8px;background:#222c2e;border-color:#52625a;box-shadow:0 12px 30px #0006;border-radius:12px;}
+.coach-session-workspace .coach-editor-secondary[data-open='true'] .coach-editor-secondary-items {display:grid;gap:3px;}
+.coach-session-workspace .coach-editor-secondary-items button {display:flex;gap:10px;align-items:center;justify-content:start;min-width:100%;min-height:38px;padding:8px 10px;font-size:11px;color:#c5d4c7;}
+.coach-session-workspace .coach-editor-secondary-items button[title='Печать']::after,.coach-session-workspace .coach-editor-secondary-items button[title='Сохранить как шаблон микроцикла']::after,.coach-session-workspace .coach-editor-secondary-items button[title='Скопировать тренировку другому игроку']::after {content:attr(title);}
+@media(max-width:600px) {
+ .coach-premium .coach-session-workspace .coach-editor-view-toggle>span {display:none;}
+ .coach-premium .coach-session-workspace .coach-editor-view-toggle {min-width:36px;justify-content:center;padding-inline:8px;}
+}
+.coach-premium .coach-program-block-heading>button:first-child>span:first-child {background:linear-gradient(135deg,#687363,#333f39);color:#edf0df;border:1px solid #a3aa8f50;box-shadow:inset 0 1px 0 #e0e4c815;}
+.coach-premium .coach-program-block-heading>button:first-child>div>div:first-child {color:#c9d0bf;font-size:11px;}
+.coach-premium .coach-program-block-heading>button:first-child>div>div:last-child {line-height:1.65;color:#99aba0;font-size:12px;}
+.coach-premium .coach-program-block-heading>button:first-child>.h-px {background:#3d4b43;}
+.coach-program-block-header {margin-bottom:20px;}
+.coach-program-block-order {margin:8px 0 0 54px;color:#99aba0;font-size:12px;line-height:1.7;}
+.coach-program-dose-summary {flex-wrap:wrap;}
+@media(max-width:600px) {
+ .coach-program-block-order {margin:10px 0 0;}
+ .coach-program-dose-summary {gap:12px;}
+}
+.coach-premium .coach-plan-comment textarea {display:block;width:100%;min-height:60px;padding:10px 12px;resize:none;border:1px solid #465650;border-radius:8px;background:#141c20;color:#cbd8ca;font-size:12px;line-height:1.7;}
+@media(max-width:600px) {
+ .coach-premium .coach-exercise-studio .coach-set-inputs input {width:48px;}
+ .coach-plan-fields label>span {min-height:30px;}
+}
