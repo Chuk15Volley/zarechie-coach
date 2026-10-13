@@ -26,8 +26,22 @@ export default async function handler(req, res) {
   try {
     const draftRaw = await redis('get', generatedDraftKey(workspace, playerId, date));
     const savedRaw = await redis('get', sessionKey(workspace, playerId, date));
-    const draft = typeof draftRaw === 'string' ? JSON.parse(draftRaw) : draftRaw;
-    const saved = typeof savedRaw === 'string' ? JSON.parse(savedRaw) : savedRaw;
+    let draft = typeof draftRaw === 'string' ? JSON.parse(draftRaw) : draftRaw;
+    let saved = typeof savedRaw === 'string' ? JSON.parse(savedRaw) : savedRaw;
+    // ReadySix uses numeric IDs; older player links and programs retain WHOOP IDs.
+    // Read both editions without migrating records or rotating the player's link.
+    const numeric=String(playerId).replace(/^whoop_/,'');
+    if(/^\d+$/.test(numeric)){
+      const alias=String(playerId)===numeric?'whoop_'+numeric:numeric;
+      const [aliasDraftRaw,aliasSavedRaw]=await Promise.all([
+        redis('get',generatedDraftKey(workspace,alias,date)),
+        redis('get',sessionKey(workspace,alias,date)),
+      ]);
+      const parse=value=>typeof value==='string'?JSON.parse(value):value;
+      const aliasDraft=parse(aliasDraftRaw),aliasSaved=parse(aliasSavedRaw);
+      if(aliasDraft && (!draft || String(aliasDraft.generatedAt || '')>String(draft.generatedAt || '')))draft=aliasDraft;
+      if(aliasSaved && (!saved || String(aliasSaved.savedAt || aliasSaved.generatedAt || '')>String(saved.savedAt || saved.generatedAt || '')))saved=aliasSaved;
+    }
     const raw = draft && (!saved || draft.generatedAt > saved.savedAt) ? draft : saved;
     if (!raw) return res.status(200).json({ record: null });
     const { record } = raw?.draft ? { record: raw } : parseSavedSession(raw);

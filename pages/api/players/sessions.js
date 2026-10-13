@@ -1,11 +1,11 @@
+import {playerHistoryFacts} from '../../../lib/playerHistoryFacts.mjs';
+import {validCoachDate} from '../../../lib/coachAuditQuery.mjs';
 import {sessionPlanFact} from '../../../lib/floorOperations.mjs';
 import {loadGymFacts,gymSessionDates} from '../../../lib/gymLoadStore';
 // pages/api/players/sessions.js
 // GET ?playerId&limit=20 — last N saved sessions with tonnage + exercise metadata.
 
-import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
-import { sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
 import { sessionTrainingLabel } from '../../../lib/sessionLabel';
 import { exerciseTonnage, weightKgFromExercise } from '../../../lib/tonnage';
 
@@ -13,14 +13,17 @@ export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'GET') return res.status(405).end();
 
-  const { playerId, limit = '20', workspace = 'zarechie' } = req.query;
-  if (!playerId) return res.status(400).json({ error: 'playerId required' });
+  const { playerId, limit = '20', workspace = 'zarechie',before } = req.query;
+  res.setHeader('Cache-Control','private, no-store');
+  if(typeof playerId!=='string' || !/^[\w-]{1,100}$/.test(playerId) || !['zarechie','nkperf'].includes(workspace) || before && (typeof before!=='string' || !validCoachDate(before)))return res.status(400).json({error:'Некорректный игрок, пространство или дата истории.'});
 
   const lim = Math.min(parseInt(limit, 10) || 20, 40);
   const allDates = await gymSessionDates(workspace,playerId);
-  const dates = Array.isArray(allDates) ? allDates.slice(-lim).reverse() : [];
+  const eligible=(Array.isArray(allDates)?allDates:[]).filter(date=>!before || date<before);
+  const dates=eligible.slice(-Math.max(1,lim)).reverse();
+  const nextCursor=eligible.length>dates.length?dates.at(-1):null;
 
-  if (!dates || !dates.length) return res.status(200).json({ sessions: [] });
+  if (!dates || !dates.length) return res.status(200).json({ sessions: [],nextCursor:null,total:allDates.length });
 
   const records=await loadGymFacts(workspace,dates.map(date=>({playerId,date})));
 
@@ -48,11 +51,12 @@ export default async function handler(req, res) {
         }
       }
       sessions.push({
-        date,
+        date,focus:rec.focus || rec.quality?.focus || '',trainingType:rec.trainingType || '',
+        factReview:playerHistoryFacts(rec,facts.rawActual,facts.rawLog,facts.supplement),
         dayGoal: rec.dayGoal || '',
         trainingLabel: sessionTrainingLabel(rec),
         tonnage: Number(facts.actual?.actualTonnage) || 0,
-        plannedTonnage:sessionPlanFact(rec.session).plannedTonnage,loadEvidence:facts.actual?.loadEvidence || {source:facts.actual?'recorded':'missing',partial:!facts.actual},
+        plannedTonnage:sessionPlanFact(rec.session).plannedTonnage,loadEvidence:facts.actual?.loadEvidence || {source:facts.actual?'recorded':'missing',partial:!facts.actual,supplementStatus:facts.supplementStatus || 'none'},
         exerciseCount: exercises.length,
         blockCount: blocks.length,
         exercises,
@@ -61,5 +65,5 @@ export default async function handler(req, res) {
     } catch (_) {}
   });
 
-  return res.status(200).json({ sessions });
+  return res.status(200).json({ sessions,nextCursor,total:allDates.length });
 }

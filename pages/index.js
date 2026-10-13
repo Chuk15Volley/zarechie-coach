@@ -1,3 +1,5 @@
+import PlayerHistory from '../components/PlayerHistory';
+import {teamQueueCall} from '../lib/teamQueueClient.mjs';
 import {TodayOverview,TeamLoadOverview,OverviewFreshness,OverviewSignals} from '../components/CoachOverview';
 import {draftForPlayer,readinessIssues,loadEvidenceLabel} from '../lib/coachOverview.mjs';
 import {overviewJson,requestDailyOverview} from '../lib/coachOverviewRequest.mjs';
@@ -1988,8 +1990,8 @@ function StrengthCycleComparison({comparison}) {
   </section>;
 }
 
-function StrengthCycleReviewPanel({workspace, playerId, apiKey, date}) {
-  const [open,setOpen]=useState(false);
+function StrengthCycleReviewPanel({workspace, playerId, apiKey, date,refreshToken=0,initialOpen=false,title='Обзор силового цикла'}) {
+  const [open,setOpen]=useState(initialOpen);
   const [review,setReview]=useState(null);
   const [selected,setSelected]=useState('');
   const [loading,setLoading]=useState(false);
@@ -1997,19 +1999,19 @@ function StrengthCycleReviewPanel({workspace, playerId, apiKey, date}) {
   const [refresh,setRefresh]=useState(0);
   useEffect(()=>{
     if(!open || !apiKey || !playerId)return;
-    let cancelled=false;setLoading(true);setError('');setReview(null);
-    fetch(`/api/players/strength-cycle-review?workspace=${encodeURIComponent(workspace)}&playerId=${encodeURIComponent(playerId)}&asOf=${encodeURIComponent(date || todayISO())}`,{headers:{'x-api-key':apiKey}})
-      .then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error || 'Не удалось загрузить обзор');return data;})
+    let cancelled=false;const controller=new AbortController();setLoading(true);setError('');setReview(null);
+    teamQueueCall(apiKey,`/api/players/strength-cycle-review?workspace=${encodeURIComponent(workspace)}&playerId=${encodeURIComponent(playerId)}&asOf=${encodeURIComponent(date || todayISO())}`,{signal:controller.signal,timeoutMs:25000})
+      .then(data=>{if(!Array.isArray(data.cycles))throw new Error('Обзор получен не полностью. Повторите обновление.');return data;})
       .then(data=>{if(!cancelled){setReview(data);setSelected(previous=>data.cycles.some(c=>c.id===previous)?previous:(data.cycles.find(c=>c.status==='completed') || data.cycles[0])?.id || '');}})
       .catch(error=>{if(!cancelled)setError(error.message);})
       .finally(()=>{if(!cancelled)setLoading(false);});
-    return()=>{cancelled=true;};
-  },[open,workspace,playerId,apiKey,date,refresh]);
+    return()=>{cancelled=true;controller.abort();};
+  },[open,workspace,playerId,apiKey,date,refresh,refreshToken]);
   const cycle=review?.cycles.find(c=>c.id===selected);
   const chains={full_body:'Общая силовая',anterior_chain:'Передняя цепь',posterior_chain:'Задняя цепь'};
   const formatSet=set=>`${set.kg==null?'кг не записаны':set.kg+' кг'} × ${set.reps==null?'повторы не записаны':set.reps+(set.perSide?'/стор.':'')}`;
-  return <details onToggle={event=>setOpen(event.currentTarget.open)} className="mb-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.025] print:hidden">
-    <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-slate-300">Обзор силового цикла</summary>
+  return <details open={open} onToggle={event=>setOpen(event.currentTarget.open)} className="coach-cycle-review mb-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.025] print:hidden">
+    <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-slate-300">{title}</summary>
     {open && <div className="border-t border-white/5 p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-slate-500">Четыре полностью выполненных занятия. Кг, повторы и RPE показаны по факту; это не оценка 1ПМ.</p><button type="button" onClick={()=>setRefresh(value=>value+1)} disabled={loading} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Обновить обзор</button></div>
       {loading && <p role="status" className="text-xs text-slate-500">Проверяем выполнение…</p>}
@@ -2483,11 +2485,7 @@ export default function Home() {
 
   // Player history workspace
   const [workspaceTab, setWorkspaceTab] = useState('program'); // 'program' | 'history'
-  const [historyData, setHistoryData] = useState(null);
   const [factsRefresh,setFactsRefresh]=useState(0);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyExpanded, setHistoryExpanded] = useState(null); // expanded session date
-  const [exProgressData, setExProgressData] = useState({}); // { [name]: [{date, kg}] }
 
   // Mobile sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -2706,7 +2704,6 @@ export default function Home() {
     setDevelopmentPlan(emptyDevelopmentPlan());
     setVolumeStats(null);
     setTrendsData(null);
-    setHistoryData(null);
     setError('');
     setJustSaved(false);
     setAutoSaved(false);
@@ -2975,46 +2972,6 @@ export default function Home() {
       .finally(() => {clearTimeout(deadline);if(!controller.signal.aborted || controller.signal.reason==='timeout')setTonnageLoading(false);});
     return()=>{clearTimeout(deadline);controller.abort();};
   }, [mainSection, apiKey, workspace,factsRefresh,tonnageRefresh]);
-
-  // Load player session history when switching to history tab.
-  useEffect(() => {
-    if (workspaceTab !== 'history' || !playerId || !apiKey) { setHistoryData(null); return; }
-    setHistoryLoading(true);
-    fetch(`/api/players/sessions?playerId=${encodeURIComponent(playerId)}&limit=20&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
-      .then(r => r.json())
-      .then(d => setHistoryData(d))
-      .catch(() => setHistoryData({ sessions: [] }))
-      .finally(() => setHistoryLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceTab, playerId, apiKey, workspace,factsRefresh]);
-
-  // Load exercise progress data when history loads (top recurring exercises).
-  useEffect(() => {
-    if (!historyData || !playerId || !keyConnected) { setExProgressData({}); return; }
-    const sessions = historyData.sessions || [];
-    if (sessions.length < 2) { setExProgressData({}); return; }
-    const freq = {};
-    sessions.forEach(s => (s.exercises || []).forEach(ex => {
-      if (ex.name && ex.kg > 0) freq[ex.name] = (freq[ex.name] || 0) + 1;
-    }));
-    const names = Object.entries(freq)
-      .filter(([, c]) => c >= 2)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([n]) => n);
-    if (!names.length) { setExProgressData({}); return; }
-    let cancelled = false;
-    fetch('/api/players/ex-history', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({ playerId, names, workspace }),
-    })
-      .then(r => (r.ok ? r.json() : { histories: {} }))
-      .then(d => { if (!cancelled) setExProgressData(d.histories || {}); })
-      .catch(() => { if (!cancelled) setExProgressData({}); });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyData, playerId, apiKey, workspace]);
 
   // Auto-load team status when switching to status sub-tab in Нагрузка.
   useEffect(() => {
@@ -3382,9 +3339,6 @@ export default function Home() {
     setLinkCopied(null);
     setMobileView('workspace');
     setWorkspaceTab('program');
-    setHistoryData(null);
-    setHistoryExpanded(null);
-    setExProgressData({});
     setSidebarOpen(false);
   }
 
@@ -3433,10 +3387,10 @@ export default function Home() {
     }
   }
 
-  function openOverviewPlayer(player,targetDate=todayISO()) {
+  function openOverviewPlayer(player,targetDate=todayISO(),tab='program') {
     const current=players.find(item=>String(item.id)===String(player.id));
     if(!current)return;
-    selectPlayer(current);setDate(targetDate);setMainSection('workouts');
+    selectPlayer(current);setDate(targetDate);setWorkspaceTab(tab);setMainSection('workouts');
   }
   function overviewDraft(playerId,targetDate=todayISO()) {return draftForPlayer(batchResults,playerId,workspace,targetDate);}
   function openOverviewSection(section){
@@ -6198,7 +6152,7 @@ export default function Home() {
           {mainSection === 'today' && (
             <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Команда · {todayISO().split('-').reverse().join('.')}</p><h2>Сегодня</h2><p>Решения, программы и качество исходных данных — в одном обзоре.</p></div><button type="button" disabled={readinessLoading} onClick={()=>loadTodayOverview(false,true)}><RefreshCw size={15} className={readinessLoading?'animate-spin':''}/> Обновить данные</button></header>
-              <TodayOverview key={workspace} center={todayCenter} readinessData={readinessData} loading={readinessLoading} error={todayError} updatedAt={todayUpdatedAt} onPlayer={openOverviewPlayer} onDraft={openBatchDraft} getDraft={overviewDraft} onVersions={openSessionVersions} onRtp={openReturnToPlay} onAdapt={applyTodayRecommendation} adaptationSaving={adaptationSaving} onNavigate={openOverviewSection}/>
+              <TodayOverview key={workspace} center={todayCenter} readinessData={readinessData} loading={readinessLoading} error={todayError} updatedAt={todayUpdatedAt} onPlayer={openOverviewPlayer} onHistory={player=>openOverviewPlayer(player,todayISO(),'history')} onDraft={openBatchDraft} getDraft={overviewDraft} onVersions={openSessionVersions} onRtp={openReturnToPlay} onAdapt={applyTodayRecommendation} adaptationSaving={adaptationSaving} onNavigate={openOverviewSection}/>
 
               {rtpPlayer && <ReturnToPlayModal player={rtpPlayer} plan={rtpDraft} saving={rtpSaving} onChange={setRtpDraft} onSave={saveReturnToPlay} onClose={() => { setRtpPlayer(null); setRtpDraft(null); }} />}
               {adaptationDraft && createPortal(
@@ -6513,7 +6467,7 @@ export default function Home() {
             <></>
           )}
 
-          {playerId && selectedPlayer && <StrengthCycleReviewPanel key={`${workspace}:${playerId}`} workspace={workspace} playerId={playerId} apiKey={apiKey} date={date} />}
+          {workspaceTab==='program' && playerId && selectedPlayer && <StrengthCycleReviewPanel key={`${workspace}:${playerId}`} workspace={workspace} playerId={playerId} apiKey={apiKey} date={date} refreshToken={factsRefresh} />}
 
           {/* ── Workspace tabs: Программа / История ── */}
           {playerId && selectedPlayer && (
@@ -6627,168 +6581,7 @@ export default function Home() {
           )}
 
           {/* ── История тренировок ── */}
-          {workspaceTab === 'history' && playerId && selectedPlayer && (
-            <div className="print:hidden">
-              {historyLoading && (
-                <div className="flex items-center justify-center py-20 text-[13px] text-slate-600">
-                  <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white/10 border-t-accent" />
-                  Загрузка истории...
-                </div>
-              )}
-              {!historyLoading && historyData && (historyData.sessions || []).length === 0 && (
-                <div className="flex flex-col items-center justify-center py-24 text-center">
-                  <BookOpen size={32} className="mb-3 text-slate-700" />
-                  <p className="text-[14px] font-semibold text-slate-600">Нет сохранённых тренировок</p>
-                  <p className="mt-1 text-[12px] text-slate-700">Сохраните первую тренировку в разделе «Программа»</p>
-                </div>
-              )}
-              {!historyLoading && historyData && (historyData.sessions || []).length > 0 && (
-                <div className="space-y-3">
-                  {/* Tonnage trend mini-chart */}
-                  {historyData.sessions.filter(s => s.tonnage > 0).length >= 3 && (
-                    <div className="mb-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] px-5 py-4">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">Фактический тоннаж по тренировкам</span>
-                        <span className="text-[10px] text-slate-700">{historyData.sessions.length} сессий</span>
-                      </div>
-                      <div className="flex items-end gap-1.5 h-10">
-                        {[...historyData.sessions].reverse().map((s, i) => {
-                          const maxTon = Math.max(...historyData.sessions.map(x => x.tonnage));
-                          const h = maxTon > 0 ? Math.max(4, Math.round((s.tonnage / maxTon) * 40)) : 4;
-                          return (
-                            <div key={s.date} className="flex flex-col items-center gap-0.5 flex-1 min-w-0" title={`${s.date}: факт ${s.tonnage} кг; план ${s.plannedTonnage || 0} кг${s.loadEvidence?.partial?'; фактические данные неполные':''}`}>
-                              <div
-                                className={`w-full rounded-sm transition-all ${s.tonnage > 0 ? 'bg-accent/50' : 'bg-white/[0.04]'}`}
-                                style={{ height: h }}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Exercise progress — top recurring lifts */}
-                  {Object.keys(exProgressData).length > 0 && (
-                    <div className="mb-2">
-                      <div className="mb-2.5 flex items-center gap-2 px-1">
-                        <TrendingUp size={12} className="text-accent" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.20em] text-slate-600">Прогресс упражнений</span>
-                      </div>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {Object.entries(exProgressData).map(([name, hist]) => {
-                          if (!hist || hist.length < 2) return null;
-                          const start = hist[0].kg;
-                          const now = hist[hist.length - 1].kg;
-                          const pct = start > 0 ? Math.round(((now - start) / start) * 100) : 0;
-                          const up = now > start, flat = now === start;
-                          return (
-                            <div key={name} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] px-3.5 py-3">
-                              <div className="mb-2 flex items-start justify-between gap-2">
-                                <span className="text-[12px] font-semibold text-slate-300 leading-tight line-clamp-2">{name}</span>
-                                <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-black tabular-nums ${
-                                  flat ? 'bg-white/[0.05] text-slate-500'
-                                       : up ? 'bg-emerald-500/[0.12] text-emerald-400'
-                                            : 'bg-rose-500/[0.12] text-rose-400'
-                                }`}>{flat ? '0%' : `${up ? '+' : ''}${pct}%`}</span>
-                              </div>
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-1.5 text-[11px] tabular-nums">
-                                  <span className="text-slate-600">{start}</span>
-                                  <ArrowRight size={10} className="text-slate-700" />
-                                  <span className="font-bold text-slate-200">{now}<span className="ml-0.5 text-[9px] font-normal text-slate-500">кг</span></span>
-                                </div>
-                                <Sparkline values={hist.map(e => e.kg)} width={50} height={18} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Session cards */}
-                  {historyData.sessions.map(s => {
-                    const isOpen = historyExpanded === s.date;
-                    const dt = new Date(s.date + 'T00:00:00Z');
-                    const label = dt.toLocaleDateString('ru', { day: 'numeric', month: 'long', weekday: 'short', timeZone: 'UTC' });
-                    return (
-                      <div key={s.date} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] overflow-hidden transition-all hover:border-white/[0.12]">
-                        <button
-                          type="button"
-                          onClick={() => setHistoryExpanded(isOpen ? null : s.date)}
-                          className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-                        >
-                          <div className="shrink-0 h-9 w-9 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.07]">
-                            <History size={14} className="text-slate-500" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-semibold text-slate-200 capitalize">{label}</p>
-                            <p className="mt-0.5 truncate text-[11px] font-bold text-accent">{s.trainingLabel || 'Тренировка в зале'}</p>
-                            {s.dayGoal && s.dayGoal !== s.trainingLabel && (
-                              <p className="mt-0.5 truncate text-[10px] text-slate-500">Цель: {s.dayGoal}</p>
-                            )}
-                          </div>
-                          <div className="shrink-0 text-right mr-2">
-                            <p className="text-[13px] font-bold text-slate-300">
-                              {s.tonnage > 0 ? (s.tonnage >= 1000 ? `${(s.tonnage / 1000).toFixed(1)}т` : `${s.tonnage}кг`) : '—'}
-                            </p>
-                            <p className="text-[10px] text-slate-600">{s.exerciseCount} упр.</p>
-                          </div>
-                          {isOpen ? <ChevronUp size={14} className="shrink-0 text-slate-600" /> : <ChevronDown size={14} className="shrink-0 text-slate-600" />}
-                        </button>
-
-                        {isOpen && (
-                          <div className="border-t border-white/[0.06] px-4 pb-4 pt-3">
-                            {s.exercises && s.exercises.length > 0 ? (
-                              <div className="space-y-1.5">
-                                {s.exercises.map((ex, ei) => {
-                                  const blockColors = { A: 'text-amber-400', B: 'text-orange-400', C: 'text-sky-400', D: 'text-teal-400', E: 'text-violet-400' };
-                                  const blockLetter = (ex.blockCode || '')[0] || '';
-                                  const histEntries = exHistoryMap[ex.name] || [];
-                                  return (
-                                    <div key={ei} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-white/[0.03]">
-                                      {blockLetter && (
-                                        <span className={`shrink-0 text-[10px] font-black w-4 ${blockColors[blockLetter] || 'text-slate-500'}`}>{blockLetter}</span>
-                                      )}
-                                      <span className="flex-1 text-[12px] text-slate-300 truncate">{ex.name}</span>
-                                      {ex.kg > 0 ? (
-                                        <div className="shrink-0 flex items-center gap-2">
-                                          {histEntries.length >= 2 && (
-                                            <Sparkline values={histEntries.map(e => e.kg)} width={36} height={12} />
-                                          )}
-                                          <span className="text-[11px] font-semibold text-slate-400">{ex.kg} кг</span>
-                                        </div>
-                                      ) : (
-                                        <span className="shrink-0 text-[10px] text-slate-700">—</span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <p className="text-[12px] text-slate-600">Нет данных об упражнениях</p>
-                            )}
-                            {s.assessment && (
-                              <div className="mt-3 overflow-hidden rounded-xl border border-accent/[0.12] bg-accent/[0.04]">
-                                <div className="flex">
-                                  <div className="w-1 shrink-0 bg-accent/40" />
-                                  <div className="px-3.5 py-3">
-                                    <div className="mb-1 text-[9px] font-black uppercase tracking-[0.22em] text-accent/60">Оценка состояния</div>
-                                    <p className="text-[12px] leading-relaxed text-slate-300">{s.assessment}</p>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+          {workspaceTab==='history' && playerId && selectedPlayer && <PlayerHistory key={`${workspace}:${playerId}`} workspace={workspace} player={selectedPlayer} apiKey={apiKey} targetDate={date} factsRefresh={factsRefresh} onOpenProgram={openOverviewPlayer} cycleReview={<StrengthCycleReviewPanel workspace={workspace} playerId={playerId} apiKey={apiKey} date={date} refreshToken={factsRefresh} initialOpen title="Результаты решений по циклам"/>}/>}
 
           {workspaceTab === 'program' && <div id="coach-team-drafts"><TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onCheckPublication={teamQueue.checkPublication} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} /></div>}
 

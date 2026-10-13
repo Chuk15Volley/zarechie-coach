@@ -319,3 +319,24 @@
 @media(max-width:1100px){.coach-premium .coach-today-grid{grid-template-columns:1fr}}
 @media(max-width:640px){.coach-premium .coach-overview-header{align-items:flex-start;flex-direction:column;gap:14px}.coach-premium .coach-overview-header>button{width:100%}.coach-premium .coach-overview-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.coach-premium .coach-overview-stats>div{padding:14px 12px}.coach-premium .coach-overview-stats dd{font-size:25px}.coach-premium .coach-today-card{padding:16px}.coach-premium .coach-overview-actions>button{flex:1 1 120px}.coach-premium .coach-overview-shortcuts>button{flex:1 1 130px}.coach-premium .coach-overview-table tr>th:first-child{min-width:130px;max-width:145px}.coach-premium .coach-overview-filters button{flex:1 1 auto}.coach-premium .coach-week-overview .coach-data-signals li{font-size:10px}}
 .coach-premium .coach-week-incomplete{display:block;color:#d5bd95;font-size:10px;line-height:1.5;margin-top:6px}
+/* Player history and confirmed actuals share the coach overview language. */
+.coach-premium .coach-history-list{display:grid;gap:16px;margin-top:18px}
+.coach-premium .coach-history-card{padding:22px;border:1px solid #b5c9bb24;border-radius:20px;background:linear-gradient(135deg,#becdbe08,transparent),#151d1b}
+.coach-premium .coach-history-card>header{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:18px}
+.coach-premium .coach-history-card h3{font-size:18px;font-weight:650;color:#e1eee5}
+.coach-premium .coach-history-card header p{font-size:12px;color:#9db3a5;margin-top:6px}
+.coach-premium .coach-history-card button,.coach-premium .coach-history-more{min-height:42px;padding:9px 12px;border:1px solid #adc9b62b;border-radius:11px;color:#c3dfce;font-size:12px;background:#adc9b608}
+.coach-premium .coach-history-card button:disabled,.coach-premium .coach-history-more:disabled{opacity:.4}
+.coach-premium .coach-history-dose{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border-top:1px solid #b5c9bb1a;padding-top:15px}
+.coach-premium .coach-history-dose span{display:block;font-size:11px;color:#9baea2;line-height:1.6}
+.coach-premium .coach-history-dose strong{display:block;font-size:18px;font-weight:600;color:#dceadd;line-height:1.5;margin-top:4px}
+.coach-premium .coach-history-exercises summary,.coach-premium .coach-history-card>details>summary{cursor:pointer;min-height:42px;padding:12px 0;font-size:12px;color:#b7d5c3}
+.coach-premium .coach-history-lift{padding:14px 0;border-top:1px solid #b5c9bb1a;font-size:13px;line-height:1.7;color:#d2e3d7}
+.coach-premium .coach-history-lift p,.coach-premium .coach-history-caption{font-size:12px;line-height:1.7;color:#9fb3a5;margin-block:8px}
+.coach-premium .coach-history-lift ol{display:flex;flex-wrap:wrap;gap:8px;padding:0;list-style:none}
+.coach-premium .coach-history-lift li{border:1px solid #afc9b61f;padding:8px 10px;border-radius:10px;font-size:12px}
+.coach-premium .coach-history-card input[type=number]{min-height:42px;max-width:100%;margin:6px 0;display:block}
+.coach-premium .coach-history-more{display:block;width:100%;margin-top:18px}
+.coach-premium .coach-player-history .coach-cycle-review{background:#151d1b;border-color:#b5c9bb24;padding:8px}
+.coach-premium .coach-player-history .coach-cycle-review table{min-width:460px}
+@media(max-width:640px){.coach-premium .coach-history-card{padding:16px}.coach-premium .coach-history-dose{grid-template-columns:1fr 1fr}.coach-premium .coach-history-dose>div:last-child{grid-column:1/-1}.coach-premium .coach-history-card>header>button{width:100%}.coach-premium .coach-history-dose strong{font-size:16px}}
