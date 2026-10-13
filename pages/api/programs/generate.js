@@ -1,3 +1,4 @@
+import {strengthActualHistory} from '../../../lib/strengthActualSupplement.mjs';
 import {readySixPublicationCheck,readySixPublicationState} from '../../../lib/readySixPublication.mjs';
 import {buildStrengthCycle} from '../../../lib/strengthCycle.mjs';
 import {previousCycleId} from '../../../lib/strengthCycleDecisions.mjs';
@@ -1572,7 +1573,7 @@ export async function buildGenerationInputs(body) {
   const manualMatchDayRequested = isManualMatchDayFocus(focus);
   const [snapshot, recentSessionRecords, actualHistory, rawSchedule, raw1RM, raw1RMHistory, strengthAnchors, rawFeedbacks, rawRestrictions, rawMatchLoadToday, rawMatchLoadPrev, rawDevelopmentPlan, previousManualMatchDays] = await Promise.all([
     getPlayerSnapshot(String(playerId), Number(days) || 7, targetDate, focus === 'inseason_strength' ? 28 : Number(days) || 7, workspace),
-    getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, targetDate, { strict: true, includeCycleHistory: focus === 'inseason_strength' }).catch(() => { prehabHistoryAvailable = false; return []; }),
+    getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, targetDate, { strict: true, includeCycleHistory: focus === 'inseason_strength',includeStrengthExecution: focus === 'inseason_strength' }).catch(() => { prehabHistoryAvailable = false; return []; }),
     getRecentActualHistory(String(playerId), workspace, 12, targetDate).catch(() => ({ records:[], summaries:[] })),
     usesSeasonCalendar(workspace) ? redis('get', scheduleKey(workspace)).catch(() => null) : Promise.resolve(null),
     redis('get', `${wpfx}:1rm:${String(playerId)}`).catch(() => null),
@@ -1624,7 +1625,7 @@ export async function buildGenerationInputs(body) {
       const sourceCycleId=previousCycleId(recentSessionRecords,decisionCycle.id);
       const rawDecision=sourceCycleId?await redis('get',`${wpfx}:strength:cycle-decision:${String(playerId)}:${sourceCycleId}`):null;
       const rawEquipment = await redis('get', `${wpfx}:strength:equipment`);
-      const readyResult = buildStrengthDevelopmentDraft({ cycleDecision:parseJSONSafe(rawDecision,null), equipment: parseJSONSafe(rawEquipment, {}), snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, developmentPlan: parseJSONSafe(rawDevelopmentPlan, null), recentSessions: recentSessionRecords, actualHistory: actualHistory.records, playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+      const readyResult = buildStrengthDevelopmentDraft({ cycleDecision:parseJSONSafe(rawDecision,null), equipment: parseJSONSafe(rawEquipment, {}), snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, developmentPlan: parseJSONSafe(rawDevelopmentPlan, null), recentSessions: recentSessionRecords, actualHistory: strengthActualHistory(recentSessionRecords,targetDate), playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
       readyResult.timeZone = timeZone;
       return { targetDate, dayGoal, readySixCheck, readySixState, readyResult };
     } catch (error) {

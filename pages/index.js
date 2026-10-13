@@ -1,3 +1,5 @@
+import useCoachEdits from '../hooks/useCoachEdits';
+import CoachEditsRecovery from '../components/CoachEditsRecovery';
 import StrengthTeamNextReview from '../components/StrengthTeamNextReview';
 import GenerationMonitor from '../components/GenerationMonitor';
 import useTeamGenerationQueue from '../hooks/useTeamGenerationQueue';
@@ -1929,6 +1931,7 @@ function StrengthCycleDecisionEditor({cycle,workspace,playerId,apiKey,onSaved}) 
   const [message,setMessage]=useState('');
   const signature=items=>JSON.stringify(items.map(({key,exercise,progression,note,volume='normal',volumeReason=''})=>({key,exercise,progression,note,volume,volumeReason})).sort((a,b)=>a.key.localeCompare(b.key)));
   const dirty=signature(entries)!==signature(cycle.decision?.entries || []);
+  const draft=useCoachEdits({storageKey:`gym:coach-single-decision:v1:${workspace}:${playerId}:${cycle.id}`,baseRevision:cycle.decision?.revision || null,value:{entries:JSON.parse(signature(entries))},dirty,onRestore:saved=>{if(!Array.isArray(saved.entries) || saved.entries.length>9)return;const restored=saved.entries.map(entry=>({...cycle.exercises.find(row=>row.key===entry.key),...entry}));if(restored.every(entry=>cycle.exercises.some(row=>row.key===entry.key)))setEntries(restored);}});
   const slots=[...new Set(cycle.exercises.map(row=>row.trainingType+':'+row.code))];
   function change(slot,patch) {
     setEntries(previous=>{
@@ -1943,11 +1946,11 @@ function StrengthCycleDecisionEditor({cycle,workspace,playerId,apiKey,onSaved}) 
     try {
       const response=await fetch('/api/players/strength-cycle-review',{method:'POST',headers:{'x-api-key':apiKey,'content-type':'application/json'},body:JSON.stringify({workspace,playerId,cycleId:cycle.id,expectedRevision:cycle.decision?.revision || null,entries:entries.map(({key,exercise,progression,note,volume='normal',volumeReason=''})=>({key,exercise,progression,note,volume,volumeReason}))})});
       const result=await response.json();if(!response.ok)throw new Error(result.error || 'Не удалось сохранить решения');
-      onSaved(result.decision);
+      draft.clear();onSaved(result.decision);
     } catch(error){setMessage(error.message);}finally{setSaving(false);}
   }
   return <div className="rounded-xl border border-emerald-300/20 p-3">
-    <p className="text-sm font-bold text-slate-200">Решения на следующий цикл</p>
+    <p className="text-sm font-bold text-slate-200">Решения на следующий цикл</p><CoachEditsRecovery draft={draft}/>
     <p className="my-2 text-xs text-slate-500">Выберите только нужные изменения. «Удерживать» запрещает прибавку кг и повторов, но позволяет снижение по состоянию. Ограничения ReadySix и локальные адаптации сохраняются. Уже сохранённые программы не меняются. Чтобы отменить решения, выберите «Без отдельного решения» и сохраните.</p>
     {dirty?<p className="mb-2 text-xs text-amber-200">Изменения ещё не сохранены.</p>:cycle.decision && <p className="mb-2 text-xs text-emerald-300">{entries.length?'Решения сохранены. Они учитываются при новой генерации следующего цикла.':'Отдельные решения отменены. Действуют обычные правила генерации.'}</p>}
     {slots.map(slot=>{
@@ -1955,18 +1958,18 @@ function StrengthCycleDecisionEditor({cycle,workspace,playerId,apiKey,onSaved}) 
       const entry=entries.find(entry=>entry.trainingType+':'+entry.code===slot);
       return <div key={slot} className="mb-3 space-y-2 rounded-lg bg-white/[0.03] p-2">
         <div className="block text-xs text-slate-300">{{full_body:'Общая силовая',anterior_chain:'Передняя цепь',posterior_chain:'Задняя цепь'}[rows[0].trainingType]} · {rows[0].code}
-          <PremiumSelect title={'Упражнение '+slot} disabled={saving} value={entry?.key || ''} onChange={value=>value?change(slot,{key:value}):setEntries(previous=>previous.filter(e=>e.trainingType+':'+e.code!==slot))} options={[{value:'',label:'Без отдельного решения'},...rows.map(row=>({value:row.key,label:row.name}))]} compact />
+          <PremiumSelect title={'Упражнение '+slot} disabled={saving || !!draft.recovered || draft.conflict} value={entry?.key || ''} onChange={value=>value?change(slot,{key:value}):setEntries(previous=>previous.filter(e=>e.trainingType+':'+e.code!==slot))} options={[{value:'',label:'Без отдельного решения'},...rows.map(row=>({value:row.key,label:row.name}))]} compact />
         </div>
         {entry && <>
-          <PremiumSelect title={'Вариант '+slot} disabled={saving} value={entry.exercise} onChange={value=>change(slot,{exercise:value})} options={[{value:'keep',label:'Сохранить упражнение'},{value:'rotate',label:'Сменить упражнение в том же движении'}]} compact />
-          <PremiumSelect title={'Прогрессия '+slot} disabled={saving} value={entry.progression} onChange={value=>change(slot,{progression:value})} options={[{value:'auto',label:'Прогрессия по фактической истории и RPE'},{value:'hold',label:'Удерживать нагрузку'}]} compact />
-          <PremiumSelect title={'Объём '+slot} disabled={saving} value={entry.volume || 'normal'} onChange={value=>change(slot,{volumeReason:'',volume:value})} options={[{value:'normal',label:'Обычный объём движения'},{value:'reduce_one',label:'На один рабочий подход меньше'}]} compact />
-          {entry.volume==='reduce_one' && <><p className="text-xs text-amber-200">От обычной дозы, минимум 1 подход. Снижение по состоянию не суммируется; прибавка кг и повторов отключена только здесь.</p><input aria-label={'Причина снижения '+slot} disabled={saving} maxLength={300} value={entry.volumeReason || ''} onChange={event=>change(slot,{volumeReason:event.target.value})} placeholder="Обязательная причина снижения объёма" className="w-full rounded bg-slate-900 p-2 text-xs" /></>}
-          <input aria-label={'Комментарий '+slot} disabled={saving} maxLength={300} value={entry.note} onChange={event=>change(slot,{note:event.target.value})} placeholder="Причина / комментарий тренера" className="w-full rounded bg-slate-900 p-2 text-xs" />
+          <PremiumSelect title={'Вариант '+slot} disabled={saving || !!draft.recovered || draft.conflict} value={entry.exercise} onChange={value=>change(slot,{exercise:value})} options={[{value:'keep',label:'Сохранить упражнение'},{value:'rotate',label:'Сменить упражнение в том же движении'}]} compact />
+          <PremiumSelect title={'Прогрессия '+slot} disabled={saving || !!draft.recovered || draft.conflict} value={entry.progression} onChange={value=>change(slot,{progression:value})} options={[{value:'auto',label:'Прогрессия по фактической истории и RPE'},{value:'hold',label:'Удерживать нагрузку'}]} compact />
+          <PremiumSelect title={'Объём '+slot} disabled={saving || !!draft.recovered || draft.conflict} value={entry.volume || 'normal'} onChange={value=>change(slot,{volumeReason:'',volume:value})} options={[{value:'normal',label:'Обычный объём движения'},{value:'reduce_one',label:'На один рабочий подход меньше'}]} compact />
+          {entry.volume==='reduce_one' && <><p className="text-xs text-amber-200">От обычной дозы, минимум 1 подход. Снижение по состоянию не суммируется; прибавка кг и повторов отключена только здесь.</p><input aria-label={'Причина снижения '+slot} disabled={saving || !!draft.recovered || draft.conflict} maxLength={300} value={entry.volumeReason || ''} onChange={event=>change(slot,{volumeReason:event.target.value})} placeholder="Обязательная причина снижения объёма" className="w-full rounded bg-slate-900 p-2 text-xs" /></>}
+          <input aria-label={'Комментарий '+slot} disabled={saving || !!draft.recovered || draft.conflict} maxLength={300} value={entry.note} onChange={event=>change(slot,{note:event.target.value})} placeholder="Причина / комментарий тренера" className="w-full rounded bg-slate-900 p-2 text-xs" />
         </>}
       </div>;
     })}
-    <button type="button" disabled={saving || !dirty} onClick={save} className="rounded-lg bg-emerald-400/15 px-3 py-2 text-xs text-emerald-200">{saving?'Сохраняем…':'Сохранить решения'}</button>
+    <button type="button" disabled={saving || !dirty || !!draft.recovered || draft.conflict} onClick={save} className="rounded-lg bg-emerald-400/15 px-3 py-2 text-xs text-emerald-200">{saving?'Сохраняем…':'Сохранить решения'}</button>
     {message && <p role="alert" className="mt-2 text-xs text-rose-300">{message}</p>}
   </div>;
 }

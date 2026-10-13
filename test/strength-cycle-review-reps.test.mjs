@@ -1,3 +1,4 @@
+import {resolveStrengthSupplement} from '../lib/strengthActualSupplement.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -104,7 +105,7 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: review joins on
  const actual=item.strengthExecutionFacts.actual;
  const stored={...item,strengthExecutionFacts:{actual:{source:'forged'},log:null}};
  const {strengthSessionCompletion}=await import('../lib/strengthCompletion.mjs');
- const deps={redis:async(_command,key)=>{assert.ok(key.startsWith(prefix+':'));return [date];},redisPipeline:async commands=>commands.map(([,key])=>key.includes(':session:actual:')?JSON.stringify(actual):key.includes(':log:')?null:JSON.stringify(stored)),pfx:()=>prefix,sessionKey:()=>'',strengthSessionCompletion};
+ const deps={resolveStrengthSupplement,redis:async(_command,key)=>{assert.ok(key.startsWith(prefix+':'));return [date];},redisPipeline:async commands=>commands.map(([,key])=>key.includes(':session:actual:')?JSON.stringify(actual):key.includes(':log:') || key.includes(':actual-supplement:')?null:JSON.stringify(stored)),pfx:()=>prefix,sessionKey:()=>'',strengthSessionCompletion};
  const history=new Function(...Object.keys(deps),source+';return getRecentSessionRecords;')(...Object.values(deps));
  const rows=await history('player',42,workspace,shiftIsoDate(date,1),{strict:true,includeCycleHistory:true,includeStrengthExecution:true});
  assert.equal(rows[0].strengthExecutionFacts.actual.source,'player_feedback');assert.equal(buildStrengthCycleReview(rows,{asOf:date}).cycles[0].completedCount,1);

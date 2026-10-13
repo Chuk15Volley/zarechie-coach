@@ -1,3 +1,4 @@
+import {coachAuditPage} from '../lib/coachAuditQuery.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -50,6 +51,6 @@ for(const workspace of ['zarechie','nkperf'])test(workspace+': batch endpoint au
 });
 for(const workspace of ['zarechie','nkperf'])test(workspace+': audit endpoint returns only scoped latest metadata and rejects unauthorised reads',async()=>{
  const source=fs.readFileSync(new URL('../pages/api/players/coach-audit.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');let reads=0;
- const deps={isAuthorized:req=>req.auth!==false,redis:async(command,key,start,end)=>{reads++;assert.equal(command,'zrevrange');assert.equal(key,coachAuditKey(workspace));assert.equal(start,0);assert.equal(end,49);return [JSON.stringify({type:'cycle_decision'})];},enforceRateLimit:async()=>true,validWorkspace,parseQueueJSON,coachAuditKey};const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));const res={setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
+ const deps={coachAuditPage,isAuthorized:req=>req.auth!==false,redis:async(command,key,start,end)=>{reads++;assert.equal(command,'zrevrange');assert.equal(key,coachAuditKey(workspace));assert.equal(start,0);assert.equal(end,99);return [JSON.stringify({id:randomUUID(),at:'2026-10-13T08:00:00Z',type:'cycle_decision'})];},enforceRateLimit:async()=>true,validWorkspace,parseQueueJSON,coachAuditKey};const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));const res={setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
  await handler({method:'GET',auth:false,query:{workspace}},res);assert.equal(res.code,401);assert.equal(reads,0);await handler({method:'GET',query:{workspace:'invalid'}},res);assert.equal(res.code,400);await handler({method:'GET',query:{workspace}},res);assert.equal(res.code,200);assert.equal(res.body.retained,2000);
 });

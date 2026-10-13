@@ -1,0 +1,12 @@
+import {useEffect,useRef,useState} from 'react';
+// Explicit browser-local recovery. Credentials and ReadySix answers never enter the payload.
+export default function useCoachEdits({storageKey,baseRevision,value,dirty,onRestore}){
+ const [recovered,setRecovered]=useState(null),[conflict,setConflict]=useState(false),[storageError,setStorageError]=useState('');const revision=useRef(null),ready=useRef(false);
+ const read=()=>{try{const saved=JSON.parse(localStorage.getItem(storageKey));return saved?.version===1 && saved.value && Date.now()-Date.parse(saved.savedAt)<14*86400000?saved:null;}catch{return null;}};
+ useEffect(()=>{ready.current=false;const saved=read();revision.current=saved?.revision || null;setRecovered(saved);setConflict(false);ready.current=true;const changed=event=>{if(event.key===storageKey){setConflict(true);setRecovered(read());}};window.addEventListener('storage',changed);return()=>window.removeEventListener('storage',changed);},[storageKey]);
+ const serialized=JSON.stringify(value);
+ useEffect(()=>{if(!ready.current || !dirty || recovered || conflict)return;try{const previous=read();if((previous?.revision || null)!==revision.current){setConflict(true);setRecovered(previous);return;}const next={version:1,revision:crypto.randomUUID(),baseRevision,value:JSON.parse(serialized),savedAt:new Date().toISOString()};if(serialized.length>128000)throw Error('Локальные правки слишком велики.');localStorage.setItem(storageKey,JSON.stringify(next));revision.current=next.revision;}catch{setStorageError('Браузер не разрешил сохранить правки для восстановления.');}},[serialized,dirty,recovered,conflict,storageKey,baseRevision]);
+ function clear(){try{const current=read();if((current?.revision || null)!==revision.current){setConflict(true);setRecovered(current);return;}localStorage.removeItem(storageKey);revision.current=null;setRecovered(null);setConflict(false);}catch{setStorageError('Не удалось удалить локальную копию.');}}
+ const stale=!!recovered && recovered.baseRevision!==baseRevision;
+ return {recovered,conflict,stale,storageError,clear,reload(){const current=read();revision.current=current?.revision || null;setRecovered(current);setConflict(false);},discard(){const current=read();revision.current=current?.revision || null;clear();},restore(){if(!recovered || stale)return;revision.current=recovered.revision;onRestore(recovered.value);setRecovered(null);setConflict(false);}};
+}

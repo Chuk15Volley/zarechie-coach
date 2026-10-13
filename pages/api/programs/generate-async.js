@@ -37,6 +37,7 @@ export default async function handler(req,res) {
     if(!await enforceRateLimit(req,res,{scope:'ai-generate-async',limit:40,windowSeconds:600}))return;
     const context={teamQueueId,workspace:request.workspace || 'zarechie',playerId:String(request.playerId),date:request.date,coachReview:!!teamQueueId};
     if(teamQueueId)await redis('set','coach:batch:'+batchId,JSON.stringify({...context,status:'preparing',leaseUntil:Date.now()+90000}), 'EX',generationJobTTL(context));
+    const strengthFactsStartedAt=new Date().toISOString();
     const inputs=await buildGenerationInputs(request);
     if(inputs.error){
       res.generationContext={workspace:request.workspace || 'zarechie',phase:'submit',batchId,outcomeCode:'PREPARATION_FAILED'};
@@ -44,7 +45,7 @@ export default async function handler(req,res) {
       return res.status(inputs.status || 400).json({error:inputs.error});
     }
     if(inputs.readyResult){
-      const result={...inputs.readyResult,readySixCheck:inputs.readySixCheck || null,readySixState:inputs.readySixState || null,...(teamQueueId?context:{}),status:'done',completedAt:new Date().toISOString()};
+      const result={...inputs.readyResult,strengthFactsStartedAt,readySixCheck:inputs.readySixCheck || null,readySixState:inputs.readySixState || null,...(teamQueueId?context:{}),status:'done',completedAt:new Date().toISOString()};
       if(teamQueueId)result.session={...result.session,teamGeneration:{queueId:teamQueueId,batchId}};
       const draft=generatedDraftRecord(result,request);
       if(draft){const key=generatedDraftKey(context.workspace,context.playerId,draft.date),value={...draft,...(teamQueueId?{teamQueueId,batchId}:{})};if(teamQueueId)await writeCurrentTeamDraft(context,batchId,key,value);else await redis('set',key,JSON.stringify(value));}
