@@ -22,6 +22,7 @@ import { createPortal } from 'react-dom';
 import Head from 'next/head';
 import {
   Activity,
+  LogOut,
   AlertTriangle,
   CalendarDays,
   Target,
@@ -4782,8 +4783,7 @@ export default function Home() {
                       : 'border-white/[0.08] bg-white/[0.035] text-slate-500'
                   }`}
                 >
-                  <span className={`relative flex h-1.5 w-1.5 shrink-0 rounded-full ${keyConnected ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.9)]' : 'bg-slate-600'}`} />
-                  <span className="sidebar-copy">Выход</span>
+                  <LogOut size={15} />
                 </button>
                 <button
                   type="button"
@@ -5489,7 +5489,7 @@ export default function Home() {
 
           {/* NK Performance sync button */}
           {workspace === 'nkperf' && keyConnected && (
-            <div className="border-t border-white/[0.05] px-3 py-2">
+            <div className="sidebar-sync border-t border-white/[0.05] px-3 py-2">
               <button
                 type="button"
                 disabled={nkSyncing}
@@ -5564,16 +5564,7 @@ export default function Home() {
                 </div>
               </div>
             )}
-            {/* Mobile library link */}
-            <div className="border-b border-white/[0.06] px-5 py-2">
-              <a
-                href="/library"
-                className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[11px] font-semibold text-slate-500 transition hover:border-[#22D3EE]/20 hover:text-[#22D3EE]"
-              >
-                <BookOpen size={12} />
-                Библиотека упражнений
-              </a>
-            </div>
+            {keyConnected && <div className="coach-mobile-navigation"><CoachNavigation current={mainSection} onSelect={section=>{setMainSection(section);setMobileView('workspace');if(section==='warmup')loadWarmupHistory();}} /></div>}
 
             {/* Mobile player grid */}
             <div className="flex-1 overflow-y-auto p-4">
@@ -5680,6 +5671,7 @@ export default function Home() {
         ══════════════════════════════════════ */}
         <div className={`workspace-main h-screen min-w-0 flex-1 overflow-y-auto flex-col${mobileView === 'players' ? ' hidden sm:flex' : ' flex'}`}>
           <div className="coach-top-rule print:hidden" />
+          <div className="coach-mobile-toolbar sm:hidden print:hidden"><button type="button" onClick={()=>setMobileView('players')}><Menu size={17}/>Меню и состав</button><span>{workspace==='nkperf'?'NK Performance':'Заречье'}</span></div>
 
           {/* ── Warmup workspace ── */}
           {mainSection === 'warmup' && (
