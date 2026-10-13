@@ -5,7 +5,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {coachAuditPage,auditFilters} from '../lib/coachAuditQuery.mjs';
 import {coachProgramVersion,compareCoachPrograms} from '../lib/coachProgramVersions.mjs';
 import {coachDraftKey,readCoachDraft,writeCoachDraft,validRestoredDecisions} from '../lib/coachDrafts.mjs';
-import {strengthMissingEditor,normalizeActualPatches,resolveStrengthSupplement,strengthActualHistory,actualFingerprint,supplementKey} from '../lib/strengthActualSupplement.mjs';
+import {actualSources,actualExerciseSignatures,strengthMissingEditor,normalizeActualPatches,resolveStrengthSupplement,strengthActualHistory,actualFingerprint,supplementKey} from '../lib/strengthActualSupplement.mjs';
 import {strengthSessionCompletion} from '../lib/strengthCompletion.mjs';
 import {strengthLoadEvidence} from '../lib/strengthExecution.mjs';
 import {proposeStrengthLoad} from '../lib/strengthProgression.mjs';
@@ -63,7 +63,7 @@ for(const workspace of ['zarechie','nkperf'])test(workspace+': actual API/store 
  const {record,actual,patches}=fixture(),prefix=queuePrefix(workspace),id='12',values=new Map([[prefix+':session:'+id+':'+date,JSON.stringify(record)],[prefix+':session:actual:'+id+':'+date,JSON.stringify(actual)]]),audits=[];let race=false;
  const redis=async(command,key)=>{assert.equal(command,'get');assert.ok(key.startsWith(prefix+':'));return values.get(key) || null;};
  const redisPipeline=async commands=>{assert.equal(commands.length,1);const [command,script,n,...args]=commands[0];assert.equal(command,'EVAL');const keys=args.slice(0,n),expected=args.slice(n,n+n),writes=JSON.parse(args[2*n]);if(race)values.set(prefix+':session:whoop_12:'+date,JSON.stringify({...record,savedAt:date+'T12:00:00Z'}));if(keys.some((key,i)=>(values.get(key) || '')!==expected[i]))return [0];for(const [cmd,key,...rest] of writes){if(cmd==='SET')values.set(key,rest[0]);if(cmd==='ZADD')audits.push(JSON.parse(rest[1]));}return [1];};
- const service=compile('lib/strengthActualStore.js',{randomUUID,createHash,redis,redisPipeline,queuePrefix,coachAuditCommands,supplementKey,strengthMissingEditor,normalizeActualPatches},'({loadStrengthActual,saveStrengthActual})');
+ const service=compile('lib/strengthActualStore.js',{randomUUID,createHash,redis,redisPipeline,queuePrefix,coachAuditCommands,supplementKey,strengthMissingEditor,normalizeActualPatches,actualSources,actualExerciseSignatures},'({loadStrengthActual,saveStrengthActual})');
  let context=await service.loadStrengthActual(workspace,id,date);assert.equal(context.keys.length,5);const body={workspace,playerId:id,date,fingerprint:context.fingerprint,requestId:randomUUID(),patches,reason:'Подтверждён тренировочный лист'};const before=values.get(prefix+':session:actual:'+id+':'+date);
  const saved=await service.saveStrengthActual(context,body,{role:'coach',access:'shared_key'});assert.equal(saved.replayed,false);assert.equal(audits.length,1);assert.equal(audits[0].type,'actual_completed');assert.equal(values.get(prefix+':session:actual:'+id+':'+date),before);assert.ok(values.get(prefix+':strength:actual-updated:'+id));
  context=await service.loadStrengthActual(workspace,id,date);assert.equal(context.editor.supplementStatus,'applied');assert.equal((await service.saveStrengthActual(context,body,{})).replayed,true);assert.equal(audits.length,1);await assert.rejects(service.saveStrengthActual(context,{...body,patches:[{...patches[0],value:22}]},{}),{status:409});

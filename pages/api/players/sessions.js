@@ -1,3 +1,5 @@
+import {sessionPlanFact} from '../../../lib/floorOperations.mjs';
+import {loadGymFacts,gymSessionDates} from '../../../lib/gymLoadStore';
 // pages/api/players/sessions.js
 // GET ?playerId&limit=20 — last N saved sessions with tonnage + exercise metadata.
 
@@ -15,16 +17,16 @@ export default async function handler(req, res) {
   if (!playerId) return res.status(400).json({ error: 'playerId required' });
 
   const lim = Math.min(parseInt(limit, 10) || 20, 40);
-  const allDates = await redis('zrange', sessionsKey(workspace, playerId), 0, -1).catch(() => []);
+  const allDates = await gymSessionDates(workspace,playerId);
   const dates = Array.isArray(allDates) ? allDates.slice(-lim).reverse() : [];
 
   if (!dates || !dates.length) return res.status(200).json({ sessions: [] });
 
-  const records = await redisPipeline(dates.map(d => ['GET', sessionKey(workspace, playerId, d)])).catch(() => []);
+  const records=await loadGymFacts(workspace,dates.map(date=>({playerId,date})));
 
   const sessions = [];
   dates.forEach((date, i) => {
-    const raw = records[i];
+    const facts=records[i],raw=facts?.record;
     if (!raw) return;
     try {
       const rec = typeof raw === 'string' ? JSON.parse(raw) : raw;
@@ -49,7 +51,8 @@ export default async function handler(req, res) {
         date,
         dayGoal: rec.dayGoal || '',
         trainingLabel: sessionTrainingLabel(rec),
-        tonnage: Math.round(tonnage),
+        tonnage: Number(facts.actual?.actualTonnage) || 0,
+        plannedTonnage:sessionPlanFact(rec.session).plannedTonnage,loadEvidence:facts.actual?.loadEvidence || {source:facts.actual?'recorded':'missing',partial:!facts.actual},
         exerciseCount: exercises.length,
         blockCount: blocks.length,
         exercises,

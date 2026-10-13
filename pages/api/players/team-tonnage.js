@@ -1,3 +1,5 @@
+import {sessionPlanFact} from '../../../lib/floorOperations.mjs';
+import {loadGymFacts} from '../../../lib/gymLoadStore';
 // pages/api/players/team-tonnage.js
 // GET ?days=7 → tonnage per player per day for the last N days.
 // Tonnage = sets × reps × weight per implement × number of implements.
@@ -7,23 +9,6 @@ import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { rosterKey, sessionKey } from '../../../lib/workspacePrefix';
 import { exerciseTonnage, weightKgFromExercise } from '../../../lib/tonnage';
-
-// Parse a single set string → total reps for that set entry.
-// Handles "3x8" → 24, "8" → 8, "4x5" → 20.
-function parseReps(s) {
-  const multi = String(s).match(/^(\d+)[x×](\d+)$/i);
-  if (multi) return parseInt(multi[1]) * parseInt(multi[2]);
-  const simple = String(s).match(/^(\d+)$/);
-  if (simple) return parseInt(simple[1]);
-  return 0;
-}
-
-function calcExTonnage(ex) {
-  const kg = weightKgFromExercise(ex);
-  if (!kg || kg <= 0) return 0;
-  const reps = (ex.targetSets || []).reduce((sum, s) => sum + parseReps(s), 0);
-  return exerciseTonnage(ex, reps, kg);
-}
 
 function windowDates(days) {
   const dates = [];
@@ -54,33 +39,22 @@ export default async function handler(req, res) {
   }
   if (!players.length) return res.status(200).json({ dates, players: [] });
 
-  // Batch-fetch all sessions: players × dates.
-  const keys = players.flatMap(p => dates.map(d => sessionKey(workspace, p.id, d)));
-  const results = await redisPipeline(keys.map(k => ['GET', k])).catch(() => []);
-
+  const facts=await loadGymFacts(workspace,players.flatMap(p=>dates.map(date=>({playerId:p.id,date}))));
   const playerRows = players.map((p, pi) => {
-    const byDay = {};
+    const byDay = {},plannedByDay={},evidenceByDay={};
     dates.forEach((d, di) => {
-      const raw = results[pi * dates.length + di];
-      if (!raw) { byDay[d] = 0; return; }
-      try {
-        const rec = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        let tonnage = 0;
-        for (const block of rec.session?.blocks || []) {
-          for (const ex of block.exercises || []) {
-            tonnage += calcExTonnage(ex);
-          }
-        }
-        byDay[d] = Math.round(tonnage);
-      } catch (_) { byDay[d] = 0; }
+      const fact=facts[pi*dates.length+di],rec=fact?.record;
+      plannedByDay[d]=sessionPlanFact(rec?.session).plannedTonnage;
+      byDay[d]=Number(fact?.actual?.actualTonnage) || 0;
+      evidenceByDay[d]=fact?.actual?.loadEvidence || {source:fact?.actual?'recorded':'missing',partial:!fact?.actual};
     });
     return {
       id: p.id,
       name: p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim(),
       position: p.position || '',
-      byDay,
+      byDay,plannedByDay,evidenceByDay,
     };
   });
 
-  return res.status(200).json({ dates, players: playerRows });
+  return res.status(200).json({ dates, players: playerRows,loadBasis:'actual' });
 }

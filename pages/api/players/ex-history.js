@@ -1,3 +1,5 @@
+import {getRecentSessionRecords} from '../../../lib/sessionHistory';
+import {loadGymFacts} from '../../../lib/gymLoadStore';
 // pages/api/players/ex-history.js
 // POST { playerId, names: string[] }
 // Returns { histories: { name: [{date, kg}] } } sorted oldest→newest.
@@ -26,6 +28,9 @@ export default async function handler(req, res) {
     ['HGETALL', exhistKey(workspace, playerId, legacyNormExName(item.name))],
   ])).catch(() => []);
 
+  const sessions=await getRecentSessionRecords(String(playerId),1000,workspace,null,{strict:true});
+  const strength=sessions.filter(record=>(record.focus || record.quality?.focus)==='inseason_strength');
+  const facts=await loadGymFacts(workspace,strength.map(record=>({playerId,date:record.date})));
   const histories = {};
   const historiesById = {};
   unique.forEach((item, i) => {
@@ -36,7 +41,7 @@ export default async function handler(req, res) {
       ? currentRaw.length > 0
       : !!currentRaw && typeof currentRaw === 'object' && Object.keys(currentRaw).length > 0;
     const raw = currentHasData ? currentRaw : legacyRaw;
-    if (!raw) return;
+
 
     let record = {};
     if (Array.isArray(raw)) {
@@ -45,6 +50,8 @@ export default async function handler(req, res) {
       record = raw;
     }
 
+    for(const row of strength)delete record[row.date];
+    for(let j=0;j<facts.length;j++)for(const ex of facts[j]?.actual?.exercises || [])if(normExName(ex.name)===id && ex.actualKg>0 && ex.setActuals?.some(set=>set.completed && set.kgRecorded))record[strength[j].date]=ex.actualKg;
     const entries = Object.entries(record)
       .map(([date, kg]) => ({ date, kg: parseFloat(kg) }))
       .filter(e => e.kg > 0 && e.date)

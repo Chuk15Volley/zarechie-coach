@@ -1,3 +1,4 @@
+import {generationScope} from '../lib/generationRecovery.mjs';
 import { generatedDraftKey, generatedDraftRecord } from '../lib/generatedDraft.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,6 +29,7 @@ test('day without gym follows schedule instead of prescribing recovery exercises
 });
 
 function handler(file, deps) {
+  deps={generationScope,...deps};
   const source = readFileSync(new URL(`../pages/api/programs/${file}`, import.meta.url), 'utf8')
     .replace(/^import[\s\S]*?from\s+['"][^'"]+['"];\s*/gm, '')
     .replace('export const config', 'const config').replace('export default async function', 'async function');

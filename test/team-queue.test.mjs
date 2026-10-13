@@ -1,3 +1,4 @@
+import {successfulGenerationRetry} from '../lib/generationRecovery.mjs';
 import * as audit from '../lib/coachAudit.mjs';
 import * as publicationPolicy from '../lib/teamPublicationPolicy.mjs';
 import * as fingerprint from '../lib/readySixPublication.mjs';
@@ -14,7 +15,7 @@ import {generateTeamPlayer} from '../lib/teamGenerationClient.mjs';
 function compile(path,deps,returned){
  const source=fs.readFileSync(new URL('../'+path,import.meta.url),'utf8');
  const imports=[...source.matchAll(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"];?/gm)].flatMap(match=>match[1].replace(/[{}]/g,'').split(',').map(x=>x.trim()).filter(Boolean));
- const args=Object.fromEntries(imports.map(name=>[name,()=>{throw Error('Unexpected '+name);} ]));Object.assign(args,deps);
+ const args=Object.fromEntries(imports.map(name=>[name,()=>{throw Error('Unexpected '+name);} ]));Object.assign(args,{successfulGenerationRetry},deps);
  const body=source.replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\s*/gm,'').replace(/export default /g,'').replace(/^export /gm,'');
  return new Function(...Object.keys(args),body+';return '+returned+';')(...Object.values(args));
 }
@@ -103,14 +104,14 @@ test('monitor retains failure history and separates resolved jobs, retry lineage
  const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'},{id:'two'}]});const [one,two]=q.players;
  for(const row of q.players){await f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace:'nkperf',teamQueueId:q.id,playerId:row.playerId,status:'failed'}));await f.recordGenerationEvent({workspace:'nkperf',code:'GENERATION_FAILED',batchId:row.batchId});}
  let m=await f.generationMonitor('nkperf');assert.equal(m.incidents.activeCount,2);
- const retried=await f.retryTeamPlayer(q,one.playerId,one.batchId),next=retried.players[0];await f.redis('set','coach:batch:'+next.batchId,JSON.stringify({workspace:'nkperf',status:'done'}));
+ const retried=await f.retryTeamPlayer(q,one.playerId,one.batchId),next=retried.players[0];await f.redis('set','coach:batch:'+next.batchId,JSON.stringify({workspace:'nkperf',status:'done',session:{blocks:[]}}));
  m=await f.generationMonitor('nkperf');assert.equal(m.incidents.activeCount,1);assert.equal(m.incidents.resolvedCount,1);assert.equal(m.counts.GENERATION_FAILED,2);assert.equal(m.needsAttention,true);
- await f.redis('set','coach:batch:'+two.batchId,JSON.stringify({workspace:'nkperf',status:'done'}));m=await f.generationMonitor('nkperf');assert.equal(m.incidents.activeCount,0);assert.equal(m.incidents.resolvedCount,2);assert.equal(m.needsAttention,false);
+ await f.redis('set','coach:batch:'+two.batchId,JSON.stringify({workspace:'nkperf',status:'done',session:{blocks:[]}}));m=await f.generationMonitor('nkperf');assert.equal(m.incidents.activeCount,0);assert.equal(m.incidents.resolvedCount,2);assert.equal(m.needsAttention,false);
 });
 for(const workspace of ['zarechie','nkperf'])test(workspace+': publication checks ReadySix, only reviewed current jobs, medical review and individual-save conflicts',async()=>{
  const f=fixture(),q=await f.createTeamQueue({request:request(workspace),players:[{id:'one'},{id:'two'},{id:'unreviewed'}]});
  const snapshot={targetDate:q.date,readySixMeta:{generatedAt:'first'},readySixDecision:{recommendation:'full'},injuryLog:[]};let changed=false,saved=[];
- for(const row of q.players){await f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace,playerId:row.playerId,teamQueueId:q.id,status:'done',readySixCheck:readySixPublicationCheck(snapshot,[]),quality:{valid:true},session:{kind:'strength_training_draft',blocks:[],teamGeneration:{queueId:q.id,batchId:row.batchId}}}));if(row.playerId!=='unreviewed')await f.markTeamPlayerReviewed(await f.loadTeamQueue(workspace,q.id),row.playerId,row.batchId,true);}
+ for(const row of q.players){await f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace,playerId:row.playerId,teamQueueId:q.id,status:'done',session:{blocks:[]},readySixCheck:readySixPublicationCheck(snapshot,[]),quality:{valid:true},session:{kind:'strength_training_draft',blocks:[],teamGeneration:{queueId:q.id,batchId:row.batchId}}}));if(row.playerId!=='unreviewed')await f.markTeamPlayerReviewed(await f.loadTeamQueue(workspace,q.id),row.playerId,row.batchId,true);}
  const checkTeamPublication=compile('lib/teamPublicationChecks.js',{...f,...fingerprint,getPlayerSnapshot:async()=>({...snapshot,...(changed?{injuryLog:[{zone:'calf'}]}:{})})},'checkTeamPublication');
  const publish=compile('lib/teamQueuePublication.js',{...f,crypto,checkTeamPublication,saveProgram:async(req,res,guard)=>{assert.ok(guard.batchId);saved.push(req.body.playerId);return res.status(req.body.playerId==='two'?409:200).json({error:'Changed saved edition'});}},'publishTeamQueue');
  let result=await publish(await f.loadTeamQueue(workspace,q.id),{authorized:true});assert.deepEqual(saved,['one','two']);assert.equal(result[0].status,'published');assert.equal(result[1].status,'blocked');
@@ -125,7 +126,7 @@ test('ReadySix publication digest ignores response timestamps but detects region
 
 for(const workspace of ['zarechie','nkperf'])test(workspace+': stale tabs fail closed; refreshing one ready draft preserves neighbours and saved programs',async()=>{
  const f=fixture(),q=await f.createTeamQueue({request:request(workspace),players:[{id:'one'},{id:'two'}]});
- for(const row of q.players)await f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace,playerId:row.playerId,teamQueueId:q.id,status:'done',completedAt:q.createdAt,session:{blocks:[],teamGeneration:{batchId:row.batchId}}}));
+ for(const row of q.players)await f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace,playerId:row.playerId,teamQueueId:q.id,status:'done',session:{blocks:[]},completedAt:q.createdAt,session:{blocks:[],teamGeneration:{batchId:row.batchId}}}));
  const first=q.players[0],neighbour=await f.redis('get','coach:batch:'+q.players[1].batchId);
  await f.markTeamPlayerReviewed(q,first.playerId,first.batchId,true);
  const action={workspace,queueId:q.id,playerId:first.playerId,batchId:first.batchId,expectedRevision:0};
@@ -152,7 +153,7 @@ test('worker stops after five temporary failures, retries only the selected play
  assert.equal(calls,5);let view=await f.teamQueueView(await f.loadTeamQueue(q.workspace,q.id));assert.equal(view.rows[0].runtime.stop,'RETRY_LIMIT');assert.equal(view.rows[0].status,'error');
  let monitor=await f.generationMonitor(q.workspace);assert.equal(monitor.runtime.stopped,1);assert.ok(monitor.needsAttention);
  const next=await f.retryTeamPlayer(await f.loadTeamQueue(q.workspace,q.id),'one',q.players[0].batchId);assert.notEqual(next.players[0].batchId,q.players[0].batchId);assert.equal((await f.teamQueueView(next)).rows[0].status,'queued');
- await f.redis('set','coach:batch:'+next.players[0].batchId,JSON.stringify({workspace:q.workspace,status:'done'}));monitor=await f.generationMonitor(q.workspace);assert.equal(monitor.runtime.stopped,0);assert.equal(monitor.incidents.activeCount,0);
+ await f.redis('set','coach:batch:'+next.players[0].batchId,JSON.stringify({workspace:q.workspace,status:'done',session:{blocks:[]}}));monitor=await f.generationMonitor(q.workspace);assert.equal(monitor.runtime.stopped,0);assert.equal(monitor.incidents.activeCount,0);
 });
 test('active elapsed time excludes pause; processing/waiting limits and stall detection are bounded',async()=>{
  const f=fixture(),q=await f.createTeamQueue({request:request('zarechie'),players:[{id:'one'}]}),base=Date.now(),key=pure.teamQueueKey(q.workspace,q.id);
@@ -174,7 +175,7 @@ test('monitor detects a stuck queue and worker outage even with no historical er
  await f.redis('set','coach:team-worker:tick-failure',String(Date.now()));m=await f.generationMonitor(q.workspace);assert.equal(m.worker.failed,true);assert.equal(m.worker.available,false);assert.equal(m.needsAttention,true);
 });
 test('a stale completed queue cannot create a replacement after another tab changed its version',async()=>{
- const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}]});await f.redis('set','coach:batch:'+q.players[0].batchId,JSON.stringify({workspace:q.workspace,teamQueueId:q.id,playerId:'one',status:'done'}));
+ const f=fixture(),q=await f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}]});await f.redis('set','coach:batch:'+q.players[0].batchId,JSON.stringify({workspace:q.workspace,teamQueueId:q.id,playerId:'one',status:'done',session:{blocks:[]}}));
  await f.mutateTeamQueue(q,0,async()=>{});
  await assert.rejects(f.createTeamQueue({request:request('nkperf'),players:[{id:'one'}],expectedLatestId:q.id,expectedRevision:0}),{status:409});
  assert.equal(await f.redis('get',pure.teamQueueLatestKey(q.workspace,q.date)),q.id);
@@ -188,7 +189,7 @@ test('bounded waiting jobs without a submission can be restarted; request quota 
  await runQueueTick({redis:f.redis,request:async()=>{calls++;}});assert.equal(calls,0);assert.equal((await f.teamQueueView(next)).rows[0].runtime.stop,'REQUEST_LIMIT');
 });
 
-function readyJobs(f,q,snapshot){return Promise.all(q.players.map(row=>f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace:q.workspace,playerId:row.playerId,teamQueueId:q.id,status:'done',completedAt:q.createdAt,readySixState:fingerprint.readySixPublicationState(snapshot,[]),readySixCheck:fingerprint.readySixPublicationCheck(snapshot,[]),quality:{valid:true},session:{blocks:[],teamGeneration:{queueId:q.id,batchId:row.batchId}}}))));}
+function readyJobs(f,q,snapshot){return Promise.all(q.players.map(row=>f.redis('set','coach:batch:'+row.batchId,JSON.stringify({workspace:q.workspace,playerId:row.playerId,teamQueueId:q.id,status:'done',session:{blocks:[]},completedAt:q.createdAt,readySixState:fingerprint.readySixPublicationState(snapshot,[]),readySixCheck:fingerprint.readySixPublicationCheck(snapshot,[]),quality:{valid:true},session:{blocks:[],teamGeneration:{queueId:q.id,batchId:row.batchId}}}))));}
 function publicationEngine(f,getPlayerSnapshot,saveProgram){
  const checkTeamPublication=compile('lib/teamPublicationChecks.js',{...f,...fingerprint,getPlayerSnapshot},'checkTeamPublication');
  const publishTeamQueue=compile('lib/teamQueuePublication.js',{...f,checkTeamPublication,saveProgram},'publishTeamQueue');

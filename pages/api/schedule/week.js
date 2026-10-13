@@ -1,3 +1,4 @@
+import {loadGymFacts,gymSessionDates} from '../../../lib/gymLoadStore';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
 import { adaptationBatchLatestKey, pfx, returnToPlayKey, rosterKey, sessionKey, sessionsKey } from '../../../lib/workspacePrefix';
@@ -6,7 +7,6 @@ import { buildAthleteWeekLoad, summarizeTeamWeek } from '../../../lib/weekLoadMa
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_PLAYERS = 40;
 const MAX_DATES_PER_PLAYER = 24;
-const PIPELINE_CHUNK = 300;
 
 function parse(raw, fallback = null) {
   if (raw == null) return fallback;
@@ -30,14 +30,6 @@ function score(date) {
   return Number.parseInt(date.replace(/-/g, ''), 10);
 }
 
-async function pipelineChunked(commands) {
-  const values = [];
-  for (let index = 0; index < commands.length; index += PIPELINE_CHUNK) {
-    values.push(...await redisPipeline(commands.slice(index, index + PIPELINE_CHUNK)));
-  }
-  return values;
-}
-
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ error: 'Method not allowed' });
@@ -57,39 +49,25 @@ export default async function handler(req, res) {
     return res.status(200).json({ players: [], sessions: {}, athletes: [], dates, summary: summarizeTeamWeek([]), latestBatch: null });
   }
 
-  const rangeResults = await redisPipeline(players.map(player => [
-    'ZRANGEBYSCORE', sessionsKey(workspace, String(player.id)), score(historyStart), score(rangeEnd),
-  ])).catch(() => players.map(() => []));
+  const rangeResults=await Promise.all(players.map(player=>gymSessionDates(workspace,String(player.id),score(historyStart),score(rangeEnd))));
   const playerDates = players.map((player, index) => ({
     player,
     dates: (Array.isArray(rangeResults[index]) ? rangeResults[index] : []).filter(validDate).slice(-MAX_DATES_PER_PLAYER),
   }));
   const entries = playerDates.flatMap(({ player, dates: storedDates }) => storedDates.map(date => ({ playerId: String(player.id), date })));
   const prefix = pfx(workspace);
-  const detailCommands = entries.flatMap(item => [
-    ['GET', sessionKey(workspace, item.playerId, item.date)],
-    ['GET', `${prefix}:session:actual:${item.playerId}:${item.date}`],
-    ['GET', `${prefix}:log:${item.playerId}:${item.date}`],
-  ]);
   const contextCommands = [
     ...players.map(player => ['GET', returnToPlayKey(workspace, String(player.id))]),
     ['GET', adaptationBatchLatestKey(workspace)],
   ];
   const [detailResults, contextResults] = await Promise.all([
-    pipelineChunked(detailCommands).catch(() => []),
+    loadGymFacts(workspace,entries),
     redisPipeline(contextCommands).catch(() => []),
   ]);
   const entriesByPlayer = new Map(players.map(player => [String(player.id), []]));
   entries.forEach((item, index) => {
-    const offset = index * 3;
-    const record = parse(detailResults[offset]);
-    if (!record?.session) return;
-    entriesByPlayer.get(item.playerId)?.push({
-      date: item.date,
-      record,
-      actual: parse(detailResults[offset + 1]),
-      log: parse(detailResults[offset + 2]),
-    });
+    const facts=detailResults[index];if(!facts)return;
+    entriesByPlayer.get(item.playerId)?.push({date:item.date,...facts});
   });
   const athletes = players.map((player, index) => buildAthleteWeekLoad({
     player,

@@ -1,3 +1,5 @@
+import {loadGymFacts,gymSessionDates} from '../../../lib/gymLoadStore';
+import {sessionsKey} from '../../../lib/workspacePrefix';
 // pages/api/players/trends.js
 // GET ?playerId=X&days=28
 // → descriptive recent:longer load trends. Ratios are context, never injury-risk predictions.
@@ -119,10 +121,14 @@ export default async function handler(req, res) {
     let tonnageMap = {};
     const gtCutoffScore = parseInt(isoDaysBefore(targetDate, totalWindow - 1).replace(/-/g, ''), 10);
     const gtTargetScore = parseInt(targetDate.replace(/-/g, ''), 10);
-    const gtDates = (await redis('zrangebyscore', gymTonnageDatesKey(workspace, playerId), String(gtCutoffScore), String(gtTargetScore)).catch(() => [])) || [];
+    let gtDates = (await redis('zrangebyscore', gymTonnageDatesKey(workspace, playerId), String(gtCutoffScore), String(gtTargetScore)).catch(() => [])) || [];
+    const sessionDates=await gymSessionDates(workspace,playerId,String(gtCutoffScore),String(gtTargetScore));
+    gtDates=[...new Set([...(gtDates || []),...(sessionDates || [])])].sort();
+    const gymLoadEvidence={};
     if (Array.isArray(gtDates) && gtDates.length) {
       const gtRaws = await redisPipeline(gtDates.map(d => ['get', gymTonnageKey(workspace, playerId, d)])).catch(() => []);
-      gtDates.forEach((d, i) => { const v = parseFloat(gtRaws[i]); if (v > 0) tonnageMap[d] = v; });
+      const facts=await loadGymFacts(workspace,gtDates.map(date=>({playerId,date})));
+      gtDates.forEach((d,i)=>{const fact=facts[i],strength=(fact?.record?.focus || fact?.record?.quality?.focus)==='inseason_strength',v=strength?fact.actual?.actualTonnage:parseFloat(gtRaws[i]);if(v>=0 && (strength || v>0))tonnageMap[d]=v;if(strength)gymLoadEvidence[d]=fact.actual?.loadEvidence || {source:'missing',partial:true};});
       const firstGtDate = Object.keys(tonnageMap).sort()[0] || null;
       gymAcwrHistory = calcEWMAAcwr(tonnageMap, firstGtDate, targetDate)
         .filter(r => r.date >= cutoffDay)
@@ -139,6 +145,7 @@ export default async function handler(req, res) {
       },
       acwrHistory,
       gymAcwrHistory,
+      gymLoadEvidence,
       tsbHistory,
       loadTrendNote: 'Соотношения показывают только динамику недавней и более длительной нагрузки. Они не являются вероятностью травмы и не используются изолированно для назначения тренировки.',
     });

@@ -182,7 +182,7 @@ export default async function handler(req, res) {
 
   res.setHeader('Cache-Control','no-store');
   if(req.query.workspace && req.query.workspace!==record.workspace)return res.status(404).json({error:'Задача не найдена в этом пространстве'});
-  res.generationContext={workspace:record.workspace || 'zarechie',phase:'poll',batchId};
+  res.generationContext={workspace:record.workspace || 'zarechie',phase:'poll',batchId,scopeKey:record.scopeKey || null};
   if(record.status==='preparing')return Date.now()<record.leaseUntil?res.status(200).json({status:'pending',processing_status:'preparing'}):res.status(410).json({code:'PREPARATION_INTERRUPTED',error:'Подготовка прервана. Продолжите очередь.'});
   if(record.status==='preparation_failed')return res.status(422).json({status:'failed',error:record.error});
   if (record.status === 'done' && record.session) {

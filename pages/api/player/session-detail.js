@@ -1,3 +1,4 @@
+import {loadGymFacts} from '../../../lib/gymLoadStore';
 import { redis } from '../../../lib/redis';
 import { resolveShareToken } from '../../../lib/shareToken';
 import { parseSavedSession, sessionDayGoal, sessionTrainingLabel } from '../../../lib/sessionLabel';
@@ -27,12 +28,13 @@ export default async function handler(req, res) {
     redis('get', `${pfx(workspace)}:session:actual:${playerId}:${date}`),
   ]);
   const parse = raw => { try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_) { return null; } };
-  const log = parse(logRaw);
+  const [facts]=await loadGymFacts(workspace,[{playerId,date}]);
+  const log = facts?.log || parse(logRaw);
   res.status(200).json({
     log: log ? { skipped: log.skipped || {}, done: log.done, weights: log.weights, repetitions: log.repetitions || {}, completedAt: log.completedAt, elapsedSeconds: log.elapsedSeconds, finishReason: log.finishReason } : null,
     feedback: parse(feedbackRaw),
-    actual: parse(actualRaw),
-    session: sanitizeUnavailableEquipmentExercises(parsed.session),
+    actual: facts?facts.actual:parse(actualRaw),
+    session: sanitizeUnavailableEquipmentExercises(facts?.record?.session || parsed.session),
     label: sessionTrainingLabel(parsed.record),
     dayGoal: sessionDayGoal(parsed.record),
   });

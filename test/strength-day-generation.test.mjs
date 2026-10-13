@@ -1,3 +1,4 @@
+import {generationScope} from '../lib/generationRecovery.mjs';
 import {strengthActualHistory} from '../lib/strengthActualSupplement.mjs';
 import {taskRuntimeKey} from '../lib/teamQueuePolicy.mjs';
 import {readySixPublicationCheck,readySixPublicationState} from '../lib/readySixPublication.mjs';
@@ -21,7 +22,7 @@ function compile(file,deps,returned='handler') {
  const imports=[...source.matchAll(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"];?/gm)].flatMap(match=>match[1].replace(/[{}]/g,'').split(',').map(x=>x.trim()).filter(Boolean));
  const unexpected=name=>()=>{throw new Error('Unexpected dependency '+name);};
  const args=Object.fromEntries(imports.map(name=>[name,unexpected(name)]));
- Object.assign(args,deps);
+ Object.assign(args,{generationScope},deps);
  const body=source.replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\s*/gm,'').replace(/export default /g,'').replace(/^export /gm,'');
  return new Function(...Object.keys(args),body+';return '+returned+';')(...Object.values(args));
 }

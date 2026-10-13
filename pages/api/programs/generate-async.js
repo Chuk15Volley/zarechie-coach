@@ -1,3 +1,4 @@
+import {generationScope} from '../../../lib/generationRecovery.mjs';
 import {taskRuntimeKey} from '../../../lib/teamQueuePolicy.mjs';
 import {generatedDraftKey,generatedDraftRecord} from '../../../lib/generatedDraft.mjs';
 import {isAuthorized} from '../../../lib/auth';
@@ -34,32 +35,34 @@ export default async function handler(req,res) {
       const currentRaw=await redis('get','coach:batch:'+batchId),current=typeof currentRaw==='string'?JSON.parse(currentRaw):currentRaw;
       if(current && current.status!=='preparing')return res.status(200).json({batchId,reused:true});
     }
-    if(!await enforceRateLimit(req,res,{scope:'ai-generate-async',limit:40,windowSeconds:600}))return;
     const context={teamQueueId,workspace:request.workspace || 'zarechie',playerId:String(request.playerId),date:request.date,coachReview:!!teamQueueId};
+    const scopeKey=teamQueueId?null:generationScope(request);
+    res.generationContext={workspace:context.workspace,phase:'submit',batchId,scopeKey};
+    if(!await enforceRateLimit(req,res,{scope:'ai-generate-async',limit:40,windowSeconds:600}))return;
     if(teamQueueId)await redis('set','coach:batch:'+batchId,JSON.stringify({...context,status:'preparing',leaseUntil:Date.now()+90000}), 'EX',generationJobTTL(context));
     const strengthFactsStartedAt=new Date().toISOString();
     const inputs=await buildGenerationInputs(request);
     if(inputs.error){
-      res.generationContext={workspace:request.workspace || 'zarechie',phase:'submit',batchId,outcomeCode:'PREPARATION_FAILED'};
-      if(teamQueueId)await redis('set','coach:batch:'+batchId,JSON.stringify({...context,status:'preparation_failed',error:inputs.error}), 'EX',generationJobTTL(context));
-      return res.status(inputs.status || 400).json({error:inputs.error});
+      res.generationContext={workspace:request.workspace || 'zarechie',phase:'submit',batchId,scopeKey:teamQueueId?null:generationScope(request),outcomeCode:'PREPARATION_FAILED'};
+      await redis('set','coach:batch:'+batchId,JSON.stringify({...context,scopeKey,status:'preparation_failed',error:inputs.error}), 'EX',teamQueueId?generationJobTTL(context):86400);
+      return res.status(inputs.status || 400).json({error:inputs.error,batchId});
     }
     if(inputs.readyResult){
-      const result={...inputs.readyResult,strengthFactsStartedAt,readySixCheck:inputs.readySixCheck || null,readySixState:inputs.readySixState || null,...(teamQueueId?context:{}),status:'done',completedAt:new Date().toISOString()};
+      const result={...inputs.readyResult,scopeKey,strengthFactsStartedAt,readySixCheck:inputs.readySixCheck || null,readySixState:inputs.readySixState || null,...(teamQueueId?context:{}),status:'done',completedAt:new Date().toISOString()};
       if(teamQueueId)result.session={...result.session,teamGeneration:{queueId:teamQueueId,batchId}};
       const draft=generatedDraftRecord(result,request);
       if(draft){const key=generatedDraftKey(context.workspace,context.playerId,draft.date),value={...draft,...(teamQueueId?{teamQueueId,batchId}:{})};if(teamQueueId)await writeCurrentTeamDraft(context,batchId,key,value);else await redis('set',key,JSON.stringify(value));}
       await redis('set','coach:batch:'+batchId,JSON.stringify({...result,workspace:context.workspace,playerId:context.playerId}), 'EX',teamQueueId?generationJobTTL(context):3600);
-      res.generationContext={workspace:context.workspace,phase:'submit',batchId,outcomeCode:result.quality?.blocking || result.quality?.medicalReviewRequired?'QUALITY_REVIEW':'PREPARED'};
+      res.generationContext={workspace:context.workspace,phase:'submit',batchId,scopeKey:teamQueueId?null:generationScope(request),outcomeCode:result.quality?.blocking || result.quality?.medicalReviewRequired?'QUALITY_REVIEW':'PREPARED'};
       return res.status(200).json({batchId,estimatedMinutes:0});
     }
     const {userPrompt,systemPrompt,dataSummary,targetDate,playerRestrictions=[],qualityContext={},questionnaireContext={}}=inputs;
     const sessionTool=buildSessionTool({includeImgPrompt:true});
-    await redis('set','coach:batch:'+batchId,JSON.stringify({...context,date:targetDate,dayGoal:request.dayGoal || '',focus:request.focus || '',trainingType:request.trainingType || '',autoSave:teamQueueId?false:request.autoSave!==false,
+    await redis('set','coach:batch:'+batchId,JSON.stringify({...context,scopeKey,date:targetDate,dayGoal:request.dayGoal || '',focus:request.focus || '',trainingType:request.trainingType || '',autoSave:teamQueueId?false:request.autoSave!==false,
       readySixCheck:inputs.readySixCheck || null,readySixState:inputs.readySixState || null,userPrompt,systemPrompt,dataSummary,playerRestrictions,qualityContext,questionnaireContext,generationRequest:request,sessionTool,status:'pending',submittedAt:new Date().toISOString()}),'EX',teamQueueId?generationJobTTL(context):3600);
     return res.status(200).json({batchId,estimatedMinutes:2});
   }catch(error){
-    res.generationContext={workspace:request.workspace || 'zarechie',phase:'submit',batchId,outcomeCode:'PREPARATION_FAILED'};
+    res.generationContext={workspace:request.workspace || 'zarechie',phase:'submit',batchId,scopeKey:teamQueueId?null:generationScope(request),outcomeCode:'PREPARATION_FAILED'};
     if(teamQueueId){
       // Recover a committed result after an ambiguous persistence error; never overwrite it.
       try{const raw=await redis('get','coach:batch:'+batchId);const job=typeof raw==='string'?JSON.parse(raw):raw;if(job && job.status!=='preparing'){res.generationContext={workspace:request.workspace,phase:'submit',batchId};return res.status(200).json({batchId,reused:true});}

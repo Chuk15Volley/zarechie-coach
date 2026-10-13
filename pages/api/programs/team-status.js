@@ -1,3 +1,4 @@
+import {loadGymFacts} from '../../../lib/gymLoadStore';
 import { generatedDraftKey } from '../../../lib/generatedDraft.mjs';
 // pages/api/programs/team-status.js
 // POST { playerIds, date } → gym session status for each player on that date.
@@ -54,6 +55,7 @@ export default async function handler(req, res) {
     ];
   })).catch(() => []);
   const drafts = await redisPipeline(playerIds.map(id => ['GET', generatedDraftKey(workspace, String(id), date)]));
+  const facts=await loadGymFacts(workspace,playerIds.map(id=>({playerId:String(id),date})));
   playerIds.forEach((id, index) => {
     const sid = String(id);
     const offset = index * 11;
@@ -88,6 +90,7 @@ export default async function handler(req, res) {
     if (rawActual) {
       try { actual = typeof rawActual === 'string' ? JSON.parse(rawActual) : rawActual; } catch (_) {}
     }
+    if(facts[index]){session=facts[index].record.session;actual=facts[index].actual;log=facts[index].log;}
     const restrictions = parseJSON(rawRestrictions, []);
     const developmentPlan = parseJSON(rawDevelopmentPlan);
     const returnToPlay = evaluateReturnToPlay(parseJSON(rawReturnToPlay, {}), date);

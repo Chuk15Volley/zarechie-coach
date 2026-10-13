@@ -450,6 +450,7 @@ function TrendCharts({ data, showNeuro = true }) {
       {cmjChart}
       {acwrChart}
       {gymAcwrChart}
+      {gymAcwrChart && <p className="text-[10px] text-slate-500">Силовая: только записанные кг и повторы, включая актуальные дополнения тренера. Дней с неполными данными: {Object.values(data?.gymLoadEvidence || {}).filter(item=>item.partial).length}. Соотношение описывает доступные данные.</p>}
       {tsbChart}
     </div>
   );
@@ -2487,6 +2488,8 @@ export default function Home() {
   // Player history workspace
   const [workspaceTab, setWorkspaceTab] = useState('program'); // 'program' | 'history'
   const [historyData, setHistoryData] = useState(null);
+  const [factsRefresh,setFactsRefresh]=useState(0);
+  useEffect(()=>{const refresh=event=>{if(event.detail?.workspace!==workspace)return;setFactsRefresh(value=>value+1);setTrendsData(null);};window.addEventListener('gym-strength-facts-updated',refresh);return()=>window.removeEventListener('gym-strength-facts-updated',refresh);},[workspace]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(null); // expanded session date
   const [exProgressData, setExProgressData] = useState({}); // { [name]: [{date, kg}] }
@@ -2951,7 +2954,7 @@ export default function Home() {
       setProgressionMap({ ...(prog.progression || {}), ...(prog.progressionById || {}) });
       setExHistoryMap({ ...(hist.histories || {}), ...(hist.historiesById || {}) });
     });
-  }, [session, playerId, apiKey, workspace]);
+  }, [session, playerId, apiKey, workspace,factsRefresh]);
 
   // Load team tonnage when switching to the Нагрузка section.
   useEffect(() => {
@@ -2962,7 +2965,7 @@ export default function Home() {
       .then(d => setTonnageData(d))
       .catch(() => {})
       .finally(() => setTonnageLoading(false));
-  }, [mainSection, apiKey, workspace]);
+  }, [mainSection, apiKey, workspace,factsRefresh]);
 
   // Load player session history when switching to history tab.
   useEffect(() => {
@@ -2974,7 +2977,7 @@ export default function Home() {
       .catch(() => setHistoryData({ sessions: [] }))
       .finally(() => setHistoryLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceTab, playerId, apiKey, workspace]);
+  }, [workspaceTab, playerId, apiKey, workspace,factsRefresh]);
 
   // Load exercise progress data when history loads (top recurring exercises).
   useEffect(() => {
@@ -3048,7 +3051,7 @@ export default function Home() {
   useEffect(() => {
     if (mainSection === 'health' && apiKey) loadPlatformHealth();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainSection, apiKey, workspace]);
+  }, [mainSection, apiKey, workspace,factsRefresh]);
 
   // Load team readiness when switching to readiness section or changing date.
   useEffect(() => {
@@ -6502,7 +6505,7 @@ export default function Home() {
           {mainSection === 'tonnage' && (
             <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-xl font-black tracking-tight text-white">Нагрузка команды</h2>
+                <h2 className="text-xl font-black tracking-tight text-white">Нагрузка команды · фактический тоннаж</h2>
                 <button
                   type="button"
                   onClick={() => {
@@ -6538,6 +6541,7 @@ export default function Home() {
                 ))}
               </div>
 
+              <p className="mb-3 text-xs text-slate-500">Факт рассчитан по записанным значениям. * — данные неполные; наведите на ячейку, чтобы увидеть план отдельно.</p>
               {/* ── Tonnage table ── */}
               {tonnageTab === 'tonnage' && tonnageLoading && (
                 <div className="flex items-center justify-center py-20 text-[13px] text-slate-600">
@@ -6580,9 +6584,9 @@ export default function Home() {
                               const colorClass = v === 0 ? 'text-slate-700' : v < 5000 ? 'text-amber-400/60' : v < 12000 ? 'text-emerald-400/80' : 'text-rose-400/80';
                               const bgClass = v === 0 ? '' : v < 5000 ? 'bg-amber-400/[0.05]' : v < 12000 ? 'bg-emerald-400/[0.07]' : 'bg-rose-400/[0.07]';
                               return (
-                                <td key={d} className={`px-3 py-2.5 text-center ${bgClass}`}>
+                                <td key={d} title={`Факт: ${v} кг; план: ${p.plannedByDay?.[d] || 0} кг${p.evidenceByDay?.[d]?.partial?'; фактические данные неполные':''}`} className={`px-3 py-2.5 text-center ${bgClass}`}>
                                   <span className={`font-semibold ${colorClass}`}>
-                                    {v === 0 ? '—' : v >= 1000 ? `${(v / 1000).toFixed(1)}т` : `${v}кг`}
+                                    {v === 0 ? '—' : v >= 1000 ? `${(v / 1000).toFixed(1)}т` : `${v}кг`}{p.evidenceByDay?.[d]?.partial?' *':''}
                                   </span>
                                 </td>
                               );
@@ -6876,7 +6880,7 @@ export default function Home() {
                   {historyData.sessions.filter(s => s.tonnage > 0).length >= 3 && (
                     <div className="mb-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] px-5 py-4">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">Тоннаж по тренировкам</span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">Фактический тоннаж по тренировкам</span>
                         <span className="text-[10px] text-slate-700">{historyData.sessions.length} сессий</span>
                       </div>
                       <div className="flex items-end gap-1.5 h-10">
@@ -6884,7 +6888,7 @@ export default function Home() {
                           const maxTon = Math.max(...historyData.sessions.map(x => x.tonnage));
                           const h = maxTon > 0 ? Math.max(4, Math.round((s.tonnage / maxTon) * 40)) : 4;
                           return (
-                            <div key={s.date} className="flex flex-col items-center gap-0.5 flex-1 min-w-0" title={`${s.date}: ${s.tonnage} кг`}>
+                            <div key={s.date} className="flex flex-col items-center gap-0.5 flex-1 min-w-0" title={`${s.date}: факт ${s.tonnage} кг; план ${s.plannedTonnage || 0} кг${s.loadEvidence?.partial?'; фактические данные неполные':''}`}>
                               <div
                                 className={`w-full rounded-sm transition-all ${s.tonnage > 0 ? 'bg-accent/50' : 'bg-white/[0.04]'}`}
                                 style={{ height: h }}
