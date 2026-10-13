@@ -532,3 +532,155 @@
  .coach-premium .coach-exercise-studio .coach-set-inputs input {width:48px;}
  .coach-plan-fields label>span {min-height:30px;}
 }
+
+/* Coach evidence studio: actual values and missing evidence remain distinct. */
+.coach-premium .coach-player-history{padding:clamp(16px,2.4vw,32px);border:1px solid #bbc9c21f;border-radius:24px;background:linear-gradient(145deg,#bbc9c207,transparent 45%),#13191b;min-width:0}
+.coach-premium :is(.coach-player-history,.coach-cycle-review,.coach-team-review) h3{font-family:var(--type-display);letter-spacing:-.025em;line-height:1.35}
+.coach-premium .coach-studio-badge{display:inline-flex;align-items:center;align-self:flex-start;padding:7px 11px;border:1px solid #a5c7b62b;border-radius:999px;font-size:11px;line-height:1.5;color:#bdd2c7;background:#a5c7b609;max-width:100%;overflow-wrap:anywhere}
+.coach-premium .coach-studio-badge.is-warning{color:#dfc99d;border-color:#c9b48644;background:#c9b4860b}
+.coach-premium .coach-history-section-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-top:28px;padding-top:24px;border-top:1px solid #b8cac21a}
+.coach-premium .coach-history-section-heading h3{font-size:19px;color:#e3ebe7;margin-top:5px}
+.coach-premium .coach-history-section-heading .coach-overview-filters{margin:0}
+.coach-premium .coach-history-card{position:relative;padding:24px;border-radius:20px;background:linear-gradient(110deg,#a8b6ac09,transparent 60%),#192023;box-shadow:0 10px 30px #00000014}
+.coach-premium .coach-history-card-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}
+.coach-premium .coach-history-card header .coach-history-date-code{margin:0 0 7px;font-size:10px;letter-spacing:.15em;color:#b5b5a0;font-variant-numeric:tabular-nums}
+.coach-premium .coach-history-dose{padding:16px;border:1px solid #b5c9bb18;border-radius:14px;background:#10171866}
+.coach-premium .coach-history-dose strong{font-size:clamp(18px,2vw,24px);font-variant-numeric:tabular-nums;letter-spacing:-.04em}
+.coach-premium .coach-history-exercises{margin-top:16px;border-top:1px solid #b5c9bb1a}
+.coach-premium .coach-fact-studio{margin-block:24px;padding:clamp(16px,2vw,24px);min-width:0;border:1px solid #b6c7c033;border-radius:20px;background:linear-gradient(140deg,#b3c4b910,transparent 60%),#161d1f;box-shadow:0 12px 30px #0002}
+.coach-premium .coach-fact-studio>header{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px}
+.coach-premium .coach-fact-studio h3{font-size:clamp(20px,2vw,26px);font-weight:600;color:#e6eeea;margin:6px 0}
+.coach-premium .coach-fact-studio header p:last-child,.coach-premium .coach-fact-caption{font-size:12px;line-height:1.8;color:#a7b8b0;margin-block:8px}
+.coach-premium .coach-fact-empty{padding:22px;border:1px dashed #a8bfb535;border-radius:14px;font-size:13px;line-height:1.8;color:#b4c1bb}
+.coach-premium .coach-fact-controls{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:14px;margin-bottom:12px}
+.coach-premium .coach-fact-controls label{display:flex;flex-direction:column;min-width:0;gap:8px;color:#bccbc3;font-size:11px}
+.coach-premium .coach-fact-controls select{width:100%;max-width:100%;height:46px;min-width:0;padding:10px 32px 10px 12px;border:1px solid #b1c2b833;border-radius:11px;font:inherit;font-size:13px;text-overflow:ellipsis}
+.coach-premium .coach-fact-charts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:20px}
+.coach-premium .coach-fact-metric{--fact-color:#9ac9b3;min-width:0;margin:0;padding:18px 0 8px;border:1px solid #b6c7c021;border-radius:16px;background:linear-gradient(180deg,#aac5b909,transparent),#11191a;overflow:hidden}
+.coach-premium .coach-fact-metric-reps{--fact-color:#cfc6a9}
+.coach-premium .coach-fact-metric-rpe{--fact-color:#acbacc}
+.coach-premium .coach-fact-metric figcaption{padding-inline:18px}
+.coach-premium .coach-fact-metric figcaption>span{font-size:12px;color:#c0cfc7}
+.coach-premium .coach-fact-metric strong{display:block;margin:8px 0;font:600 30px/1.2 var(--type-display);letter-spacing:-.04em;color:#e7efea;font-variant-numeric:tabular-nums}
+.coach-premium .coach-fact-metric strong small{font-size:12px;letter-spacing:0;font-weight:400;color:#aebdb5}
+.coach-premium .coach-fact-metric figcaption p{font-size:10px;color:#a5b6ad;line-height:1.6;min-height:32px}
+.coach-premium .coach-fact-plot{width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain;padding:6px 12px 0;scrollbar-width:thin}
+.coach-premium .coach-fact-plot svg{display:block;width:100%;height:auto;overflow:visible}
+.coach-premium .coach-fact-grid{stroke:#b3c9bd16;stroke-width:1}
+.coach-premium .coach-fact-axis{font-size:10px;fill:#91a69b;font-variant-numeric:tabular-nums}
+.coach-premium .coach-fact-line{fill:none;stroke:var(--fact-color);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.coach-premium .coach-fact-dot{fill:var(--fact-color);stroke:#121b17;stroke-width:2}
+.coach-premium .coach-fact-dot.is-adapted{fill:#d4ba85;stroke:#d4ba85;stroke-width:1}
+.coach-premium .coach-fact-gap{stroke:#c5ab83;stroke-width:1.4;fill:none}
+.coach-premium .coach-fact-details{margin-top:18px;border-top:1px solid #b5c9bb1a}
+.coach-premium .coach-fact-details>summary,.coach-premium .coach-cycle-observation-details>summary{cursor:pointer;padding:15px 0;min-height:44px;font-size:12px;color:#bbd5c7}
+.coach-premium .coach-fact-table{overflow-x:auto;max-width:100%;border:1px solid #b5c9bb1a;border-radius:12px}
+.coach-premium .coach-fact-table table{width:100%;min-width:580px;font-size:12px;line-height:1.7;border-collapse:collapse;color:#d3dfd8;text-align:left}
+.coach-premium .coach-fact-table caption{text-align:left;padding:12px;background:#a8bfb507;color:#aabeb2;font-size:11px}
+.coach-premium .coach-fact-table :is(th,td){padding:12px 14px;border-bottom:1px solid #b5c9bb14;font-variant-numeric:tabular-nums}
+.coach-premium .coach-fact-table th{font-size:10px;color:#9db5a7;font-weight:500}
+.coach-premium .coach-fact-table td:last-child{color:#afbaae;min-width:180px}
+.coach-premium .coach-fact-table button{white-space:nowrap;background:transparent;padding:0;border:0;color:#b5dbc6;min-height:32px}
+.coach-premium .coach-cycle-review{overflow:hidden;border-radius:20px;border-color:#bbcec32b;background:linear-gradient(140deg,#b9c9bd08,transparent),#161d1f}
+.coach-premium .coach-cycle-review>summary{padding:20px 24px;font-size:15px;color:#d3e1d9;font-weight:600}
+.coach-premium .coach-cycle-review>div{padding:clamp(16px,2vw,24px)}
+.coach-premium .coach-cycle-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;padding:24px;border:1px solid #b5c9bb27;border-radius:18px;background:linear-gradient(120deg,#abc4b511,transparent),#17221e}
+.coach-premium .coach-cycle-hero h3{font-size:24px;color:#e1ebe5;margin:8px 0}
+.coach-premium .coach-cycle-hero p{font-size:12px;color:#adbdB3;line-height:1.8}
+.coach-premium .coach-cycle-counter{min-width:160px}
+.coach-premium .coach-cycle-counter strong{font:600 42px/1.1 var(--type-display);color:#d5e8dc;letter-spacing:-.05em;font-variant-numeric:tabular-nums}
+.coach-premium .coach-cycle-counter strong span{font-size:20px;color:#809b8c;font-weight:400;margin-left:5px}
+.coach-premium .coach-cycle-steps{display:flex;gap:6px;margin-top:12px}
+.coach-premium .coach-cycle-steps span{height:4px;width:28px;background:#7e9a8a26;border-radius:4px}
+.coach-premium .coach-cycle-steps .is-complete{background:linear-gradient(90deg,#7f9e8b,#bdd2bd)}
+.coach-premium .coach-cycle-hero .coach-cycle-hero-caption{grid-column:1/-1;padding-top:14px;border-top:1px solid #b5c9bb1a;color:#9bb0a3}
+.coach-premium .coach-cycle-comparison,.coach-premium .coach-cycle-decision-editor{padding:22px;border-radius:18px;border-color:#b5c9bb2b;background:#172020}
+.coach-premium .coach-cycle-comparison>h3,.coach-premium .coach-cycle-decision-editor>p:first-child{font-size:18px;color:#d1dfd6;font-weight:600;line-height:1.5}
+.coach-premium .coach-cycle-result{margin-top:18px;padding:20px;border:1px solid #b5c9bb22;border-radius:14px;background:linear-gradient(120deg,#b5c9bb08,transparent),#121b19}
+.coach-premium .coach-cycle-result>p:first-child{font-size:14px;line-height:1.6;color:#e2eae5}
+.coach-premium .coach-cycle-result>dl:not(.coach-cycle-deltas)>div{border-left:2px solid #8aab973d;padding-left:14px;line-height:1.9}
+.coach-premium .coach-cycle-deltas{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:18px 0;border-block:1px solid #b5c9bb1a;margin-top:16px}
+.coach-premium .coach-cycle-deltas dt{font-size:10px;color:#9eb6a8}
+.coach-premium .coach-cycle-deltas dd{font-size:26px;line-height:1.6;color:#c7dfd0;font-weight:600;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.coach-premium .coach-cycle-deltas span{font-size:10px;color:#a4b8ab}
+.coach-premium .coach-cycle-decision-editor>div:not(:first-child){padding:16px;border-radius:12px}
+.coach-premium .coach-cycle-decision-editor button{min-height:42px}
+.coach-premium .coach-cycle-observation{margin-bottom:14px;border-radius:14px;border-color:#b5c9bb27}
+.coach-premium .coach-team-review{padding:clamp(16px,2.2vw,28px);border:1px solid #bbc9c22b;border-radius:24px;background:linear-gradient(130deg,#b9c4b80b,transparent 55%),#151d1f;box-shadow:0 14px 32px #0002;min-width:0}
+.coach-premium .coach-draft-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.coach-premium .coach-draft-heading>div>button{font:600 clamp(20px,2vw,26px)/1.5 var(--type-display);letter-spacing:-.035em;text-align:left;margin-top:5px}
+.coach-premium .coach-draft-heading-caption{font-size:12px;color:#9fafA6;line-height:1.7;margin-top:7px}
+.coach-premium .coach-draft-heading>button{min-height:42px;border:1px solid #acbfb52b;border-radius:11px;padding:10px 14px;color:#c4d8cc;background:#abc4b60b}
+.coach-premium .coach-draft-context{font-size:12px;color:#b6c3b7;margin-top:20px}
+.coach-premium .coach-queue-stats>div{background:#a8b5ac07;border-color:#b1c0b323;border-radius:12px;padding:14px}
+.coach-premium .coach-queue-stats dd{font:600 27px/1.4 var(--type-display);letter-spacing:-.04em;color:#d2e4d9}
+.coach-premium .coach-draft-pipeline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;overflow:hidden;border:1px solid #bac8bc27;border-radius:14px;background:#bac8bc1c;margin-top:20px}
+.coach-premium .coach-draft-pipeline>div{display:flex;align-items:center;gap:14px;padding:16px;background:#182220;min-width:0}
+.coach-premium .coach-draft-pipeline>div>span{font-size:11px;color:#c5b98c;letter-spacing:.05em}
+.coach-premium .coach-draft-pipeline p{font-size:11px;color:#a9bdae;line-height:1.6}
+.coach-premium .coach-draft-pipeline strong{font-size:23px;color:#dfE9e2;font-weight:550;font-variant-numeric:tabular-nums}
+.coach-premium .coach-draft-pipeline small{font-size:12px;font-weight:400;color:#8ba393}
+.coach-premium .coach-queue-actions{background:#202c27;border-color:#839c8b55;padding:16px;border-radius:14px;box-shadow:0 8px 24px #0004;gap:10px}
+.coach-premium .coach-queue-actions>span{padding:7px 10px;border:1px solid #acbfb52b;border-radius:8px}
+.coach-premium .coach-draft-grid{gap:18px}
+.coach-premium .coach-draft-card{padding:22px;border-radius:18px;background:linear-gradient(130deg,#b5c8ba0a,transparent 60%),#192220;border-color:#bbcebf26;box-shadow:0 6px 22px #0002}
+.coach-premium .coach-draft-player{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.coach-premium .coach-draft-player>div{min-width:0}
+.coach-premium .coach-draft-player h3{font-size:18px;font-weight:600;color:#e0ebe3;margin-top:4px;overflow-wrap:anywhere}
+.coach-premium .coach-draft-avatar{width:46px;height:46px;display:grid;place-items:center;flex-shrink:0;border:1px solid #b5c2a74a;border-radius:13px;background:linear-gradient(135deg,#737e60,#33483e);color:#ecebd7;font:500 16px var(--type-display)}
+.coach-premium .coach-draft-status{padding:6px 10px;margin-bottom:12px;border-radius:7px;background:#bad8c40b;border-color:#afc5b238;color:#bed9c8}
+.coach-premium .coach-draft-state-error .coach-draft-status{color:#e5b3af;border-color:#e5b3af40;background:#d9a4a40a}
+.coach-premium .coach-draft-state-generating .coach-draft-status,.coach-premium .coach-draft-state-queued .coach-draft-status{color:#d4c69f;border-color:#d4c69f40}
+.coach-premium .coach-draft-dose{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:18px;padding:16px 0;border-block:1px solid #bbcebf1f}
+.coach-premium .coach-draft-dose dt{font-size:10px;color:#a2b6a8;line-height:1.7}
+.coach-premium .coach-draft-dose dd{font-size:26px;font-weight:600;letter-spacing:-.04em;color:#dae9de;margin-top:5px;font-variant-numeric:tabular-nums}
+.coach-premium .coach-draft-dose .coach-draft-dose-word{font-size:12px;font-weight:500;letter-spacing:0;line-height:1.5;padding-top:5px;color:#c5b990}
+.coach-premium .coach-draft-prescriptions>summary{min-height:44px;display:flex;align-items:center;gap:8px;color:#c8ddcf;font-size:12px}
+.coach-premium .coach-draft-prescriptions>summary::before{content:'＋';color:#9caf9f;font-size:18px}
+.coach-premium .coach-draft-prescriptions[open]>summary::before{content:'−'}
+.coach-premium .coach-draft-exercise{border-color:#afc1b225;padding-block:14px}
+.coach-premium .coach-draft-exercise>strong{display:block;font-size:13px;margin-bottom:8px;color:#d7e5db}
+.coach-premium .coach-draft-footer{padding-top:16px;border-top:1px solid #bbcebf20;align-items:center;justify-content:space-between}
+.coach-premium .coach-draft-footer>button{min-height:42px;padding:10px 14px;border:1px solid #aac8b64a;background:#aac8b60b;border-radius:10px;text-decoration:none}
+.coach-premium .coach-draft-footer label{font-size:11px;line-height:1.6}
+.coach-premium .coach-draft-footer input[type=checkbox]{accent-color:#9bbfa9;width:17px;height:17px}
+@media(max-width:1100px){.coach-premium .coach-fact-charts{grid-template-columns:1fr}.coach-premium .coach-fact-metric{display:grid;grid-template-columns:180px minmax(0,1fr);align-items:center;padding-block:16px}.coach-premium .coach-fact-metric figcaption p{min-height:0}}
+@media(max-width:640px){
+ .coach-premium .coach-player-history,.coach-premium .coach-team-review{padding:16px;border-radius:18px}
+ .coach-premium .coach-fact-studio{padding:14px;margin-block:18px;border-radius:16px}
+ .coach-premium .coach-fact-controls{grid-template-columns:minmax(0,1fr)}
+ .coach-premium .coach-fact-metric{display:block;padding:16px 0 8px}
+ .coach-premium .coach-fact-metric strong{font-size:27px}
+ .coach-premium .coach-history-card{padding:16px}
+ .coach-premium .coach-history-card-actions{width:100%;align-items:stretch;justify-content:flex-start;flex-direction:column}
+ .coach-premium .coach-history-card-actions>span{align-self:flex-start}
+ .coach-premium .coach-history-dose{padding:12px}
+ .coach-premium .coach-cycle-hero{grid-template-columns:1fr;padding:16px}
+ .coach-premium .coach-cycle-counter{min-width:0}
+ .coach-premium .coach-cycle-comparison,.coach-premium .coach-cycle-decision-editor{padding:14px}
+ .coach-premium .coach-cycle-result{padding:14px}
+ .coach-premium .coach-cycle-deltas{gap:8px}
+ .coach-premium .coach-cycle-deltas dd{font-size:22px}
+ .coach-premium .coach-draft-pipeline{grid-template-columns:1fr}
+ .coach-premium .coach-draft-pipeline>div{padding:12px 14px}
+ .coach-premium .coach-draft-pipeline>div>div{display:flex;align-items:center;justify-content:space-between;width:100%;gap:14px}
+ .coach-premium .coach-draft-card{padding:16px}
+ .coach-premium .coach-draft-player h3{font-size:16px}
+ .coach-premium .coach-queue-stats{gap:6px}
+ .coach-premium .coach-queue-stats>div{padding:10px}
+ .coach-premium .coach-queue-stats dd{font-size:23px}
+ .coach-premium .coach-queue-actions{position:static;box-shadow:none;padding:12px}
+ .coach-premium .coach-queue-actions>button{width:100%;min-height:44px}
+ .coach-premium .coach-draft-footer{align-items:stretch;flex-direction:column;gap:14px}
+}
+.coach-premium .coach-draft-card>.coach-draft-status{margin-right:10px}
+.coach-premium .coach-draft-card>button{display:block;min-height:36px;margin:2px 0 12px;padding:6px 0;text-decoration:none;color:#afcaba;font-size:11px}
+.coach-premium .coach-draft-card>button:hover{text-decoration:underline}
+.coach-premium .coach-cycle-review select{width:100%;max-width:100%;min-height:44px;padding:10px 30px 10px 12px;border:1px solid #b1c2b833;border-radius:11px;font-size:12px;line-height:1.5}
+.coach-premium .coach-fact-scroll-hint{font-size:10px;line-height:1.5;color:#a6b9ab;padding:8px 18px 2px;grid-column:2}
+@media(max-width:640px){.coach-premium .coach-fact-scroll-hint{grid-column:auto}}
+@media(max-width:640px){
+ .coach-premium .coach-player-history .coach-cycle-review{padding:0;border:0;background:transparent}
+ .coach-premium .coach-player-history .coach-cycle-review>summary{padding:14px 0}
+ .coach-premium .coach-player-history .coach-cycle-review>div{padding:12px 0}
+}
