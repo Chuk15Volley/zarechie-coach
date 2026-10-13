@@ -1,3 +1,4 @@
+import {workspaceRoster} from '../../../lib/workspaceRoster';
 import {loadGymFacts,gymSessionDates} from '../../../lib/gymLoadStore';
 import { redis, redisPipeline } from '../../../lib/redis';
 import { isAuthorized } from '../../../lib/auth';
@@ -35,7 +36,8 @@ export default async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ error: 'Method not allowed' });
   const source = req.method === 'POST' ? req.body : req.query;
   const start = String(source?.start || '');
-  const workspace = source?.workspace === 'nkperf' ? 'nkperf' : 'zarechie';
+  const workspace = source?.workspace || 'zarechie';
+  if(!['zarechie','nkperf'].includes(workspace))return res.status(400).json({error:'Некорректное пространство.'});
   const recommendations = req.method === 'POST' && source?.recommendations && typeof source.recommendations === 'object'
     ? source.recommendations : {};
   if (!validDate(start)) return res.status(400).json({ error: 'start (YYYY-MM-DD) required' });
@@ -43,8 +45,9 @@ export default async function handler(req, res) {
   const dates = Array.from({ length: 7 }, (_, index) => shiftDate(start, index));
   const historyStart = shiftDate(start, -28);
   const rangeEnd = dates[6];
-  const roster = parse(await redis('get', rosterKey(workspace)).catch(() => null), []);
-  const players = (Array.isArray(roster) ? roster : []).filter(player => player?.id).slice(0, MAX_PLAYERS);
+  let roster;try{roster=await workspaceRoster(workspace);}catch{return res.status(503).json({error:'Состав ReadySix временно недоступен. Полнота команды не подтверждена; обновите экран.'});}
+  if(roster.players.length>MAX_PLAYERS)return res.status(503).json({error:'Состав превышает поддерживаемый размер; полнота обзора не подтверждена.'});
+  const players=roster.players;
   if (!players.length) {
     return res.status(200).json({ players: [], sessions: {}, athletes: [], dates, summary: summarizeTeamWeek([]), latestBatch: null });
   }
@@ -84,7 +87,7 @@ export default async function handler(req, res) {
 
   res.setHeader('Cache-Control', 'private, no-store');
   return res.status(200).json({
-    schema: 'zarechie.team-week.v2',
+    schema: 'zarechie.team-week.v2',rosterSource:roster.source,rosterRevision:roster.revision || null,
     players: athletes.map(athlete => athlete.player),
     sessions,
     athletes,

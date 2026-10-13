@@ -1,3 +1,4 @@
+import {workspaceRoster,rosterLastPlans} from '../../../lib/workspaceRoster';
 import {hydratePlayerTimeZones} from '../../../lib/playerTimeZoneStore';
 // pages/api/players/list.js
 // Returns every known player (WHOOP-tracked + roster-only) for the program-generator UI.
@@ -47,25 +48,13 @@ export default async function handler(req, res) {
 
   try {
   const workspace = String(req.query.workspace || 'zarechie');
+  if(!['zarechie','nkperf'].includes(workspace))return res.status(400).json({error:'Некорректное пространство'});
 
   if (usesReadySix(workspace)) {
-    const rosterResult = await getCachedReadySixRoster(workspace, todayISO());
-    const payload = rosterResult.payload;
-    const roster = await hydratePlayerTimeZones(await hydratePlayerPhotos(normalizeReadySixRoster(payload), workspace),workspace);
-    const meta = await redisPipeline(
-      roster.map(player => ['zrange', sessionsKey(workspace, player.id), -1, -1])
-    ).catch(() => []);
-    return res.status(200).json({
-      source: 'readysix',
-      cache: rosterResult.cache,
-      cacheAgeMs: Math.round(rosterResult.ageMs),
-      organizationId: payload.organizationId,
-      revision: payload.revision,
-      players: roster.map((player, index) => ({
-        ...player,
-        lastSessionDate: Array.isArray(meta[index]) && meta[index].length ? meta[index][0] : null,
-      })),
-    });
+    const rosterResult=await workspaceRoster(workspace);
+    const roster=await hydratePlayerTimeZones(await hydratePlayerPhotos(rosterResult.players,workspace),workspace);
+    const dates=await rosterLastPlans(workspace,roster);
+    return res.status(200).json({...rosterResult,players:roster.map((player,index)=>({...player,lastSessionDate:dates[index]}))});
   }
 
   if (workspace === 'nkperf') {

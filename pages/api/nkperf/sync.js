@@ -1,3 +1,5 @@
+import {workspaceRoster,rosterLastPlans} from '../../../lib/workspaceRoster';
+import {usesReadySix} from '../../../lib/readySixClient';
 // pages/api/nkperf/sync.js
 // GET  → read nkperf:roster from local Redis
 // POST → pull roster from NK Performance API → save to nkperf:roster
@@ -14,6 +16,10 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST' && !await enforceRateLimit(req, res, { scope: 'admin-nk-sync', limit: 30, windowSeconds: 600 })) return;
 
+  if(['GET','POST'].includes(req.method) && usesReadySix('nkperf')){
+    try{const result=await workspaceRoster('nkperf',{refresh:req.method==='POST'}),players=await hydratePlayerTimeZones(await hydratePlayerPhotos(result.players,'nkperf'),'nkperf'),dates=await rosterLastPlans('nkperf',players);return res.status(200).json({...result,synced:players.length,players:players.map((player,index)=>({...player,lastSessionDate:dates[index]}))});}
+    catch{return res.status(503).json({error:'Состав ReadySix временно недоступен. Сохранённые программы не изменены.'});}
+  }
   if (req.method === 'GET') {
     const raw = await redis('get', 'nkperf:roster').catch(() => null);
     let players = [];

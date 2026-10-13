@@ -1,20 +1,13 @@
-import { isAuthorized } from '../../../lib/auth';
-import { redis } from '../../../lib/redis';
-import { pfx } from '../../../lib/workspacePrefix';
-import { normalizeStrengthEquipment, validStrengthEquipment } from '../../../lib/strengthEquipment.mjs';
-export default async function handler(req,res) {
-  if (!isAuthorized(req)) return res.status(401).json({error:'Unauthorized'});
-  if (!['GET','POST'].includes(req.method)) return res.status(405).json({error:'Method not allowed'});
-  const workspace=(req.method==='GET'?req.query.workspace:req.body?.workspace)==='nkperf'?'nkperf':'zarechie';
-  const key=`${pfx(workspace)}:strength:equipment`;
-  try {
-    if(req.method==='POST') {
-      if (!validStrengthEquipment(req.body?.equipment)) return res.status(400).json({error:'Укажите до 200 положительных весов на снаряд через точку с запятой; дробные кг — через точку.'});
-      const equipment=normalizeStrengthEquipment(req.body?.equipment);
-      await redis('set',key,JSON.stringify(equipment));
-      return res.status(200).json({ok:true,equipment});
-    }
-    const raw=await redis('get',key);
-    return res.status(200).json({equipment:normalizeStrengthEquipment(typeof raw==='string'?JSON.parse(raw):raw)});
-  } catch { return res.status(503).json({error:'Не удалось прочитать или сохранить инвентарь.'}); }
+import {isAuthorized,coachAuditActor} from '../../../lib/auth';
+import {enforceRateLimit} from '../../../lib/rateLimit';
+import {validWorkspace} from '../../../lib/teamQueue.mjs';
+import {loadStrengthInventory,saveStrengthInventory} from '../../../lib/strengthInventoryStore';
+export default async function handler(req,res){
+ res.setHeader('Cache-Control','no-store');if(!isAuthorized(req))return res.status(401).json({error:'Unauthorized'});
+ if(!['GET','POST'].includes(req.method))return res.status(405).json({error:'Method not allowed'});
+ const input=req.method==='GET'?req.query:req.body || {},workspace=input.workspace;if(!validWorkspace(workspace))return res.status(400).json({error:'Некорректное пространство.'});
+ if(!await enforceRateLimit(req,res,{scope:'strength-equipment',limit:120,windowSeconds:600}))return;
+ try{const context=await loadStrengthInventory(workspace);if(req.method==='GET')return res.status(200).json({equipment:context.equipment,settings:context.settings,fingerprint:context.fingerprint,revision:context.metadata?.revision || null,savedAt:context.metadata?.savedAt || null});
+  return res.status(200).json({...await saveStrengthInventory(context,input,coachAuditActor(req)),regenerateStrengthDrafts:true});
+ }catch(error){return res.status(error.status || 503).json({error:error.status?error.message:'Не удалось прочитать или сохранить инвентарь. Правки оставлены на экране.'});}
 }

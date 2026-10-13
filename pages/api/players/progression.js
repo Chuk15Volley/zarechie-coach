@@ -1,3 +1,4 @@
+import {strengthProgressionReview} from '../../../lib/strengthProgressionReview';
 // pages/api/players/progression.js
 // POST { playerId, names: string[] }
 // Returns per-exercise previous weight + RPE + suggested next weight.
@@ -64,7 +65,9 @@ function progressionDecision(kg, rpe, pain = false, exerciseName = '') {
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+  res.setHeader('Cache-Control','no-store');
   if (req.method !== 'POST') return res.status(405).end();
+  if(req.body?.focus==='inseason_strength')return strengthProgressionReview(req,res);
 
   const { playerId, names = [], exercises = [], workspace = 'zarechie' } = req.body || {};
   const requested = [

@@ -9,6 +9,7 @@ export default function StrengthTeamNextReview({workspace,players,apiKey,date,on
   const [open,setOpen]=useState(false),[chain,setChain]=useState('anterior_chain'),[mode,setMode]=useState('maintenance'),[rows,setRows]=useState([]),[loading,setLoading]=useState(false),[refresh,setRefresh]=useState(0),[preferencesReady,setPreferencesReady]=useState(false),[notice,setNotice]=useState('');
   useEffect(()=>{try{const saved=JSON.parse(localStorage.getItem('gym:strength-review:v1:'+workspace));if(['anterior_chain','posterior_chain','full_body'].includes(saved?.chain))setChain(saved.chain);if(['maintenance','development'].includes(saved?.mode))setMode(saved.mode);if(saved?.open)setOpen(true);}catch{}setPreferencesReady(true);},[workspace]);
   useEffect(()=>{if(preferencesReady)try{localStorage.setItem('gym:strength-review:v1:'+workspace,JSON.stringify({chain,mode,open}));}catch{}},[workspace,chain,mode,open,preferencesReady]);
+  useEffect(()=>{const refreshInventory=event=>{if(event.detail?.workspace===workspace)setRefresh(value=>value+1);};window.addEventListener('gym-strength-inventory-updated',refreshInventory);return()=>window.removeEventListener('gym-strength-inventory-updated',refreshInventory);},[workspace]);
   const identity=players.map(player=>String(player.id)).join(',');
   useEffect(()=>{
     setRows([]);if(!open || !apiKey || !players.length)return;

@@ -1,3 +1,4 @@
+import {workspaceRoster} from '../../../lib/workspaceRoster';
 import {sessionPlanFact} from '../../../lib/floorOperations.mjs';
 import {loadGymFacts} from '../../../lib/gymLoadStore';
 // pages/api/players/team-tonnage.js
@@ -28,15 +29,8 @@ export default async function handler(req, res) {
   const workspace = String(req.query.workspace || 'zarechie');
   const dates = windowDates(days);
 
-  // Load all players from roster.
-  const rosterRaw = await redis('get', rosterKey(workspace)).catch(() => null);
-  let players = [];
-  if (rosterRaw) {
-    try {
-      const all = typeof rosterRaw === 'string' ? JSON.parse(rosterRaw) : rosterRaw;
-      players = Array.isArray(all) ? all : [];
-    } catch (_) {}
-  }
+  let roster;try{roster=await workspaceRoster(workspace);}catch{return res.status(503).json({error:'Состав ReadySix временно недоступен. Полнота команды не подтверждена; обновите экран.'});}
+  const players=roster.players;
   if (!players.length) return res.status(200).json({ dates, players: [] });
 
   const facts=await loadGymFacts(workspace,players.flatMap(p=>dates.map(date=>({playerId:p.id,date}))));
@@ -46,7 +40,7 @@ export default async function handler(req, res) {
       const fact=facts[pi*dates.length+di],rec=fact?.record;
       plannedByDay[d]=sessionPlanFact(rec?.session).plannedTonnage;
       byDay[d]=Number(fact?.actual?.actualTonnage) || 0;
-      evidenceByDay[d]=fact?.actual?.loadEvidence || {source:fact?.actual?'recorded':'missing',partial:!fact?.actual};
+      evidenceByDay[d]=fact?.actual?.loadEvidence || {source:fact?.actual?'recorded':rec?'missing':'no_session',partial:!!rec && !fact?.actual};
     });
     return {
       id: p.id,
@@ -56,5 +50,5 @@ export default async function handler(req, res) {
     };
   });
 
-  return res.status(200).json({ dates, players: playerRows,loadBasis:'actual' });
+  return res.status(200).json({ dates, players: playerRows,loadBasis:'actual',rosterSource:roster.source,rosterRevision:roster.revision || null });
 }

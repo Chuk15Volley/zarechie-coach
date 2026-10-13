@@ -97,7 +97,7 @@ test('inventory settings are available on the home screen without selecting a pl
  const source=readFileSync(new URL('../pages/index.js',import.meta.url),'utf8');
  assert.match(source,/keyConnected && \['today','workouts'\]\.includes\(mainSection\)/);
  assert.equal((source.match(/<StrengthEquipmentPanel key=/g)||[]).length,1);
- assert.ok(!source.includes('STRENGTH_EXPERIENCE_OPTIONS'));assert.ok(source.includes('Заполните один раз для всех игроков этого пространства'));
+ assert.ok(!source.includes('STRENGTH_EXPERIENCE_OPTIONS'));assert.ok(readFileSync(new URL('../components/StrengthEquipmentPanel.js',import.meta.url),'utf8').includes('Заполните один раз для всех игроков этого пространства'));
 });
 for(const workspace of ['zarechie','nkperf'])test(`${workspace}: review joins only server execution facts and includes today's completion`,async()=>{
  const source=readFileSync(new URL('../lib/sessionHistory.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,'');

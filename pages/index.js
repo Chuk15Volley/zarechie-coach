@@ -1,5 +1,7 @@
 import CoachNavigation from '../components/CoachNavigation';
 import CoachHome from '../components/CoachHome';
+import StrengthEquipmentPanel from '../components/StrengthEquipmentPanel';
+import {strengthProgressionKey,strengthProgressionScope,applyStrengthCardProposal} from '../lib/strengthCardProgression.mjs';
 import useCoachEdits from '../hooks/useCoachEdits';
 import CoachEditsRecovery from '../components/CoachEditsRecovery';
 import StrengthTeamNextReview from '../components/StrengthTeamNextReview';
@@ -1294,6 +1296,7 @@ function ExerciseCard({
   progressionDecision,
   progressionConfidence,
   progressionTrend,
+  strengthProposal,onApplyStrengthProgression,progressionError,
   restrictions,
   exHistory,
   actualKg,
@@ -1344,7 +1347,7 @@ function ExerciseCard({
   const blockLetter = (code || 'A')[0];
   const bc = blockCfg(blockLetter);
   const hasConflict = hasRestriction(name, restrictions || []);
-  const rmSuggestion = useMemo(() => calcWeight(name, focus, week, oneRM, position), [name, focus, week, oneRM, position]);
+  const rmSuggestion = useMemo(() => focus==='inseason_strength'?null:calcWeight(name, focus, week, oneRM, position), [name, focus, week, oneRM, position]);
   const effectiveSuggestedKg = suggestedKg || rmSuggestion?.kg || null;
   const hasDescriptionOverride = typeof descriptionOverride === 'string';
   const displayedDescription = exerciseDescription({ name, tempo, targetSets, prehabRegion, cue, descriptionOverride, descriptionExerciseId, compactDescription, controlledExecution });
@@ -1606,7 +1609,7 @@ function ExerciseCard({
         )}
 
         {/* Progression hint */}
-        {prevKg ? (
+        {focus==='inseason_strength'?<div className="mt-2 rounded-lg border border-cyan-300/15 p-2 text-xs text-slate-300 print:hidden"><p className="font-bold text-cyan-200">Прогрессия · единый силовой подбор</p>{strengthProposal?<><p className="mt-1">{strengthProposal.kg!=null?'Выполнено: '+strengthProposal.kg+' кг на снаряд':''}{strengthProposal.sourceDate?' · '+strengthProposal.sourceDate:''}{strengthProposal.rpe!=null?' · RPE упражнения '+strengthProposal.rpe:strengthProposal.rpeScope?' · RPE упражнения не записан':''}</p><p className="mt-1">{strengthProposal.decision}</p>{strengthProposal.suggestedKg!=null && <p className="mt-1">Предложение: {strengthProposal.suggestedKg} кг{strengthProposal.targetSets?' · '+strengthProposal.targetSets.join(' / '):''}</p>}{strengthProposal.applicable && <button type="button" onClick={onApplyStrengthProgression} className="mt-2 rounded border border-cyan-300/20 px-2 py-1 text-cyan-200">Применить предложение генератора</button>}</>:<p className="mt-1 text-slate-400">{progressionError || 'Проверяю предложение по ReadySix и фактическому выполнению.'} Вес при недоступности данных подбирает тренер по RPE.</p>}</div>:prevKg ? (
           <div className="mt-1 flex flex-wrap items-center gap-1.5 print:hidden">
             <span className="text-[11px] text-slate-600">
               ↑ {prevKg} кг{prevRpe ? ` · RPE ${prevRpe}` : ''}{prevPain ? ' · боль' : ''}
@@ -1894,39 +1897,6 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery, onApply })
       <p className="mt-2 text-[10px] leading-snug text-slate-600">{data.decision?.detail} При генерации применяется более осторожный из статуса тренера и автоматической оценки; выбранный метод тренировки сохраняется.</p>
     </section>
   );
-}
-
-function StrengthEquipmentPanel({workspace, apiKey}) {
-  const [equipment,setEquipment]=useState({});
-  const [status,setStatus]=useState('Загрузка…');
-  const [busy,setBusy]=useState(false);
-  useEffect(()=>{
-    let cancelled=false;
-    setEquipment({});setStatus('Загрузка…');
-    fetch(`/api/players/strength-equipment?workspace=${encodeURIComponent(workspace)}`,{headers:{'x-api-key':apiKey}})
-      .then(async response=>{if(!response.ok)throw new Error();return response.json();})
-      .then(data=>{if(!cancelled){setEquipment(Object.fromEntries(Object.entries(data.equipment).map(([key,values])=>[key,values.join('; ')])));setStatus('');}})
-      .catch(()=>{if(!cancelled)setStatus('Не удалось загрузить инвентарь. Обновите страницу.');});
-    return()=>{cancelled=true;};
-  },[workspace,apiKey]);
-  async function save() {
-    setBusy(true);
-    try {
-      const response=await fetch('/api/players/strength-equipment',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey},body:JSON.stringify({workspace,equipment})});
-      const data=await response.json();
-      if(!response.ok)throw new Error(data.error || 'Не удалось сохранить');
-      setEquipment(Object.fromEntries(Object.entries(data.equipment).map(([key,values])=>[key,values.join('; ')])));
-      setStatus('Сохранено для пространства');
-    }catch(error){setStatus(error.message || 'Не удалось сохранить');}finally{setBusy(false);}
-  }
-  return <details className="mb-4 rounded-2xl border border-white/10 p-4 print:hidden">
-    <summary className="cursor-pointer text-sm font-bold text-slate-300">Инвентарь силовой · {workspace==='nkperf'?'NK Performance':'Заречье'} · все игроки<span className="mt-1 block text-xs font-normal text-slate-500">Силовой стаж всех игроков: 5+ лет · заполнить инвентарь один раз</span></summary>
-    <p className="mt-2 text-xs text-slate-400">{STRENGTH_COHORT_EXPERIENCE.label} · подтверждено тренером</p>
-    <p className="mt-2 text-xs text-slate-500">Заполните один раз для всех игроков этого пространства. Перечислите все доступные веса в кг через точку с запятой, например 10; 12.5; 14 (дробные кг — через точку). Пустой список запрещает автоматическую прибавку. Для разных блоковых тренажёров вес подбирается по RPE.</p>
-    <div className="mt-3 grid gap-3 sm:grid-cols-2">{Object.entries(STRENGTH_EQUIPMENT).map(([key,label])=><label key={key} className="text-xs text-slate-400">{label}<input aria-label={label} value={equipment[key] || ''} onChange={event=>setEquipment({...equipment,[key]:event.target.value})} className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-2 text-slate-200" /></label>)}</div>
-    <button type="button" disabled={busy || status==='Загрузка…' || status.includes('загрузить')} onClick={save} className="mt-3 rounded-lg bg-accent/15 px-3 py-2 text-xs font-bold text-accent">{busy?'Сохранение…':'Сохранить инвентарь'}</button>
-    <span role="status" className="ml-2 text-xs text-slate-500">{status}</span>
-  </details>;
 }
 
 function StrengthCycleDecisionEditor({cycle,workspace,playerId,apiKey,onSaved}) {
@@ -2404,6 +2374,7 @@ export default function Home() {
   const [compliance, setCompliance] = useState(null); // null | { percent, actualTonnage, plannedTonnage }
   const [savingActual, setSavingActual] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [progressionError,setProgressionError] = useState('');
   const [progressionMap, setProgressionMap] = useState({}); // exerciseName → { kg, rpe, suggestedKg }
   const [tonnageData, setTonnageData] = useState(null);
   const [tonnageLoading, setTonnageLoading] = useState(false);
@@ -2577,7 +2548,7 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
-  useEffect(()=>{const refresh=event=>{if(event.detail?.workspace!==workspace)return;setFactsRefresh(value=>value+1);setTrendsData(null);};window.addEventListener('gym-strength-facts-updated',refresh);return()=>window.removeEventListener('gym-strength-facts-updated',refresh);},[workspace]);
+  useEffect(()=>{const refresh=event=>{if(event.detail?.workspace!==workspace)return;setFactsRefresh(value=>value+1);setTrendsData(null);setProgressionMap({});};window.addEventListener('gym-strength-facts-updated',refresh);window.addEventListener('gym-strength-inventory-updated',refresh);return()=>{window.removeEventListener('gym-strength-facts-updated',refresh);window.removeEventListener('gym-strength-inventory-updated',refresh);};},[workspace]);
   const teamQueue=useTeamGenerationQueue({workspace,date,apiKey,onRestoreDate:setDate});
   const batchResults=teamQueue.results,batchRunning=teamQueue.running;
   const [playerClockNow,setPlayerClockNow] = useState(null);
@@ -2944,30 +2915,29 @@ export default function Home() {
       .catch(() => setVolumeStats(null));
   }, [apiKey, playerId, workspace]);
 
-  // Load per-exercise progression hints and weight history whenever the current session changes.
+  // Cards and generation share the exact server prescription, never 1RM fallback.
   useEffect(() => {
     if (!session || !playerId || !apiKey) { setProgressionMap({}); setExHistoryMap({}); return; }
-    const exercises = (session.blocks || []).flatMap(b => (b.exercises || []).map(e => ({ ...e, exerciseId: e.exerciseId || canonicalExerciseId(e.name) }))).filter(e => e.name);
-    if (!exercises.length) return;
-    const opts = { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ playerId, exercises, workspace }) };
-    Promise.all([
-      fetch('/api/players/progression', opts).then(r => r.json()).catch(() => ({})),
-      fetch('/api/players/ex-history', opts).then(r => r.json()).catch(() => ({})),
-    ]).then(([prog, hist]) => {
-      setProgressionMap({ ...(prog.progression || {}), ...(prog.progressionById || {}) });
-      setExHistoryMap({ ...(hist.histories || {}), ...(hist.historiesById || {}) });
-    });
-  }, [session, playerId, apiKey, workspace,factsRefresh]);
+    const exercises=(session.blocks || []).flatMap(b=>(b.exercises || []).map(e=>({...e,exerciseId:e.exerciseId || canonicalExerciseId(e.name)}))).filter(e=>e.name);
+    if(!exercises.length)return;
+    const controller=new AbortController();setProgressionMap({});setProgressionError('');
+    const request={playerId:String(playerId),exercises,workspace,date:meta?.date || date,focus:meta?.focus || focus,trainingType:meta?.trainingType || trainingType,strengthMode:meta?.strengthMode || strengthMode,dayGoal,notes};
+    const timer=setTimeout(()=>{const opts={method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey},signal:controller.signal,body:JSON.stringify(request)};
+      Promise.all([fetch('/api/players/progression',opts).then(async r=>{if(!r.ok)throw new Error('Не удалось проверить прогрессию. Повторите проверку данных.');return r.json();}).catch(error=>({progressionError:error.message})),fetch('/api/players/ex-history',opts).then(r=>r.json()).catch(()=>({}))]).then(([prog,hist])=>{if(controller.signal.aborted)return;setProgressionError(prog.progressionError || '');setProgressionMap(prog.engine==='strength-generator-v2'?prog.progressionBySlot || {}:{...(prog.progression || {}),...(prog.progressionById || {})});setExHistoryMap({...(hist.histories || {}),...(hist.historiesById || {})});});
+    },300);
+    return()=>{clearTimeout(timer);controller.abort();};
+  },[session,playerId,apiKey,workspace,factsRefresh,date,focus,trainingType,strengthMode,meta?.date,meta?.focus,meta?.trainingType,meta?.strengthMode,dayGoal,notes]);
 
   // Load team tonnage when switching to the Нагрузка section.
   useEffect(() => {
     if (mainSection !== 'tonnage' || !apiKey) return;
-    setTonnageLoading(true);
-    fetch(`/api/players/team-tonnage?days=7&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } })
-      .then(r => r.json())
-      .then(d => setTonnageData(d))
-      .catch(() => {})
-      .finally(() => setTonnageLoading(false));
+    const controller=new AbortController();setTonnageLoading(true);setTonnageData(null);
+    fetch(`/api/players/team-tonnage?days=7&workspace=${workspace}`, { headers: { 'x-api-key': apiKey },signal:controller.signal })
+      .then(async r=>{const data=await r.json();if(!r.ok)throw Error(data.error || 'Состав и нагрузка недоступны');return data;})
+      .then(data => {if(!controller.signal.aborted)setTonnageData(data);})
+      .catch(error => {if(!controller.signal.aborted)setTonnageData({error:error.message,players:[],dates:[]});})
+      .finally(() => {if(!controller.signal.aborted)setTonnageLoading(false);});
+    return()=>controller.abort();
   }, [mainSection, apiKey, workspace,factsRefresh]);
 
   // Load player session history when switching to history tab.
@@ -3194,14 +3164,14 @@ export default function Home() {
   const continuitySummary = useMemo(() => {
     if (!session) return { known: 0, recommendations: 0, pain: 0 };
     return (session.blocks || []).flatMap(block => block.exercises || []).reduce((summary, ex) => {
-      const record = progressionMap[ex.exerciseId || canonicalExerciseId(ex.name)] || progressionMap[ex.name];
+      const record = (meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)]:progressionMap[ex.exerciseId || canonicalExerciseId(ex.name)] || progressionMap[ex.name];
       if (!record) return summary;
       summary.known += 1;
       if (record.pain) summary.pain += 1;
       if (record.suggestedKg && !record.pain) summary.recommendations += 1;
       return summary;
     }, { known: 0, recommendations: 0, pain: 0 });
-  }, [session, progressionMap]);
+  }, [session, progressionMap,meta?.focus,focus]);
 
   const methodViolations = useMemo(() => {
     if (!session || !(meta?.focus || focus).startsWith('camp_')) return [];
@@ -4468,6 +4438,7 @@ export default function Home() {
         ...block,
         exercises: (block.exercises || []).map(ex => {
           const identity = ex.exerciseId || canonicalExerciseId(ex.name);
+          if((meta?.focus || focus)==='inseason_strength')return applyStrengthCardProposal(ex,progressionMap[strengthProgressionKey(ex)],strengthProgressionScope({workspace,playerId,date:meta?.date || date,focus:'inseason_strength',trainingType:meta?.trainingType || trainingType,strengthMode:meta?.strengthMode || strengthMode}));
           const recommendation = progressionMap[identity] || progressionMap[ex.name];
           if (!recommendation?.suggestedKg || recommendation.pain) return { ...ex, exerciseId: identity };
           return {
@@ -5501,7 +5472,7 @@ export default function Home() {
                 className="flex w-full items-center justify-center gap-1.5 rounded-xl py-1.5 text-[10px] font-semibold text-emerald-400/70 hover:text-emerald-400 hover:bg-emerald-500/[0.07] transition-all disabled:opacity-40"
               >
                 <RefreshCw size={10} className={nkSyncing ? 'animate-spin' : ''} />
-                {nkSyncing ? 'Синхронизация...' : 'Синхр. с NK Performance'}
+                {nkSyncing ? 'Синхронизация...' : 'Обновить состав ReadySix'}
               </button>
             </div>
           )}
@@ -6444,7 +6415,7 @@ export default function Home() {
                   onClick={() => {
                     if (tonnageTab === 'tonnage') {
                       setTonnageData(null); setTonnageLoading(true);
-                      fetch(`/api/players/team-tonnage?days=7&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } }).then(r => r.json()).then(d => setTonnageData(d)).catch(() => {}).finally(() => setTonnageLoading(false));
+                      fetch(`/api/players/team-tonnage?days=7&workspace=${workspace}`, { headers: { 'x-api-key': apiKey } }).then(async r=>{const data=await r.json();if(!r.ok)throw Error(data.error || 'Нагрузка недоступна');return data;}).then(d=>setTonnageData(d)).catch(error=>setTonnageData({error:error.message,players:[],dates:[]})).finally(() => setTonnageLoading(false));
                     } else {
                       loadTeamStatus();
                     }
@@ -6483,7 +6454,8 @@ export default function Home() {
                 </div>
               )}
 
-              {tonnageTab === 'tonnage' && !tonnageLoading && tonnageData && (
+              {tonnageTab==='tonnage' && !tonnageLoading && tonnageData?.error && <p role="alert" className="my-3 text-sm text-amber-200">{tonnageData.error}</p>}
+              {tonnageTab === 'tonnage' && !tonnageLoading && tonnageData && !tonnageData.error && (
                 <div className="overflow-x-auto rounded-2xl border border-white/[0.07] bg-[#0d1520]">
                   <table className="w-full min-w-[540px] border-collapse text-[12px]">
                     <thead>
@@ -7129,10 +7101,10 @@ export default function Home() {
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-[12px] font-semibold text-slate-500 transition hover:text-slate-300">
                   <SlidersHorizontal size={13} className="text-slate-600" />
                   Дополнительные данные
-                  <span className="ml-auto text-[10px] text-slate-700">{workspace === 'zarechie' ? '1ПМ · нагрузка · LSI' : '1ПМ · нагрузка'}</span>
+                  <span className="ml-auto text-[10px] text-slate-700">{(meta?.focus || focus)==='inseason_strength'?(workspace==='zarechie'?'нагрузка · LSI':'нагрузка'):(workspace==='zarechie'?'1ПМ · нагрузка · LSI':'1ПМ · нагрузка')}</span>
                 </summary>
               <div className="border-t border-white/[0.05] p-3">
-                <button
+                {(meta?.focus || focus)!=='inseason_strength' && <button
                   type="button"
                   onClick={() => setOneRMPanelOpen(o => !o)}
                   className={`flex w-full items-center gap-2.5 rounded-xl border px-4 py-2.5 text-left text-xs font-semibold transition-all duration-200 ${focusRing} ${
@@ -7149,8 +7121,8 @@ export default function Home() {
                     </span>
                   )}
                   <ChevronDown size={12} className={`ml-auto shrink-0 transition-transform duration-200 ${oneRMPanelOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {oneRMPanelOpen && (
+                </button>}
+                {oneRMPanelOpen && (meta?.focus || focus)!=='inseason_strength' && (
                   <div className="mt-2 animate-fade-in rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 backdrop-blur-xl">
                     <p className="mb-3 text-[10px] text-slate-600">Тестовые максимумы — система рассчитает точные кг в программе</p>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -8037,7 +8009,7 @@ export default function Home() {
                     <div className="grid items-start gap-5 lg:grid-cols-2">
                       {(block.exercises || []).map((ex, ei) => {
                         const identity = ex.exerciseId || canonicalExerciseId(ex.name);
-                        const progression = progressionMap[identity] || progressionMap[ex.name] || {};
+                        const progression = (meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)] || {}:progressionMap[identity] || progressionMap[ex.name] || {};
                         const exerciseHistory = exHistoryMap[identity] || exHistoryMap[ex.name] || [];
                         return (
                         <ExerciseCard
@@ -8058,7 +8030,10 @@ export default function Home() {
                           descriptionExerciseId={ex.descriptionExerciseId}
                           compactDescription={ex.compactDescription}
                           controlledExecution={ex.controlledExecution}
-                          focus={focus}
+                          focus={meta?.focus || focus}
+                          progressionError={progressionError}
+                          strengthProposal={(meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)]:null}
+                          onApplyStrengthProgression={()=>{const proposed=applyStrengthCardProposal(ex,progressionMap[strengthProgressionKey(ex)],strengthProgressionScope({workspace,playerId,date:meta?.date || date,focus:'inseason_strength',trainingType:meta?.trainingType || trainingType,strengthMode:meta?.strengthMode || strengthMode}));if(proposed!==ex)updateExercise(bi,ei,proposed);}}
                           week={weekFromFocus(focus)}
                           oneRM={oneRM}
                           position={selectedPlayer?.position || null}

@@ -1,3 +1,4 @@
+import {workspaceRoster,gymIdentityAliases} from '../../../lib/workspaceRoster';
 import { readySixGymState, recommendGymSession } from '../../../lib/readySixGym.mjs';
 // pages/api/team/readiness.js
 // GET ?date=YYYY-MM-DD → morning team-readiness snapshot for every rostered player.
@@ -182,15 +183,11 @@ async function buildTeamReadiness(workspace, date) {
     const readySixTeam = readySixPayload
       ? { ...readySixPayload, roster: await hydratePlayerPhotos(readySixPayload.roster, workspace) }
       : null;
-    const rosterRaw = readySixTeam ? null : await redis('get', rosterKey(workspace)).catch(() => null);
-    let roster = readySixTeam ? readySixTeam.roster : parseJSON(rosterRaw);
-    if (!Array.isArray(roster)) roster = [];
-
-    if (!roster.length) return { players: [] };
-
-    const snapshots = readySixTeam?.snapshots || await Promise.all(
-      roster.map(p => getPlayerSnapshot(String(p.id), 7, date, 28, workspace).catch(() => null))
-    );
+    const membership=await workspaceRoster(workspace);
+    const roster=await hydratePlayerPhotos(membership.players,workspace);
+    if(!roster.length)return {players:[]};
+    const byId=new Map((readySixTeam?.roster || []).flatMap((player,i)=>gymIdentityAliases(player.id).map(id=>[id,readySixTeam.snapshots[i]])));
+    const snapshots=await Promise.all(roster.map(player=>{const existing=gymIdentityAliases(player.id).map(id=>byId.get(id)).find(Boolean);return existing || getPlayerSnapshot(String(player.id),7,date,28,workspace).catch(()=>null);}));
 
     const players = roster.map((p, idx) => {
       const snapshot = snapshots[idx] || {};

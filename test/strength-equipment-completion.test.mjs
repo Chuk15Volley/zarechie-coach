@@ -62,13 +62,13 @@ test('saved drafts never advance; only four distinct completed dates rotate the 
 });
 for(const workspace of ['zarechie','nkperf'])test(`${workspace}: inventory is authenticated, isolated and used from server storage`,async()=>{
  const source=readFileSync(new URL('../pages/api/players/strength-equipment.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
- const calls=[];const deps={isAuthorized:()=>true,pfx:ws=>ws,normalizeStrengthEquipment,validStrengthEquipment,redis:async(...args)=>{calls.push(args);return null;}};
+ const calls=[];const deps={isAuthorized:()=>true,validWorkspace:ws=>['zarechie','nkperf'].includes(ws),enforceRateLimit:async()=>true,coachAuditActor:()=>({session:'test'}),loadStrengthInventory:async ws=>{calls.push(ws);return {equipment:{dumbbell:[10,12]},settings:{},fingerprint:'current'};},saveStrengthInventory:async(context,input)=>{assert.equal(input.workspace,workspace);assert.equal(input.fingerprint,'current');return {revision:'saved'};}};
  const handler=new Function(...Object.keys(deps),`${source};return handler;`)(...Object.values(deps));
- const response={status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
- await handler({method:'POST',body:{workspace,equipment:{dumbbell:[10,12]}}},response);
- assert.equal(response.code,200);assert.equal(calls[0][1],`${workspace}:strength:equipment`);
+ const response={setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
+ await handler({method:'GET',query:{workspace}},response);assert.equal(response.code,200);assert.equal(response.body.fingerprint,'current');
+ await handler({method:'POST',body:{workspace,setup:{},fingerprint:'current'}},response);assert.equal(response.code,200);assert.equal(response.body.regenerateStrengthDrafts,true);assert.deepEqual(calls,[workspace,workspace]);
  const denied=new Function(...Object.keys(deps),`${source};return handler;`)(...Object.values({...deps,isAuthorized:()=>false}));
- await denied({method:'GET',query:{workspace}},response);assert.equal(response.code,401);assert.equal(calls.length,1);
+ await denied({method:'GET',query:{workspace}},response);assert.equal(response.code,401);assert.equal(calls.length,2);
 });
 
 for(const workspace of ['zarechie','nkperf'])test(`${workspace}: server history derives completion and overwrites forged plan flags`,async()=>{
