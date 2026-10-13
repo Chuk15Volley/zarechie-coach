@@ -2489,7 +2489,6 @@ export default function Home() {
   const [workspaceTab, setWorkspaceTab] = useState('program'); // 'program' | 'history'
   const [historyData, setHistoryData] = useState(null);
   const [factsRefresh,setFactsRefresh]=useState(0);
-  useEffect(()=>{const refresh=event=>{if(event.detail?.workspace!==workspace)return;setFactsRefresh(value=>value+1);setTrendsData(null);};window.addEventListener('gym-strength-facts-updated',refresh);return()=>window.removeEventListener('gym-strength-facts-updated',refresh);},[workspace]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(null); // expanded session date
   const [exProgressData, setExProgressData] = useState({}); // { [name]: [{date, kg}] }
@@ -2575,6 +2574,7 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
+  useEffect(()=>{const refresh=event=>{if(event.detail?.workspace!==workspace)return;setFactsRefresh(value=>value+1);setTrendsData(null);};window.addEventListener('gym-strength-facts-updated',refresh);return()=>window.removeEventListener('gym-strength-facts-updated',refresh);},[workspace]);
   const teamQueue=useTeamGenerationQueue({workspace,date,apiKey,onRestoreDate:setDate});
   const batchResults=teamQueue.results,batchRunning=teamQueue.running;
   const [playerClockNow,setPlayerClockNow] = useState(null);
