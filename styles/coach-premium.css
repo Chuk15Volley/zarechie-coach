@@ -251,3 +251,71 @@
  .coach-complete-label,.coach-save-label-long {display:none;}
  .coach-save-label-short {display:inline;}
 }
+
+/* Coach overviews: shared rhythm, explicit evidence, calm volume presentation. */
+.coach-premium .coach-overview-header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:22px}
+.coach-premium .coach-overview-header h2{font-family:var(--font-manrope),system-ui,sans-serif;font-size:clamp(26px,3vw,38px);font-weight:700;letter-spacing:-.04em;margin:4px 0 8px;color:#f0f3ef}
+.coach-premium .coach-overview-header p{color:#a3b1ac;font-size:13px;line-height:1.6;max-width:680px}
+.coach-premium .coach-overview-header .coach-overview-eyebrow{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#95b7a9}
+.coach-premium .coach-overview-header>button,.coach-premium .coach-overview-actions button,.coach-premium .coach-overview-shortcuts button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:10px 14px;border:1px solid #a4c8b62b;border-radius:12px;background:#a4c8b60b;color:#cce2d7;font-size:12px;font-weight:600;transition:background .18s,border-color .18s}
+.coach-premium .coach-overview-header>button{flex-shrink:0}
+.coach-premium .coach-overview-header button:hover,.coach-premium .coach-overview-actions button:hover,.coach-premium .coach-overview-shortcuts button:hover{background:#a4c8b61b;border-color:#a4c8b650}
+.coach-premium .coach-overview-actions button:disabled{opacity:.4;cursor:not-allowed}
+.coach-premium .coach-overview-freshness{display:flex;flex-wrap:wrap;gap:6px 18px;color:#91a49b;font-size:12px;line-height:1.6;margin:0 0 18px}
+.coach-premium .coach-data-warning{color:#eacb91}
+.coach-premium .coach-overview-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 22px}
+.coach-premium .coach-overview-stats>div{border:1px solid #b7c8be1d;border-radius:18px;padding:18px;background:linear-gradient(135deg,#b7c8be09,transparent)}
+.coach-premium .coach-overview-stats dt{font-size:11px;color:#a8b6ae;line-height:1.5}
+.coach-premium .coach-overview-stats dd{font-size:30px;font-weight:650;color:#dfebe2;font-variant-numeric:tabular-nums;letter-spacing:-.04em;margin:8px 0}
+.coach-premium .coach-overview-stats p{font-size:11px;color:#90a198;line-height:1.5}
+.coach-premium .coach-overview-shortcuts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px}
+.coach-premium .coach-overview-filters{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0}
+.coach-premium .coach-overview-filters button{border:1px solid transparent;border-radius:10px;min-height:40px;padding:8px 12px;font-size:12px;color:#a4b2aa;background:#b6c6bc07}
+.coach-premium .coach-overview-filters button[aria-pressed=true]{border-color:#a4c8b63b;background:#a4c8b619;color:#e0f0e5}
+.coach-premium .coach-today-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.coach-premium .coach-today-card{min-width:0;background:linear-gradient(130deg,#becdbe07,transparent),#141c1b;border:1px solid #b5c9bb20;border-radius:20px;padding:22px;box-shadow:0 12px 30px #00000012}
+.coach-premium .coach-today-card header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.coach-premium .coach-player-link{font-size:14px;font-weight:650;color:#e1eee5;text-align:left;line-height:1.5;overflow-wrap:anywhere}
+.coach-premium .coach-player-link:hover{color:#a7d5be;text-decoration:underline;text-underline-offset:4px}
+.coach-premium .coach-today-card header p,.coach-premium .coach-overview-table th p{font-size:11px;color:#93a39a;margin-top:4px}
+.coach-premium .coach-readiness-label{font-size:11px;line-height:1.5;max-width:100%;border:1px solid #aebeb72b;border-radius:8px;padding:5px 8px;color:#abbab1;background:#ffffff04}
+.coach-premium .coach-readiness-label[data-level=red]{border-color:#d9999940;color:#eababa;background:#d999990c}
+.coach-premium .coach-readiness-label[data-level=yellow]{border-color:#dcc19340;color:#e8d4ad;background:#dcc1930c}
+.coach-premium .coach-readiness-label[data-level=green]{border-color:#94bda540;color:#b5dbc6;background:#94bda50c}
+.coach-premium .coach-today-state{display:flex;flex-wrap:wrap;gap:6px 12px;margin:16px 0;font-size:12px;color:#b4c9bc}
+.coach-premium .coach-today-state strong{font-weight:500}
+.coach-premium .coach-today-state span{color:#b2a9c6}
+.coach-premium .coach-data-signals{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px;padding:0;list-style:none}
+.coach-premium .coach-data-signals li{font-size:11px;line-height:1.5;color:#cfbea2;border:1px solid #c6b48c29;background:#c6b48c08;border-radius:8px;padding:5px 8px;overflow-wrap:anywhere}
+.coach-premium .coach-data-signals li[data-kind=stale],.coach-premium .coach-data-signals li[data-kind=unavailable]{color:#e4bc94;border-color:#d4aa7c4a}
+.coach-premium .coach-data-signals li[data-kind=verified]{color:#a4cdb6;border-color:#94bda529}
+.coach-premium .coach-today-recommendation{border-top:1px solid #b6c3b91a;padding-top:14px;margin-top:14px}
+.coach-premium .coach-today-recommendation strong{font-size:13px;color:#d8e7dc;font-weight:600}
+.coach-premium .coach-today-recommendation p{font-size:12px;line-height:1.7;color:#a0b0a6;margin:6px 0 16px}
+.coach-premium .coach-overview-actions{display:flex;flex-wrap:wrap;gap:8px}
+.coach-premium .coach-overview-secondary{border-top:1px solid #b6c3b91a;margin-top:16px;padding-top:12px}
+.coach-premium .coach-overview-secondary summary{cursor:pointer;font-size:12px;color:#9eb9ab;min-height:32px;padding:4px 0}
+.coach-premium .coach-overview-secondary p,.coach-premium .coach-overview-caption{font-size:12px;line-height:1.7;color:#9faf9f;margin-bottom:16px}
+.coach-premium .coach-overview-empty{padding:36px 20px;border:1px dashed #afc7b526;border-radius:16px;font-size:13px;line-height:1.6;text-align:center;color:#a1b4a7}
+.coach-premium .coach-overview-table{overflow:auto;border:1px solid #b9c7bd26;border-radius:18px;background:#141c1b;isolation:isolate}
+.coach-premium .coach-overview-table table{width:100%;min-width:1060px;border-collapse:separate;border-spacing:0;font-size:12px}
+.coach-premium .coach-overview-table th,.coach-premium .coach-overview-table td{padding:14px 10px;border-bottom:1px solid #b5c5b914;vertical-align:top;text-align:left}
+.coach-premium .coach-overview-table thead th{color:#b7c8bb;font-size:11px;font-weight:500;background:#1a2521;padding-block:16px}
+.coach-premium .coach-overview-table tr>th:first-child{position:sticky;left:0;z-index:1;background:#18221e;min-width:180px;max-width:210px;padding-left:18px;box-shadow:1px 0 #b5c5b91d}
+.coach-premium .coach-overview-table tbody tr:hover td{background:#c6dac005}
+.coach-premium .coach-load-day{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:100px;min-height:60px;text-align:left;line-height:1.45;border-radius:8px;padding:3px}
+.coach-premium .coach-load-day:hover{background:#adc9b60d}
+.coach-premium .coach-load-day strong,.coach-premium .coach-overview-table td>strong{font-size:14px;font-variant-numeric:tabular-nums;color:#d7e8dc;font-weight:600}
+.coach-premium .coach-load-day>span{font-size:10px;color:#95a79a}
+.coach-premium .coach-load-day .coach-load-evidence{font-size:10px;color:#dec193}
+.coach-premium .coach-load-day .coach-load-evidence[data-kind=verified]{color:#a0c4ae}
+.coach-premium .coach-no-session{font-size:10px;color:#889b8c}
+.coach-premium .coach-load-draft{display:block;color:#a5ccb5;font-size:11px;margin-top:10px;min-height:36px;text-align:left}
+.coach-premium .coach-week-overview table{background:#141c1b;font-size:12px}
+.coach-premium .coach-week-overview th:first-child,.coach-premium .coach-week-overview td:first-child{position:sticky;left:0;z-index:1;background:#18221e;box-shadow:1px 0 #b5c5b91d}
+.coach-premium .coach-week-overview table th{font-weight:600}
+.coach-premium .coach-week-overview table [class*="text-slate-700"],.coach-premium .coach-week-overview table [class*="text-slate-600"]{color:#95a69a}
+.coach-premium #coach-team-drafts{scroll-margin-top:20px}
+@media(max-width:1100px){.coach-premium .coach-today-grid{grid-template-columns:1fr}}
+@media(max-width:640px){.coach-premium .coach-overview-header{align-items:flex-start;flex-direction:column;gap:14px}.coach-premium .coach-overview-header>button{width:100%}.coach-premium .coach-overview-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.coach-premium .coach-overview-stats>div{padding:14px 12px}.coach-premium .coach-overview-stats dd{font-size:25px}.coach-premium .coach-today-card{padding:16px}.coach-premium .coach-overview-actions>button{flex:1 1 120px}.coach-premium .coach-overview-shortcuts>button{flex:1 1 130px}.coach-premium .coach-overview-table tr>th:first-child{min-width:130px;max-width:145px}.coach-premium .coach-overview-filters button{flex:1 1 auto}.coach-premium .coach-week-overview .coach-data-signals li{font-size:10px}}
+.coach-premium .coach-week-incomplete{display:block;color:#d5bd95;font-size:10px;line-height:1.5;margin-top:6px}

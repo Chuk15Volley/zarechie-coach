@@ -40,7 +40,7 @@ export default async function handler(req, res) {
       const fact=facts[pi*dates.length+di],rec=fact?.record;
       plannedByDay[d]=sessionPlanFact(rec?.session).plannedTonnage;
       byDay[d]=Number(fact?.actual?.actualTonnage) || 0;
-      evidenceByDay[d]=fact?.actual?.loadEvidence || {source:fact?.actual?'recorded':rec?'missing':'no_session',partial:!!rec && !fact?.actual};
+      evidenceByDay[d]=fact?.actual?.loadEvidence || {source:fact?.actual?'recorded':rec?'missing':'no_session',partial:!!rec && !fact?.actual,supplementStatus:fact?.supplementStatus || 'none'};
     });
     return {
       id: p.id,

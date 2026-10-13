@@ -80,9 +80,10 @@ test('RTP evaluation surfaces due reviews and completed criteria', () => {
 });
 
 test('coach application and batched API expose the complete Today workflow', () => {
-  assert.match(coachPage, /Умный центр решений/);
-  assert.match(coachPage, /Return-to-Play/);
-  assert.match(coachPage, /Создать черновик/);
+  const overview = readFileSync(new URL('../components/CoachOverview.js', import.meta.url), 'utf8');
+  assert.match(coachPage, /TodayOverview/);
+  assert.match(overview, /Return-to-Play/);
+  assert.match(overview, /Создать черновик/);
   assert.match(coachPage, /Подтвердить и применить/);
   assert.match(teamStatusApi, /recommendNextLoad/);
   assert.match(teamStatusApi, /returnToPlayKey/);
