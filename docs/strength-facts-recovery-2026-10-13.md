@@ -33,3 +33,9 @@ Server candidate and deployment results are recorded after verification. Rollbac
 1. Show completeness of actual kg/reps/RPE beside cycle comparisons, with drill-down from every load point to its original source and coach confirmation.
 2. Add cross-tab refresh notifications for factual changes and scoped coach review of historical generation incidents whose old attempt identity is missing.
 3. Add a pre-publication team checklist combining incomplete facts, regional adaptations, current ReadySix changes and inventory/progression limits, with selective regeneration of affected drafts.
+
+## Production verification
+
+Published application revision `4d7a106`, image `sha256:0f94c6313eca52ccf1cccd95e8d36beeb71e8e7719b18f4afb24971d3f9f7d63`. Candidate verified original-source CAS/reconfirmation/replay, actual-history + daily team + EWMA tonnage agreement, individual failure/success recovery, audit pagination/version comparison and real publication-marker race guard using disposable synthetic identities in both spaces. All 18 roster players' next-cycle overviews and one unsaved day-generation check per space passed; existing saved programs were preserved. Synthetic records/events were cleaned and original queue pointers/drafts restored.
+
+Only the gym container was recreated. Production storage read/write and worker checks passed; no pending/failed publication. Original NK queue remains three unsaved ready rows; Zarechie has no day queue. One historical Zarechie preparation failure has no original failed-job/input linkage and remains explicitly unlinked, rather than being closed by an unrelated success. NK has no active incidents. Rollback compose: `/srv/readysix-ru-production/apps.private.compose.yaml.before-strength-facts-4d7a106` (previous `d608677` image). Temporary candidate removed after verification.
