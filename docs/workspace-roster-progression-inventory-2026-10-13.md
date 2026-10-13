@@ -1,6 +1,6 @@
 # Shared roster, strength progression and inventory
 
-Status: local release candidate; production is still 7c80d65 until explicit source-transfer and publication approval. Based on the published premium shell (59349f3 documentation / 7c80d65 application). The earlier unfinished worktree was preserved.
+Status: published as 6d6d13c on gym.readysix.app in both spaces after explicit source-transfer/publication approval. Based on the published premium shell (59349f3 documentation / 7c80d65 application). The earlier unfinished worktree was preserved.
 
 ## Behavior in both spaces
 
@@ -18,7 +18,7 @@ Coach confirmed barbell and trap bar total weights 20–200 kg in 2.5 kg steps i
 - Full suite: 870 tests, 869 passed, one existing skip; production build passed.
 - Added coverage: exact ranges, invalid endpoints/precision, workspace isolation, roster alias history/bridge failure, inventory stale-tab/concurrent-change/replay, actual generator/card agreement, stale/invalid timestamp, edited dose, session-vs-exercise RPE, repetition progression, inventory invalidation and unavailable shared-generation inputs.
 - Safari local full application with fictional 15/3 rosters: main screen, both spaces, manual comma input, 73-weight preview, inventory save and reload. Production programs, results and inventory were not changed. Screenshots: /private/tmp/gym-functional-zarechie-safari.png and /private/tmp/gym-functional-nkperf-safari.png.
-- Read-only production audit confirmed the existing defect: Zarechie main 15 vs tonnage/week 13 (Bagrey and Mladjenovic absent); NK counts 3 but identity formats differ. New server candidate and real Safari checks remain required after authorized source transfer.
+- Read-only production audit confirmed the existing defect: Zarechie main 15 vs tonnage/week 13 (Bagrey and Mladjenovic absent); NK counts 3 but identity formats differ. The server candidate and production checks described below subsequently passed.
 
 ## Release verification
 
@@ -27,3 +27,15 @@ Build the exact committed revision on the existing Russian server, with worker d
 ## Next package
 
 Player cards, Today and program editor: coherent premium spacing, compact video, prominent kg/reps/RPE, stable save actions and collapsed secondary instructions. Then weekly/load tables and team draft review density, with explicit missing-data and freshness states.
+
+## Publication evidence
+
+- Exact approved source 6d6d13c built successfully on the Russian server. Candidate used the live private runtime configuration, no external port and disabled team worker.
+- Candidate: exact same identities across main/list, tonnage, week and readiness (Zarechie 15; NK Pro 3). Four generator/card comparisons per space covered maintenance/development and anterior/posterior chains; prescriptions and decision explanations agreed. No applicable automatic increase existed for the selected real players, and no weight was invented. Positive-load/repetition application is covered by the local regression tests.
+- Real Valkey synthetic checks: inventory atomic save, idempotent replay, stale tab and concurrent-change rejection; final publication Lua rejected a changed inventory marker and accepted the matching marker. All owned temporary keys were removed.
+- Production image sha256:d5f0fb27e0ed1192ac5a3d94fd80a90cc700a5a23850cf49fc0481ff22975543. Only gym recreated. Rollback compose /srv/readysix-ru-production/apps.private.compose.yaml.before-shared-core-6d6d13c retains 7c80d65.
+- Confirmed inventory ranges saved through the authenticated CAS API in BOTH spaces, 73 exact values for barbell and trap bar each. Existing dumbbell/landmine/kettlebell lists unchanged. Workspace inventory revisions: Zarechie 54fb4b96-8850-4b61-b126-1b51e7743879; NK Pro 32fafb44-eaf6-452c-8b47-99d6afb0e434.
+- Production read-only audit: list/tonnage/week 15/15/15 and 3/3/3, no identity differences. Health/storage/worker passed, no pending/failed publication runs. Original NK queue remains three unsaved drafts, zero published; its older strength drafts now require regeneration because inventory changed. The one pre-existing Zarechie preparation incident remains visible; no false resolution.
+- Production repeat compared four Zarechie prescriptions successfully; the subsequent NK bulk repeat met the existing generation rate limit (429), so it was stopped rather than weakening or bypassing limits. Candidate checks already covered both spaces. No new monitoring incidents resulted.
+- Real Safari: both workspaces' main/load/week rosters, both saved inventory ranges and absence of competing strength 1RM entry verified. Zarechie saved strength card correctly blocks automated application for a medical-review draft. NK historical 12 October card initially returned a temporary unavailable message; direct API diagnostic returned 200, and repeated UI loading succeeded, correctly rejecting a different generator exercise variant. No saved athlete record/result was edited. Further UX work should expose a direct retry button on progression hints.
+- Screenshots /private/tmp/shared-core-production-zarechie-inventory.png and /private/tmp/shared-core-production-nkperf-inventory.png. Temporary candidate removed; Safari restored to original Zarechie home and 13 October date.
