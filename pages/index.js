@@ -2684,6 +2684,7 @@ export default function Home() {
   }, [apiKey, workspace]);
 
   function switchWorkspace(ws) {
+    setWorkspaceTab('program');
     overviewWorkspaceRef.current=ws;todayControllerRef.current?.abort();calendarRequestRef.current++;
     teamStatusRequestRef.current++;setTeamStatusError('');setTeamStatus({});setReadinessData(null);setCalData(null);setTonnageData(null);setLiveUpdatedAt(null);
     setTodayError('');setTodayUpdatedAt(null);setCalendarError('');setCalendarUpdatedAt(null);setTonnageUpdatedAt(null);

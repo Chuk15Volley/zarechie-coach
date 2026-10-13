@@ -23,10 +23,18 @@ The coach program read also checks numeric ReadySix and historical WHOOP aliases
 
 ## Release status
 
-This source package has not been transferred to the ReadySix server or published. Production remains c26efac. Source transfer, isolated server candidate checks and publication require the user's concrete release authorization. Rollback baseline is c26efac (image 826690920976113d0b55753b3d0d7b5df38c4d8bbe483bc94ed8c04898cce3e2); recreate only gym, preserve Valkey/secrets/server transport and other containers.
+Published as 076a052 after explicit source-transfer/candidate/publication authorization. Production image is 02aa304707885da577a7a1ec3c1ae6cf8c57d9b91cf29690ece9ab027d1f7c3c. Rollback baseline is c26efac (image 826690920976113d0b55753b3d0d7b5df38c4d8bbe483bc94ed8c04898cce3e2); recreate only gym, preserve Valkey/secrets/server transport and other containers.
 
 ## Next grouped package
 
 - Make legacy player-link identity and canonical roster identity consistent across future program saves, player logs, feedback and histories, with alias/edition collision tests; retain old tokens.
 - Add a compact player trend view using comparable exact-exercise actuals and completeness markers, with direct links to source sessions.
 - Improve async preparation diagnostics and bounded retry UX for transient ReadySix failures; verify camp and strength team-day generation in both spaces without publishing test programs.
+
+## Production release evidence
+
+- Exact source archive SHA256 733e8d98703d2a5fecc4da7093758488d8c8e1b911b6caa950163a88e41062a8 built with the pinned Node image. Read-only isolated candidate, no public port or background worker, removed after successful release.
+- Candidate and production: all 18 real rosters/history/cycle APIs passed; 121 Zarechie / 19 NK strength history rows checked, 113 / 17 rows have applicable factual gaps (not a claim about missing kg alone); four editor/history parity comparisons; both inventory ladders preserved. Coach alias reads return Voronkova camp program for both IDs.
+- Only gym recreated. Health/storage and worker healthy; no pending/failed publication runs. Existing one active technical incident in each space retained, no false resolution. Rollback compose /srv/readysix-ru-production/apps.private.compose.yaml.before-player-history-076a052.
+- Production Safari: both spaces History/gaps/forms opened read-only; NK absence of new-version cycles explained; Lazarenco current cycle shows 1/4 actual completion, comparison requires adjacent completed cycle. Three refreshed NK drafts appear ready with unchecked review and no publication. Voronkova 14-Oct program loads in numeric coach card. Old link HTTP/SSR/date/program and token hash reverified after publication. No real results/decisions entered for QA.
+- Found an existing workspace-history navigation defect during final Safari: switching spaces clears player but leaves History active, hiding the home. A separate local one-line fix returns the destination space to Program; Safari verified both directions and 887 tests/build passed. This follow-up is not part of 076a052 and has not been transferred/published.
