@@ -1,6 +1,6 @@
 # Coach visual package 2: cards, editor and team drafts
 
-Status: local release candidate based on published 6d6d13c (documentation 85b32c9). Server source transfer, candidate checks and production publication require approval for this revision. Both workspaces share the implementation. No production athlete data, inventory, programs or queues were edited during this package.
+Status: published as 4cf8fc1 on gym.readysix.app on 2026-10-13 after explicit user approval for source transfer, candidate checks and publication. Based on 6d6d13c (documentation 85b32c9). Both workspaces share the implementation. No production athlete data, inventory, programs or queues were edited during this package.
 
 ## Changes
 
@@ -26,3 +26,12 @@ Build the exact committed source on the existing Russian server, with isolated c
 ## Next package
 
 After this release, improve Today, weekly planning and load tables together: consistent visual density, visible missing facts/freshness, and fast navigation from an attention item to the relevant player or draft. Keep ReadySix the only source of readiness/medical permission.
+
+## Publication evidence
+
+- Exact git archive 4cf8fc1 built on the existing Russian server with the pinned Node base. Image: sha256:bc557b0a492d745d9ee85b5271f96981d84b52b241b552dffd4ecb0d70c93a87. Isolated read-only candidate had no public port and its background worker disabled; removed after successful verification.
+- Candidate and production checks passed: health/storage, authenticated UI bundle/styles, exact 15/3 roster identities across list/load/week, both 73-value barbell/trap ladders preserved, original queue preview planned RPE/load units agree with session data, actual saved-record progression requests return without changing the programs, test route absent and unauthorized progression rejected.
+- Only gym was recreated. Rollback to 6d6d13c retained in /srv/readysix-ru-production/apps.private.compose.yaml.before-premium-editor-4cf8fc1. Production worker healthy; no pending or failed publication runs. The pre-existing Zarechie preparation incident remains visible; NK has no active incidents. Original three NK drafts remain unsaved and unreviewed.
+- Production Safari both spaces: Zarechie Angelina Lazarenko 13 October planned kg/reps/explicit target RPE and manual recheck; NK Yulia Brovkina 12 October planned kg/reps and correctly unspecified legacy target RPE. Recheck preserved admission/variant guards and never saved or applied a proposal. Sticky save remained visible on deep scroll. NK draft count tiles, exact planned RPE previews, filter empty state and disabled publication with zero reviewed rows verified.
+- Production proof: /private/tmp/premium-editor-production-zarechie.png, /private/tmp/premium-editor-production-nkperf.png, /private/tmp/premium-editor-production-drafts.png. Gym restored to Zarechie home on 13 October; user's ReadySix tab restored without reloading or changing its in-progress import form.
+- Historical NK 12 October exercises differ from the current generator selection; the card explicitly requests regeneration/manual RPE selection instead of transferring a proposal between variants. Older queued strength drafts still need regeneration after the previous inventory update before publication.
