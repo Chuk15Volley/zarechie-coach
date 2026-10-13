@@ -28,7 +28,15 @@ Shared premium presentation for player history, strength-cycle outcomes and team
 
 ## Release status
 
-Local candidate only; not transferred to ReadySix and not published. Production remains 7ef790b. Final local checks and Safari/mobile proof are recorded above. Both spaces use the same source; a server candidate has not yet been built. Publication requires a separate source-transfer/candidate/deploy authorization for this source, then isolated server checks and gym-only recreation with rollback to 7ef790b.
+Published exact authorized source **510a44b** after explicit user approval, on 2026-10-14 Moscow (server UTC 2026-10-13 22:56). Image `sha256:5de15871f4b103bf3a0d4ac19c389a7f9651478139ac77e2c36b7e7b906b8f77`. Only gym recreated. Rollback to 7ef790b retained at `/srv/readysix-ru-production/apps.private.compose.yaml.before-evidence-studio-510a44b`.
+
+- Exact Git archive SHA-256 `8277a218e67577566bab57457801b2ed69bfa114406f0fe282d120e96a46ba7f` verified on Russian server; server build passed. Isolated candidate had worker disabled, read-only filesystem and no published ports; removed after successful production verification.
+- Candidate and production checked all 18 roster members and 349 loaded history records (Zarechie 289, NK 60). Full history-response fingerprints unchanged after excluding the new display-only adaptation flag. Pure graph adapters ran against actual API data; independent gaps, geometry and cycle observation counts validated. Four real-player cycle endpoints checked. No result writes or synthetic athlete records on the server.
+- Both workspaces: auth, health, UI bundle/CSP, 73-value barbell/trap ladders and worker checks passed. No pending or failed publication; one pre-existing active incident per space remains visible. Original NK three drafts stay ready/unreviewed/unsaved; no ready-row false stall alert in Safari.
+- Before/after fingerprints confirmed Voronkova's latest saved 14-Oct program and old token mapping unchanged; old public link returned 200 with the correct date/program. This baseline includes the user's edits made before this release; older historical fingerprints are not treated as authoritative.
+- Real Safari: NK team draft stage cards and exercise prescriptions; Voronkova history, exact-value table and correct no-new-cycle state; Zarechie history and Burkova actual current cycle 1/4, Trap Bar Deadlift set 1 = 70 kg / 7 repetitions / exercise RPE 8. Missing historical repetitions/RPE stay blank, not filled from plans. No save/completion/generation/review/preflight submission during real QA. Source exactly matches the locally tested 320px build.
+- Original real program tab never reloaded/saved. Separate new production tab left on NK Voronkova History with planning date 14-Oct; original user program tab preserved.
+- Production proof: `/private/tmp/evidence-studio-production-nk-drafts.png`, `/private/tmp/evidence-studio-production-voronkova-history.png`, `/private/tmp/evidence-studio-production-z-cycle.png`, `/private/tmp/evidence-studio-production-history-final.png`.
 
 ## Next grouped work
 
