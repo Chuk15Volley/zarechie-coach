@@ -1,6 +1,6 @@
 # Coach overviews: Today, Week and Load
 
-Status: local candidate based on production 4cf8fc1 (release evidence df6977e). Shared by zarechie and nkperf. Production source transfer and publication for this new revision have not been performed.
+Status: published as c26efac on gym.readysix.app on 2026-10-13, after explicit approval for source transfer, candidate verification and publication. Based on 4cf8fc1 (release evidence df6977e); shared by zarechie and nkperf.
 
 ## Result
 
@@ -29,3 +29,14 @@ Build the exact committed source on the existing Russian server. Verify an isola
 1. A compact review flow for missing exercise kg/reps/RPE, reusing the existing coach-confirmed supplements and mandatory reasons.
 2. Exact source timestamps and explanations from ReadySix for calendar, court load and travel, linked to the authoritative data entry.
 3. Unified player history and cycle comparison cards, with the coach's decisions and measured outcomes visible together.
+
+## Production release evidence
+
+- Exact archive c26efac built on the existing Russian server with the pinned Node base. Image sha256:826690920976113d0b55753b3d0d7b5df38c4d8bbe483bc94ed8c04898cce3e2. Worker-disabled, read-only candidate had no public port and was removed after verification.
+- Candidate and production checks passed: health/storage/auth, new JS/CSS bundle, no fixture route, identical 15/3 roster identities across readiness/list/week/load, exact week/load planned and factual tonnage plus evidence parity (26 Zarechie / 2 NK current-week sessions compared), and both barbell/trap 73-value ladders preserved.
+- Only gym recreated. Rollback compose: /srv/readysix-ru-production/apps.private.compose.yaml.before-coach-overviews-c26efac, retaining 4cf8fc1. Runtime transport, secrets and other services preserved. Worker healthy; no pending or failed publication runs. Original NK three drafts remained unsaved/unreviewed; Zarechie old preparation incident remains visible, NK active incidents zero.
+- Real production Safari Today/Week/Load checked in both spaces. ReadySix missing-source/revalidation reasons visible, load plan/fact and incomplete weekly totals visible, data filter and shared draft navigation verified. No athlete generation/save/completion/review/publication was performed for QA.
+- Production proof: /private/tmp/coach-overviews-production-today-zarechie.png, /private/tmp/coach-overviews-production-week-zarechie.png, /private/tmp/coach-overviews-production-load-zarechie.png and matching NK files.
+
+- Legacy queue observation: the three original NK drafts use `whoop_`-prefixed player IDs while the authoritative roster exposes the corresponding numeric IDs. Exact-ID individual shortcuts deliberately omit those rows; the common queue link works. No identifiers or drafts were rewritten during deployment. Before publishing these old drafts, regenerate against the current roster/inventory; future work should use the existing verified identity alias mechanism for legacy read-only navigation.
+- Safari restored to Zarechie gym home on 13 October. ReadySix tab and its in-progress form were not reloaded or changed.
