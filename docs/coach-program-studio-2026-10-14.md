@@ -13,7 +13,7 @@ User requested a more premium, convenient editor after inspecting Voronkova's op
 
 ## Old-link editing compatibility
 
-Program GET now reports the selected edition's source player ID after numeric/WHOOP alias selection. The editor saves an opened legacy edition to that owner only when it is the same player's exact numeric/WHOOP identity. Foreign/malformed identities fall back to the selected player. This keeps edits to Voronkova's existing old-link program on that program's existing key, preserving its token. No migration or token creation/rotation occurs. New-date generation, other program actions and general legacy-link unification are outside this targeted fix.
+Program GET now reports the selected edition's source player ID after numeric/WHOOP alias selection. The editor saves an opened legacy edition to that owner only when it is the same player's exact numeric/WHOOP identity. Foreign/malformed identities fall back to the selected player. The existing save endpoint already mirrors numeric/WHOOP session editions and versions. Source ownership additionally keeps opened-edition metadata and related weight-history writes tied to the selected legacy owner; it does not introduce alias mirroring. Voronkova's token remains unchanged. No migration or token creation/rotation occurs. New-date generation, other program actions and general legacy-link unification are outside this targeted fix.
 
 ## Validation
 
@@ -27,7 +27,14 @@ Program GET now reports the selected edition's source player ID after numeric/WH
 
 ## Release status and checks
 
-Local only; source has not been transferred/published. Production remains 27f5ba2, image 23cd26019a228f9e6b949300a71538d6b8a3eb0b1105d964b28335d4f0d5da56. After explicit authorization: build exact committed archive on the Russian server; verify candidate auth/health, both rosters/inventory, source-identity metadata, unchanged real plans/old link and UI/CSP bundle; exercise legacy program edit persistence only with an owned synthetic fixture. Recreate only gym, retain rollback to 27f5ba2. Inspect real Safari both spaces without discarding any unsaved user edits.
+Published exact authorized source **7ef790b** after user approval, on 2026-10-14 Moscow (server UTC 2026-10-13 21:57). Image `sha256:f489a9fbdfd951d45d75c29bf26235334a6bddacad4d69500c0f38baf348aacd`. Only gym recreated. Rollback to 27f5ba2 retained at `/srv/readysix-ru-production/apps.private.compose.yaml.before-program-studio-7ef790b`.
+
+- Exact Git archive SHA-256 `ae64909032dd19616f4724ea98ba7bb5088ebb8d8a3912e4116b2dabf94fc12c` verified on Russian server; server build passed. Candidate had worker disabled, read-only filesystem and no published ports; removed after publication.
+- Candidate and production: authenticated roster 15/3, session history, both 73-value barbell/trap ladders, source-owner metadata, editor bundle, scoped video CSP, health and unauthenticated API rejection passed. Production worker available, no pending/failed publication. One pre-existing active incident per space remains recorded, not falsely resolved.
+- Owned synthetic legacy-ID program in each space: GET canonical selected legacy owner; save persisted 102.5 kg, first set 5 reps, RPE 7, 5-0-X-0 and multiline description into both numeric/WHOOP editions with one version each. Exact owned keys and audit entries removed, cleanup verified. No real athlete actuals/programs changed.
+- Before/after fingerprint equality confirmed Voronkova's saved 14-Oct program and old token mapping unchanged; old public link returned 200 and rendered correct date/program. NK three drafts remain done, unreviewed and unsaved.
+- Real Safari both spaces: Voronkova 14-Oct editor and preview; Burkova 13-Oct preview; planned chart navigated correct block, media/description always available, sticky actions and prescribed values visible. Voronkova retained 13 exercises / 35 planned sets, Burkova 8 / 17. No real save/completion/generation/review actions during QA. Original user tab never reloaded or saved; separate production tab left on Voronkova 14-Oct in editor mode. Local fixture tab remains untouched.
+- Production proof: `/private/tmp/program-studio-production-nk-editor.png`, `/private/tmp/program-studio-production-z-preview.png`, `/private/tmp/program-studio-production-voronkova-final.png`. Local 320px proof above remains applicable to exact same source.
 
 CSP adds only self and https://www.youtube-nocookie.com for child frames; existing script/connect/font/object/frame-ancestor/security headers are preserved. No athlete health/readiness data is sent to YouTube; iframe URL contains only the selected public video ID and playback options.
 
