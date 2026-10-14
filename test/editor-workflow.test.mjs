@@ -40,3 +40,7 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: a later separat
  const queue={workspace,id:'q',date:'2026-10-15',createdAt:'2026-10-14T18:00:00Z'},player={playerId:'123'},job={workspace,teamQueueId:'q',playerId:'123',status:'done',completedAt:'2026-10-14T18:20:00Z'},saved={date:queue.date,savedAt:'2026-10-14T20:38:00Z',session:{blocks:[]}};
  assert.equal(savedProgramForTeamDay(queue,player,job,[saved]),saved);assert.deepEqual(teamSessionIds('whoop_123'),['123','whoop_123']);assert.equal(savedProgramForTeamDay(queue,player,job,[{...saved,savedAt:'2026-10-14T17:00:00Z'}]),null);assert.equal(savedProgramForTeamDay(queue,player,job,[{...saved,draft:true}]),null);assert.equal(savedProgramForTeamDay(queue,player,{...job,workspace:workspace==='nkperf'?'zarechie':'nkperf'},[saved]),null);assert.equal(savedProgramForTeamDay(queue,player,job,[{...saved,date:'2026-10-16'}]),null);
 });
+test('legacy Russian side/time units survive numeric bulk edits exactly; unknown formats are never silently discarded',()=>{
+ for(const [source,target] of [['5/сторона','6/сторона'],['5/сторону','6/сторону'],['25 сек/сторона','6 сек/сторона'],['10 м/сторона','6 м/сторона'],['5 на сторону','6 на сторону'],['5/leg','6/leg']]){assert.notEqual(plannedSetParts(source).unit,'custom',source);assert.deepEqual(repeatedPlannedSets([source],'6'),[target]);}
+ assert.deepEqual(repeatedPlannedSets(['3 x 5'],'6'),['3 x 5']);assert.deepEqual(repeatedPlannedSets(['3 x 5'],'6','reps'),['6']);
+});
