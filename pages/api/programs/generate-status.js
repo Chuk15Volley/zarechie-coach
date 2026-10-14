@@ -188,6 +188,7 @@ export default async function handler(req, res) {
   if (record.status === 'done' && record.session) {
     return res.status(200).json({
       status: 'done',
+      sourceState:record.sourceState || null,sourceCapturedAt:record.strengthFactsStartedAt || record.submittedAt || record.completedAt || null,completedAt:record.completedAt || new Date().toISOString(),
       coachReview:!!record.coachReview,
       session: record.session,
       player: record.player || null,
@@ -224,7 +225,7 @@ export default async function handler(req, res) {
         return res.status(refreshed.status || 400).json({ error: refreshed.error });
       }
       if (refreshed.readyResult) {
-        const result = { ...refreshed.readyResult, strengthFactsStartedAt,readySixCheck:refreshed.readySixCheck || null,readySixState:refreshed.readySixState || null, coachReview:!!record.coachReview, status: 'done',completedAt:new Date().toISOString() };
+        const result = { ...refreshed.readyResult, strengthFactsStartedAt,readySixCheck:refreshed.readySixCheck || null,readySixState:refreshed.readySixState || null,sourceState:refreshed.sourceState || null, coachReview:!!record.coachReview, status: 'done',completedAt:new Date().toISOString() };
         if(record.teamQueueId)result.session={...result.session,teamGeneration:{queueId:record.teamQueueId,batchId}};
         const draft = generatedDraftRecord(result, record.generationRequest);
         if(draft){const key=generatedDraftKey(record.workspace,record.playerId,draft.date);if(record.teamQueueId)await writeCurrentTeamDraft(record,batchId,key,{...draft,batchId,teamQueueId:record.teamQueueId});else await redis('set',key,JSON.stringify(draft));}
@@ -241,7 +242,7 @@ export default async function handler(req, res) {
         playerRestrictions: refreshed.playerRestrictions || [],
         qualityContext: refreshed.qualityContext || {},
         questionnaireContext: refreshed.questionnaireContext || {},
-        readySixCheck: refreshed.readySixCheck || null,readySixState:refreshed.readySixState || null,
+        readySixCheck: refreshed.readySixCheck || null,readySixState:refreshed.readySixState || null,sourceState:refreshed.sourceState || null,
         inputsRefreshedAt: new Date().toISOString(),
       };
       await redis('set', `coach:batch:${batchId}`, JSON.stringify(record), 'EX', (record.teamQueueId ? generationJobTTL(record) : 3600));
@@ -441,6 +442,7 @@ export default async function handler(req, res) {
 
     if(record.teamQueueId)session={...session,teamGeneration:{queueId:record.teamQueueId,batchId}};
     const record2 = {
+      sourceState:record.sourceState || null,sourceCapturedAt:record.strengthFactsStartedAt || record.submittedAt || null,
       session,
       player,
       dataSummary,
@@ -480,6 +482,7 @@ export default async function handler(req, res) {
     await redis('set', `coach:batch:${batchId}`, JSON.stringify({
       ...record,
       status: 'done',
+      sourceState:record.sourceState || null,sourceCapturedAt:record.strengthFactsStartedAt || record.submittedAt || record.completedAt || null,completedAt:record.completedAt || new Date().toISOString(),
       coachReview:!!record.coachReview,
       session,
       player,
@@ -493,6 +496,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       status: 'done',
+      sourceState:record.sourceState || null,sourceCapturedAt:record.strengthFactsStartedAt || record.submittedAt || record.completedAt || null,completedAt:record.completedAt || new Date().toISOString(),
       coachReview:!!record.coachReview,
       session,
       player,

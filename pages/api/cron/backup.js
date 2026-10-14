@@ -12,11 +12,15 @@ export default async function handler(req, res) {
   if (!authorization.ok) return res.status(authorization.status).json({ error: authorization.error });
 
   const workspaces = ['zarechie', 'nkperf'];
-  const results = await Promise.allSettled(workspaces.map(async workspace => {
+  const results = [];
+  for (const workspace of workspaces) {
+   const [result] = await Promise.allSettled([(async () => {
     const snapshot = await createEncryptedBackup(workspace);
     await recordPlatformEvent({ workspace, area: 'backup', status: 'ok', message: `Автоматическая зашифрованная копия: ${snapshot.keyCount} ключей`, meta: { id: snapshot.id, storage: snapshot.storage } });
     return snapshot;
-  }));
+   })()]);
+   results.push(result);
+  }
   const backups = results.map((result, index) => result.status === 'fulfilled'
     ? result.value
     : { workspace: workspaces[index], error: 'backup_failed' });

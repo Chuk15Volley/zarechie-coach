@@ -1,3 +1,4 @@
+import {coachSourceState} from '../../../lib/coachSourceState.mjs';
 import {strengthActualHistory} from '../../../lib/strengthActualSupplement.mjs';
 import {readySixPublicationCheck,readySixPublicationState} from '../../../lib/readySixPublication.mjs';
 import {buildStrengthCycle} from '../../../lib/strengthCycle.mjs';
@@ -1605,6 +1606,7 @@ export async function buildGenerationInputs(body) {
   if (!snapshot) return { error: 'Player not found', status: 404 };
   const readySixCheck=readySixPublicationCheck(snapshot,parseJSONSafe(rawRestrictions, []));
   const readySixState=readySixPublicationState(snapshot,parseJSONSafe(rawRestrictions, []));
+  const sourceState=coachSourceState(snapshot,parseJSONSafe(rawRestrictions, []));
   const actualSummaries = actualHistory.summaries;
   const sessionSummaries = recentSessionRecords.map(formatSummary).filter(Boolean);
   const gymRecommendation = snapshot.readySixMeta ? recommendGymSession({ snapshot, targetDate, recentSessions: recentSessionRecords }) : null;
@@ -1615,7 +1617,7 @@ export async function buildGenerationInputs(body) {
     return { error: 'Для профилактики требуется актуальное решение ReadySix по разрешённым зонам. Обновите данные игрока.', status: 422 };
   }
   const adaptedResult = buildCoachAdaptation({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal, focus, strengthMode, playerRestrictions: parseJSONSafe(rawRestrictions, []), recentSessions: recentSessionRecords, historyAvailable: prehabHistoryAvailable, coachRecovery, manualMethodSelection: manualMethod });
-  if (adaptedResult) return { targetDate, dayGoal, readySixCheck, readySixState, readyResult: adaptedResult };
+  if (adaptedResult) return { targetDate, dayGoal, readySixCheck,readySixState,sourceState, readyResult: adaptedResult };
   const methodRecommendation = manualMethodRecommendation(gymRecommendation, manualMethod);
   // Server-only development generation: clinical data never enter a model prompt.
   if (focus === 'inseason_strength') {
@@ -1627,7 +1629,7 @@ export async function buildGenerationInputs(body) {
       const rawEquipment = await redis('get', `${wpfx}:strength:equipment`);
       const readyResult = buildStrengthDevelopmentDraft({ cycleDecision:parseJSONSafe(rawDecision,null), equipment: parseJSONSafe(rawEquipment, {}), snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, developmentPlan: parseJSONSafe(rawDevelopmentPlan, null), recentSessions: recentSessionRecords, actualHistory: strengthActualHistory(recentSessionRecords,targetDate), playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
       readyResult.timeZone = timeZone;
-      return { targetDate, dayGoal, readySixCheck, readySixState, readyResult };
+      return { targetDate, dayGoal, readySixCheck,readySixState,sourceState, readyResult };
     } catch (error) {
       if (/Нет безопасной новой/.test(error.message)) return { error: error.message + ' Повторы автоматически не разрешаются. Сохранённая программа не изменена.', status: 422 };
       throw error;
@@ -1649,14 +1651,14 @@ export async function buildGenerationInputs(body) {
       playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery, recentSessions: recentSessionRecords, historyAvailable: prehabHistoryAvailable,
       reactions, matchDate, matchLoad: parseJSONSafe(matchLoads, {})?.[String(playerId)] || null });
     if (readyResult && manualMethod) { readyResult.quality.readySixState = gymRecommendation.state; readyResult.session.methodology.manualMethodSelection = true; }
-    return { targetDate, dayGoal, readySixCheck, readySixState, readyResult: readyResult || restrictedDayPlan({ snapshot, recommendation: { ...gymRecommendation, reasons: [...gymRecommendation.reasons, 'Недостаточно безопасных вариантов с учётом допуска, симптомов и предыдущей реакции; нагрузка не назначена.'] }, date: targetDate, dayGoal, allowRegionalDraft: false }) };
+    return { targetDate, dayGoal, readySixCheck,readySixState,sourceState, readyResult: readyResult || restrictedDayPlan({ snapshot, recommendation: { ...gymRecommendation, reasons: [...gymRecommendation.reasons, 'Недостаточно безопасных вариантов с учётом допуска, симптомов и предыдущей реакции; нагрузка не назначена.'] }, date: targetDate, dayGoal, allowRegionalDraft: false }) };
   }
   const readySixIssue = manualMethod ? null : readySixGenerationIssue(gymRecommendation, focus);
   if (readySixIssue) {
     if (['recovery', 'activation', 'match_day'].includes(gymRecommendation.key) && gymRecommendation.focus) {
       return buildGenerationInputs({ ...body, focus: gymRecommendation.focus, trainingType: gymRecommendation.trainingType });
     }
-    return { targetDate, dayGoal, readySixCheck, readySixState, readyResult: restrictedDayPlan({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal, playerRestrictions: parseJSONSafe(rawRestrictions, []) }) };
+    return { targetDate, dayGoal, readySixCheck,readySixState,sourceState, readyResult: restrictedDayPlan({ snapshot, recommendation: gymRecommendation, date: targetDate, dayGoal, playerRestrictions: parseJSONSafe(rawRestrictions, []) }) };
   }
 
   // Per-player exercise-response memory + LSI (jump symmetry) — appended to prompt.
@@ -1914,7 +1916,7 @@ export async function buildGenerationInputs(body) {
 
   return {
     snapshot,
-    readySixCheck,readySixState,
+    readySixCheck,readySixState,sourceState,
     userPrompt,
     dataSummary,
     targetDate,
@@ -2041,7 +2043,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e.message || 'Ошибка подготовки данных' });
   }
   if (inputs.error) return res.status(inputs.status || 400).json({ error: inputs.error });
-  if (inputs.readyResult) return res.status(200).json(inputs.readyResult);
+  if (inputs.readyResult) return res.status(200).json({...inputs.readyResult,sourceState:inputs.sourceState || null,sourceCapturedAt:new Date().toISOString()});
   const { snapshot, userPrompt, dataSummary, targetDate, systemPrompt, effectiveFocus, effectiveTrainingType, playerRestrictions = [], qualityContext = {} } = inputs;
   const { dayGoal: bodyDayGoal = '', focus = '' } = req.body || {};
 
@@ -2087,6 +2089,7 @@ export default async function handler(req, res) {
       'quality:', quality.score);
 
     return res.status(200).json({
+      sourceState:inputs.sourceState || null,sourceCapturedAt:new Date().toISOString(),
       session,
       player: snapshot.player,
       dataSummary,

@@ -66,7 +66,7 @@ export async function saveProgram(req, res, publicationGuard=null) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { playerId, date, session, player, dataSummary, dayGoal, focus = '', trainingType = '', trainingLabel = '', strengthMode = null, quality = null, saveRequestId = '', workspace = 'zarechie' } = req.body || {};
+  const { playerId, date, session, player, dataSummary, dayGoal, focus = '', trainingType = '', trainingLabel = '', strengthMode = null, quality = null, saveRequestId = '', sourceState = null,sourceCapturedAt = null, workspace = 'zarechie' } = req.body || {};
   if (!playerId || !date || !session) {
     return res.status(400).json({ error: 'playerId, date and session are required' });
   }
@@ -125,6 +125,8 @@ export async function saveProgram(req, res, publicationGuard=null) {
     : saveQuality;
 
   const record = {
+    sourceState: sourceState?.version===1 && /^[a-f0-9]{64}$/.test(sourceState.digest || '') && ['permission','questionnaires','medical','calendar','restrictions'].every(key=>/^[a-f0-9]{64}$/.test(sourceState.sections?.[key] || ''))?{version:1,digest:sourceState.digest,sections:Object.fromEntries(['permission','questionnaires','medical','calendar','restrictions'].map(key=>[key,sourceState.sections[key]]))}:null,
+    sourceCapturedAt:typeof sourceCapturedAt==='string' && Number.isFinite(Date.parse(sourceCapturedAt))?sourceCapturedAt:null,
     session: normalizedSession,
     timeZone,
     player: player || null,

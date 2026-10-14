@@ -96,8 +96,8 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: review endpoint
 });
 test('inventory settings are available on the home screen without selecting a player; experience is shared',()=>{
  const source=readFileSync(new URL('../pages/index.js',import.meta.url),'utf8');
- assert.match(source,/keyConnected && \['today','workouts'\]\.includes\(mainSection\)/);
- assert.equal((source.match(/<StrengthEquipmentPanel key=/g)||[]).length,1);
+ assert.match(source,/keyConnected && mainSection==='workouts'/);assert.match(source,/keyConnected && mainSection==='today'/);
+ assert.equal((source.match(/<StrengthEquipmentPanel key=/g)||[]).length,2);
  assert.ok(!source.includes('STRENGTH_EXPERIENCE_OPTIONS'));assert.ok(readFileSync(new URL('../components/StrengthEquipmentPanel.js',import.meta.url),'utf8').includes('Заполните один раз для всех игроков этого пространства'));
 });
 for(const workspace of ['zarechie','nkperf'])test(`${workspace}: review joins only server execution facts and includes today's completion`,async()=>{

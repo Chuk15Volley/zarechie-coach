@@ -1,3 +1,7 @@
+import {overviewRestoreReady} from '../lib/coachAuditPresentation.mjs';
+import WeightProvenance from '../components/WeightProvenance';
+import WarmupConduct from '../components/WarmupConduct';
+import SourceComparison from '../components/SourceComparison';
 import {coachDate,trainingTitle,activeServiceProblems,factAmount,budgetLabel} from '../lib/coachPresentation.mjs';
 import TeamFactOverview from '../components/TeamFactOverview';
 import {weekFactPeriod} from '../lib/coachFactSurface.mjs';
@@ -1163,6 +1167,7 @@ function ExerciseCard({
   descriptionExerciseId,
   compactDescription,
   controlledExecution,
+  loadEvidence,
   focus,
   week,
   oneRM,
@@ -1281,6 +1286,7 @@ function ExerciseCard({
           </details>}
           {preview && tempo && <p className="coach-preview-tempo">Темп <strong>{tempo}</strong></p>}
           {preview && weightNote && weightNote.trim()!==`${weightKg} кг` && <p className="coach-preview-note">{weightNote}</p>}
+          <WeightProvenance name={name} evidence={loadEvidence}/>
           {!preview && <div className="coach-exercise-progression">{focus==='inseason_strength'?<StrengthProgressionHint proposal={strengthProposal} error={progressionError} loading={progressionLoading} onRetry={onRetryProgression} onApply={onApplyStrengthProgression}/>:prevKg ? (
           <div className="mt-1 flex flex-wrap items-center gap-1.5 print:hidden">
             <span className="text-[11px] text-slate-600">
@@ -1999,6 +2005,8 @@ export default function Home() {
   const [tonnageData, setTonnageData] = useState(null);
   const [tonnageLoading, setTonnageLoading] = useState(false);
   const [tonnageRefresh,setTonnageRefresh]=useState(0),[tonnageUpdatedAt,setTonnageUpdatedAt]=useState(null);
+  const [todaySnapshot,setTodaySnapshot]=useState(null);
+  const [loadFilter,setLoadFilter]=useState('all');
   const [todayError,setTodayError]=useState(''),[todayUpdatedAt,setTodayUpdatedAt]=useState(null);
   const [calendarError,setCalendarError]=useState(''),[calendarUpdatedAt,setCalendarUpdatedAt]=useState(null);
   const overviewWorkspaceRef=useRef(null),todayControllerRef=useRef(null),overviewSectionRef=useRef(null),teamStatusRequestRef=useRef(0),overviewScrollTargetRef=useRef(null);
@@ -2175,7 +2183,7 @@ export default function Home() {
   useEffect(()=>{
     const frame=requestAnimationFrame(()=>{
       if(overviewScrollTargetRef.current==='drafts' && mainSection==='workouts'){overviewScrollTargetRef.current=null;document.getElementById('coach-team-drafts')?.scrollIntoView({block:'start'});}
-      else{document.querySelector('.workspace-main')?.scrollTo({top:0});window.scrollTo({top:0});}
+      else if(!(overviewScrollTargetRef.current?.type==='restore' && overviewScrollTargetRef.current.section===mainSection)){document.querySelector('.workspace-main')?.scrollTo({top:0});window.scrollTo({top:0});}
     });return()=>cancelAnimationFrame(frame);
   },[mainSection,workspace]);
   useEffect(()=>setEditorActionsOpen(false),[workspace,playerId,date]);
@@ -2298,7 +2306,7 @@ export default function Home() {
     setWorkspaceTab('program');
     overviewWorkspaceRef.current=ws;todayControllerRef.current?.abort();calendarRequestRef.current++;
     teamStatusRequestRef.current++;setTeamStatusError('');setTeamStatus({});setReadinessData(null);setCalData(null);setTonnageData(null);setLiveUpdatedAt(null);
-    setTodayError('');setTodayUpdatedAt(null);setCalendarError('');setCalendarUpdatedAt(null);setTonnageUpdatedAt(null);
+    setTodaySnapshot(null);setLoadFilter('all');setLiveDebrief(false);setOverviewReturn(null);setTodayError('');setTodayUpdatedAt(null);setCalendarError('');setCalendarUpdatedAt(null);setTonnageUpdatedAt(null);
     setWorkspace(ws);
     if (!usesSeasonCalendar(ws) && mainSection === 'planner') setMainSection('workouts');
     if (typeof window !== 'undefined') localStorage.setItem('workspace', ws);
@@ -2721,18 +2729,21 @@ export default function Home() {
 
   const keyConnected = apiKey && !playersError;
   const liveRows = useMemo(() => players.map(player => ({ player, status: teamStatus[player.id] || {} })).sort((a,b)=>(Number(!!b.status.live?.alerts?.length)*10+Number(!!b.status.pendingCommands?.length)*5+Number(!!b.status.live?.started))-(Number(!!a.status.live?.alerts?.length)*10+Number(!!a.status.pendingCommands?.length)*5+Number(!!a.status.live?.started))), [players, teamStatus]);
+  const [warmupConduct,setWarmupConduct]=useState(false);
+  useEffect(()=>setWarmupConduct(false),[workspace,warmupPlan?.date]);
+  const [liveDebrief,setLiveDebrief]=useState(false);
   const liveSummary = useMemo(() => liveRows.reduce((summary, row) => {
     if (row.status.live?.started) summary.started += 1;
     if (row.status.live?.completed || row.status.live?.endedEarly) summary.completed += 1;
-    if ((row.status.live?.alerts || []).length) summary.alerts += 1;
+    if (!row.status.live?.completed && !row.status.live?.endedEarly && (row.status.live?.alerts || []).length) summary.alerts += 1;
     if (row.status.hasSession) summary.planned += 1;
     return summary;
   }, { planned: 0, started: 0, completed: 0, alerts: 0 }), [liveRows]);
-  const stationRotation = useMemo(() => buildStationRotation(liveRows), [liveRows]);
+  const stationRotation = useMemo(() => buildStationRotation(liveRows.filter(row=>!row.status.live?.completed && !row.status.live?.endedEarly)), [liveRows]);
   const attentionQueue = useMemo(() => buildAttentionQueue(liveRows, readinessData?.players || []), [liveRows, readinessData]);
   const todayCenter = useMemo(
-    () => buildTodayDecisionCenter(liveRows, readinessData?.players || [], healthData),
-    [liveRows, readinessData, healthData]
+    () => buildTodayDecisionCenter(players.map(player=>({player,status:todaySnapshot?.workspace===workspace?todaySnapshot.status?.[player.id] || {}:{}})), todaySnapshot?.workspace===workspace?todaySnapshot.readiness?.players || []:[], healthData),
+    [players, todaySnapshot, workspace, healthData]
   );
 
   // Session volume: total sets + estimated tonnage
@@ -3000,7 +3011,10 @@ export default function Home() {
     }
   }
 
+  useEffect(()=>{const target=overviewScrollTargetRef.current,updatedAt=({calendar:calendarUpdatedAt,tonnage:tonnageUpdatedAt,today:todayUpdatedAt,live:liveUpdatedAt})[mainSection];if(target?.type!=='restore' || target.section!==mainSection || target.workspace!==workspace || calLoading || tonnageLoading || !overviewRestoreReady(target,updatedAt))return;let second;const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>{document.querySelector('.workspace-main')?.scrollTo({top:target.scroll});document.querySelector('.coach-week-scroll')?.scrollTo({left:target.horizontal,top:target.tableScroll});overviewScrollTargetRef.current=null;});});return()=>{cancelAnimationFrame(first);if(second)cancelAnimationFrame(second);};},[mainSection,workspace,calLoading,tonnageLoading,calendarUpdatedAt,tonnageUpdatedAt,todayUpdatedAt,liveUpdatedAt]);
+  const [overviewReturn,setOverviewReturn]=useState(null);
   function openOverviewPlayer(player,targetDate=todayISO(),tab='program') {
+    if(['calendar','tonnage','today','live'].includes(mainSection))setOverviewReturn({section:mainSection,workspace,scroll:document.querySelector('.workspace-main')?.scrollTop || 0,horizontal:document.querySelector('.coach-week-scroll')?.scrollLeft || 0,tableScroll:document.querySelector('.coach-week-scroll')?.scrollTop || 0});
     const current=players.find(item=>String(item.id)===String(player.id));
     if(!current)return;
     selectPlayer(current);setDate(targetDate);setWorkspaceTab(tab);setMainSection('workouts');
@@ -3020,7 +3034,7 @@ export default function Home() {
     const deadline=setTimeout(()=>controller.abort('timeout'),25000);
     try{
       const data=await requestDailyOverview({apiKey,workspace:requestedWorkspace,date:todayISO(),playerIds:players.map(p=>p.id),signal:controller.signal,refresh});
-      if(current() && !controller.signal.aborted){setReadinessData(data.readiness);setTeamStatus(data.status);setTodayError('');setTodayUpdatedAt(new Date().toISOString());setLiveUpdatedAt(new Date().toISOString());}
+      if(current() && !controller.signal.aborted){setTodaySnapshot({workspace:requestedWorkspace,...data});setReadinessData(data.readiness);setTeamStatus(data.status);setTodayError('');setTodayUpdatedAt(new Date().toISOString());setLiveUpdatedAt(new Date().toISOString());}
     }catch(error){if(current() && (!controller.signal.aborted || controller.signal.reason==='timeout'))setTodayError(controller.signal.reason==='timeout'?'Превышено время ожидания. Повторите обновление.':error.message);}
     finally{clearTimeout(deadline);if(current()){setReadinessLoading(false);todayControllerRef.current=null;}}
   }
@@ -3644,7 +3658,7 @@ export default function Home() {
       if (statusData.status === 'done') {
         setSession(statusData.session);
         if (statusData.strengthMode) setStrengthMode(statusData.strengthMode);
-        setMeta({ player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel: statusData.session?.kind === 'restricted_day_plan' ? 'План дня · без нагрузки' : statusData.session?.kind === 'restricted_training_draft' ? 'Верх тела с ограничениями' : statusData.session?.kind === 'prehab_training_draft' ? 'Профилактика · индивидуальная программа' : focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
+        setMeta({ sourceState:statusData.sourceState || null,sourceCapturedAt:statusData.sourceCapturedAt || statusData.completedAt || null,player: statusData.player, dataSummary: statusData.dataSummary, date: statusData.date, dayGoal: statusData.dayGoal || '', focusLabel: statusData.session?.kind === 'restricted_day_plan' ? 'План дня · без нагрузки' : statusData.session?.kind === 'restricted_training_draft' ? 'Верх тела с ограничениями' : statusData.session?.kind === 'prehab_training_draft' ? 'Профилактика · индивидуальная программа' : focusLabel, sessionType: 'gym', quality: statusData.quality || null, focus: statusData.focus || focus, trainingType: statusData.trainingType || trainingType, strengthMode: statusData.strengthMode || null });
         setShowSummary(false);
         setAutoSaved(!!statusData.autoSaved);
         if (!isCoachReviewDraft(statusData.session) && (statusData.saveWarning || statusData.quality?.medicalReviewRequired)) {
@@ -3772,6 +3786,7 @@ export default function Home() {
     setMeta({
       player: record.player,
       dataSummary: record.dataSummary,
+      sourceState:record.sourceState || null,sourceCapturedAt:record.sourceCapturedAt || null,
       prehabReaction: record.prehabReaction || null,
       date: record.date,
       quality: record.quality || null,
@@ -3794,7 +3809,7 @@ export default function Home() {
     try {
       const {res,data} = await saveProgramRequest({
         playerId:editPlayerId, date:meta.date, session:submittedSession, player:meta.player,
-        dataSummary:meta.dataSummary, dayGoal:meta.dayGoal || '', focus:meta.focus || focus,
+        sourceState:meta.sourceState || null,sourceCapturedAt:meta.sourceCapturedAt || null,dataSummary:meta.dataSummary, dayGoal:meta.dayGoal || '', focus:meta.focus || focus,
         trainingType:meta.trainingType || trainingType, trainingLabel:meta.focusLabel || getFocusLabel(period,focus),
         strengthMode:meta.strengthMode || strengthMode, quality:meta.quality || null, workspace,
       }, apiKey);
@@ -5261,7 +5276,7 @@ export default function Home() {
                 <div className="flex flex-col items-center justify-center py-24 gap-3">
                   <div className="text-4xl opacity-20">🏃</div>
                   <h2 className="text-[18px] font-black text-slate-600">Командная разминка</h2>
-                  <p className="text-[13px] text-slate-700">Выберите дату и фазу — затем нажмите «Сгенерировать» в панели слева</p>
+                  <p className="text-[13px] text-slate-700">Выберите дату и нажмите «Сгенерировать» в панели слева. Фаза определяется автоматически по календарю.</p>
                 </div>
               )}
               {!warmupLoading && warmupPlan && (
@@ -5280,7 +5295,8 @@ export default function Home() {
                       )}
                     </div>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <WarmupConduct key={workspace+warmupPlan.date} plan={warmupPlan} onModeChange={setWarmupConduct}/>
+                  <div className={warmupConduct?'hidden':'grid gap-4 sm:grid-cols-2'}>
                     {(warmupPlan.sections || []).map((section, si) => {
                       const st = WARMUP_SECTION_STYLES[section.id] || WARMUP_SECTION_STYLES.speed;
                       return (
@@ -5516,7 +5532,6 @@ export default function Home() {
               </div>
 
               <OverviewFreshness updatedAt={calendarUpdatedAt} error={calendarError} loading={calLoading} label="Неделя"/>
-              {apiKey && <TeamFactOverview key={'week:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} fixedPeriod={weekFactPeriod(calWeekStart)} initialOpen compact label="Факты недели · кг, повторы и RPE" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
               <div className="coach-overview-shortcuts"><button type="button" onClick={()=>setMainSection('today')}>Сегодня →</button><button type="button" onClick={()=>setMainSection('tonnage')}>Нагрузка и факт →</button><button type="button" onClick={()=>openOverviewSection('drafts')}>Командные черновики →</button></div>
               {calData?.summary && (
                 <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -5538,8 +5553,8 @@ export default function Home() {
               <div className="coach-overview-filters"><button type="button" aria-pressed={weekConflictsOnly} onClick={()=>setWeekConflictsOnly(v=>!v)}>Только конфликты</button></div><p className="coach-overview-caption">Бюджет — ориентир относительно предыдущих недель: учитываются подходы и тоннаж, источником базы может быть план или факт. Процент отражает плановый объём, не медицинский допуск. Пропуски факта показаны отдельно.</p>
               {calData && calData.players.length > 0 ? (
                 <>
-                <div className="overflow-x-auto rounded-2xl border border-white/[0.07] bg-[#091116]/80 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-                  <table className="w-full min-w-[1180px] border-collapse">
+                <div className="coach-week-scroll overflow-x-auto rounded-2xl border border-white/[0.07] bg-[#091116]/80 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+                  <table className="coach-week-table w-full min-w-[960px] border-collapse">
                     <thead>
                       <tr className="border-b border-white/[0.06]">
                         <th className="w-64 px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-600">Игрок · бюджет</th>
@@ -5582,7 +5597,7 @@ export default function Home() {
                               <div className="flex items-center justify-between text-[9px]"><span className="font-bold text-slate-600">Бюджет</span><span className={`font-black tabular-nums ${athlete.budget.status === 'over' ? 'text-rose-300' : athlete.budget.status === 'near' ? 'text-amber-200' : 'text-slate-400'}`}>{budgetLabel(athlete.budget)}</span></div>
                               <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.05]"><div className={`h-full rounded-full ${budgetTone}`} style={{ width: `${athlete.budget.status==='calibrating' || !(athlete.budget.sets>0 || athlete.budget.tonnage>0)?0:Math.min(100, athlete.budget.utilizationPercent)}%` }} /></div>
                               <div className="mt-1.5 flex items-center justify-between text-[8px] text-slate-700"><span>{athlete.budget.source}</span><span>{compactLoad(athlete.budget.tonnage)}</span></div>
-                              <p className="mt-1 text-xs text-slate-300">База: {athlete.budget.referenceSets ?? '—'} подходов · {athlete.budget.referenceTonnage!=null?compactLoad(athlete.budget.referenceTonnage):'нет тоннажа'}. Факт недели: {compactLoad(athlete.totals?.actualTonnage)}; полноту проверяйте в занятиях.</p>{athlete.budget.rtp && <div className="mt-1 text-[8px] font-bold text-violet-300/60">RTP {athlete.budget.rtp.phase} · лимит {athlete.budget.rtp.volumeCap}%</div>}
+                              <details className="coach-week-budget"><summary>Основание бюджета</summary><p className="mt-1 text-xs text-slate-300">База: {athlete.budget.referenceSets ?? '—'} подходов · {athlete.budget.referenceTonnage!=null?compactLoad(athlete.budget.referenceTonnage):'нет тоннажа'}. Факт недели: {compactLoad(athlete.totals?.actualTonnage)}; полноту проверяйте в занятиях.</p></details>{athlete.budget.rtp && <div className="mt-1 text-[8px] font-bold text-violet-300/60">RTP {athlete.budget.rtp.phase} · лимит {athlete.budget.rtp.volumeCap}%</div>}
                             </div>
                           </td>
                           {(athlete.days || []).map(day => {
@@ -5597,7 +5612,7 @@ export default function Home() {
                             const selected = weekBatchSelected.has(selectionKey);
                             return (
                               <td key={d} className={`border-l border-white/[0.025] px-2 py-3 ${isToday ? 'bg-cyan-300/[0.025]' : ''}`}>
-                                {day.hasSession ? <div className={`min-h-[94px] rounded-xl border p-2.5 transition ${selected ? 'border-cyan-300/35 bg-cyan-300/[0.08]' : dayConflicts.length || generalConflict ? 'border-amber-300/15 bg-amber-300/[0.025]' : 'border-white/[0.055] bg-white/[0.018]'}`}>
+                                {day.hasSession ? <div className={`min-h-[68px] rounded-xl border p-2.5 transition ${selected ? 'border-cyan-300/35 bg-cyan-300/[0.08]' : dayConflicts.length || generalConflict ? 'border-amber-300/15 bg-amber-300/[0.025]' : 'border-white/[0.055] bg-white/[0.018]'}`}>
                                   <div className="flex items-start justify-between gap-2">
                                     <button type="button" onClick={() => openOverviewPlayer(p,d)} className="min-w-0 flex-1 text-left">
                                       <div className="truncate text-[10px] font-black text-slate-300">{trainingTitle(day.label)}</div>
@@ -5606,14 +5621,14 @@ export default function Home() {
                                   </div>
                                   <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-600"><span>{day.plannedSets} подх.</span><span>·</span><span>План {compactLoad(day.plannedTonnage)}</span></div>
                                   {day.completed ? <div className="mt-2"><div className="flex items-center justify-between text-[8px]"><span className="font-bold text-emerald-200/60">Подходы завершены</span><span className="text-slate-500">{day.completionPercent}%</span></div><div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-emerald-300" style={{ width: `${Math.min(100, day.completionPercent)}%` }} /></div></div> : <div className={`mt-2 text-[8px] font-semibold ${day.started ? 'text-cyan-200/60' : 'text-slate-700'}`}>{day.started ? 'Выполняется сейчас' : 'Запланировано'}</div>}
-                                  <p className="mt-1 text-xs text-slate-300">Записано: {factAmount(day.actualTonnage,day.loadEvidence)}</p><OverviewSignals issues={day.date>todayISO() && day.loadEvidence?.source==='missing'?[]:loadEvidenceLabel(day.loadEvidence)?[loadEvidenceLabel(day.loadEvidence)]:[]}/>
+                                  <p className="mt-1 text-xs text-slate-300">Записано: {factAmount(day.actualTonnage,day.loadEvidence)}</p><details className="coach-week-evidence"><summary>Полнота факта</summary><OverviewSignals issues={day.date>todayISO() && day.loadEvidence?.source==='missing'?[]:loadEvidenceLabel(day.loadEvidence)?[loadEvidenceLabel(day.loadEvidence)]:[]}/></details>
                                   {(dayConflicts.length > 0 || generalConflict) && <div className="mt-2 flex items-center gap-1 text-[8px] font-bold text-amber-200/70"><AlertTriangle size={9} /> {dayConflicts[0]?.title || 'Проверьте бюджет недели'}</div>}
                                 </div> : (
                                 <button
                                   type="button"
                                   onClick={() => readyDraft?openBatchDraft(readyDraft):openOverviewPlayer(p,d)}
                                   title={`${p.name} · ${d} · ${readyDraft?'Открыть черновик':'Открыть игрока'}`}
-                                  className="flex min-h-[94px] w-full items-center justify-center rounded-xl border border-dashed border-white/[0.035] text-slate-800 transition hover:border-white/[0.08] hover:bg-white/[0.02] hover:text-slate-600"
+                                  className="flex min-h-[68px] w-full items-center justify-center rounded-xl border border-dashed border-white/[0.035] text-slate-800 transition hover:border-white/[0.08] hover:bg-white/[0.02] hover:text-slate-600"
                                 >
                                   {readyDraft?<span className="text-xs text-emerald-200">Черновик →</span>:<Plus size={13} />}
                                 </button>)}
@@ -5625,6 +5640,7 @@ export default function Home() {
                     </tbody>
                   </table>
                 </div>
+              {apiKey && <TeamFactOverview key={'week:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} fixedPeriod={weekFactPeriod(calWeekStart)} compact label="Факты недели · кг, повторы и RPE" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
                 {(calData.summary?.conflicts || 0) > 0 && (
                   <div className="mt-5 rounded-2xl border border-amber-300/10 bg-amber-300/[0.025] p-4">
                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100/70"><AlertTriangle size={13} /> Контрольные точки недели</div>
@@ -5766,15 +5782,16 @@ export default function Home() {
 
           {keyConnected && mainSection==='workouts' && workspaceTab==='program' && !playerId && batchSelectedIds.size===0 && <CoachHome workspace={workspace} players={players} date={date} onSelectPlayer={selectPlayer} onNavigate={setMainSection} calendar={<DatePicker navigate timeZone={activePlayerTimeZone} value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(playerToday,1)} size="sm" />} />}
           {keyConnected && mainSection==='workouts' && <TeamFactOverview key={workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
-          {keyConnected && ['today','workouts'].includes(mainSection) && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></div>}
+          {keyConnected && mainSection==='workouts' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}
 
           {/* ── Today · smart decision centre ── */}
           {mainSection==='library' && apiKey && <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10"><header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Общая библиотека обоих пространств</p><h2>Библиотека упражнений</h2><p>Просматривайте технику, сохраняя программу в редакторе.</p></div><button type="button" onClick={()=>setMainSection('workouts')}>Вернуться к программе ↗</button><a href="/library" target="_blank" rel="noopener noreferrer">Управление каталогом ↗</a></header><ExerciseLibraryPicker key={workspace} apiKey={apiKey}/></div>}
           {mainSection === 'today' && (
             <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Команда · {todayISO().split('-').reverse().join('.')}</p><h2>Сегодня</h2><p>Решения, программы и качество исходных данных — в одном обзоре.</p></div><button type="button" disabled={readinessLoading} onClick={()=>loadTodayOverview(false,true)}><RefreshCw size={15} className={readinessLoading?'animate-spin':''}/> Обновить данные</button></header>
-              {apiKey && <TeamFactOverview key={'today:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} initialOpen compact label="Заполнить факты · последние занятия команды" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
-              <TodayOverview key={workspace} center={todayCenter} readinessData={readinessData} loading={readinessLoading} error={todayError} updatedAt={todayUpdatedAt} onPlayer={openOverviewPlayer} onHistory={player=>openOverviewPlayer(player,todayISO(),'history')} onDraft={openBatchDraft} getDraft={overviewDraft} onVersions={openSessionVersions} onRtp={openReturnToPlay} onAdapt={applyTodayRecommendation} adaptationSaving={adaptationSaving} onNavigate={openOverviewSection}/>
+              <TodayOverview key={workspace} center={todayCenter} readinessData={todaySnapshot?.workspace===workspace?todaySnapshot.readiness:readinessData} loading={readinessLoading || teamStatusLoading} error={todayError || teamStatusError} updatedAt={todayUpdatedAt} onPlayer={openOverviewPlayer} onHistory={player=>openOverviewPlayer(player,todayISO(),'history')} onDraft={openBatchDraft} getDraft={overviewDraft} onVersions={openSessionVersions} onRtp={openReturnToPlay} onAdapt={applyTodayRecommendation} adaptationSaving={adaptationSaving} onNavigate={openOverviewSection}/>
+              {apiKey && <TeamFactOverview key={'today:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} compact label="Заполнить факты · последние занятия команды" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
+          {keyConnected && mainSection==='today' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}
 
               {rtpPlayer && <ReturnToPlayModal player={rtpPlayer} plan={rtpDraft} saving={rtpSaving} onChange={setRtpDraft} onSave={saveReturnToPlay} onClose={() => { setRtpPlayer(null); setRtpDraft(null); }} />}
               {adaptationDraft && createPortal(
@@ -5805,7 +5822,7 @@ export default function Home() {
                   <div className="mb-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300/70">
                     <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-300" /> Floor command centre
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight text-white">Тренировка команды LIVE</h2>
+                  <h2 className="text-2xl font-black tracking-tight text-white">{liveDebrief?'Разбор завершённых тренировок':'Тренировка команды LIVE'}</h2>
                   <p className="mt-1 text-[12px] text-slate-500">Сегодня · обновление каждые 8 секунд · последнее {compactTime(liveUpdatedAt)}</p>
                 </div>
                 <button type="button" onClick={() => loadTeamStatus(todayISO())} className="min-h-11 rounded-xl border border-white/[0.09] bg-white/[0.035] px-4 text-[12px] font-bold text-slate-300 transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50">
@@ -5822,13 +5839,13 @@ export default function Home() {
                 ].map(([label, value, color]) => (
                   <div key={label} className="rounded-2xl border border-white/[0.075] bg-white/[0.028] p-4 backdrop-blur-xl">
                     <div className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-600">{label}</div>
-                    <div className={`mt-2 text-3xl font-black ${color}`}>{Math.max(0, value)}</div>
+                    <div className={`mt-2 text-3xl font-black ${color}`}>{!liveUpdatedAt?'…':Math.max(0, value)}</div>
                   </div>
                 ))}
               </div>
 
-              <div className="coach-overview-filters"><button type="button" aria-pressed={liveAttentionOnly} onClick={()=>setLiveAttentionOnly(v=>!v)}>Требуют внимания</button><button type="button" onClick={()=>openOverviewSection('drafts')}>Подготовить программы →</button></div>{!liveSummary.planned && <p className="coach-overview-empty">На сегодня программы не назначены. Откройте командные черновики для подготовки.</p>}<details className="coach-overview-secondary"><summary>Без программы · {liveRows.filter(row=>!row.status.hasSession).length}</summary><div className="coach-overview-actions">{liveRows.filter(row=>!row.status.hasSession).map(({player})=><button type="button" key={player.id} onClick={()=>openOverviewPlayer(player,todayISO())}>{player.name} →</button>)}</div></details>
-              {stationRotation.length > 0 && (
+              <div className="coach-overview-filters"><button type="button" aria-pressed={!liveDebrief} onClick={()=>setLiveDebrief(false)}>Активные занятия</button><button type="button" aria-pressed={liveDebrief} onClick={()=>setLiveDebrief(true)}>Разбор завершённых · {liveSummary.completed}</button><button type="button" aria-pressed={liveAttentionOnly} onClick={()=>setLiveAttentionOnly(v=>!v)}>Требуют внимания</button><button type="button" onClick={()=>openOverviewSection('drafts')}>Подготовить программы →</button></div>{!liveDebrief && liveSummary.planned>0 && liveSummary.completed===liveSummary.planned && <p className="coach-overview-empty">Все назначенные занятия завершены. Откройте разбор завершённых.</p>}{!liveSummary.planned && <p className="coach-overview-empty">На сегодня программы не назначены. Откройте командные черновики для подготовки.</p>}<details className="coach-overview-secondary"><summary>Без программы · {liveRows.filter(row=>!row.status.hasSession).length}</summary><div className="coach-overview-actions">{liveRows.filter(row=>!row.status.hasSession).map(({player})=><button type="button" key={player.id} onClick={()=>openOverviewPlayer(player,todayISO())}>{player.name} →</button>)}</div></details>
+              {!liveDebrief && stationRotation.length > 0 && (
                 <div className="mb-6 rounded-3xl border border-cyan-300/10 bg-gradient-to-br from-cyan-300/[0.055] to-violet-300/[0.025] p-4 backdrop-blur-xl">
                   <div className="mb-3 flex items-center justify-between gap-3"><div><div className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-200/60">Автоматическая разводка</div><div className="mt-1 text-[14px] font-black text-white">Станции и ротация групп</div></div><span className="rounded-full border border-cyan-300/15 px-2.5 py-1 text-[9px] font-bold text-cyan-200">до 3 игроков</span></div>
                   <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
@@ -5841,7 +5858,7 @@ export default function Home() {
                 <div className="flex items-center justify-center py-24 text-sm text-slate-500"><Loader2 size={18} className="mr-2 animate-spin" /> Загружаю команду…</div>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {liveRows.filter(row=>row.status.hasSession && (!liveAttentionOnly || row.status.live?.alerts?.length || row.status.pendingCommands?.length)).map(({ player, status }) => {
+                  {liveRows.filter(row=>row.status.hasSession && (!!(row.status.live?.completed || row.status.live?.endedEarly)===liveDebrief) && (!liveAttentionOnly || row.status.live?.alerts?.length || row.status.pendingCommands?.length)).map(({ player, status }) => {
                     const live = status.live;
                     const tone = !status.hasSession ? 'border-white/[0.07]' : live?.completed ? 'border-emerald-300/20' : live?.started ? 'border-cyan-300/20' : 'border-amber-300/15';
                     return (
@@ -5874,9 +5891,9 @@ export default function Home() {
                           </>
                         )}
 
-                        {(live?.alerts || []).length > 0 && <div className="mt-3 space-y-1 rounded-xl border border-rose-300/15 bg-rose-300/[0.055] p-2.5">{live.alerts.map(alert => <div key={alert} className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-200"><AlertTriangle size={11} />{alert}</div>)}</div>}
+                        {liveDebrief && <p className="coach-fact-caption">Итоги занятия · оценки ниже сохранены для разбора.</p>}{(live?.alerts || []).length > 0 && <div className="mt-3 space-y-1 rounded-xl border border-rose-300/15 bg-rose-300/[0.055] p-2.5">{live.alerts.map(alert => <div key={alert} className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-200"><AlertTriangle size={11} />{alert}</div>)}</div>}
                         {(status.pendingCommands || []).length > 0 && <div className="mt-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.055] px-3 py-2 text-[10px] font-bold text-amber-200">Ожидает подтверждения: {status.pendingCommands[0].message}</div>}
-                        <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => setLiveCommandPlayer(player)} disabled={!status.hasSession} className="min-h-11 rounded-xl border border-amber-300/15 bg-amber-300/[0.055] text-[11px] font-bold text-amber-200 transition hover:bg-amber-300/[0.1] disabled:opacity-30">Команда LIVE</button><button type="button" onClick={() => { selectPlayer(player); setDate(todayISO()); setMainSection('workouts'); }} className="min-h-11 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[11px] font-bold text-slate-300 transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50">Программа</button></div>
+                        <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => liveDebrief?openOverviewPlayer(player,todayISO(),'history'):setLiveCommandPlayer(player)} disabled={!status.hasSession} className="min-h-11 rounded-xl border border-amber-300/15 bg-amber-300/[0.055] text-[11px] font-bold text-amber-200 transition hover:bg-amber-300/[0.1] disabled:opacity-30">{liveDebrief?'История и факты':'Команда LIVE'}</button><button type="button" onClick={() => { selectPlayer(player); setDate(todayISO()); setMainSection('workouts'); }} className="min-h-11 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[11px] font-bold text-slate-300 transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50">Программа</button></div>
                       </article>
                     );
                   })}
@@ -5957,7 +5974,7 @@ export default function Home() {
                 ))}
               </div>
 
-              {tonnageTab==='tonnage' && <><OverviewFreshness updatedAt={tonnageUpdatedAt} loading={tonnageLoading} error={tonnageData?.error} label="Нагрузка"/>{tonnageData && !tonnageData.error && !tonnageLoading && <TeamLoadOverview key={workspace} data={tonnageData} onPlayer={openOverviewPlayer} onDraft={openBatchDraft} getDraft={overviewDraft}/>}</>}
+              {tonnageTab==='tonnage' && <><OverviewFreshness updatedAt={tonnageUpdatedAt} loading={tonnageLoading} error={tonnageData?.error} label="Нагрузка"/>{tonnageData && !tonnageData.error && !tonnageLoading && <TeamLoadOverview key={workspace} data={tonnageData} filter={loadFilter} setFilter={setLoadFilter} onPlayer={openOverviewPlayer} onDraft={openBatchDraft} getDraft={overviewDraft}/>}</>}
 
               {/* ── Status today ── */}
               {tonnageTab === 'status' && (
@@ -6204,6 +6221,7 @@ export default function Home() {
           )}
 
           {/* ── История тренировок ── */}
+          {mainSection==='workouts' && overviewReturn?.workspace===workspace && <button type="button" className="coach-return-button" onClick={()=>{overviewScrollTargetRef.current={type:'restore',...overviewReturn,requestedAt:Date.now()};setMainSection(overviewReturn.section);setOverviewReturn(null);}}>← Вернуться: {({calendar:'Неделя',tonnage:'Нагрузка',today:'Сегодня',live:'LIVE'})[overviewReturn.section]}</button>}
           {workspaceTab==='history' && playerId && selectedPlayer && <PlayerHistory key={`${workspace}:${playerId}`} workspace={workspace} player={selectedPlayer} apiKey={apiKey} targetDate={date} focusTarget={historyFactTarget} onClearTarget={()=>setHistoryFactTarget(null)} factsRefresh={factsRefresh} onOpenProgram={openOverviewPlayer} cycleReview={<StrengthCycleReviewPanel workspace={workspace} playerId={playerId} apiKey={apiKey} date={date} refreshToken={factsRefresh} initialOpen title="Результаты решений по циклам"/>}/>}
 
           {workspaceTab === 'program' && <div id="coach-team-drafts">{teamQueue.previousQueue && <div className="coach-previous-queue"><p>Сохранена командная очередь за {teamQueue.previousQueue.date}. Открыта актуальная дата; очередь не изменена.</p><button type="button" disabled={loading || saving || batchRunning} onClick={()=>changeTrainingDate(teamQueue.previousQueue.date)}>Открыть прежнюю очередь ↗</button></div>}<TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onCheckPublication={teamQueue.checkPublication} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} /></div>}
@@ -6281,7 +6299,7 @@ export default function Home() {
 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.24em] text-accent/55">План тренировки</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.24em] text-accent/55">Настройки нового черновика</div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-slate-200">
                   <span>{date}</span>
                   <span className="text-slate-700">/</span>
@@ -6299,6 +6317,7 @@ export default function Home() {
               </div>
             </div>
 
+            {pendingSaved && <div className="coach-saved-separation"><strong>Сохранённая программа: {meta?.focusLabel || 'Тренировка'} · {pendingSaved.date}</strong><p>Настройки ниже относятся к новому черновику. Сохранённое задание показано отдельно под формой.</p>{executionConfirmed && <button type="button" onClick={()=>changeTrainingDate(addDaysToStr(date,1))}>Подготовить следующую тренировку →</button>}</div>}
             {workspace==='nkperf' && <PlayerTimeZoneControl key={playerId} playerId={playerId} timeZone={activePlayerTimeZone} apiKey={apiKey} disabled={saving||loading||!!batchId} onChange={changePlayerTimeZone} />}
             <div className="mb-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_1.15fr]">
               <div>
@@ -7092,7 +7111,7 @@ export default function Home() {
               )}
 
               {pendingSaved && <p className="coach-source-snapshot">Обоснование ниже — снимок при сохранении {new Date(pendingSaved.savedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Текущие данные ReadySix показаны в настройках выше; изменения после сохранения не переписывают исходный план.</p>}
-              {pendingSaved && decisionData?.source==='ReadySix' && <details className="coach-source-comparison"><summary>Сравнить текущий источник с обоснованием программы</summary><div><section><h3>При сохранении · {coachDate(pendingSaved.date)}</h3><p>{session.assessment || 'Обоснование не записано в этой версии.'}</p></section><section><h3>Текущий источник · {coachDate(decisionData.targetDate || date)}</h3><p>{decisionData.recommendation?.state?.detail || decisionData.decision?.detail || 'Подробности не переданы.'}</p></section></div><p>Тексты из разных моментов времени. Изменение формулировок само по себе не подтверждает изменение состояния или допуска; решение проверяется в ReadySix.</p></details>}
+              {pendingSaved && decisionData?.source==='ReadySix' && <details className="coach-source-comparison"><summary>Сравнить текущий источник с обоснованием программы</summary><SourceComparison previous={meta?.sourceState} current={decisionData.sourceState} savedAt={meta?.sourceCapturedAt} checkedAt={decisionData.checkedAt}/><div><section><h3>При сохранении · {coachDate(pendingSaved.date)}</h3><p>{session.assessment || 'Обоснование не записано в этой версии.'}</p></section><section><h3>Текущий источник · {coachDate(decisionData.targetDate || date)}</h3><p>{decisionData.recommendation?.state?.detail || decisionData.decision?.detail || 'Подробности не переданы.'}</p></section></div><p>Тексты из разных моментов времени. Изменение формулировок само по себе не подтверждает изменение состояния или допуска; решение проверяется в ReadySix.</p></details>}
               {/* Volume stats bar */}
               {volumeStats && volumeStats.sessions > 0 && (
                 <div className="mb-4 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-2.5 print:hidden">
@@ -7205,7 +7224,7 @@ export default function Home() {
                 </div>
               )}
 
-              {pendingSaved && <p className="coach-source-snapshot">Обоснование ниже — снимок при сохранении {new Date(pendingSaved.savedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Текущие данные ReadySix показаны в настройках выше; изменения после сохранения не переписывают исходный план.</p>}
+
               {/* Volume stats bar */}
               {sessionVolume && (
                 <div className="coach-program-dose-summary mb-6 flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 print:hidden">
@@ -7316,6 +7335,7 @@ export default function Home() {
                           targetSets={ex.targetSets || []}
                           weightNote={ex.weightNote || ''}
                           weightKg={ex.weightKg != null ? ex.weightKg : parseKgFromNote(ex.weightNote)}
+                          loadEvidence={ex.loadEvidence}
                           targetRpeMax={ex.targetRpeMax}
                           loadUnits={loadUnitsForExercise(ex)}
                           tempo={ex.tempo || ''}

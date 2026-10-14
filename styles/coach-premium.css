@@ -804,3 +804,23 @@
 .coach-premium .coach-source-comparison>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:14px 0;}
 @media(max-width:760px){.coach-premium .coach-source-comparison>div{grid-template-columns:minmax(0,1fr);}}
 .coach-premium .coach-exercise-plan-editor>summary{cursor:pointer;min-height:44px;color:#b7d9cb;font-size:13px;font-weight:600;padding:12px 0;}
+
+/* Second coach audit: primary work before auxiliary tools, compact factual views. */
+.coach-premium .coach-aux-panels{margin:16px 0;border:1px solid #afc6b52b;border-radius:16px;padding:12px 16px}
+.coach-premium .coach-aux-panels>summary,.coach-premium .coach-period-comparison>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:#cde3d5}
+.coach-premium .coach-saved-separation,.coach-premium .coach-source-structured,.coach-premium .coach-technique-review,.coach-premium .coach-period-comparison,.coach-premium .coach-warmup-conduct{padding:18px;margin:16px 0;border:1px solid #adc9b62b;border-radius:16px;color:#c5d7cc;background:#adc9b608;line-height:1.6}
+.coach-premium .coach-technique-review button,.coach-premium .coach-return-button,.coach-premium .coach-saved-separation button,.coach-premium .coach-warmup-conduct button{min-height:44px;border:1px solid #adc9b63b;border-radius:10px;padding:10px 14px;margin:5px;color:#cde3d5}
+.coach-premium .coach-technique-review button[aria-pressed=true],.coach-premium .coach-warmup-conduct button[aria-pressed=true]{background:#adc9b625}
+.coach-premium .coach-source-structured table,.coach-premium .coach-period-comparison table{width:100%;font-size:12px;text-align:left}
+.coach-premium .coach-source-structured th,.coach-premium .coach-source-structured td,.coach-premium .coach-period-comparison th,.coach-premium .coach-period-comparison td{padding:10px;border-bottom:1px solid #adc9b622;vertical-align:top}
+.coach-premium .coach-week-scroll{max-height:75vh;isolation:isolate}
+.coach-premium .coach-week-table{border-collapse:separate;border-spacing:0}
+.coach-premium .coach-week-table thead th{position:sticky;top:0;z-index:2;background:#17231e}
+.coach-premium .coach-week-table tr>:first-child{position:sticky;left:0;background:#17231e;z-index:1;min-width:170px;max-width:200px}
+.coach-premium .coach-week-table thead th:first-child{z-index:3}
+.coach-premium .coach-week-table tbody td{padding:8px}
+.coach-premium .coach-week-budget summary,.coach-premium .coach-week-evidence summary{cursor:pointer;font-size:11px;color:#b5c9bb}
+.coach-premium .coach-warmup-conduct article{font-size:clamp(18px,2.2vw,28px)}
+.coach-premium .coach-warmup-conduct li{padding:12px 0;border-bottom:1px solid #adc9b622}
+.coach-premium .coach-warmup-conduct li p{font-size:16px}
+@media(max-width:640px){.coach-premium .coach-week-table tr>:first-child{min-width:130px;max-width:145px}.coach-premium .coach-period-comparison{padding:12px;overflow-x:auto}}

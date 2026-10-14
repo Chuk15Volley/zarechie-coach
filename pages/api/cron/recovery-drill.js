@@ -12,11 +12,15 @@ export default async function handler(req, res) {
   if (!authorization.ok) return res.status(authorization.status).json({ error: authorization.error });
 
   const workspaces = ['zarechie', 'nkperf'];
-  const results = await Promise.allSettled(workspaces.map(async workspace => {
+  const results = [];
+  for (const workspace of workspaces) {
+   const [result] = await Promise.allSettled([(async () => {
     const drill = await runRecoveryDrill(workspace);
     await recordPlatformEvent({ workspace, area: 'recovery_drill', status: 'ok', durationMs: drill.durationMs, message: `Проверено восстановление ${drill.sampledKeyCount} ключей`, meta: { id: drill.id, backup: drill.sourceBackupId, types: drill.verifiedTypes.join(',') } });
     return drill;
-  }));
+   })()]);
+   results.push(result);
+  }
   const drills = results.map((result, index) => result.status === 'fulfilled'
     ? result.value
     : { workspace: workspaces[index], status: 'error' });

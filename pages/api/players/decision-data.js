@@ -1,3 +1,4 @@
+import {coachSourceState} from '../../../lib/coachSourceState.mjs';
 import { recommendGymSession } from '../../../lib/readySixGym.mjs';
 import { getRecentSessionRecords } from '../../../lib/sessionHistory';
 // GET ?playerId=&date=&workspace= → compact, read-only snapshot used before generation.
@@ -108,6 +109,7 @@ export default async function handler(req, res) {
     };
 
     return res.status(200).json({
+      sourceState:coachSourceState(snapshot,restrictions),checkedAt:new Date().toISOString(),
       targetDate,
       today,
       workspace,

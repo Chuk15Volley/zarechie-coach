@@ -19,7 +19,7 @@ export default async function handler(req,res) {
   facts.forEach((source,index)=>{const fact=playerHistoryFacts(source.record,source.rawActual,source.rawLog,source.supplement);if(!fact)return;const player=byId.get(entries[index].playerId);if(fact.completed)player.completed++;else player.awaiting++;
    if(!historyNeedsFacts({factReview:fact}))return;
    const tasks=factTasks(fact);player.missingFields+=tasks.reduce((sum,row)=>sum+row.fields.length,0);if(fact.status==='stale')player.stale++;
-   player.sessions.push({date:entries[index].date,canConfirm:fact.canConfirm,status:fact.status,missing:fact.missing,rows:tasks.map(({exercise,code,name,fields})=>({exercise,code,name,fields}))});
+   player.sessions.push({trainingType:source.record?.trainingType || null,date:entries[index].date,canConfirm:fact.canConfirm,status:fact.status,missing:fact.missing,rows:tasks.map(({exercise,code,name,fields})=>({exercise,code,name,fields}))});
   });
   for(const player of players)player.sessions.sort((a,b)=>b.date.localeCompare(a.date));
   return res.status(200).json({workspace,from,to,players,rosterSource:roster.source,rosterCache:roster.cache || null,updatedAt:new Date().toISOString()});

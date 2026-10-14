@@ -1,0 +1,4 @@
+import {sourceComparisonRows} from '../lib/coachAuditPresentation.mjs';
+export default function SourceComparison({previous,current,savedAt,checkedAt}){
+ return <section className="coach-source-structured"><p>Снимок источника при подготовке: {savedAt?new Date(savedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'дата неизвестна'} · текущий источник: {checkedAt?new Date(checkedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'дата не передана'} МСК</p><table><thead><tr><th>Раздел ReadySix</th><th>Сравнение снимков</th></tr></thead><tbody>{sourceComparisonRows(previous,current).map(row=><tr key={row.key}><th>{row.label}</th><td>{row.status}</td></tr>)}</tbody></table><p>Сравниваются контрольные суммы разделов. Для прежних программ без снимка изменения не восстанавливаются из текста. Детали и допуск проверяйте в ReadySix.</p></section>;
+}
