@@ -1,3 +1,5 @@
+import {useCorrectionHistory,useCorrectionView,correctionNumericEnter} from '../hooks/useCorrectionInteraction';
+import {correctionEqual,correctionViewKey} from '../lib/correctionInteraction.mjs';
 import ProgramWorkCopy from '../components/ProgramWorkCopy';
 import {plannedInputIssues,plannedRpePatch,workCopyKey} from '../lib/editorWorkflow.mjs';
 import TeamPreparation from '../components/TeamPreparation';
@@ -11,7 +13,7 @@ import SourceComparison from '../components/SourceComparison';
 import {coachDate,trainingTitle,activeServiceProblems,sessionFactAmount,factAmount,budgetLabel} from '../lib/coachPresentation.mjs';
 import TeamFactOverview from '../components/TeamFactOverview';
 import {weekFactPeriod} from '../lib/coachFactSurface.mjs';
-import {ExerciseLibraryPicker} from '../components/ExerciseLibraryExplorer';
+import {ExerciseLibraryPicker,preloadExerciseCatalogue} from '../components/ExerciseLibraryExplorer';
 import ProgramOverview from '../components/ProgramOverview';
 import StrengthPerformance from '../components/StrengthPerformance';
 import {cyclePerformanceSeries} from '../lib/strengthPerformance.mjs';
@@ -1168,6 +1170,7 @@ function ExerciseCard({
   preview=false,
   onChangeTargetRpeMax,
   onUndo,
+  viewScope,
   code,
   name,
   targetSets=[],
@@ -1219,6 +1222,7 @@ function ExerciseCard({
   onResetDescription,
   onRegenerate,
 }) {
+  const articleRef=useRef(null);
   const [regenerating, setRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState('');
   const [swapOpen, setSwapOpen] = useState(false);
@@ -1271,17 +1275,18 @@ function ExerciseCard({
   function doSwap(card) {
     if (onChangeName) onChangeName(card.title,card.description);
     setSwapOpen(false);
+    requestAnimationFrame(()=>{const loaded=/\b(?:DB|BB|KB|dumbbell|barbell|kettlebell|cable|landmine)\b|trap.?bar/i.test(card.title);const input=articleRef.current?.querySelector(loaded?'.coach-quick-load-row input':'input[aria-label$="целевой RPE упражнения"]');input?.focus();input?.select();});
   }
 
   return (
-    <article className={`premium-exercise-card coach-exercise-card coach-exercise-studio ${hasConflict ? 'coach-exercise-conflict' : ''}`} aria-label={`${code || ''} ${name}`}>
+    <article ref={articleRef} className={`premium-exercise-card coach-exercise-card coach-exercise-studio ${hasConflict ? 'coach-exercise-conflict' : ''}`} aria-label={`${code || ''} ${name}`}>
       <header className="coach-exercise-heading">
         <span className="coach-exercise-code">{code || '＋'}</span>
         <div className="coach-exercise-title"><span>Упражнение</span>{preview?<h3>{name}</h3>:<AutoResizeTextarea value={name} onChange={onChangeName} ariaLabel={`${code} · название упражнения`} className="coach-exercise-name"/>}</div>
         {!preview && <div className="coach-exercise-actions">{onUndo && <button type="button" onClick={onUndo} aria-label={`Отменить правку ${code}`}><RotateCcw size={15}/>Отменить</button>}<button type="button" onClick={openSwap} title="Найти и заменить упражнение"><ArrowLeftRight size={15}/><span>Заменить</span></button>{onRegenerate && <button type="button" onClick={handleRegenerate} disabled={regenerating} title="Подобрать замену автоматически">{regenerating?<Loader2 size={15} className="animate-spin"/>:<RefreshCw size={15}/>}<span>Автоподбор</span></button>}</div>}
       </header>
       {regenerateError && <p role="alert" className="coach-exercise-notice">{regenerateError}</p>}
-      {!preview && swapOpen && <div className="coach-exercise-swap-studio"><header><strong>Замена · {code}</strong><button type="button" onClick={()=>setSwapOpen(false)}>Закрыть подбор</button></header><ExerciseLibraryPicker quick key={name} apiKey={apiKey} currentName={name} restrictions={restrictions} currentSets={targetSets} currentTempo={tempo} onClose={()=>setSwapOpen(false)} onSelect={doSwap}/></div>}
+      {!preview && swapOpen && <div className="coach-exercise-swap-studio"><header><strong>Замена · {code}</strong><button type="button" onClick={()=>setSwapOpen(false)}>Закрыть подбор</button></header><ExerciseLibraryPicker quick key={name} viewScope={viewScope} apiKey={apiKey} currentName={name} restrictions={restrictions} currentSets={targetSets} currentTempo={tempo} onClose={()=>setSwapOpen(false)} onSelect={doSwap}/></div>}
       {hasConflict && <div className="coach-exercise-notice">⚠ Ограничение для этого упражнения.{!preview && <button type="button" onClick={handleSuggestAlt} disabled={altLoading}>{altLoading?'Подбор…':'Подобрать альтернативу'}</button>}{altSuggestion && <p>{altSuggestion}</p>}</div>}
       <div className="coach-exercise-body">
         <aside className="coach-exercise-technique">
@@ -2173,24 +2178,17 @@ export default function Home() {
   // Quick-add exercise to a block
   const [addExBlock, setAddExBlock] = useState(null); // null | blockIndex
   const [addExQuery, setAddExQuery] = useState('');
-  function addExerciseToBlock(bi, name) {
-    if (!name.trim()) return;
-    setSession(prev => {
-      if (!prev) return prev;
-      const blocks = (prev.blocks || []).map((b, i) => {
-        if (i !== bi) return b;
-        return {
-          ...b,
-          exercises: [
-            ...(b.exercises || []),
-            { name: name.trim(), code: '', targetSets: ['8', '8', '8'], weightNote: '', weightKg: null, loadUnits: 1, tempo: '', autoReg: '', cue: '' },
-          ],
-        };
-      });
-      return { ...prev, blocks };
+  function addExerciseToBlock(bi, card) {
+    const name=String(card?.title || '').trim();if(!name || executionConfirmed || saving)return;
+    let code;
+    editSession(prev=>{const block=prev.blocks[bi];if(!block)return prev;
+      const numbers=(block.exercises || []).map(ex=>Number(String(ex.code || '').match(/\d+$/)?.[0]) || 0);
+      code=String(block.label || bi+1)+(Math.max(0,...numbers)+1);
+      const ex={name,exerciseId:canonicalExerciseId(name),code,targetSets:['8','8','8'],weightNote:'',weightKg:null,loadUnits:1,tempo:'',autoReg:'',cue:card.description || '',descriptionExerciseId:canonicalExerciseId(name)};
+      return {...prev,blocks:prev.blocks.map((b,i)=>i===bi?{...b,exercises:[...(b.exercises || []),ex]}:b)};
     });
-    setAddExBlock(null);
-    setAddExQuery('');
+    setAddExBlock(null);setAddExQuery('');
+    requestAnimationFrame(()=>{const input=[...document.querySelectorAll('[aria-label]')].find(el=>el.getAttribute('aria-label')===`${code} · целевой RPE упражнения`);input?.focus();});
   }
 
   // Workspace: 'zarechie' | 'nkperf'
@@ -2202,7 +2200,7 @@ export default function Home() {
       else if(!(overviewScrollTargetRef.current?.type==='restore' && overviewScrollTargetRef.current.section===mainSection)){document.querySelector('.workspace-main')?.scrollTo({top:0});window.scrollTo({top:0});}
     });return()=>cancelAnimationFrame(frame);
   },[mainSection,workspace]);
-  useEffect(()=>setEditorActionsOpen(false),[workspace,playerId,date]);
+  useEffect(()=>{setEditorActionsOpen(false);setAddExBlock(null);},[workspace,playerId,date]);
   useEffect(()=>{const refresh=event=>{if(event.detail?.workspace!==workspace)return;setFactsRefresh(value=>value+1);setTrendsData(null);setProgressionMap({});};window.addEventListener('gym-strength-facts-updated',refresh);window.addEventListener('gym-strength-inventory-updated',refresh);return()=>{window.removeEventListener('gym-strength-facts-updated',refresh);window.removeEventListener('gym-strength-inventory-updated',refresh);};},[workspace]);
   useEffect(()=>{if(!apiKey || !playerId || !date){setPlayerExecution(null);return;}let cancelled=false,busy=false;const controller=new AbortController();setPlayerExecution(null);const read=async()=>{if(busy || document.hidden)return;busy=true;try{const result=await teamQueueCall(apiKey,'/api/players/execution?'+new URLSearchParams({workspace,playerId:String(playerId),date}),{signal:controller.signal,timeoutMs:15000});if(!cancelled)setPlayerExecution(result.execution);}catch{if(!cancelled)setPlayerExecution(null);}finally{busy=false;}};void read();const timer=setInterval(read,30000);window.addEventListener('focus',read);return()=>{cancelled=true;controller.abort();clearInterval(timer);window.removeEventListener('focus',read);};},[workspace,playerId,date,apiKey,factsRefresh]);
   const teamQueue=useTeamGenerationQueue({workspace,date,apiKey});
@@ -2225,6 +2223,29 @@ export default function Home() {
   useEffect(()=>{setExerciseUndo({});},[workspace,playerId,date]);
   const executionConfirmed=playerExecution?.completed && playerExecution.date===date && playerExecution.savedAt===pendingSaved?.savedAt && !pendingSaved?.draft;
   useEffect(()=>{if(executionConfirmed){setEditorPreview(true);setRescheduleOpen(false);}},[executionConfirmed]);
+  const programDirty=!!session && !!pendingSaved?.session && !correctionEqual(session,pendingSaved.session);
+  const correctionScope=JSON.stringify([workspace,String(playerId),meta?.date || date,pendingSaved?.savedAt || '',pendingSaved?.teamDraft?.version || '']);
+  const correctionHistory=useCorrectionHistory({scope:correctionScope,value:session,blocked:saving || executionConfirmed || teamDraftOpening,
+    onChange:next=>{setSession(next);setJustSaved(false);setAutoSaved(false);},onStep:()=>{setExerciseUndo({});setRemovedBlock(null);setAddExBlock(null);}});
+  const editSession=correctionHistory.edit;
+  const correctionViewScope=correctionViewKey({workspace,playerId,date});
+  const captureCorrectionView=useCorrectionView({viewKey:correctionViewScope,ready:teamModalOpen && !teamDraftOpening && !!session && meta?.date===date});
+  useEffect(()=>{if(session && apiKey && !executionConfirmed)void preloadExerciseCatalogue(apiKey).catch(()=>{});},[apiKey,!!session,executionConfirmed]);
+  const correctionCommands=useRef(null);
+  correctionCommands.current={save:()=>handleSave(),saveNext:()=>handleSave(true),undo:correctionHistory.undo,redo:correctionHistory.redo};
+  useEffect(()=>{
+    function key(event){
+      const modal=event.target.closest?.('dialog[open]'),inCorrection=!!event.target.closest?.('.coach-session-workspace') || !!modal?.classList.contains('team-program-dialog');
+      if(!inCorrection || !session || saving || executionConfirmed || teamDraftOpening)return;
+      const command=event.metaKey || event.ctrlKey,letter=event.key.toLowerCase();
+      if(command && !event.altKey && (letter==='s' || letter==='ы')){event.preventDefault();event.stopImmediatePropagation();const next=event.shiftKey;document.activeElement?.blur?.();requestAnimationFrame(()=>next?correctionCommands.current.saveNext():correctionCommands.current.save());return;}
+      const editing=/^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || event.target.isContentEditable;
+      if(command && !event.altKey && !editing && ['z','я','y','н'].includes(letter)){event.preventDefault();event.stopImmediatePropagation();(event.shiftKey || letter==='y' || letter==='н'?correctionCommands.current.redo:correctionCommands.current.undo)();return;}
+      correctionNumericEnter(event);
+    }
+    window.addEventListener('keydown',key,true);return()=>window.removeEventListener('keydown',key,true);
+  },[session,saving,executionConfirmed,teamDraftOpening]);
+
   const openingDayRef=useRef(calendarToday());
   useEffect(()=>{const wake=()=>{if(document.hidden)return;const today=calendarToday();if(today===openingDayRef.current)return;openingDayRef.current=today;const view=currentSaveViewRef.current;if(!view?.playerId && !view?.session)setDate(today);};window.addEventListener('pageshow',wake);document.addEventListener('visibilitychange',wake);return()=>{window.removeEventListener('pageshow',wake);document.removeEventListener('visibilitychange',wake);};},[]);
   const matchDayManualReview = isManualMatchDayFocus(focus);
@@ -2864,6 +2885,7 @@ export default function Home() {
   useEffect(() => {
     function onKey(e) {
       const t = e.target;
+      if(document.querySelector('.team-program-dialog[open]'))return;
       if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable) return;
       if (e.altKey && e.key === 'ArrowLeft') {
         if (prevPlayer) { e.preventDefault(); selectPlayer(prevPlayer); }
@@ -3561,13 +3583,14 @@ export default function Home() {
   }
 
   function rememberTeamDraft(){
+    captureCorrectionView();
     const context=activeTeamDraftRef.current;
     if(context && session && meta?.teamDraft)teamDraftEdits.current.set(teamDraftIdentity(context),{session,meta,pendingSaved,workspace,batchId:context.batchId,dirty:JSON.stringify(session)!==JSON.stringify(pendingSaved?.session)});
   }
   async function openBatchDraft(result) {
     const player=players.find(player=>String(player.id)===String(result.playerId));
     if(!player || result.workspace!==workspace)return;
-    selectPlayer(player);setDate(result.date || date);setMainSection('team');setWorkspaceTab('program');setEditorPreview(false);setTeamModalOpen(true);
+    captureCorrectionView();selectPlayer(player);setDate(result.date || date);setMainSection('team');setWorkspaceTab('program');setEditorPreview(false);setTeamModalOpen(true);
     const context={...result,date:result.date || date},requestId=draftOpenRequest.current,controller=new AbortController();
     activeTeamDraftRef.current=context;draftOpenController.current=controller;setTeamDraftOpening(true);setError('');
     try{
@@ -3578,7 +3601,7 @@ export default function Home() {
       setPendingSaved(data.record);loadSavedRecord(data.record);
       if(cached && cached.meta.teamDraft?.version===data.record.teamDraft?.version){setSession(cached.session);setMeta(cached.meta);}
       setEditorPreview(!!result.saved);setCollapsedBlocks(new Set());
-      requestAnimationFrame(()=>document.querySelector('.team-program-dialog-body')?.scrollTo({top:0}));
+      // useCorrectionView restores this player's position after the draft is mounted.
     }catch(error){if(requestId===draftOpenRequest.current && !controller.signal.aborted)setError(error.message);}
     finally{if(requestId===draftOpenRequest.current)setTeamDraftOpening(false);}
   }
@@ -4093,21 +4116,22 @@ export default function Home() {
     }
   }
 
-  function updateExercise(blockIdx, exIdx, patch) {
+  function updateExercise(blockIdx, exIdx, patch, historyKey) {
     if(executionConfirmed || saving)return;
     const before=session?.blocks?.[blockIdx]?.exercises?.[exIdx];if(!before)return;
+    const patched={...replaceExerciseDescription(before,patch),...(patch.name && patch.cue?{cue:patch.cue}:{})};if(correctionEqual(before,patched))return;
     setExerciseUndo(previous=>({...previous,[`${blockIdx}:${exIdx}`]:[...(previous[`${blockIdx}:${exIdx}`] || []).slice(-19),before]}));
     setJustSaved(false);setAutoSaved(false);
-    setSession(prev=>({...prev,blocks:prev.blocks.map((b,bi)=>bi!==blockIdx?b:{...b,exercises:b.exercises.map((ex,ei)=>ei!==exIdx?ex:{...replaceExerciseDescription(ex,patch),...(patch.name && patch.cue?{cue:patch.cue}:{})})})}));
+    editSession(prev=>({...prev,blocks:prev.blocks.map((b,bi)=>bi!==blockIdx?b:{...b,exercises:b.exercises.map((ex,ei)=>ei!==exIdx?ex:patched)})}),historyKey ?? (patch.name!==undefined || patch.targetSets && patch.targetSets.length!==before.targetSets?.length?null:`${blockIdx}:${exIdx}:${Object.keys(patch).join(',')}`));
   }
   function undoExercise(bi,ei){
     const key=`${bi}:${ei}`,stack=exerciseUndo[key];if(!stack?.length || saving || executionConfirmed)return;
-    setSession(prev=>({...prev,blocks:prev.blocks.map((b,index)=>index!==bi?b:{...b,exercises:b.exercises.map((ex,index)=>index!==ei?ex:stack.at(-1))})}));
+    editSession(prev=>({...prev,blocks:prev.blocks.map((b,index)=>index!==bi?b:{...b,exercises:b.exercises.map((ex,index)=>index!==ei?ex:stack.at(-1))})}));
     setExerciseUndo(previous=>({...previous,[key]:stack.slice(0,-1)}));setJustSaved(false);setAutoSaved(false);
   }
 
   function applyProgressionRecommendations() {
-    setSession(previous => ({
+    editSession(previous => ({
       ...previous,
       blocks: (previous.blocks || []).map(block => ({
         ...block,
@@ -4135,7 +4159,7 @@ export default function Home() {
   }
 
   function removeBlock(blockIdx) {
-    if (saving || !session?.blocks?.[blockIdx]) return;
+    if (saving || executionConfirmed || !session?.blocks?.[blockIdx]) return;
     const before = session;
     const block = before.blocks[blockIdx];
     const blocks = before.blocks.filter((_, index) => index !== blockIdx);
@@ -4151,7 +4175,7 @@ export default function Home() {
       } };
     }
     setRemovedBlock({ before, after, label: block.label || blockIdx + 1 });
-    setSession(after);
+    editSession(after);
     setAddExBlock(null);
     setJustSaved(false);
     setAutoSaved(false);
@@ -4159,7 +4183,7 @@ export default function Home() {
 
   function undoRemoveBlock() {
     if (!removedBlock || saving) return;
-    setSession(removedBlock.before);
+    editSession(removedBlock.before);
     setRemovedBlock(null);
     setJustSaved(false);
     setAutoSaved(false);
@@ -4190,8 +4214,8 @@ export default function Home() {
     }
   }
 
-  function updateSet(bi,ei,si,value){const ex=session.blocks[bi].exercises[ei];updateExercise(bi,ei,{targetSets:ex.targetSets.map((s,i)=>i===si?value:s)});}
-  function addSetRow(bi,ei){const sets=session.blocks[bi].exercises[ei].targetSets || [];updateExercise(bi,ei,{targetSets:[...sets,sets.at(-1) || '']});}
+  function updateSet(bi,ei,si,value){const ex=session.blocks[bi].exercises[ei];updateExercise(bi,ei,{targetSets:ex.targetSets.map((s,i)=>i===si?value:s)},`${bi}:${ei}:set:${si}`);}
+  function addSetRow(bi,ei){const sets=session.blocks[bi].exercises[ei].targetSets || [];if(sets.length<20)updateExercise(bi,ei,{targetSets:[...sets,sets.at(-1) || '']});}
   function removeSetRow(bi,ei,si){const sets=session.blocks[bi].exercises[ei].targetSets || [];if(sets.length>1)updateExercise(bi,ei,{targetSets:sets.filter((_,i)=>i!==si)});}
 
   function saveScheduleToServer(events) {
@@ -4402,6 +4426,8 @@ export default function Home() {
                     )}
                   </div>
                   </div>
+                  <button type="button" aria-label="Отменить последнюю правку" title="⌘Z / Ctrl+Z вне поля" disabled={!correctionHistory.canUndo || saving || executionConfirmed} onClick={correctionHistory.undo} className="rounded-lg border border-white/10 px-2 py-2 disabled:opacity-40">↶</button>
+                  <button type="button" aria-label="Повторить последнюю правку" title="⌘⇧Z / Ctrl+Y вне поля" disabled={!correctionHistory.canRedo || saving || executionConfirmed} onClick={correctionHistory.redo} className="rounded-lg border border-white/10 px-2 py-2 disabled:opacity-40">↷</button>
                   {/* Primary save */}
                   <button
                     type="button"
@@ -4436,7 +4462,7 @@ export default function Home() {
                 requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
               }}/>
 
-              {!editorPreview && !executionConfirmed && pendingSaved?.session && meta.date===date && <ProgramWorkCopy key={workCopyKey({workspace,playerId,date,queueId:meta.teamDraft?.queueId,batchId:activeTeamDraftRef.current?.batchId})} context={{workspace,playerId,date,queueId:meta.teamDraft?.queueId,batchId:activeTeamDraftRef.current?.batchId}} record={pendingSaved} session={session} onRestore={setSession}/>}
+              {!editorPreview && !executionConfirmed && pendingSaved?.session && meta.date===date && <ProgramWorkCopy key={workCopyKey({workspace,playerId,date,queueId:meta.teamDraft?.queueId,batchId:activeTeamDraftRef.current?.batchId})} context={{workspace,playerId,date,queueId:meta.teamDraft?.queueId,batchId:activeTeamDraftRef.current?.batchId}} record={pendingSaved} session={session} onRestore={editSession}/>}
               {!editorPreview && !executionConfirmed && plannedIssues.length>0 && <div className="coach-editor-validation" role="status"><button type="button" className="coach-field-warning" onClick={()=>focusPlannedIssue(plannedIssues[0])}>Проверить поля · {plannedIssues.length}</button></div>}
               {rescheduleOpen && pendingSaved && (
                 <div className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 print:hidden">
@@ -4730,6 +4756,7 @@ export default function Home() {
                         <ExerciseCard
                           key={ex.code || ei}
                           apiKey={apiKey}
+                          viewScope={correctionViewScope+`:${bi}:${ei}`}
                           preview={editorPreview || !!executionConfirmed}
                           code={ex.code}
                           name={prehabEnglishName(ex.name)}
@@ -4835,34 +4862,7 @@ export default function Home() {
                     {/* Quick-add exercise */}
                     {!editorPreview && !collapsedBlocks.has(block.label) && (
                       addExBlock === bi ? (
-                        <div className="mt-3 flex items-center gap-2 print:hidden">
-                          <input
-                            type="text"
-                            autoFocus
-                            value={addExQuery}
-                            onChange={e => setAddExQuery(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') { e.preventDefault(); addExerciseToBlock(bi, addExQuery); }
-                              if (e.key === 'Escape') { setAddExBlock(null); setAddExQuery(''); }
-                            }}
-                            placeholder="Название упражнения..."
-                            className="flex-1 rounded-xl border border-accent/30 bg-white/[0.04] px-3 py-2 text-[13px] text-slate-200 outline-none placeholder:text-slate-700 focus:border-accent/50"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => addExerciseToBlock(bi, addExQuery)}
-                            className="shrink-0 rounded-xl bg-accent/10 px-3 py-2 text-[12px] font-bold text-accent transition hover:bg-accent/20"
-                          >
-                            Добавить
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setAddExBlock(null); setAddExQuery(''); }}
-                            className="shrink-0 rounded-xl p-2 text-slate-600 transition hover:text-slate-400"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
+                        <div className="coach-exercise-swap-studio mt-3 print:hidden"><header><strong>Добавить в блок {block.label}</strong><button type="button" onClick={()=>setAddExBlock(null)}>Закрыть подбор</button></header><ExerciseLibraryPicker quick adding apiKey={apiKey} restrictions={restrictions} viewScope={correctionViewScope+`:add:${bi}`} onClose={()=>setAddExBlock(null)} onSelect={card=>addExerciseToBlock(bi,card)}/></div>
                       ) : (
                         <button
                           type="button"
@@ -6465,7 +6465,7 @@ export default function Home() {
           )}
 
           {keyConnected && mainSection==='team' && <TeamPreparation key={workspace+date} workspace={workspace} date={date} players={players} statuses={teamStatus} initialRequest={{period:'inseason',focus:'inseason_strength',trainingType:'full_body',strengthMode:'maintenance',powerMode:'development',dayGoal:'',notes:'',days:7,coachRecovery:'green'}} periods={PERIODS} phasesFor={value=>phasesForWorkspace(value,workspace).map(phase=>({...phase,label:phaseLabelForWorkspace(phase,workspace)}))} defaultTypeFor={defaultTrainingTypeForFocus} typesFor={value=>value==='inseason_strength'?STRENGTH_TRAINING_TYPES:TRAINING_TYPES} busy={teamQueue.recovering} running={batchRunning} queue={teamQueue.queue} queuePanel={teamQueuePanel} previousQueue={teamQueue.previousQueue} onPrevious={()=>changeTrainingDate(teamQueue.previousQueue.date)} onGenerate={executeTeamGeneration} calendar={<DatePicker navigate quickDays timeZone="Europe/Moscow" value={date} onChange={changeTrainingDate} disabled={saving || teamDraftOpening || !!batchId} maxDate={addDaysToStr(todayISO(),1)} size="sm"/>}/>}
-          {teamModalOpen && <TeamProgramDialog open name={selectedPlayer?.name || 'Программа игрока'} date={date} opening={teamDraftOpening} saving={saving || teamQueue.recovering} error={error || teamQueue.error} saved={!!batchResults.find(row=>String(row.playerId)===String(playerId))?.saved} onClose={closeTeamProgram} onSave={()=>handleSave()} onSaveNext={()=>handleSave(true)} validationBlocked={plannedIssues.length>0} saveBlocked={executionConfirmed || session?.kind==='restricted_day_plan'} draftSaved={justSaved && !!pendingSaved?.draft} onSaveDraft={meta?.teamDraft && pendingSaved?.draft?saveTeamCorrection:null} onPrevious={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>0?()=>openBatchDraft(list[index-1]):null;})()} onNext={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>=0 && index<list.length-1?()=>openBatchDraft(list[index+1]):null;})()}>{savedProgram}</TeamProgramDialog>}
+          {teamModalOpen && <TeamProgramDialog open name={selectedPlayer?.name || 'Программа игрока'} date={date} opening={teamDraftOpening} saving={saving || teamQueue.recovering} error={error || teamQueue.error} saved={!!batchResults.find(row=>String(row.playerId)===String(playerId))?.saved || !!pendingSaved && !pendingSaved.draft} dirty={programDirty} onUndo={correctionHistory.undo} onRedo={correctionHistory.redo} canUndo={correctionHistory.canUndo} canRedo={correctionHistory.canRedo} onClose={closeTeamProgram} onSave={()=>handleSave()} onSaveNext={()=>handleSave(true)} validationBlocked={plannedIssues.length>0} saveBlocked={executionConfirmed || session?.kind==='restricted_day_plan'} draftSaved={!!pendingSaved?.draft && !programDirty} onSaveDraft={meta?.teamDraft && pendingSaved?.draft?saveTeamCorrection:null} onPrevious={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>0?()=>openBatchDraft(list[index-1]):null;})()} onNext={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>=0 && index<list.length-1?()=>openBatchDraft(list[index+1]):null;})()}>{savedProgram}</TeamProgramDialog>}
           {keyConnected && mainSection==='workouts' && workspaceTab==='program' && !playerId && batchSelectedIds.size===0 && <CoachHome workspace={workspace} players={players} date={date} onSelectPlayer={selectPlayer} onNavigate={setMainSection} calendar={<DatePicker navigate timeZone={activePlayerTimeZone} value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(playerToday,1)} size="sm" />} />}
           {keyConnected && mainSection==='workouts' && <TeamFactOverview key={workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
           {keyConnected && mainSection==='workouts' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}
