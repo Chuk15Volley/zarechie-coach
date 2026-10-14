@@ -20,3 +20,11 @@ test('warmup result never crosses space/date even when a late response has a pla
  assert.equal(scopedWarmup(record,'zarechie','2026-10-13'),record.plan);
  assert.equal(scopedWarmup(null,'zarechie','2026-10-13'),null);
 });
+test('ReadySix yellow insufficient data is a data task without hiding actual clinical restrictions',()=>{
+ const source={code:'readysix_insufficient_data',dataInsufficient:true,hardStop:false,targets:[{healthRecommendation:'full',healthCapPercent:100,restrictions:[],hardStopSignal:false,scheduleCapPercent:0}]};
+ const item={readiness:{status:'yellow',readySixState:source}};
+ assert.equal(coachNeedsDecision(item),false);
+ assert.equal(coachNeedsDecision({...item,readiness:{...item.readiness,status:'red'}}),true);
+ for(const extra of [{hardStop:true},{detail:'Боль колено 3/10'},{targets:[{hardStopSignal:true}]},{targets:[{restrictions:['No loaded knee flexion']}]},{targets:[{healthRecommendation:'modified'}]},{targets:[{healthRecommendation:'limited'}]},{targets:[{healthRecommendation:'individual_plan'}]},{targets:[{healthRecommendation:'load_stop'}]},{targets:[{healthCapPercent:50}]}])assert.equal(coachNeedsDecision({readiness:{...item.readiness,readySixState:{...source,...extra}}}),true);
+ assert.equal(coachNeedsDecision({...item,status:{activeInjuries:[{}]}}),true);
+});
