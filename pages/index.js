@@ -1,3 +1,6 @@
+import TeamPreparation from '../components/TeamPreparation';
+import TeamProgramDialog from '../components/TeamProgramDialog';
+import {sameDraftView,teamDraftIdentity} from '../lib/teamPreparation.mjs';
 import OperationalIncidents from '../components/OperationalIncidents';
 import {overviewRestoreReady} from '../lib/coachAuditPresentation.mjs';
 import WeightProvenance from '../components/WeightProvenance';
@@ -1265,7 +1268,7 @@ function ExerciseCard({
       {hasConflict && <div className="coach-exercise-notice">⚠ Ограничение для этого упражнения.{!preview && <button type="button" onClick={handleSuggestAlt} disabled={altLoading}>{altLoading?'Подбор…':'Подобрать альтернативу'}</button>}{altSuggestion && <p>{altSuggestion}</p>}</div>}
       <div className="coach-exercise-body">
         <aside className="coach-exercise-technique">
-          <details className="coach-technique-disclosure"><summary>Видео техники</summary><ExerciseVideoPanel name={name} apiKey={apiKey} editable={!preview}/></details>
+          <section className="coach-technique-disclosure is-always-open" aria-label="Видео техники"><ExerciseVideoPanel name={name} apiKey={apiKey} editable={!preview}/></section>
           <div className="coach-exercise-instruction"><div className="coach-section-caption"><span>02</span> Выполнение {hasDescriptionOverride && !preview && <button type="button" onClick={onResetDescription} title="Вернуть автоматически сформированное описание"><RotateCcw size={12}/>Исходное</button>}</div>
             {preview?<p>{displayedDescription || 'Описание пока не добавлено.'}</p>:<AutoResizeTextarea value={displayedDescription} onChange={onChangeDescription} ariaLabel={`${code} · описание выполнения`} minRows={3} placeholder="Опишите технику выполнения…" className="coach-description-input"/>}
             {!preview && <small>Правки увидит игрок после сохранения программы.</small>}
@@ -1901,9 +1904,11 @@ export default function Home() {
   const [date, setDate] = useState(todayISO());
   useEffect(()=>{setDate(calendarToday());},[]);
   const dateDrafts = useRef(new Map());
-  const draftOpenRequest = useRef(0);
+  const draftOpenRequest = useRef(0),activeTeamDraftRef=useRef(null),draftOpenController=useRef(null),teamDraftEdits=useRef(new Map());
+  const [teamDraftOpening,setTeamDraftOpening]=useState(false),[teamModalOpen,setTeamModalOpen]=useState(false),[savedTeamBatches,setSavedTeamBatches]=useState(new Set()),[teamPendingEdits,setTeamPendingEdits]=useState(0);
   function changeTrainingDate(nextDate) {
-    if (nextDate === date || loading || batchId || saving || batchRunning || weekPlanLoading) return;
+    if (nextDate === date || loading || batchId || saving || (batchRunning && mainSection!=='team') || weekPlanLoading) return;
+    rememberTeamDraft();activeTeamDraftRef.current=null;draftOpenController.current?.abort();
     draftOpenRequest.current++;
     const key = value => `${workspace}:${playerId}:${value}`;
     dateDrafts.current.set(key(date), { session, meta, justSaved, autoSaved, dayGoal, notes, sessionType, period, focus, trainingType, powerMode, strengthMode });
@@ -2191,7 +2196,8 @@ export default function Home() {
   useEffect(()=>{const refresh=event=>{if(event.detail?.workspace!==workspace)return;setFactsRefresh(value=>value+1);setTrendsData(null);setProgressionMap({});};window.addEventListener('gym-strength-facts-updated',refresh);window.addEventListener('gym-strength-inventory-updated',refresh);return()=>{window.removeEventListener('gym-strength-facts-updated',refresh);window.removeEventListener('gym-strength-inventory-updated',refresh);};},[workspace]);
   useEffect(()=>{if(!apiKey || !playerId || !date){setPlayerExecution(null);return;}let cancelled=false,busy=false;const controller=new AbortController();setPlayerExecution(null);const read=async()=>{if(busy || document.hidden)return;busy=true;try{const result=await teamQueueCall(apiKey,'/api/players/execution?'+new URLSearchParams({workspace,playerId:String(playerId),date}),{signal:controller.signal,timeoutMs:15000});if(!cancelled)setPlayerExecution(result.execution);}catch{if(!cancelled)setPlayerExecution(null);}finally{busy=false;}};void read();const timer=setInterval(read,30000);window.addEventListener('focus',read);return()=>{cancelled=true;controller.abort();clearInterval(timer);window.removeEventListener('focus',read);};},[workspace,playerId,date,apiKey,factsRefresh]);
   const teamQueue=useTeamGenerationQueue({workspace,date,apiKey});
-  const batchResults=teamQueue.results,batchRunning=teamQueue.running;
+  const batchResults=teamQueue.results.map(row=>savedTeamBatches.has(row.batchId)?{...row,saved:true,draft:false}:row),batchRunning=teamQueue.running;
+  useEffect(()=>{const context=activeTeamDraftRef.current;if(context && meta?.teamDraft && session && pendingSaved?.session)teamDraftEdits.current.set(teamDraftIdentity(context),{session,meta,pendingSaved,workspace,batchId:context.batchId,dirty:JSON.stringify(session)!==JSON.stringify(pendingSaved.session)});if(context && session && pendingSaved?.session && JSON.stringify(session)!==JSON.stringify(pendingSaved.session))setJustSaved(false);setTeamPendingEdits([...teamDraftEdits.current.values()].filter(edit=>edit.workspace===workspace && edit.meta?.teamDraft?.queueId===teamQueue.queue?.id && edit.dirty && !savedTeamBatches.has(edit.batchId)).length);},[session,meta,pendingSaved,workspace,savedTeamBatches,teamQueue.queue?.id]);
   const [playerClockNow,setPlayerClockNow] = useState(null);
   useEffect(()=>{const tick=()=>setPlayerClockNow(new Date());tick();const timer=setInterval(tick,30000);return()=>clearInterval(timer);},[]);
   const activePlayerTimeZone = workspace==='nkperf'?playerTimeZone(selectedPlayer?.timeZone):'Europe/Moscow';
@@ -2305,6 +2311,7 @@ export default function Home() {
   }, [apiKey, workspace]);
 
   function switchWorkspace(ws) {
+    rememberTeamDraft();setTeamModalOpen(false);activeTeamDraftRef.current=null;draftOpenController.current?.abort();draftOpenRequest.current++;setTeamDraftOpening(false);
     setHistoryFactTarget(null);setSelectedPlayer(null);setDate(calendarToday());
     setWorkspaceTab('program');
     overviewWorkspaceRef.current=ws;todayControllerRef.current?.abort();calendarRequestRef.current++;
@@ -2424,12 +2431,13 @@ export default function Home() {
       .then(r => r.json())
       .then(data => {
         if (!cancelled) {
+          if(sameDraftView(activeTeamDraftRef.current,workspace,playerId,date))return;
           setPendingSaved(data.record || null);
           if (data.record && !dateDrafts.current.get(`${workspace}:${playerId}:${date}`)?.session) loadSavedRecord(data.record);
         }
       })
       .catch(() => {
-        if (!cancelled) setPendingSaved(null);
+        if (!cancelled && !sameDraftView(activeTeamDraftRef.current,workspace,playerId,date)) setPendingSaved(null);
       });
     return () => {
       cancelled = true;
@@ -2948,7 +2956,9 @@ export default function Home() {
   }
 
   function selectPlayer(p) {
+    rememberTeamDraft();activeTeamDraftRef.current=null;draftOpenController.current?.abort();setTeamDraftOpening(false);
     setHistoryFactTarget(null);
+    setEditorPreview(false);
     draftOpenRequest.current++;
     if(workspace==='nkperf' && date===playerToday)setDate(playerLocalDate(playerTimeZone(p.timeZone)));
     setSelectedPlayer(p);
@@ -3025,7 +3035,7 @@ export default function Home() {
   function openHistoryFacts(player,target){openOverviewPlayer(player,target.date,'history');setHistoryFactTarget({...target,token:crypto.randomUUID()});}
   function overviewDraft(playerId,targetDate=todayISO()) {return draftForPlayer(batchResults,playerId,workspace,targetDate);}
   function openOverviewSection(section){
-    if(section==='drafts'){overviewScrollTargetRef.current='drafts';setPlayerId('');setSelectedPlayer(null);setSession(null);setMeta(null);setDate(teamQueue.queue?.date || todayISO());setWorkspaceTab('program');setMainSection('workouts');setMobileView('workspace');setSidebarOpen(false);}
+    if(section==='drafts'){setMainSection('team');setMobileView('workspace');setSidebarOpen(false);}
     else setMainSection(section);
   }
   async function loadTodayOverview(quiet=false,refresh=false){
@@ -3464,12 +3474,12 @@ export default function Home() {
 
   // Auto-load team status when switching to 'day' tab
   useEffect(() => {
-    if (leftTab === 'day' && players.length > 0 && apiKey) {
+    if ((leftTab === 'day' || mainSection==='team') && players.length > 0 && apiKey) {
       loadTeamStatus();
       loadMatchLoads();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leftTab, date, workspace, players.length]);
+  }, [leftTab, mainSection, date, workspace, players.length]);
 
   async function loadWarmupHistory() {
     if (!apiKey) return;
@@ -3528,8 +3538,9 @@ export default function Home() {
     }
   }
 
-  async function executeTeamGeneration(selected) {
-    await teamQueue.start(selected,{date,dayGoal,days,focus,trainingType,powerMode,strengthMode,notes,coachRecovery:recoveryStatus,workspace,manualMethodSelection: true,autoSave:false});
+  async function executeTeamGeneration(selected,request={date,dayGoal,days,focus,trainingType,powerMode,strengthMode,notes,coachRecovery:recoveryStatus}) {
+    if(isManualMatchDayFocus(request.focus))return {error:'Игровой праймер требует индивидуального подбора. Откройте игрока в зале.'};
+    return teamQueue.start(selected,{...request,workspace,manualMethodSelection: true,autoSave:false});
   }
   async function retryFailedBatch(){await teamQueue.retry();}
   async function runBatchGeneration() {
@@ -3537,22 +3548,36 @@ export default function Home() {
     await executeTeamGeneration(players.filter(player=>batchSelectedIds.has(player.id)));
   }
 
+  function rememberTeamDraft(){
+    const context=activeTeamDraftRef.current;
+    if(context && session && meta?.teamDraft)teamDraftEdits.current.set(teamDraftIdentity(context),{session,meta,pendingSaved,workspace,batchId:context.batchId,dirty:JSON.stringify(session)!==JSON.stringify(pendingSaved?.session)});
+  }
   async function openBatchDraft(result) {
-    const player = players.find(player => String(player.id) === String(result.playerId));
-    if (player) selectPlayer(player);
-    setMainSection('workouts'); setWorkspaceTab('program');
-    const requestId = draftOpenRequest.current;
-    setError('');
-    try {
-      const programUrl=result.teamQueueId?`/api/programs/team-queue?workspace=${encodeURIComponent(result.workspace)}&queueId=${encodeURIComponent(result.teamQueueId)}&playerId=${encodeURIComponent(result.playerId)}`:`/api/programs/get?playerId=${encodeURIComponent(result.playerId)}&date=${encodeURIComponent(result.date || date)}&workspace=${encodeURIComponent(result.workspace || workspace)}`;
-      const response = await fetch(programUrl, { headers: { 'x-api-key': apiKey } });
-      const data = await response.json();
-      if (requestId !== draftOpenRequest.current) return;
-      if (!response.ok) throw new Error(data.error || 'Не удалось открыть программу');
-      if (data.record) { setPendingSaved(data.record); loadSavedRecord(data.record); }
-      else if (result.batchId) await pollBatchResult(result.batchId, getFocusLabel(period,focus));
-      else throw new Error('Программа для выбранной даты не найдена');
-    } catch (error) { setError(error.message); }
+    const player=players.find(player=>String(player.id)===String(result.playerId));
+    if(!player || result.workspace!==workspace)return;
+    selectPlayer(player);setDate(result.date || date);setMainSection('team');setWorkspaceTab('program');setEditorPreview(false);setTeamModalOpen(true);
+    const context={...result,date:result.date || date},requestId=draftOpenRequest.current,controller=new AbortController();
+    activeTeamDraftRef.current=context;draftOpenController.current=controller;setTeamDraftOpening(true);setError('');
+    try{
+      const data=await teamQueueCall(apiKey,result.teamQueueId?'/api/programs/team-queue?'+new URLSearchParams({workspace:result.workspace,queueId:result.teamQueueId,playerId:result.playerId}):'/api/programs/get?'+new URLSearchParams({workspace:result.workspace,playerId:result.playerId,date:context.date}),{signal:controller.signal,timeoutMs:25000});
+      if(requestId!==draftOpenRequest.current || controller.signal.aborted)return;
+      if(!data.record)throw Error('Готовый черновик не найден. Обновите очередь.');
+      const cached=teamDraftEdits.current.get(teamDraftIdentity(context));
+      setPendingSaved(data.record);loadSavedRecord(data.record);
+      if(cached && cached.meta.teamDraft?.version===data.record.teamDraft?.version){setSession(cached.session);setMeta(cached.meta);}
+      setEditorPreview(!!result.saved);setCollapsedBlocks(new Set());
+      requestAnimationFrame(()=>document.querySelector('.team-program-dialog-body')?.scrollTo({top:0}));
+    }catch(error){if(requestId===draftOpenRequest.current && !controller.signal.aborted)setError(error.message);}
+    finally{if(requestId===draftOpenRequest.current)setTeamDraftOpening(false);}
+  }
+
+  function closeTeamProgram(){rememberTeamDraft();draftOpenController.current?.abort();draftOpenRequest.current++;setTeamDraftOpening(false);setTeamModalOpen(false);}
+  async function saveTeamCorrection(){
+    const context=activeTeamDraftRef.current;if(!context || !meta?.teamDraft || !session || saving)return;
+    setSaving(true);setError('');const submitted=session;
+    try{const result=await teamQueue.saveDraft(context,submitted,meta.teamDraft.version);if(!result?.record)throw Error(result?.error || 'Не удалось подтвердить сохранение черновика. Обновите очередь.');
+      setPendingSaved(result.record);if(currentSaveViewRef.current.session===submitted){setSession(result.record.session);setMeta(previous=>({...previous,quality:result.record.quality,teamDraft:result.record.teamDraft}));}setJustSaved(true);
+    }catch(error){setError(error.message);}finally{setSaving(false);}
   }
 
   async function handleGenerate(e) {
@@ -3795,6 +3820,7 @@ export default function Home() {
       quality: record.quality || null,
       focusLabel: record.trainingLabel || '',
       sourcePlayerId: record.sourcePlayerId || null,
+      teamDraft:record.teamDraft || null,
       focus: record.focus || focus,
       trainingType: record.trainingType || trainingType,
       strengthMode: savedStrengthMode,
@@ -3843,6 +3869,8 @@ export default function Home() {
         strengthMode:meta.strengthMode || strengthMode, trainingLabel:data.trainingLabel || meta.focusLabel || '',
         dayGoal:meta.dayGoal || '',
       });
+      const teamContext=activeTeamDraftRef.current;
+      if(teamContext && meta.teamDraft){setSavedTeamBatches(previous=>new Set([...previous,teamContext.batchId]));teamDraftEdits.current.delete(teamDraftIdentity(teamContext));activeTeamDraftRef.current=null;setTeamModalOpen(false);}
       setTimeout(() => setJustSaved(false), 2500);
     } catch (err) {
       if (isCurrentView()) setError(err.message);
@@ -4335,7 +4363,7 @@ export default function Home() {
     );
   }
 
-  const teamQueuePanel = <div id="coach-team-drafts">{teamQueue.previousQueue && <div className="coach-previous-queue"><p>Сохранена командная очередь за {teamQueue.previousQueue.date}. Открыта актуальная дата; очередь не изменена.</p><button type="button" disabled={loading || saving || batchRunning} onClick={()=>changeTrainingDate(teamQueue.previousQueue.date)}>Открыть прежнюю очередь ↗</button></div>}<TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onCheckPublication={teamQueue.checkPublication} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} /></div>;
+  const teamQueuePanel = <div id="coach-team-drafts"><TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onCheckPublication={teamQueue.checkPublication} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} unsavedEdits={teamPendingEdits}/></div>;
     const savedProgram = session && meta && (
             <div data-preview={editorPreview || !!executionConfirmed} className="premium-session-card coach-session-workspace mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
 
@@ -4762,9 +4790,9 @@ export default function Home() {
                           restrictions={restrictions}
                           exHistory={exerciseHistory}
                           actualKg={ex.actualKg ?? null}
-                          onActualKgChange={pendingSaved ? (v => updateExercise(bi, ei, { actualKg: v })) : undefined}
+                          onActualKgChange={pendingSaved && !pendingSaved.draft ? (v => updateExercise(bi, ei, { actualKg: v })) : undefined}
                           actualRpe={ex.actualRpe ?? null}
-                          onActualRpeChange={pendingSaved ? (v => updateExercise(bi, ei, { actualRpe: v })) : undefined}
+                          onActualRpeChange={pendingSaved && !pendingSaved.draft ? (v => updateExercise(bi, ei, { actualRpe: v })) : undefined}
                           replacementFrom={ex.replacementFrom}
                           replacementReason={ex.replacementReason}
                           replacementNote={ex.replacementNote}
@@ -4791,7 +4819,7 @@ export default function Home() {
                       })}
                     </div>
                     )}
-                    {!editorPreview && !collapsedBlocks.has(block.label) && pendingSaved && (
+                    {!editorPreview && !collapsedBlocks.has(block.label) && pendingSaved && !pendingSaved.draft && (
                       <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 print:hidden">
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Факт блока {block.label}</span>
                         <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
@@ -5102,7 +5130,7 @@ export default function Home() {
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setLeftTab(tab.id)}
+                    onClick={() => tab.id==='day'?setMainSection('team'):setLeftTab(tab.id)}
                     className={`flex-1 rounded-lg py-1.5 text-[10px] font-bold transition-all ${
                       leftTab === tab.id ? 'bg-gradient-to-r from-white/[0.11] to-white/[0.06] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'
                     }`}
@@ -6459,6 +6487,8 @@ export default function Home() {
             </div>
           )}
 
+          {keyConnected && mainSection==='team' && <TeamPreparation key={workspace+date} workspace={workspace} date={date} players={players} statuses={teamStatus} initialRequest={{period:'inseason',focus:'inseason_strength',trainingType:'full_body',strengthMode:'maintenance',powerMode:'development',dayGoal:'',notes:'',days:7,coachRecovery:'green'}} periods={PERIODS} phasesFor={value=>phasesForWorkspace(value,workspace).map(phase=>({...phase,label:phaseLabelForWorkspace(phase,workspace)}))} defaultTypeFor={defaultTrainingTypeForFocus} typesFor={value=>value==='inseason_strength'?STRENGTH_TRAINING_TYPES:TRAINING_TYPES} busy={teamQueue.recovering} running={batchRunning} queue={teamQueue.queue} queuePanel={teamQueuePanel} previousQueue={teamQueue.previousQueue} onPrevious={()=>changeTrainingDate(teamQueue.previousQueue.date)} onGenerate={executeTeamGeneration} calendar={<DatePicker navigate quickDays timeZone="Europe/Moscow" value={date} onChange={changeTrainingDate} disabled={saving || teamDraftOpening || !!batchId} maxDate={addDaysToStr(todayISO(),1)} size="sm"/>}/>}
+          {teamModalOpen && <TeamProgramDialog open name={selectedPlayer?.name || 'Программа игрока'} date={date} opening={teamDraftOpening} saving={saving || teamQueue.recovering} error={error || teamQueue.error} saved={!!batchResults.find(row=>String(row.playerId)===String(playerId))?.saved} onClose={closeTeamProgram} onSave={handleSave} saveBlocked={executionConfirmed || session?.kind==='restricted_day_plan'} draftSaved={justSaved && !!pendingSaved?.draft} onSaveDraft={meta?.teamDraft && pendingSaved?.draft?saveTeamCorrection:null} onPrevious={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>0?()=>openBatchDraft(list[index-1]):null;})()} onNext={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>=0 && index<list.length-1?()=>openBatchDraft(list[index+1]):null;})()}>{savedProgram}</TeamProgramDialog>}
           {keyConnected && mainSection==='workouts' && workspaceTab==='program' && !playerId && batchSelectedIds.size===0 && <CoachHome workspace={workspace} players={players} date={date} onSelectPlayer={selectPlayer} onNavigate={setMainSection} calendar={<DatePicker navigate timeZone={activePlayerTimeZone} value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(playerToday,1)} size="sm" />} />}
           {keyConnected && mainSection==='workouts' && <TeamFactOverview key={workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
           {keyConnected && mainSection==='workouts' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}
@@ -6903,7 +6933,7 @@ export default function Home() {
           {mainSection==='workouts' && overviewReturn?.workspace===workspace && <button type="button" className="coach-return-button" onClick={()=>{overviewScrollTargetRef.current={type:'restore',...overviewReturn,requestedAt:Date.now()};setMainSection(overviewReturn.section);setOverviewReturn(null);}}>← Вернуться: {({calendar:'Неделя',tonnage:'Нагрузка',today:'Сегодня',live:'LIVE'})[overviewReturn.section]}</button>}
           {workspaceTab==='history' && playerId && selectedPlayer && <PlayerHistory key={`${workspace}:${playerId}`} workspace={workspace} player={selectedPlayer} apiKey={apiKey} targetDate={date} focusTarget={historyFactTarget} onClearTarget={()=>setHistoryFactTarget(null)} factsRefresh={factsRefresh} onOpenProgram={openOverviewPlayer} cycleReview={<StrengthCycleReviewPanel workspace={workspace} playerId={playerId} apiKey={apiKey} date={date} refreshToken={factsRefresh} initialOpen title="Результаты решений по циклам"/>}/>}
 
-          {workspaceTab === 'program' && !executionConfirmed && teamQueuePanel}
+          {workspaceTab==='program' && batchResults.length>0 && <button type="button" className="coach-return-button" onClick={()=>setMainSection('team')}>Командная подготовка · осталось {batchResults.filter(row=>!row.saved).length} →</button>}
 
           {workspaceTab === 'program' && !playerId && batchSelectedIds.size > 0 && (
             <div className="mx-auto flex min-h-[58vh] max-w-xl flex-col justify-center print:hidden">
@@ -6972,7 +7002,7 @@ export default function Home() {
           {workspaceTab === 'program' && playerId && <div>
           {executionConfirmed && savedProgram}
           <details className="coach-program-preparation" open={!executionConfirmed || undefined}><summary>{executionConfirmed?'Подготовка следующей тренировки':'Настройки нового черновика'}</summary>
-          {executionConfirmed && teamQueuePanel}
+
           <form
             onSubmit={handleGenerate}
             className="premium-form relative overflow-hidden rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-6 print:hidden"
@@ -7370,7 +7400,7 @@ export default function Home() {
             {sessionType === 'gym' && apiKey && players.length > 0 && (
               <button
                 type="button"
-                onClick={() => { setBatchOpen(o => !o);  }}
+                onClick={() => { setMainSection('team');setSidebarOpen(false); }}
                 disabled={loading || weekPlanLoading || batchRunning || matchDayManualReview}
                 className={`flex items-center justify-center gap-2 rounded-xl border ${batchOpen ? 'border-accent/40 bg-accent/10 text-accent' : 'border-white/[0.11] bg-white/[0.045] text-slate-300'} px-4 py-3 text-sm font-semibold transition-all hover:border-white/[0.20] hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 ${focusRing}`}
                 title="Сгенерировать тренировки для всей команды сразу"

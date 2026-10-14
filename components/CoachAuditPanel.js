@@ -1,7 +1,7 @@
 import CoachProgramComparison from './CoachProgramComparison';
 import {useEffect,useState} from 'react';
 import {teamQueueCall} from '../lib/teamQueueClient.mjs';
-const kinds={cycle_decision:'Решение по циклу',program_published:'Программа опубликована',draft_reviewed:'Черновик проверен',draft_unreviewed:'Проверка снята',actual_completed:'Фактические данные дополнены',equipment_changed:'Инвентарь обновлён'};
+const kinds={cycle_decision:'Решение по циклу',program_published:'Программа опубликована',draft_reviewed:'Черновик проверен',draft_corrected:'Черновик скорректирован',draft_unreviewed:'Проверка снята',actual_completed:'Фактические данные дополнены',equipment_changed:'Инвентарь обновлён'};
 const dose=ex=>ex?ex.sets.join(' / ')+(ex.kg!=null?' · '+ex.kg+' кг':''):'не было';
 const who=actor=>actor?.access==='session'?'Тренер · сеанс '+actor.id:actor?.access==='shared_key'?'Тренер · общий ключ':'Тренер · прежний доступ без метки сеанса';
 export default function CoachAuditPanel({workspace,players,apiKey,refresh=0}){

@@ -1,3 +1,4 @@
+import {saveTeamDraft} from '../../../lib/teamDraftStore';
 import {startPublicationRun} from '../../../lib/teamPublicationRun';
 import {isAuthorized,coachAuditActor} from '../../../lib/auth';
 import {redis} from '../../../lib/redis';
@@ -23,6 +24,7 @@ export default async function handler(req,res) {
     if(req.method==='GET' && input.playerId){const record=await teamQueueProgram(queue,input.playerId);return record?res.status(200).json({record}):res.status(404).json({error:'Готовый черновик не найден в этой очереди'});}
     if(req.method==='POST'){
       const result=await mutateTeamQueue(queue,input.expectedRevision,async current=>{
+        if(input.action==='save-draft')return saveTeamDraft(current,input,coachAuditActor(req));
         if(['pause','resume','cancel'].includes(input.action))await controlTeamQueue(current,input.action);
         else if(['publish','check-publication'].includes(input.action))await startPublicationRun(current,input.action==='publish'?'publish':'check',coachAuditActor(req));
         else if(['retry','refresh-player'].includes(input.action))await retryTeamPlayer(current,input.playerId,input.batchId,input.action==='refresh-player');
@@ -33,5 +35,9 @@ export default async function handler(req,res) {
       return res.status(200).json(result);
     }
     return res.status(200).json({queue:await teamQueueView(queue)});
-  }catch(error){return res.status(error.status || 503).json({error:error.status?error.message:'Не удалось восстановить очередь. Повторите проверку.',...(error.queue?{queue:error.queue}:{})});}
+  }catch(error){
+    // Failed validation may already claim a revision; return it so the next explicit action is usable.
+    if(!error.queue && req.method==='POST' && input.action!=='create' && validQueueId(input.queueId))try{const current=await loadTeamQueue(workspace,input.queueId);if(current)error.queue=await teamQueueView(current);}catch{}
+    return res.status(error.status || 503).json({error:error.status?error.message:'Не удалось восстановить очередь. Повторите проверку.',...(error.queue?{queue:error.queue}:{})});
+  }
 }

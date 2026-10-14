@@ -1,3 +1,4 @@
+import {preparationFailure} from '../../../lib/teamPreparation.mjs';
 import {generationScope} from '../../../lib/generationRecovery.mjs';
 import {taskRuntimeKey} from '../../../lib/teamQueuePolicy.mjs';
 import {generatedDraftKey,generatedDraftRecord} from '../../../lib/generatedDraft.mjs';
@@ -44,7 +45,7 @@ export default async function handler(req,res) {
     const inputs=await buildGenerationInputs(request);
     if(inputs.error){
       res.generationContext={workspace:request.workspace || 'zarechie',phase:'submit',batchId,scopeKey:teamQueueId?null:generationScope(request),outcomeCode:'PREPARATION_FAILED'};
-      await redis('set','coach:batch:'+batchId,JSON.stringify({...context,scopeKey,status:'preparation_failed',error:inputs.error}), 'EX',teamQueueId?generationJobTTL(context):86400);
+      await redis('set','coach:batch:'+batchId,JSON.stringify({...preparationFailure(context,inputs.error,inputs.status || 400),scopeKey}), 'EX',teamQueueId?generationJobTTL(context):86400);
       return res.status(inputs.status || 400).json({error:inputs.error,batchId});
     }
     if(inputs.readyResult){
@@ -66,7 +67,7 @@ export default async function handler(req,res) {
     if(teamQueueId){
       // Recover a committed result after an ambiguous persistence error; never overwrite it.
       try{const raw=await redis('get','coach:batch:'+batchId);const job=typeof raw==='string'?JSON.parse(raw):raw;if(job && job.status!=='preparing'){res.generationContext={workspace:request.workspace,phase:'submit',batchId};return res.status(200).json({batchId,reused:true});}
-        await redis('set','coach:batch:'+batchId,JSON.stringify({teamQueueId,workspace:request.workspace,playerId:String(request.playerId),date:request.date,status:'preparation_failed',error:'Подготовка данных временно недоступна. Повторите подбор.'}),'EX',generationJobTTL({teamQueueId}));}catch{}
+        await redis('set','coach:batch:'+batchId,JSON.stringify(preparationFailure({teamQueueId,workspace:request.workspace,playerId:String(request.playerId),date:request.date},'Подготовка данных временно недоступна. Повтор выполняется в фоне.',503)),'EX',generationJobTTL({teamQueueId}));}catch{}
     }
     return res.status(503).json({error:'Не удалось поставить генерацию в очередь. Повторите попытку.'});
   }finally{

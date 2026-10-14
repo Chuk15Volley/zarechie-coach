@@ -39,12 +39,14 @@ export default function useTeamGenerationQueue({workspace,date,apiKey}) {
     setRecovering(true);setError('');
     try{
       const bodies=makeBody(queueRef.current);if(!bodies)return;
+      let response;
       for(const body of bodies){
         const latest=queueRef.current;
         const data=await teamQueueCall(apiKey,'/api/programs/team-queue',{signal:current.controller.signal,body:{...body,...(body.action==='create'?{}:{expectedRevision:latest?.revision})}});
-        if(!current.gate.owns(token))return;apply(data.queue);
+        if(!current.gate.owns(token))return;apply(data.queue);response=data;
       }
-    }catch(failure){if(current.gate.owns(token)){if(failure.queue)apply(failure.queue);setError(failure.message);}}
+      return response;
+    }catch(failure){if(current.gate.owns(token)){if(failure.queue)apply(failure.queue);setError(failure.message);}return {error:failure.message};}
     finally{current.gate.finish(token);if(scope.current===current)setRecovering(false);}
   }
   const action=(name,extra={})=>mutate(current=>current?[{action:name,workspace:current.workspace,queueId:current.id,...extra}]:null);
@@ -53,6 +55,7 @@ export default function useTeamGenerationQueue({workspace,date,apiKey}) {
     start:(players,request)=>mutate(current=>[{action:'create',request,players,expectedLatestId:current?.id || null,expectedRevision:current?.revision || 0}]),
     retry:()=>mutate(current=>current?.rows.filter(row=>row.status==='error').map(row=>({action:'retry',workspace:current.workspace,queueId:current.id,playerId:row.playerId,batchId:row.batchId}))),
     refreshPlayer:row=>action('refresh-player',{playerId:row.playerId,batchId:row.batchId}),
+    saveDraft:(row,session,expectedDraftVersion)=>action('save-draft',{playerId:row.playerId,batchId:row.batchId,session,expectedDraftVersion}),
     review:(row,reviewed)=>action('review',{playerId:row.playerId,batchId:row.batchId,reviewed}),
     refresh:()=>scope.current?.poll(),resume:()=>action('resume'),pause:()=>action('pause'),cancel:()=>action('cancel'),checkPublication:()=>action('check-publication'),publish:()=>action('publish'),controllerRef};
 }
