@@ -1,5 +1,4 @@
 import ProgramWorkCopy from '../components/ProgramWorkCopy';
-import CompactProgramEditor from '../components/CompactProgramEditor';
 import {plannedInputIssues,plannedRpePatch,workCopyKey} from '../lib/editorWorkflow.mjs';
 import TeamPreparation from '../components/TeamPreparation';
 import TeamProgramDialog from '../components/TeamProgramDialog';
@@ -2017,7 +2016,7 @@ export default function Home() {
   const [progressionRefresh,setProgressionRefresh] = useState(0);
   const [editorActionsOpen,setEditorActionsOpen] = useState(false);
   const [editorPreview,setEditorPreview] = useState(false);
-  const [editorCompact,setEditorCompact]=useState(true),[compactSelected,setCompactSelected]=useState({bi:0,ei:0}),[exerciseUndo,setExerciseUndo]=useState({});
+  const [exerciseUndo,setExerciseUndo]=useState({});
   const [progressionMap, setProgressionMap] = useState({}); // exerciseName → { kg, rpe, suggestedKg }
   const [tonnageData, setTonnageData] = useState(null);
   const [tonnageLoading, setTonnageLoading] = useState(false);
@@ -2223,7 +2222,7 @@ export default function Home() {
   const currentSaveViewRef = useRef(null);
   currentSaveViewRef.current = {workspace,playerId,date,session};
   const plannedIssues=plannedInputIssues(session);
-  useEffect(()=>{setExerciseUndo({});setCompactSelected({bi:0,ei:0});},[workspace,playerId,date]);
+  useEffect(()=>{setExerciseUndo({});},[workspace,playerId,date]);
   const executionConfirmed=playerExecution?.completed && playerExecution.date===date && playerExecution.savedAt===pendingSaved?.savedAt && !pendingSaved?.draft;
   useEffect(()=>{if(executionConfirmed){setEditorPreview(true);setRescheduleOpen(false);}},[executionConfirmed]);
   const openingDayRef=useRef(calendarToday());
@@ -3843,7 +3842,7 @@ export default function Home() {
   }
 
   function focusPlannedIssue(issue){
-    if(!issue)return;setCompactSelected({bi:issue.bi,ei:issue.ei});setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(session.blocks[issue.bi].label);return next;});
+    if(!issue)return;setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(session.blocks[issue.bi].label);return next;});
     requestAnimationFrame(()=>{const label=`${issue.code} · ${issue.field}`;const input=Array.from(document.querySelectorAll('[aria-label]')).find(el=>el.getAttribute('aria-label')===label);input?.focus();input?.scrollIntoView({block:'center'});});
   }
   function validatePlannedEdit(){const first=plannedInputIssues(session)[0];if(!first)return true;setError(`${first.code}: ${first.message}`);focusPlannedIssue(first);return false;}
@@ -4433,12 +4432,12 @@ export default function Home() {
 
               {executionConfirmed && <p className="coach-execution-confirmed" role="status">Тренировка выполнена · {playerExecution.totalSets} / {playerExecution.totalSets} подходов · {new Date(playerExecution.completedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Исходный план защищён: редактирование, сохранение и перенос отключены. Факты дополняются отдельно в истории.</p>}
               <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={meta.focusLabel || getFocusLabel(period,focus)} preview={editorPreview || !!executionConfirmed} onPreview={value=>{if(!executionConfirmed)setEditorPreview(value);}} onNavigate={index=>{
-                const block=session.blocks[index];setCompactSelected({bi:index,ei:0});setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
+                const block=session.blocks[index];setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
                 requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
               }}/>
 
               {!editorPreview && !executionConfirmed && pendingSaved?.session && meta.date===date && <ProgramWorkCopy key={workCopyKey({workspace,playerId,date,queueId:meta.teamDraft?.queueId,batchId:activeTeamDraftRef.current?.batchId})} context={{workspace,playerId,date,queueId:meta.teamDraft?.queueId,batchId:activeTeamDraftRef.current?.batchId}} record={pendingSaved} session={session} onRestore={setSession}/>}
-              {!editorPreview && !executionConfirmed && <div className="coach-editor-layout-choice"><button type="button" aria-pressed={editorCompact} onClick={()=>setEditorCompact(true)}>Таблица · быстрая коррекция</button><button type="button" aria-pressed={!editorCompact} onClick={()=>setEditorCompact(false)}>Все карточки</button>{plannedIssues.length>0 && <button type="button" className="coach-field-warning" onClick={()=>focusPlannedIssue(plannedIssues[0])}>Проверить поля · {plannedIssues.length}</button>}</div>}
+              {!editorPreview && !executionConfirmed && plannedIssues.length>0 && <div className="coach-editor-validation" role="status"><button type="button" className="coach-field-warning" onClick={()=>focusPlannedIssue(plannedIssues[0])}>Проверить поля · {plannedIssues.length}</button></div>}
               {rescheduleOpen && pendingSaved && (
                 <div className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 print:hidden">
                   <div className="flex items-start gap-2.5">
@@ -4680,11 +4679,9 @@ export default function Home() {
               )}
 
               {/* Blocks — screen only */}
-              <div className={!editorPreview && !executionConfirmed && editorCompact?'coach-compact-layout':'coach-full-layout'}>
-              {!editorPreview && !executionConfirmed && editorCompact && <CompactProgramEditor blocks={session.blocks || []} onChange={updateExercise} selected={compactSelected} onInspect={(bi,ei)=>{setCompactSelected({bi,ei});setCollapsedBlocks(new Set());}}/>}
-              <div className="space-y-8 print:hidden coach-compact-detail">
+              <div className="space-y-8 print:hidden">
                 {(session.blocks || []).map((block, bi) => (
-                  <div hidden={!editorPreview && !executionConfirmed && editorCompact && compactSelected.bi!==bi} id={`coach-program-block-${bi}`} className="coach-program-block" key={block.blockId || block.label || bi}>
+                  <div id={`coach-program-block-${bi}`} className="coach-program-block" key={block.blockId || block.label || bi}>
                     {(() => {
                       const bc = blockCfg(block.label);
                       const isCollapsed = collapsedBlocks.has(block.label);
@@ -4726,7 +4723,6 @@ export default function Home() {
                     {!collapsedBlocks.has(block.label) && (
                     <div className="coach-exercise-grid">
                       {(block.exercises || []).map((ex, ei) => {
-                        if(!editorPreview && !executionConfirmed && editorCompact && compactSelected.ei!==ei)return null;
                         const identity = ex.exerciseId || canonicalExerciseId(ex.name);
                         const progression = (meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)] || {}:progressionMap[identity] || progressionMap[ex.name] || {};
                         const exerciseHistory = exHistoryMap[identity] || exHistoryMap[ex.name] || [];
@@ -4882,7 +4878,6 @@ export default function Home() {
                 ))}
               </div>
 
-              </div>
               {/* Warnings — screen only */}
               {session.warnings && (
                 <div className="mt-6 rounded-2xl border border-amber-500/25 bg-gradient-to-b from-amber-500/[0.08] to-amber-500/[0.03] p-5 print:hidden">

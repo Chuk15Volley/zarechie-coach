@@ -1,0 +1,7 @@
+# Restored correction card layout — 2026-10-15
+
+User requested the previous correction card arrangement, without relocating blocks. Restored the layout from 1668066 in both coach spaces: all exercise cards appear under their original block headers and rest notes; planned load remains on the left, compact video and technique on the right. Removed the compact table, single-exercise selection, hidden-block filtering and table/card mode switch. Existing responsive card layout is unchanged.
+
+Retained functional improvements: planned kg/RPE and implement controls, original repetition/time units, quick exercise replacement, full-exercise undo, video preview/pinning, local work-copy recovery, validation/focus, save-next, completed-session protection, separately saved team-program reconciliation and simplified player titles. No API, methodology, catalogue, real program or result changes.
+
+Validation: 964 tests passed, one existing skip; production build passed. Fictional localhost programs in both spaces showed all eight cards and five block headers with no compact table. NK Pro: decimal-comma 22.5 kg / one implement and 6/side repetitions saved, next player opened and saved player left pending list. Zarechie: replacement cleared old kg, undo restored original exercise; 21.5 kg / one implement saved and next player opened. Production publication and read-only verification recorded below after deployment.
