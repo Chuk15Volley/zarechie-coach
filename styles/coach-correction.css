@@ -73,3 +73,15 @@
  .coach-session-workspace .coach-exercise-grid { gap:14px; }
  .coach-session-workspace .coach-program-block-order { margin-left:0; }
 }
+
+/* User-requested always-large video, with no change to its position or playback. */
+.coach-session-workspace .coach-video-compact:not(.is-empty) .coach-video-frame { height:260px; }
+.coach-session-workspace .coach-video-compact.is-expanded:not(.is-empty) .coach-video-frame { height:300px; }
+.coach-video-panel.is-pinned:not(.is-empty) .coach-video-frame { height:260px!important; }
+.coach-video-panel.is-pinned.is-expanded:not(.is-empty) .coach-video-frame { height:300px!important; }
+@media(max-width:760px) {
+ .coach-session-workspace .coach-video-compact:not(.is-empty) .coach-video-frame,
+ .coach-video-panel.is-pinned:not(.is-empty) .coach-video-frame { height:220px!important; }
+ .coach-session-workspace .coach-video-compact.is-expanded:not(.is-empty) .coach-video-frame,
+ .coach-video-panel.is-pinned.is-expanded:not(.is-empty) .coach-video-frame { height:260px!important; }
+}
