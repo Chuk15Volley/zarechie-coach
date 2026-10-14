@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isCoachBannedExercise,hasRestriction,coachBannedSessionExercises} from '../lib/exerciseRestrictions.js';
 import {buildStrengthDevelopmentDraft} from '../lib/strengthDevelopmentDraft.mjs';
-const banned=['Supine Glute Set','Supine Glute Squeeze','Glute Set (Supine)','Supine Diaphragmatic Breathing','Diaphragmatic Breathing (Supine)','Side-Lying Short-Lever Adductor Raise','Side Lying Short Lever Adductor Raise','Short-Lever Adductor Raise'];
-test('three additional coach prohibitions cover names and alternatives without banning distinct movements',()=>{
+const banned=['Supine Hip Abduction','Supine-Hip-Abduction','Supine Hip Abduction Unloaded','Hip Abduction (Supine)','Отведение бедра лёжа на спине','Supine Glute Set','Supine Glute Squeeze','Glute Set (Supine)','Supine Diaphragmatic Breathing','Diaphragmatic Breathing (Supine)','Side-Lying Short-Lever Adductor Raise','Side Lying Short Lever Adductor Raise','Short-Lever Adductor Raise'];
+test('coach prohibitions cover names and alternatives without banning distinct movements',()=>{
  for(const name of banned){assert.ok(isCoachBannedExercise(name),name);assert.ok(hasRestriction(name,[]),name);assert.deepEqual(coachBannedSessionExercises({blocks:[{exercises:[{name:'Goblet Squat',alternatives:[{name}]}]}]}),[name]);}
- for(const name of ['Barbell Hip Thrust','Supine Bent-Knee March','Side-Lying Hip Adduction','Prone Glute Set','Side-Lying Clamshell Unloaded'])assert.equal(isCoachBannedExercise(name),false,name);
+ for(const name of ['Supine Hip Adduction','Side-Lying Hip Abduction Unloaded','Barbell Hip Thrust','Supine Bent-Knee March','Side-Lying Hip Adduction','Prone Glute Set','Side-Lying Clamshell Unloaded'])assert.equal(isCoachBannedExercise(name),false,name);
 });
 for(const workspace of ['zarechie','nkperf'])test(workspace+': bans do not break regional strength drafts or reduce permitted upper-body work',()=>{
  const date='2026-10-13',snapshot={player:{id:'synthetic',position:'Диагональная'},readySixMeta:{},readySixDecision:{capPercent:100},latestMorning:{date,zoneDetails:{'Икроножная левая':{type:'pain',level10:4}}}};

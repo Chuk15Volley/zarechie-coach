@@ -1,3 +1,4 @@
+import CoachAvatar from './CoachAvatar';
 import StrengthMissingActuals from './StrengthMissingActuals';
 import StrengthDecisionGroup from './StrengthDecisionGroup';
 import CoachAuditPanel from './CoachAuditPanel';
@@ -39,7 +40,7 @@ export default function StrengthTeamNextReview({workspace,players,apiKey,date,on
       <StrengthDecisionGroup key={workspace+date+chain} workspace={workspace} date={date} chain={chain} apiKey={apiKey} rows={ordered} loading={loading} onSaved={()=>setRefresh(value=>value+1)}/>
       <CoachAuditPanel key={workspace} workspace={workspace} players={players} apiKey={apiKey} refresh={refresh}/>
       <div className="grid gap-3 lg:grid-cols-2">{ordered.map(({player,data,error})=><article key={player.id} className="rounded-xl border border-white/10 p-3 text-xs text-slate-300">
-        <div className="flex items-start justify-between gap-3"><strong>{player.name}</strong><button type="button" onClick={()=>onSelectPlayer(player)} className="text-cyan-200 underline">Открыть игрока и решения</button></div>
+        <div className="flex items-start justify-between gap-3"><strong className="coach-overview-player"><CoachAvatar player={player}/><span>{player.name}</span></strong><button type="button" onClick={()=>onSelectPlayer(player)} className="text-cyan-200 underline">Открыть игрока и решения</button></div>
         {error?<p role="alert" className="mt-2 text-rose-300">{error}</p>:<>
           <p className="mt-2">{data.cycle?`Цикл ${data.cycle.id}: ${data.cycle.completedCount}/4 полностью выполнено${data.cycle.status==='completed'?' · завершён':''}`:'Нет выполнений цикла новой версии'}</p>
           <p className="mt-1 text-slate-400">Основные подходы выбранной цепи: {data.facts.completedMainSets}; кг и повторы записаны: {data.facts.setsWithKgAndReps}; экспозиций без RPE упражнения: {data.facts.missingExerciseRpe}.</p>

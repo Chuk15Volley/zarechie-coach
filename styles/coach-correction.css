@@ -93,3 +93,106 @@
 .coach-quick-replacement-technique .coach-candidate-video { display:block;width:100%;height:260px;margin-top:8px;border:1px solid #43514d;border-radius:8px;background:#101b17; }
 .coach-quick-result-select:focus-visible { outline-offset:-3px!important;background:#afd5bf18!important; }
 @media(max-width:760px){.coach-quick-replacement-technique .coach-candidate-video { height:220px; }}
+
+/* Coach-only finishing: existing theme, grids and block order remain intact. */
+.coach-premium :is(button,summary,label,select) {font-family:var(--font-manrope),system-ui,sans-serif;letter-spacing:normal;}
+.coach-premium :is([class~="text-[8px]"],[class~="text-[9px]"],[class~="text-[10px]"]) {font-size:11px;line-height:1.45;}
+.coach-premium :is(.coach-overview-header,.coach-history-section-heading,.team-day-heading) p {line-height:1.5;}
+.coach-premium :is(.coach-overview-header,.team-day-heading) {margin-bottom:20px;}
+.coach-premium :is(.coach-overview-stats,.coach-today-grid) {gap:12px;}
+.coach-premium .coach-overview-stats p {display:none;}
+.coach-premium .coach-today-card {padding:16px;}
+.coach-premium .coach-today-card header {gap:12px;}
+.coach-premium .coach-avatar {display:inline-flex;flex:0 0 36px;width:36px;height:40px;overflow:hidden;border-radius:9px;background:#28342e;color:#cbdad1;vertical-align:middle;}
+.coach-premium .coach-avatar>img {width:100%;height:100%;object-fit:cover;object-position:center top;}
+.coach-premium .coach-avatar>span {display:grid;place-items:center;width:100%;font-size:12px;font-weight:650;}
+.coach-premium :is(.coach-overview-player,.coach-history-player-heading,.coach-dialog-player) {display:flex;align-items:center;gap:10px;min-width:0;}
+.coach-premium .coach-overview-player .coach-avatar {flex-basis:32px;width:32px;height:36px;}
+.coach-premium .coach-dialog-player .coach-avatar {flex-basis:40px;width:40px;height:46px;}
+.coach-premium .coach-home-player .coach-avatar {flex-basis:40px;width:40px;height:44px;}
+.coach-premium .coach-history-player-heading>div {min-width:0;}
+.coach-premium .team-day-member {gap:10px;}
+.coach-premium .team-queue-player {padding:12px 14px;}
+.coach-premium .team-queue-open {min-height:52px;gap:12px;}
+.coach-premium .team-queue-open small {font-size:12px;line-height:1.4;}
+.coach-premium .team-queue-row-actions {margin-top:6px;padding-top:0;border:0;justify-content:flex-end;}
+.coach-premium .team-queue-dose-details {padding:6px 0;margin:0;}
+.coach-premium .team-queue-player:has(.team-queue-dose-details) summary {font-size:12px;}
+.coach-premium .team-queue-progress {padding:12px 0;gap:14px;}
+.coach-premium .team-queue-heading h2 {margin:2px 0 5px;}
+.coach-premium .team-program-dialog-heading {padding:12px 18px;gap:14px;}
+.coach-premium .team-program-dialog-heading h2 {font-size:20px;}
+.coach-premium .team-program-dialog-heading p {margin-bottom:2px;}
+.coach-premium .team-program-dialog-actions {flex-wrap:nowrap;}
+.coach-premium .team-program-dialog-actions>button {min-height:40px;padding:8px 10px;}
+.coach-premium .coach-save-options {position:relative;font-size:12px;}
+.coach-premium .coach-save-options summary {padding:10px;cursor:pointer;border:1px solid #536d5d60;border-radius:8px;}
+.coach-premium .coach-save-options>div {position:absolute;z-index:90;right:0;top:calc(100% + 8px);width:260px;padding:8px;border:1px solid #536d5d;border-radius:12px;background:#1b2721;box-shadow:0 12px 25px #0005;}
+.coach-premium .coach-save-options button {display:block;text-align:left;width:100%;}
+.coach-premium .coach-save-options p {padding:6px 10px;letter-spacing:normal;font-size:11px;}
+.coach-premium .coach-session-workspace .coach-program-overview {padding:10px 0;margin-bottom:10px;gap:16px;}
+.coach-premium .coach-program-structure {padding:10px 14px;}
+.coach-premium .coach-program-structure header strong {font-size:26px;}
+.coach-premium .coach-program-chart {height:64px;margin-top:8px;}
+.coach-premium .coach-program-intro h2 {font-size:20px;}
+.coach-premium .coach-program-intro .coach-program-kicker {display:none;}
+.coach-premium .coach-program-modes {margin-top:8px;}
+.coach-premium .coach-session-context details {border:1px solid #4d645640;border-radius:10px;background:#20312a30;padding:10px 12px;align-self:start;}
+.coach-premium .coach-session-context summary {font-size:12px;font-weight:600;cursor:pointer;}
+.coach-premium .coach-session-context p {font-size:13px;line-height:1.6;margin:8px 0 0;color:#bac8bf;}
+.coach-premium .coach-program-dose-summary {padding:7px 12px;margin-bottom:12px;gap:10px;}
+.coach-premium .coach-program-dose-summary :is(.h-6,.w-px) {display:none;}
+.coach-premium .coach-program-dose-summary .font-black {font-size:12px;}
+.coach-premium .coach-correction-context {padding:8px 12px;margin:8px 0;}
+.coach-premium .coach-video-tools>summary {font-size:12px;padding:8px 0;color:#bdd0c2;cursor:pointer;}
+.coach-premium .coach-video-tools:not([open]) {margin:0;}
+.coach-premium .coach-video-quick-edit {margin-top:0;}
+.coach-premium .coach-live-sync {margin-top:10px;font-size:12px;color:#a9bbb0;}
+.coach-premium :is(.coach-station-details,.coach-history-charts,.coach-system-details) {border:1px solid #536d5d40;border-radius:12px;padding:12px 14px;margin-bottom:14px;}
+.coach-premium :is(.coach-station-details,.coach-history-charts,.coach-system-details)>summary {font-size:13px;font-weight:600;cursor:pointer;}
+.coach-premium :is(.coach-station-details,.coach-history-charts,.coach-system-details)[open]>summary {margin-bottom:12px;}
+.coach-premium .coach-week-data {margin-top:8px;font-size:11px;color:#9eafa5;}
+.coach-premium .coach-week-budget {margin-top:5px;}
+.coach-premium .coach-load-day {gap:3px;padding:8px;}
+.coach-premium .coach-load-day>span {font-size:11px;}
+.coach-premium .coach-load-day>strong {font-size:13px;}
+.coach-premium .coach-week-overview td {padding-top:10px;padding-bottom:10px;}
+.coach-premium .coach-history-card {padding:16px;margin-bottom:12px;}
+.coach-premium .coach-history-dose {padding:10px 0;}
+.coach-premium .coach-history-card header h3 {font-size:17px;}
+.coach-premium .coach-aux-panels {padding:10px 14px;margin-top:0;}
+.coach-premium .coach-program-preparation {margin-bottom:12px;}
+.coach-premium .coach-work-copy {font-size:12px;padding:8px 12px;}
+:is(.coach-premium,.library-premium) .library-studio-heading {padding-bottom:12px;margin-bottom:12px;}
+:is(.coach-premium,.library-premium) .library-studio-heading h2 {font-size:20px;}
+:is(.coach-premium,.library-premium) .library-studio-heading>div>p {display:none;}
+:is(.coach-premium,.library-premium) .library-studio-filters {grid-template-columns:minmax(0,2fr) minmax(140px,1fr) minmax(120px,.7fr);padding-bottom:12px;gap:10px;}
+:is(.coach-premium,.library-premium) .library-extra-filters {align-self:end;position:relative;min-width:0;}
+:is(.coach-premium,.library-premium) .library-extra-filters summary {min-height:46px;padding:12px;border:1px solid #536d5d60;border-radius:12px;cursor:pointer;font-size:13px;}
+:is(.coach-premium,.library-premium) .library-extra-filters>div {position:absolute;top:100%;right:0;width:260px;z-index:35;border:1px solid #536d5d;border-radius:12px;padding:14px;background:#19241f;box-shadow:0 12px 25px #0005;display:grid;gap:10px;}
+:is(.coach-premium,.library-premium) .library-studio-detail header {padding:16px 20px;}
+:is(.coach-premium,.library-premium) .library-studio-instructions {padding:14px 20px;}
+:is(.coach-premium,.library-premium) .coach-technique-review {margin:10px 18px;padding:10px 12px;border:1px solid #536d5d40;border-radius:10px;font-size:12px;}
+:is(.coach-premium,.library-premium) .coach-technique-review>summary {cursor:pointer;font-size:12px;}
+:is(.coach-premium,.library-premium) .coach-technique-review>p {margin:8px 0;line-height:1.5;}
+@media(max-width:760px){
+ .coach-premium .team-program-dialog-actions {flex-wrap:wrap;max-width:none;}
+ .coach-premium .team-program-dialog-heading {padding:10px 12px;}
+ .coach-premium .team-program-dialog-actions>button {font-size:12px;padding:8px;}
+ .coach-premium .coach-session-workspace .coach-program-overview {gap:10px;}
+ .coach-premium :is(input:not([type=checkbox]):not([type=radio]),textarea,select) {font-size:16px;}
+ :is(.coach-premium,.library-premium) .library-studio-filters {grid-template-columns:minmax(0,1fr);}
+ :is(.coach-premium,.library-premium) .library-extra-filters>div {position:static;width:auto;}
+ .coach-premium .coach-today-card header {flex-wrap:wrap;}
+}
+.coach-premium .h-9.w-9>.coach-existing-avatar {width:36px;height:36px;}
+.coach-premium .h-12.w-12>.coach-existing-avatar {width:48px;height:48px;}
+.coach-premium .h-14.w-14>.coach-existing-avatar {width:56px;height:56px;}
+.coach-premium .coach-warmup-conduct li>a {display:inline-block;font-size:12px;margin-top:6px;color:#acd3bc;}
+.coach-premium .team-program-dialog .coach-program-chart {height:auto;margin-top:6px;}
+.coach-premium .team-program-dialog .coach-program-chart button {min-height:36px;}
+.coach-premium .team-program-dialog .coach-session-workspace {padding:16px;}
+.coach-premium .team-program-dialog .coach-program-structure header {margin-bottom:4px;}
+.coach-premium .coach-common-rule {font-size:12px;line-height:1.5;color:#d3c6ac;padding:9px 12px;border:1px solid #8e7e5840;border-radius:10px;margin:10px 0 14px;}
+.coach-premium .coach-exercise-regulation summary {font-size:12px;cursor:pointer;}
+.coach-premium .coach-exercise-regulation:not([open]) {padding:8px 10px;}

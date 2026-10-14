@@ -1,3 +1,6 @@
+import CoachAvatar from '../components/CoachAvatar';
+import useWarmupPlan from '../hooks/useWarmupPlan';
+import {coachTrainingTitle,commonCorrectionRule} from '../lib/coachSimplicity.mjs';
 import {useCorrectionHistory,useCorrectionView,correctionNumericEnter} from '../hooks/useCorrectionInteraction';
 import {correctionEqual,correctionViewKey} from '../lib/correctionInteraction.mjs';
 import ProgramWorkCopy from '../components/ProgramWorkCopy';
@@ -1088,9 +1091,9 @@ function ExerciseVideoPanel({name,apiKey,editable=true}) {
   const [pinned,setPinned]=useState(false);
   useEffect(()=>{const pin=e=>{if(e.detail!==panelId)setPinned(false);};window.addEventListener('gym-video-pin',pin);return()=>window.removeEventListener('gym-video-pin',pin);},[panelId]);
   useEffect(()=>setPinned(false),[name]);
-  const [manualVideoUrl,setManualVideoUrl]=useState(null),[editingVideo,setEditingVideo]=useState(false),[videoInput,setVideoInput]=useState(''),[savingVideo,setSavingVideo]=useState(false),[videoError,setVideoError]=useState(''),[playing,setPlaying]=useState(false),[reload,setReload]=useState(0),[expanded,setExpanded]=useState(false),[videoSaved,setVideoSaved]=useState(false);
+  const [manualVideoUrl,setManualVideoUrl]=useState(null),[editingVideo,setEditingVideo]=useState(false),[videoTools,setVideoTools]=useState(false),[videoInput,setVideoInput]=useState(''),[savingVideo,setSavingVideo]=useState(false),[videoError,setVideoError]=useState(''),[playing,setPlaying]=useState(false),[reload,setReload]=useState(0),[expanded,setExpanded]=useState(false),[videoSaved,setVideoSaved]=useState(false);
   const epoch=useRef(0),mutation=useRef(null);
-  useEffect(()=>{const version=++epoch.current;setManualVideoUrl(null);setEditingVideo(false);setVideoInput('');setSavingVideo(false);setVideoError('');setPlaying(false);setExpanded(false);setVideoSaved(false);return()=>{epoch.current++;mutation.current?.abort();};},[name,apiKey]);
+  useEffect(()=>{const version=++epoch.current;setManualVideoUrl(null);setEditingVideo(false);setVideoTools(false);setVideoInput('');setSavingVideo(false);setVideoError('');setPlaying(false);setExpanded(false);setVideoSaved(false);return()=>{epoch.current++;mutation.current?.abort();};},[name,apiKey]);
   useEffect(()=>{
     if(!name?.trim() || !apiKey)return;
     const controller=new AbortController(),version=epoch.current;
@@ -1105,7 +1108,7 @@ function ExerciseVideoPanel({name,apiKey,editable=true}) {
   async function handleSaveVideo(){
     const url=videoInput.trim();if(!url || savingVideo)return;if(!youtubeVideoId(url)){setVideoError('Вставьте корректную ссылку YouTube: watch, Shorts или youtu.be.');return;}
     const version=++epoch.current,controller=new AbortController();mutation.current=controller;setSavingVideo(true);setVideoError('');
-    try{const data=await teamQueueCall(apiKey,'/api/exercises/manual-video',{body:{name,url},signal:controller.signal,timeoutMs:20000});if(!data.ok || !data.url)throw Error('Ссылка не сохранена.');if(version===epoch.current){setManualVideoUrl(data.url);setVideoInput(data.url);setEditingVideo(false);setVideoSaved(true);}}
+    try{const data=await teamQueueCall(apiKey,'/api/exercises/manual-video',{body:{name,url},signal:controller.signal,timeoutMs:20000});if(!data.ok || !data.url)throw Error('Ссылка не сохранена.');if(version===epoch.current){setManualVideoUrl(data.url);setVideoInput(data.url);setEditingVideo(false);setVideoTools(false);setVideoSaved(true);}}
     catch(error){if(version===epoch.current)setVideoError(error.message || 'Не удалось сохранить видео.');}
     finally{if(version===epoch.current)setSavingVideo(false);}
   }
@@ -1120,7 +1123,7 @@ function ExerciseVideoPanel({name,apiKey,editable=true}) {
       {/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt={`Техника ${name}`} loading="lazy"/><span className="coach-video-shade"/><span className="coach-video-play">▶</span><span className="coach-video-caption">Смотреть технику</span>
     </button>:<div className="coach-video-empty"><strong>Видео ещё не добавлено</strong>{editable?<span>Вставьте ссылку ниже</span>:<p>Техника выполнения описана ниже.</p>}</div>}</div>
     <div className="coach-video-meta"><span>{previewing?'Предпросмотр · ещё не сохранено':manualVideoUrl?'Видео тренера':videoId?'Библиотека техники':'Техника упражнения'}</span><div>{(videoId || videoUrl) && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке">YouTube ↗</a>}{videoId && <button type="button" aria-label={`${expanded?'Уменьшить':'Увеличить'} видео: ${name}`} onClick={()=>setExpanded(value=>!value)}>{expanded?'Уменьшить':'Увеличить'}</button>}{videoId && <button type="button" aria-label={`${pinned?'Открепить':'Закрепить'} видео: ${name}`} onClick={()=>{if(!pinned)window.dispatchEvent(new CustomEvent('gym-video-pin',{detail:panelId}));setPinned(v=>!v);}}>{pinned?'Открепить':'Закрепить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
-    {editable && <form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span title="Общая библиотека видео обоих пространств">Добавить YouTube-видео</span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo || !candidateId}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button>{editingVideo && <button type="button" onClick={()=>{setEditingVideo(false);setVideoInput(videoUrl || '');setVideoError('');}}>Отменить ссылку</button>}<div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form>}
+    {editable && <details className="coach-video-tools" open={!videoId || videoTools || editingVideo || undefined} ><summary onClick={e=>{e.preventDefault();if(videoId)setVideoTools(v=>!v);}}>{videoId?'Изменить видео':'Добавить видео'}</summary><form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span title="Общая библиотека видео обоих пространств">Добавить YouTube-видео</span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo || !candidateId}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button>{editingVideo && <button type="button" onClick={()=>{setEditingVideo(false);setVideoInput(videoUrl || '');setVideoError('');}}>Отменить ссылку</button>}<div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form></details>}
     {videoError && <div className="coach-video-error" role="alert"><p>{videoError}</p><button type="button" onClick={()=>editingVideo?handleSaveVideo():setReload(value=>value+1)}>{editingVideo?'Повторить сохранение видео':'Повторить загрузку видео'}</button></div>}
   </div>;
   return pinned?createPortal(panel,document.querySelector('dialog[open]') || document.querySelector('main') || document.body):panel;
@@ -1186,6 +1189,7 @@ function ExerciseCard({
   descriptionOverride,
   descriptionExerciseId,
   compactDescription,
+  sharedRegulation='',
   controlledExecution,
   preserveStoredDescription=false,
   loadEvidence,
@@ -1293,7 +1297,6 @@ function ExerciseCard({
           <section className="coach-technique-disclosure is-always-open" aria-label="Видео техники"><ExerciseVideoPanel name={name} apiKey={apiKey} editable={!preview}/></section>
           <div className="coach-exercise-instruction"><div className="coach-section-caption"><span>02</span> Выполнение {hasDescriptionOverride && !preview && <button type="button" onClick={onResetDescription} title="Вернуть автоматически сформированное описание"><RotateCcw size={12}/>Исходное</button>}</div>
             {preview?<p>{displayedDescription || 'Описание пока не добавлено.'}</p>:<AutoResizeTextarea value={displayedDescription} onChange={onChangeDescription} ariaLabel={`${code} · описание выполнения`} minRows={3} placeholder="Опишите технику выполнения…" className="coach-description-input"/>}
-            {!preview && <small>Правки увидит игрок после сохранения программы.</small>}
             {descriptionWarning && <div className="coach-technique-quality" role="note"><p>Уточните подсказку: {descriptionWarning}</p>{!preview && <details><summary>Ориентир для уточнения</summary><p>{techniqueReference}</p><small>Сверьте точную вариацию и индивидуальные ограничения перед правкой.</small><button type="button" onClick={()=>onChangeDescription(techniqueReference)}>Использовать этот ориентир</button></details>}</div>}
           </div>
         </aside>
@@ -1349,7 +1352,7 @@ function ExerciseCard({
             );
           })()
         )}</div>}
-          {autoReg && <div className="coach-exercise-regulation"><span>Коррекция по качеству</span>{preview?<p>{autoReg}</p>:<AutoResizeTextarea value={autoReg} onChange={onChangeAutoReg} ariaLabel={`${code} · коррекция нагрузки`} className="coach-regulation-input"/>}</div>}
+          {autoReg && <details className="coach-exercise-regulation" open={autoReg!==sharedRegulation || undefined}><summary>Коррекция по качеству</summary>{preview?<p>{autoReg}</p>:<AutoResizeTextarea value={autoReg} onChange={onChangeAutoReg} ariaLabel={`${code} · коррекция нагрузки`} className="coach-regulation-input"/>}</details>}
           {!preview && onActualKgChange && <details className="coach-exercise-facts" open={actualKg!=null || actualRpe!=null || undefined}><summary>Фактическое выполнение <span>кг / RPE</span></summary><div className="coach-plan-fields"><label><span>Выполненный вес, кг / снаряд</span><input type="number" step="any" min="0" aria-label={`${code} · фактический вес в кг`} value={actualKg ?? ''} onChange={e=>onActualKgChange(e.target.value===''?null:Number(e.target.value))} placeholder="Факт кг"/></label>{onActualRpeChange && <label><span>RPE упражнения по факту</span><input type="number" step="0.5" min="1" max="10" aria-label={`${code} · фактический RPE упражнения`} value={actualRpe ?? ''} onChange={e=>onActualRpeChange(e.target.value===''?null:Number(e.target.value))} placeholder="1–10"/></label>}</div></details>}
           {!preview && Array.isArray(alternatives) && alternatives.length>0 && <details className="coach-exercise-alternatives"><summary>Альтернативы <span>{alternatives.length}</span></summary><div>{alternatives.slice(0,3).map((alt,i)=><button key={`${alt}-${i}`} type="button" onClick={()=>doSwap(alt)}>{alt}<ArrowUpRight size={12}/></button>)}</div></details>}
         </div>
@@ -1699,7 +1702,7 @@ function DevelopmentPlanPanel({ plan, onChange, onSave, saving, saved }) {
         <Target size={12} className="text-accent" />
         <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">План развития</span>
         <span className={`ml-auto text-[10px] font-semibold ${reviewDue ? 'text-amber-400' : 'text-slate-600'}`}>
-          {reviewDue ? 'нужен пересмотр' : `${goals.filter(goal => goal.title?.trim()).length}/3 цели · 4 недели`}
+          {goals.length?(reviewDue?'Нужен пересмотр':`${goals.filter(goal => goal.title?.trim()).length} цели`):'Добавить цели'}
         </span>
       </summary>
       <div className="border-t border-white/[0.05] px-4 pb-4 pt-3">
@@ -1953,7 +1956,7 @@ export default function Home() {
   const genTimers = useRef([]);
 
   // Main section navigation
-  const [mainSection, setMainSection] = useState('workouts');
+  const [mainSection, setMainSection] = useState('today');
 
   // Left panel tabs
   const [leftTab, setLeftTab] = useState('players'); // 'players' | 'day'
@@ -1977,10 +1980,6 @@ export default function Home() {
 
   // Warmup
   const [warmupDate, setWarmupDate] = useState(todayISO());
-  const [warmupPlan, setWarmupPlan] = useState(null);
-  const [warmupLoading, setWarmupLoading] = useState(false);
-  const [warmupError, setWarmupError] = useState('');
-  const [warmupHistory, setWarmupHistory] = useState([]);
   const [teamStatusLoading, setTeamStatusLoading] = useState(false);
   const [rtpPlayer, setRtpPlayer] = useState(null);
   const [rtpDraft, setRtpDraft] = useState(null);
@@ -2193,6 +2192,8 @@ export default function Home() {
 
   // Workspace: 'zarechie' | 'nkperf'
   const [workspace, setWorkspace] = useState('zarechie');
+  const {plan:warmupPlan,loading:warmupLoading,generating:warmupGenerating,error:warmupError,history:warmupHistory,generate:generateWarmup,refreshHistory:loadWarmupHistory,retry:retryWarmup}=useWarmupPlan({workspace,date:warmupDate,apiKey,enabled:mainSection==='warmup'});
+
   overviewWorkspaceRef.current=workspace;
   useEffect(()=>{
     const frame=requestAnimationFrame(()=>{
@@ -2643,7 +2644,7 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainSection, tonnageTab,workspace,players.length,factsRefresh]);
 
-  // Floor command centre: keep the team view current without manual reloads.
+  // Выполнение команды: keep the team view current without manual reloads.
   useEffect(() => {
     if (!['live', 'attention'].includes(mainSection) || !apiKey || players.length === 0) return undefined;
     loadTeamStatus(todayISO());
@@ -2790,6 +2791,7 @@ export default function Home() {
     [players, todaySnapshot, workspace, healthData]
   );
 
+  const commonRegulation=useMemo(()=>commonCorrectionRule(session),[session]);
   // Session volume: total sets + estimated tonnage
   const sessionVolume = useMemo(() => {
     if (!session) return null;
@@ -3515,46 +3517,7 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leftTab, mainSection, date, workspace, players.length]);
 
-  async function loadWarmupHistory() {
-    if (!apiKey) return;
-    try {
-      const r = await fetch(`/api/warmup/history?workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } });
-      const d = await r.json();
-      if (r.ok) setWarmupHistory(d.dates || []);
-    } catch (_) {}
-  }
-
-  async function loadWarmupByDate(d) {
-    if (!apiKey) return;
-    setWarmupDate(d);
-    try {
-      const r = await fetch(`/api/warmup/get?date=${encodeURIComponent(d)}&workspace=${encodeURIComponent(workspace)}`, { headers: { 'x-api-key': apiKey } });
-      const data = await r.json();
-      if (r.ok && data.plan) setWarmupPlan(data.plan);
-    } catch (_) {}
-  }
-
-  async function generateWarmup() {
-    if (!apiKey || warmupLoading) return;
-    setWarmupLoading(true);
-    setWarmupError('');
-    setWarmupPlan(null);
-    try {
-      const r = await fetch('/api/warmup/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ date: warmupDate, workspace }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Ошибка генерации');
-      setWarmupPlan(data.plan);
-      loadWarmupHistory();
-    } catch (e) {
-      setWarmupError(e.message);
-    } finally {
-      setWarmupLoading(false);
-    }
-  }
+  function loadWarmupByDate(d) { setWarmupDate(d); }
 
   function toggleBatchPlayer(id) {
     setBatchSelectedIds(prev => {
@@ -3896,7 +3859,7 @@ export default function Home() {
       const unchanged = currentSaveViewRef.current.session === submittedSession;
       if (unchanged && data.session) setSession(data.session);
       const savedQuality = data.quality || meta.quality || null;
-      if (unchanged && data.quality) setMeta(prev => prev ? { ...prev, quality: data.quality, focusLabel: data.trainingLabel || prev.focusLabel } : prev);
+      setMeta(prev => prev ? { ...prev, teamDraft:null, ...(data.quality?{quality:data.quality}:{}), focusLabel:data.trainingLabel || prev.focusLabel } : prev);
       setJustSaved(unchanged);
       void teamQueue.refresh();
       setPendingSaved({
@@ -3916,9 +3879,10 @@ export default function Home() {
         const list=batchResults.filter(row=>row.status==='done' && !row.saved && row.batchId!==teamContext.batchId),index=batchResults.findIndex(row=>row.batchId===teamContext.batchId),next=batchResults.slice(index+1).find(row=>row.status==='done' && !row.saved) || list[0];
         setSavedTeamBatches(previous=>new Set([...previous,teamContext.batchId]));teamDraftEdits.current.delete(teamDraftIdentity(teamContext));
         try{localStorage.removeItem(workCopyKey({workspace,playerId,date:meta.date,queueId:meta.teamDraft.queueId,batchId:teamContext.batchId}));}catch{}
-        activeTeamDraftRef.current=null;setTeamModalOpen(false);
-        if(openNext===true && next)await openBatchDraft(next);
+        activeTeamDraftRef.current=null;if(unchanged)setTeamModalOpen(false);
+        if(unchanged && openNext===true && next)await openBatchDraft(next);
       }
+      if(teamModalOpen && !meta.teamDraft && unchanged){activeTeamDraftRef.current=null;setTeamModalOpen(false);}
       setTimeout(() => setJustSaved(false), 2500);
     } catch (err) {
       if (isCurrentView()) setError(err.message);
@@ -4360,7 +4324,7 @@ export default function Home() {
     );
   }
 
-  const teamQueuePanel = <div id="coach-team-drafts"><TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onCheckPublication={teamQueue.checkPublication} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} unsavedEdits={teamPendingEdits}/></div>;
+  const teamQueuePanel = <div id="coach-team-drafts"><TeamQueueReview queue={teamQueue.queue} players={players} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onCheckPublication={teamQueue.checkPublication} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} unsavedEdits={teamPendingEdits}/></div>;
     const savedProgram = session && meta && (
             <div inert={saving || undefined} data-preview={editorPreview || !!executionConfirmed} className="premium-session-card coach-session-workspace mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
 
@@ -4457,7 +4421,7 @@ export default function Home() {
               </div>
 
               {executionConfirmed && <p className="coach-execution-confirmed" role="status">Тренировка выполнена · {playerExecution.totalSets} / {playerExecution.totalSets} подходов · {new Date(playerExecution.completedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Исходный план защищён: редактирование, сохранение и перенос отключены. Факты дополняются отдельно в истории.</p>}
-              <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={meta.focusLabel || getFocusLabel(period,focus)} preview={editorPreview || !!executionConfirmed} onPreview={value=>{if(!executionConfirmed)setEditorPreview(value);}} onNavigate={index=>{
+              <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={coachTrainingTitle(meta.focusLabel)==='Тренировка'?TRAINING_TYPE_LABELS[meta.trainingType] || getFocusLabel(period,focus):coachTrainingTitle(meta.focusLabel)} preview={editorPreview || !!executionConfirmed} onPreview={value=>{if(!executionConfirmed)setEditorPreview(value);}} onNavigate={index=>{
                 const block=session.blocks[index];setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
                 requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
               }}/>
@@ -4594,33 +4558,11 @@ export default function Home() {
               )}
 
               </details>
-              {/* Assessment */}
-              {(session.assessment || session.periodization_note) && (
-                <div className="mb-5 grid gap-3 lg:grid-cols-2 print:hidden">
-                {session.assessment && (
-                <div className="overflow-hidden rounded-xl border border-accent/[0.16] bg-accent/[0.05]">
-                  <div className="flex gap-0">
-                    <div className="w-1 shrink-0 bg-accent/40" />
-                    <div className="px-4 py-3.5">
-                      <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-accent/60">Оценка состояния</div>
-                      <p className="text-[13px] leading-relaxed text-slate-200">{session.assessment}</p>
-                    </div>
-                  </div>
-                </div>
-                )}
-                {session.periodization_note && (
-                <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.02]">
-                  <div className="flex gap-0">
-                    <div className="w-1 shrink-0 bg-slate-600/50" />
-                    <div className="px-4 py-3.5">
-                      <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-slate-600">Логика периодизации</div>
-                      <p className="text-[13px] leading-relaxed text-slate-400">{session.periodization_note}</p>
-                    </div>
-                  </div>
-                </div>
-                )}
-                </div>
-              )}
+              {/* Explanations remain in place; source warnings are never abbreviated. */}
+              {(session.assessment || session.periodization_note) && <div className="coach-session-context mb-4 grid gap-3 lg:grid-cols-2 print:hidden">
+                {session.assessment && <details className="coach-assessment" open={!!(session.warnings?.length || session.kind==='restricted_day_plan' || /боль|медицин|противопоказ|без отягощ|адаптац|сократ|без прибав|уточнит|недоступ|запрет|огранич|лихорад|травм/i.test(session.assessment)) || undefined}><summary>Состояние и ограничения</summary><p>{session.assessment}</p></details>}
+                {session.periodization_note && <details className="coach-periodization"><summary>Логика тренировки</summary><p>{session.periodization_note}</p></details>}
+              </div>}
 
               {/* Camp methodology violations */}
               {methodViolations.length > 0 && (
@@ -4653,17 +4595,8 @@ export default function Home() {
 
 
               {/* Volume stats bar */}
-              {sessionVolume && (
+              {sessionVolume && (sessionVolume.tonnes || jumpVolume) && (
                 <div className="coach-program-dose-summary mb-6 flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 print:hidden">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Упр.</span>
-                    <span className="text-[18px] font-black text-slate-200">{sessionVolume.exCount}</span>
-                  </div>
-                  <div className="h-6 w-px bg-white/[0.06]" />
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Подх.</span>
-                    <span className="text-[18px] font-black text-slate-200">{sessionVolume.sets}</span>
-                  </div>
                   {sessionVolume.tonnes && (
                     <>
                       <div className="h-6 w-px bg-white/[0.06]" />
@@ -4706,7 +4639,8 @@ export default function Home() {
 
               {/* Blocks — screen only */}
               <div className="space-y-8 print:hidden">
-                {(session.blocks || []).map((block, bi) => (
+                {commonRegulation && <p className="coach-common-rule">{commonRegulation}</p>}
+              {(session.blocks || []).map((block, bi) => (
                   <div id={`coach-program-block-${bi}`} className="coach-program-block" key={block.blockId || block.label || bi}>
                     {(() => {
                       const bc = blockCfg(block.label);
@@ -4758,6 +4692,7 @@ export default function Home() {
                           apiKey={apiKey}
                           viewScope={correctionViewScope+`:${bi}:${ei}`}
                           preview={editorPreview || !!executionConfirmed}
+                          sharedRegulation={commonRegulation}
                           code={ex.code}
                           name={prehabEnglishName(ex.name)}
                           targetSets={ex.targetSets || []}
@@ -5097,7 +5032,7 @@ export default function Home() {
             </div>
           )}
 
-          {keyConnected && <CoachNavigation current={mainSection} onSelect={section => {setMainSection(section);if(section==='warmup')loadWarmupHistory();}} />}
+          {keyConnected && <CoachNavigation current={mainSection} onSelect={section => {setMainSection(section);}} />}
 
           {/* Tab switcher: Players | Day (workouts section only) */}
           {mainSection === 'workouts' && keyConnected && players.length > 0 && (
@@ -5125,7 +5060,7 @@ export default function Home() {
               {/* Date */}
               <div>
                 <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-slate-600">Дата</label>
-                <DatePicker navigate value={warmupDate} onChange={setWarmupDate} size="sm" />
+                <DatePicker navigate value={warmupDate} onChange={setWarmupDate} disabled={warmupLoading} size="sm" />
               </div>
 
               {/* Calendar-led season context */}
@@ -5143,7 +5078,7 @@ export default function Home() {
                 disabled={warmupLoading}
                 className="w-full rounded-xl bg-cyan-500 py-2.5 text-[12px] font-bold text-[#060a0e] transition hover:bg-cyan-400 disabled:opacity-50"
               >
-                {warmupLoading ? 'Генерирую...' : 'Сгенерировать разминку'}
+                {warmupLoading ? warmupGenerating?'Генерирую…':'Загружаю…' : 'Сгенерировать разминку'}
               </button>
 
               {warmupError && (
@@ -5428,8 +5363,8 @@ export default function Home() {
                   {focus === 'inseason_power' && (
                     <div className="grid grid-cols-2 gap-1 rounded-lg border border-violet-400/20 bg-violet-400/[0.05] p-1">
                       {[
-                        { value: 'development', label: 'Development', sub: '50–55 мин' },
-                        { value: 'microdose', label: 'Microdose', sub: '30 мин' },
+                        { value: 'development', label: 'Полная сессия', sub: '50–55 мин' },
+                        { value: 'microdose', label: 'Короткая сессия', sub: '30 мин' },
                       ].map(mode => (
                         <button
                           key={mode.value}
@@ -5693,17 +5628,7 @@ export default function Home() {
               >
                 <button type="button" onClick={() => selectPlayer(p)} aria-pressed={playerId === p.id} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                 <div className="relative h-9 w-9 shrink-0">
-                  {p.photo ? (
-                    <img src={p.photo} alt="" className="h-9 w-9 rounded-xl object-cover object-top ring-1 ring-white/[0.14]" />
-                  ) : (
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-xl text-[10px] font-black transition-colors ${
-                      playerId === p.id
-                        ? 'bg-accent text-[#060a0e]'
-                        : 'bg-white/[0.07] text-slate-400 group-hover:bg-white/[0.10]'
-                    }`}>
-                      {initials(p.name)}
-                    </div>
-                  )}
+                  <CoachAvatar player={p} className="coach-existing-avatar"/>
                   <span className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-[#060c15] ${positionDot(p.position)}`} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -5838,7 +5763,7 @@ export default function Home() {
                 </div>
               </div>
             )}
-            {keyConnected && <div className="coach-mobile-navigation"><CoachNavigation current={mainSection} onSelect={section=>{setMainSection(section);setMobileView('workspace');if(section==='warmup')loadWarmupHistory();}} /></div>}
+            {keyConnected && <div className="coach-mobile-navigation"><CoachNavigation current={mainSection} onSelect={section=>{setMainSection(section);setMobileView('workspace');}} /></div>}
 
             {/* Mobile player grid */}
             <div className="flex-1 overflow-y-auto p-4">
@@ -5892,15 +5817,7 @@ export default function Home() {
                       className="w-full flex flex-col items-center gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4 text-center transition active:scale-95"
                     >
                       <div className="relative h-12 w-12">
-                        {p.photo ? (
-                          <img src={p.photo} alt="" className="h-12 w-12 rounded-2xl object-cover object-top" />
-                        ) : (
-                          <div className={`h-12 w-12 flex items-center justify-center rounded-2xl text-sm font-black ${
-                            playerId === p.id ? 'bg-accent text-[#060a0e]' : 'bg-white/[0.07] text-slate-300'
-                          }`}>
-                            {initials(p.name)}
-                          </div>
-                        )}
+                        <CoachAvatar player={p} className="coach-existing-avatar"/>
                         <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[#060c15] ${positionDot(p.position)}`} />
                       </div>
                       <div>
@@ -5950,17 +5867,18 @@ export default function Home() {
           {/* ── Warmup workspace ── */}
           {mainSection === 'warmup' && (
             <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
+              {warmupError && <p role="alert" className="coach-data-warning">{warmupError} <button type="button" onClick={retryWarmup}>Повторить загрузку</button></p>}
               {warmupLoading && (
                 <div className="flex flex-col items-center justify-center py-24 gap-4">
                   <div className="h-8 w-8 rounded-full border-2 border-cyan-400/30 border-t-cyan-400 animate-spin" />
-                  <p className="text-[13px] text-slate-500">Генерирую разминку...</p>
+                  <p className="text-[13px] text-slate-500">{warmupGenerating?'Генерирую разминку…':'Загружаю разминку…'}</p>
                 </div>
               )}
               {!warmupLoading && !warmupPlan && (
                 <div className="flex flex-col items-center justify-center py-24 gap-3">
                   <div className="text-4xl opacity-20">🏃</div>
                   <h2 className="text-[18px] font-black text-slate-600">Командная разминка</h2>
-                  <p className="text-[13px] text-slate-700">Выберите дату и нажмите «Сгенерировать» в панели слева. Фаза определяется автоматически по календарю.</p>
+                  <p className="text-[13px] text-slate-700">На выбранную дату разминка не сохранена. Подготовьте её в панели слева.</p>
                 </div>
               )}
               {!warmupLoading && warmupPlan && (
@@ -5979,7 +5897,7 @@ export default function Home() {
                       )}
                     </div>
                   </div>
-                  <WarmupConduct key={workspace+warmupPlan.date} plan={warmupPlan} onModeChange={setWarmupConduct}/>
+                  <WarmupConduct key={workspace+warmupPlan.date} videoForExercise={findExerciseUrl} plan={warmupPlan} onModeChange={setWarmupConduct}/>
                   <div className={warmupConduct?'hidden':'grid gap-4 sm:grid-cols-2'}>
                     {(warmupPlan.sections || []).map((section, si) => {
                       const st = WARMUP_SECTION_STYLES[section.id] || WARMUP_SECTION_STYLES.speed;
@@ -6268,20 +6186,18 @@ export default function Home() {
                               onClick={() => openOverviewPlayer(p,calWeekStart)}
                               className="flex w-full items-center gap-2.5 text-left transition hover:opacity-80"
                             >
-                              <div className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-xl text-[10px] font-black ${
-                                playerId === p.id ? 'bg-accent text-[#060a0e]' : 'bg-white/[0.07] text-slate-500'
-                              }`}>{initials(p.name)}</div>
+                              <CoachAvatar player={players.find(item=>String(item.id)===String(p.id)) || p}/>
                               <div className="min-w-0 flex-1">
                                 <div className="text-[12px] font-semibold text-slate-300 truncate">{p.name}</div>
                                 <div className="text-[9px] text-slate-700 truncate">{p.position || 'Игрок'}</div>
                               </div>
                             </button>
-                            <OverviewSignals issues={readinessIssues(readinessData?.players?.find(item=>String(item.id)===String(p.id)),readinessData,workspace)}/>
+                            <details className="coach-week-data"><summary>Данные ReadySix</summary><OverviewSignals issues={readinessIssues(readinessData?.players?.find(item=>String(item.id)===String(p.id)),readinessData,workspace)}/></details>
                             <div className="mt-3">
                               <div className="flex items-center justify-between text-[9px]"><span className="font-bold text-slate-600">Бюджет</span><span className={`font-black tabular-nums ${athlete.budget.status === 'over' ? 'text-rose-300' : athlete.budget.status === 'near' ? 'text-amber-200' : 'text-slate-400'}`}>{budgetLabel(athlete.budget)}</span></div>
                               <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.05]"><div className={`h-full rounded-full ${budgetTone}`} style={{ width: `${athlete.budget.status==='calibrating' || !(athlete.budget.sets>0 || athlete.budget.tonnage>0)?0:Math.min(100, athlete.budget.utilizationPercent)}%` }} /></div>
-                              <div className="mt-1.5 flex items-center justify-between text-[8px] text-slate-700"><span>{athlete.budget.source}</span><span>{compactLoad(athlete.budget.tonnage)}</span></div>
-                              <details className="coach-week-budget"><summary>Основание бюджета</summary><p className="mt-1 text-xs text-slate-300">База: {athlete.budget.referenceSets ?? '—'} подходов · {athlete.budget.referenceTonnage!=null?compactLoad(athlete.budget.referenceTonnage):'нет тоннажа'}. Факт недели: {compactLoad(athlete.totals?.actualTonnage)}; полноту проверяйте в занятиях.</p>{(athlete.budget.sourceWeeks || []).map(week=><section key={week.from}><strong>{week.from} → {week.to}</strong><p>{week.sessions} занятий · {week.referenceSets} подходов · {compactLoad(week.referenceTonnage)}{!week.sessions?' · нет занятий, в медиану не входит':''}</p>{week.entries.map(entry=><p key={entry.date}>{entry.date} · {entry.label} · {entry.sets} подходов ({entry.setsBasis==='fact'?'факт':'план'}) · {compactLoad(entry.tonnage)} ({entry.tonnageBasis==='fact'?'факт':'план'})</p>)}</section>)}</details>{athlete.budget.rtp && <div className="mt-1 text-[8px] font-bold text-violet-300/60">RTP {athlete.budget.rtp.phase} · лимит {athlete.budget.rtp.volumeCap}%</div>}
+
+                              <details className="coach-week-budget"><summary>Основание бюджета</summary><p>{athlete.budget.source} · {compactLoad(athlete.budget.tonnage)}</p><p className="mt-1 text-xs text-slate-300">База: {athlete.budget.referenceSets ?? '—'} подходов · {athlete.budget.referenceTonnage!=null?compactLoad(athlete.budget.referenceTonnage):'нет тоннажа'}. Факт недели: {compactLoad(athlete.totals?.actualTonnage)}; полноту проверяйте в занятиях.</p>{(athlete.budget.sourceWeeks || []).map(week=><section key={week.from}><strong>{week.from} → {week.to}</strong><p>{week.sessions} занятий · {week.referenceSets} подходов · {compactLoad(week.referenceTonnage)}{!week.sessions?' · нет занятий, в медиану не входит':''}</p>{week.entries.map(entry=><p key={entry.date}>{entry.date} · {entry.label} · {entry.sets} подходов ({entry.setsBasis==='fact'?'факт':'план'}) · {compactLoad(entry.tonnage)} ({entry.tonnageBasis==='fact'?'факт':'план'})</p>)}</section>)}</details>{athlete.budget.rtp && <div className="mt-1 text-[8px] font-bold text-violet-300/60">RTP {athlete.budget.rtp.phase} · лимит {athlete.budget.rtp.volumeCap}%</div>}
                             </div>
                           </td>
                           {(athlete.days || []).map(day => {
@@ -6304,8 +6220,8 @@ export default function Home() {
                                     {selectable && <button type="button" onClick={() => toggleWeekBatch(String(p.id), d)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg border transition ${selected ? 'border-cyan-200/40 bg-cyan-200 text-[#071013]' : 'border-white/[0.09] text-slate-600 hover:text-cyan-200'}`} title="Добавить в пакет адаптации">{selected ? <Check size={12} strokeWidth={3} /> : <Square size={12} />}</button>}
                                   </div>
                                   <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-600"><span>{day.plannedSets} подх.</span><span>·</span><span>План {compactLoad(day.plannedTonnage)}</span></div>
-                                  {day.completed ? <div className="mt-2"><div className="flex items-center justify-between text-[8px]"><span className="font-bold text-emerald-200/60">Подходы завершены</span><span className="text-slate-500">{day.completionPercent}%</span></div><div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-emerald-300" style={{ width: `${Math.min(100, day.completionPercent)}%` }} /></div></div> : <div className={`mt-2 text-[8px] font-semibold ${day.started ? 'text-cyan-200/60' : 'text-slate-700'}`}>{day.started ? 'Выполняется сейчас' : 'Запланировано'}</div>}
-                                  <p className="mt-1 text-xs text-slate-300">Записано: {sessionFactAmount(day.actualTonnage,day.loadEvidence,{completed:day.completed,completedSets:day.completedSets})}</p><details className="coach-week-evidence"><summary>Полнота факта</summary><OverviewSignals issues={day.date>todayISO() && day.loadEvidence?.source==='missing'?[]:loadEvidenceLabel(day.loadEvidence)?[loadEvidenceLabel(day.loadEvidence)]:[]}/></details>
+                                  {day.completed ? <div className="mt-2"><div className="flex items-center justify-between text-[8px]"><span className="font-bold text-emerald-200/60">Завершено</span><span className="text-slate-500">{day.completionPercent}%</span></div><div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-emerald-300" style={{ width: `${Math.min(100, day.completionPercent)}%` }} /></div></div> : <div className={`mt-2 text-[8px] font-semibold ${day.started ? 'text-cyan-200/60' : 'text-slate-700'}`}>{day.started ? 'Выполняется сейчас' : 'Запланировано'}</div>}
+                                  <p className="mt-1 text-xs text-slate-300">Факт: {sessionFactAmount(day.actualTonnage,day.loadEvidence,{completed:day.completed,completedSets:day.completedSets})}</p><details className="coach-week-evidence"><summary>Полнота факта</summary><OverviewSignals issues={day.date>todayISO() && day.loadEvidence?.source==='missing'?[]:loadEvidenceLabel(day.loadEvidence)?[loadEvidenceLabel(day.loadEvidence)]:[]}/></details>
                                   {(dayConflicts.length > 0 || generalConflict) && <div className="mt-2 flex items-center gap-1 text-[8px] font-bold text-amber-200/70"><AlertTriangle size={9} /> {dayConflicts[0]?.title || 'Проверьте бюджет недели'}</div>}
                                 </div> : (
                                 <button
@@ -6324,7 +6240,7 @@ export default function Home() {
                     </tbody>
                   </table>
                 </div>
-              {apiKey && <TeamFactOverview key={'week:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} fixedPeriod={weekFactPeriod(calWeekStart)} compact label="Факты недели · кг, повторы и RPE" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
+              {apiKey && <TeamFactOverview roster={players} key={'week:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} fixedPeriod={weekFactPeriod(calWeekStart)} compact label="Факты недели · кг, повторы и RPE" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
                 {(calData.summary?.conflicts || 0) > 0 && (
                   <div className="mt-5 rounded-2xl border border-amber-300/10 bg-amber-300/[0.025] p-4">
                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100/70"><AlertTriangle size={13} /> Контрольные точки недели</div>
@@ -6465,18 +6381,18 @@ export default function Home() {
           )}
 
           {keyConnected && mainSection==='team' && <TeamPreparation key={workspace+date} workspace={workspace} date={date} players={players} statuses={teamStatus} initialRequest={{period:'inseason',focus:'inseason_strength',trainingType:'full_body',strengthMode:'maintenance',powerMode:'development',dayGoal:'',notes:'',days:7,coachRecovery:'green'}} periods={PERIODS} phasesFor={value=>phasesForWorkspace(value,workspace).map(phase=>({...phase,label:phaseLabelForWorkspace(phase,workspace)}))} defaultTypeFor={defaultTrainingTypeForFocus} typesFor={value=>value==='inseason_strength'?STRENGTH_TRAINING_TYPES:TRAINING_TYPES} busy={teamQueue.recovering} running={batchRunning} queue={teamQueue.queue} queuePanel={teamQueuePanel} previousQueue={teamQueue.previousQueue} onPrevious={()=>changeTrainingDate(teamQueue.previousQueue.date)} onGenerate={executeTeamGeneration} calendar={<DatePicker navigate quickDays timeZone="Europe/Moscow" value={date} onChange={changeTrainingDate} disabled={saving || teamDraftOpening || !!batchId} maxDate={addDaysToStr(todayISO(),1)} size="sm"/>}/>}
-          {teamModalOpen && <TeamProgramDialog open name={selectedPlayer?.name || 'Программа игрока'} date={date} opening={teamDraftOpening} saving={saving || teamQueue.recovering} error={error || teamQueue.error} saved={!!batchResults.find(row=>String(row.playerId)===String(playerId))?.saved || !!pendingSaved && !pendingSaved.draft} dirty={programDirty} onUndo={correctionHistory.undo} onRedo={correctionHistory.redo} canUndo={correctionHistory.canUndo} canRedo={correctionHistory.canRedo} onClose={closeTeamProgram} onSave={()=>handleSave()} onSaveNext={()=>handleSave(true)} validationBlocked={plannedIssues.length>0} saveBlocked={executionConfirmed || session?.kind==='restricted_day_plan'} draftSaved={!!pendingSaved?.draft && !programDirty} onSaveDraft={meta?.teamDraft && pendingSaved?.draft?saveTeamCorrection:null} onPrevious={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>0?()=>openBatchDraft(list[index-1]):null;})()} onNext={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>=0 && index<list.length-1?()=>openBatchDraft(list[index+1]):null;})()}>{savedProgram}</TeamProgramDialog>}
+          {teamModalOpen && <TeamProgramDialog open player={selectedPlayer} name={selectedPlayer?.name || 'Программа игрока'} date={date} opening={teamDraftOpening} saving={saving || teamQueue.recovering} error={error || teamQueue.error} saved={!!batchResults.find(row=>String(row.playerId)===String(playerId))?.saved || !!pendingSaved && !pendingSaved.draft} dirty={programDirty} onUndo={correctionHistory.undo} onRedo={correctionHistory.redo} canUndo={correctionHistory.canUndo} canRedo={correctionHistory.canRedo} onClose={closeTeamProgram} onSave={()=>handleSave()} onSaveNext={()=>handleSave(true)} validationBlocked={plannedIssues.length>0} saveBlocked={executionConfirmed || session?.kind==='restricted_day_plan'} draftSaved={!!pendingSaved?.draft && !programDirty} onSaveDraft={meta?.teamDraft && pendingSaved?.draft?saveTeamCorrection:null} onPrevious={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>0?()=>openBatchDraft(list[index-1]):null;})()} onNext={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>=0 && index<list.length-1?()=>openBatchDraft(list[index+1]):null;})()}>{savedProgram}</TeamProgramDialog>}
           {keyConnected && mainSection==='workouts' && workspaceTab==='program' && !playerId && batchSelectedIds.size===0 && <CoachHome workspace={workspace} players={players} date={date} onSelectPlayer={selectPlayer} onNavigate={setMainSection} calendar={<DatePicker navigate timeZone={activePlayerTimeZone} value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(playerToday,1)} size="sm" />} />}
-          {keyConnected && mainSection==='workouts' && <TeamFactOverview key={workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
+          {keyConnected && mainSection==='workouts' && <TeamFactOverview roster={players} key={workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
           {keyConnected && mainSection==='workouts' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}
 
           {/* ── Today · smart decision centre ── */}
-          {mainSection==='library' && apiKey && <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10"><header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Общая библиотека обоих пространств</p><h2>Библиотека упражнений</h2><p>Просматривайте технику, сохраняя программу в редакторе.</p></div><button type="button" onClick={()=>setMainSection('workouts')}>Вернуться к программе ↗</button><a href="/library" target="_blank" rel="noopener noreferrer">Управление каталогом ↗</a></header><ExerciseLibraryPicker key={workspace} apiKey={apiKey}/></div>}
+          {mainSection==='library' && apiKey && <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10"><header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Общая библиотека обоих пространств</p><h2>Библиотека упражнений</h2><p>Техника и точные варианты упражнений.</p></div><button type="button" onClick={()=>setMainSection('workouts')}>Вернуться к программе ↗</button><a href="/library" target="_blank" rel="noopener noreferrer">Управление каталогом ↗</a></header><ExerciseLibraryPicker key={workspace} apiKey={apiKey}/></div>}
           {mainSection === 'today' && (
             <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
-              <header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Команда · {todayISO().split('-').reverse().join('.')}</p><h2>Сегодня</h2><p>Решения, программы и качество исходных данных — в одном обзоре.</p></div><button type="button" disabled={readinessLoading} onClick={()=>loadTodayOverview(false,true)}><RefreshCw size={15} className={readinessLoading?'animate-spin':''}/> Обновить данные</button></header>
+              <header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Команда · {todayISO().split('-').reverse().join('.')}</p><h2>Сегодня</h2><p>Программы и задачи на сегодня.</p></div><button type="button" disabled={readinessLoading} onClick={()=>loadTodayOverview(false,true)}><RefreshCw size={15} className={readinessLoading?'animate-spin':''}/> Обновить данные</button></header>
               <TodayOverview workspace={workspace} key={workspace} center={todayCenter} readinessData={todaySnapshot?.workspace===workspace?todaySnapshot.readiness:readinessData} loading={readinessLoading || teamStatusLoading} error={todayError || teamStatusError} updatedAt={todayUpdatedAt} onPlayer={openOverviewPlayer} onHistory={player=>openOverviewPlayer(player,todayISO(),'history')} onDraft={openBatchDraft} getDraft={overviewDraft} onVersions={openSessionVersions} onRtp={openReturnToPlay} onAdapt={applyTodayRecommendation} adaptationSaving={adaptationSaving} onNavigate={openOverviewSection}/>
-              {apiKey && <TeamFactOverview key={'today:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} compact label="Заполнить факты · последние занятия команды" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
+              {apiKey && <TeamFactOverview roster={players} key={'today:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} compact label="Заполнить факты · последние занятия команды" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
           {keyConnected && mainSection==='today' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}
 
               {rtpPlayer && <ReturnToPlayModal player={rtpPlayer} plan={rtpDraft} saving={rtpSaving} onChange={setRtpDraft} onSave={saveReturnToPlay} onClose={() => { setRtpPlayer(null); setRtpDraft(null); }} />}
@@ -6506,7 +6422,7 @@ export default function Home() {
               <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <div className="mb-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300/70">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-300" /> Floor command centre
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-300" /> Выполнение команды
                   </div>
                   <h2 className="text-2xl font-black tracking-tight text-white">{liveDebrief?'Разбор завершённых тренировок':'Тренировка команды LIVE'}</h2>
                   <p className="mt-1 text-[12px] text-slate-500">Сегодня · обновление каждые 8 секунд · последнее {compactTime(liveUpdatedAt)}</p>
@@ -6532,12 +6448,12 @@ export default function Home() {
 
               <div className="coach-overview-filters"><button type="button" aria-pressed={!liveDebrief} onClick={()=>setLiveDebrief(false)}>Активные занятия</button><button type="button" aria-pressed={liveDebrief} onClick={()=>setLiveDebrief(true)}>Разбор завершённых · {liveSummary.completed}</button><button type="button" aria-pressed={liveAttentionOnly} onClick={()=>setLiveAttentionOnly(v=>!v)}>Требуют внимания</button><button type="button" onClick={()=>openOverviewSection('drafts')}>Подготовить программы →</button></div>{!liveDebrief && liveSummary.planned>0 && liveSummary.completed===liveSummary.planned && <p className="coach-overview-empty">Все назначенные занятия завершены. Откройте разбор завершённых.</p>}{!liveSummary.planned && <p className="coach-overview-empty">На сегодня программы не назначены. Откройте командные черновики для подготовки.</p>}<details className="coach-overview-secondary"><summary>Без программы · {liveRows.filter(row=>!row.status.hasSession).length}</summary><div className="coach-overview-actions">{liveRows.filter(row=>!row.status.hasSession).map(({player})=><button type="button" key={player.id} onClick={()=>openOverviewPlayer(player,todayISO())}>{player.name} →</button>)}</div></details>
               {!liveDebrief && stationRotation.length > 0 && (
-                <div className="mb-6 rounded-3xl border border-cyan-300/10 bg-gradient-to-br from-cyan-300/[0.055] to-violet-300/[0.025] p-4 backdrop-blur-xl">
+                <details className="coach-station-details mb-4 rounded-3xl border border-cyan-300/10 p-4"><summary>Станции и ротация групп</summary>
                   <div className="mb-3 flex items-center justify-between gap-3"><div><div className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-200/60">Автоматическая разводка</div><div className="mt-1 text-[14px] font-black text-white">Станции и ротация групп</div></div><span className="rounded-full border border-cyan-300/15 px-2.5 py-1 text-[9px] font-bold text-cyan-200">до 3 игроков</span></div>
                   <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
                     {stationRotation.map(group => <div key={group.id} className="rounded-2xl border border-white/[0.07] bg-black/15 p-3"><div className="text-[11px] font-black text-white">{group.label}</div><div className="mt-1 truncate text-[10px] text-slate-500">{group.members.map(member => member.name.split(' ')[0]).join(' · ')}</div><div className="mt-3 flex gap-1.5 overflow-x-auto">{group.rotation.map(item => <div key={item.round} className="min-w-[96px] rounded-xl border border-white/[0.06] bg-white/[0.025] px-2.5 py-2"><div className="text-[9px] font-black text-cyan-200">{item.round}. Блок {item.block}</div><div className="mt-0.5 text-[9px] leading-tight text-slate-600">{item.station}</div></div>)}</div></div>)}
                   </div>
-                </div>
+                </details>
               )}
 
               {teamStatusLoading && !liveUpdatedAt ? (
@@ -6550,10 +6466,10 @@ export default function Home() {
                     return (
                       <article key={player.id} className={`rounded-2xl border ${tone} bg-gradient-to-br from-white/[0.04] to-white/[0.018] p-4 backdrop-blur-xl`}>
                         <div className="flex items-start gap-3">
-                          {player.photo ? <img src={player.photo} alt="" className="h-11 w-11 rounded-xl object-cover object-top ring-1 ring-white/10" /> : <div className="grid h-11 w-11 place-items-center rounded-xl bg-white/[0.07] text-xs font-black text-slate-300">{initials(player.name)}</div>}
+                          <CoachAvatar player={player}/>
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-[14px] font-bold text-white">{player.name}</div>
-                            <div className="mt-0.5 truncate text-[10px] text-slate-600">{status.trainingLabel || player.position || 'Нет программы'}</div>
+                            <div className="mt-0.5 truncate text-[10px] text-slate-600">{coachTrainingTitle(status.trainingLabel) || player.position || 'Нет программы'}</div>
                           </div>
                           <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wide ${
                             !status.hasSession ? 'bg-white/[0.05] text-slate-600' : live?.completed ? 'bg-emerald-300/10 text-emerald-200' : live?.started ? 'bg-cyan-300/10 text-cyan-200' : 'bg-amber-300/10 text-amber-200'
@@ -6566,13 +6482,13 @@ export default function Home() {
                             {(live.skippedExercises || []).map((item, index) => <p key={index} className="mt-2 text-xs text-amber-200">Пропуск · {item.name}: {item.reason}</p>)}
                             <div className="mt-4 flex items-end justify-between text-[11px]">
                               <span className="text-slate-500">{live.completedSets}/{live.totalSets} подходов</span>
-                              <span className="font-black text-slate-200">{live.progress}%</span>
+                              <span className="font-black text-slate-200">{live.progress>0 && live.progress<100?`${live.progress}%`:''}</span>
                             </div>
                             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300 transition-all" style={{ width: `${live.progress}%` }} /></div>
                             <div className="mt-3 flex flex-wrap gap-1.5">
                               {(live.blockStats || []).map(block => <span key={block.label} className={`grid h-8 min-w-8 place-items-center rounded-lg border px-2 text-[10px] font-black ${block.complete ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200' : block.label === live.activeBlock ? 'border-cyan-300/25 bg-cyan-300/12 text-cyan-100' : 'border-white/[0.06] text-slate-600'}`}>{block.label}{block.complete ? '✓' : ''}</span>)}
                             </div>
-                            <div className="mt-3 flex items-center justify-between text-[10px] text-slate-600"><span>Синхр. {compactTime(live.lastSyncAt)}</span><span>{live.deviceCount || 0} устр.</span></div>
+                            <details className="coach-live-sync" open={live.syncError || live.deviceCount>1 || undefined}><summary>Связь с устройством{live.syncError?' · проверить':''}</summary><p>Последняя синхронизация: {compactTime(live.lastSyncAt)} · устройств: {live.deviceCount || 0}</p></details>
                             {status.planFact && (status.planFact.completedSets > 0 || status.planFact.actualTonnage > 0) && <div className="mt-3 grid grid-cols-3 gap-1.5 rounded-xl border border-white/[0.05] bg-black/10 p-2"><div><div className="text-[8px] uppercase text-slate-700">План-факт</div><div className="text-[11px] font-black text-slate-300">{status.planFact.completionPercent}%</div></div><div><div className="text-[8px] uppercase text-slate-700">Тоннаж</div><div className="text-[11px] font-black text-slate-300">{status.planFact.tonnagePercent == null ? '—' : `${status.planFact.tonnagePercent}%`}</div></div><div><div className="text-[8px] uppercase text-slate-700">RPE</div><div className="text-[11px] font-black text-slate-300">{status.planFact.sessionRpe || '—'}</div></div></div>}
                           </>
                         )}
@@ -6626,12 +6542,14 @@ export default function Home() {
                   <div className={`mb-5 rounded-2xl border p-5 ${healthData.status === 'healthy' ? 'border-emerald-300/20 bg-emerald-300/[0.055]' : healthData.status === 'warning' ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-rose-300/20 bg-rose-300/[0.055]'}`}>
                     <div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Общий статус</div><div className="mt-1 text-xl font-black text-white">{healthData.status === 'healthy' ? 'Все системы работают' : healthData.status === 'warning' ? 'Есть предупреждения' : 'Требуется внимание'}</div></div><div className="text-right text-[10px] text-slate-500">{healthData.latencyMs} мс<br />{compactTime(healthData.checkedAt)}</div></div><ul className="coach-health-reasons">{(healthData.activeReasons || []).map(reason=><li key={reason}>{reason}</li>)}</ul>
                   </div>
-                  <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Production release</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{healthData.release?.commit?String(healthData.release.commit).slice(0,12):'Ревизия не передана'}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}<p>Сборка: {healthData.release?.builtAt?new Date(healthData.release.builtAt).toLocaleString('ru-RU'):'дата не передана'}</p><p>Публикация: {healthData.release?.publishedAt?new Date(healthData.release.publishedAt).toLocaleString('ru-RU'):'дата не передана'}</p></div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Readiness p95 · тёплый / холодный</div><div className={`mt-2 font-mono text-[12px] font-bold ${healthData.readinessPerformance?.healthy ? 'text-emerald-200' : 'text-amber-200'}`}>{healthData.readinessPerformance?.warm?.p95Ms ?? healthData.readinessPerformance?.p95Ms ?? '—'} мс <span className="text-slate-700">/</span> {healthData.readinessPerformance?.cold?.p95Ms ?? '—'} мс</div><div className="mt-1 text-[10px] text-slate-600">Цели ≤ {healthData.readinessPerformance?.warm?.targetP95Ms || 750} / {healthData.readinessPerformance?.cold?.targetP95Ms || 5000} мс · кеш {healthData.readinessPerformance?.cacheHitRate ?? '—'}% · {healthData.alerting?.channel === 'in-app' ? 'встроенный канал' : healthData.alerting?.channel || 'канал неизвестен'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя резервная копия</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.createdAt || healthData.backup?.createdAt?new Date(latestSnapshot?.createdAt || healthData.backup.createdAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} ключей · зашифровано` : healthData.backup ? `${healthData.backup.keyCount} ключей · ${healthData.backup.ageHours} ч назад` : 'Ежедневное защищённое копирование'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Контроль восстановления</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-cyan-200">{latestRecoveryDrill?.checkedAt || healthData.recovery?.checkedAt?new Date(latestRecoveryDrill?.checkedAt || healthData.recovery.checkedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Дата не передана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestRecoveryDrill ? `${latestRecoveryDrill.sampledKeyCount} ключей · очищено` : healthData.recovery ? `${healthData.recovery.sampledKeyCount} ключей · ${healthData.recovery.ageHours} ч назад` : 'Еженедельная DR-проверка'}</div></div></div>
+                  <details className="coach-system-details"><summary>Версия, скорость и резервные копии</summary>
+                  <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Версия приложения</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{healthData.release?.commit?String(healthData.release.commit).slice(0,12):'Ревизия не передана'}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}<p>Сборка: {healthData.release?.builtAt?new Date(healthData.release.builtAt).toLocaleString('ru-RU'):'дата не передана'}</p><p>Публикация: {healthData.release?.publishedAt?new Date(healthData.release.publishedAt).toLocaleString('ru-RU'):'дата не передана'}</p></div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Скорость ReadySix · p95</div><div className={`mt-2 font-mono text-[12px] font-bold ${healthData.readinessPerformance?.healthy ? 'text-emerald-200' : 'text-amber-200'}`}>{healthData.readinessPerformance?.warm?.p95Ms ?? healthData.readinessPerformance?.p95Ms ?? '—'} мс <span className="text-slate-700">/</span> {healthData.readinessPerformance?.cold?.p95Ms ?? '—'} мс</div><div className="mt-1 text-[10px] text-slate-600">Цели ≤ {healthData.readinessPerformance?.warm?.targetP95Ms || 750} / {healthData.readinessPerformance?.cold?.targetP95Ms || 5000} мс · кеш {healthData.readinessPerformance?.cacheHitRate ?? '—'}% · {healthData.alerting?.channel === 'in-app' ? 'встроенный канал' : healthData.alerting?.channel || 'канал неизвестен'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя резервная копия</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.createdAt || healthData.backup?.createdAt?new Date(latestSnapshot?.createdAt || healthData.backup.createdAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} ключей · зашифровано` : healthData.backup ? `${healthData.backup.keyCount} ключей · ${healthData.backup.ageHours} ч назад` : 'Ежедневное защищённое копирование'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Контроль восстановления</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-cyan-200">{latestRecoveryDrill?.checkedAt || healthData.recovery?.checkedAt?new Date(latestRecoveryDrill?.checkedAt || healthData.recovery.checkedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Дата не передана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestRecoveryDrill ? `${latestRecoveryDrill.sampledKeyCount} ключей · очищено` : healthData.recovery ? `${healthData.recovery.sampledKeyCount} ключей · ${healthData.recovery.ageHours} ч назад` : 'Еженедельная DR-проверка'}</div></div></div>
+                  </details>
                   <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">{Object.entries(healthData.services || {}).map(([name, ok]) => <div key={name} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className={`h-2 w-2 rounded-full ${ok ? 'bg-emerald-300' : 'bg-rose-300'}`} /><div className="mt-3 text-[12px] font-bold text-slate-200">{name === 'redis' ? 'Хранилище' : name === 'readySix' ? 'ReadySix' : name === 'ai' ? 'AI генерация' : name === 'backup' ? 'Резервные копии' : name === 'recovery' ? 'DR-проверка' : 'Доступ тренера'}</div><div className="mt-1 text-[10px] text-slate-600">{ok ? 'Работает' : name === 'backup' ? 'Нет свежей копии' : name === 'recovery' ? 'Нет свежей проверки' : 'Не настроено'}</div></div>)}</div>
                   <div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ошибки за 24 часа</div><div className="mt-2 text-3xl font-black text-rose-200">{healthData.errors24h}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">События-предупреждения за 24 часа</div><div className="mt-2 text-3xl font-black text-amber-200">{healthData.warnings24h}</div></div></div>
                   <section className="coach-active-problems" aria-label="Активные проблемы"><h3>Активные проблемы сервисов · {activeServiceProblems(healthData.services).length}</h3>{activeServiceProblems(healthData.services).map(problem=><p key={problem}>{problem}</p>)}<p>Счётчики ниже относятся к событиям за 24 часа и могут быть нулевыми при сохраняющейся проблеме.</p></section><GenerationMonitor workspace={workspace} apiKey={apiKey} />
                   <OperationalIncidents notifications={healthData.notifications || []}/>
-                  <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Последние события</div><div className="space-y-2">{(healthData.events || []).length ? healthData.events.slice(0, 12).map((event, index) => <div key={`${event.at}-${index}`} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${event.status === 'error' ? 'bg-rose-300' : event.status === 'warning' ? 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{event.area}</div>{event.message && <div className="mt-0.5 truncate text-[10px] text-slate-600">{event.message}</div>}</div><span className="text-[9px] text-slate-700">{compactTime(event.at)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Событий пока нет</div>}</div></div>
+                  <details className="coach-system-details mt-5"><summary>Последние события</summary><div className="space-y-2">{(healthData.events || []).length ? healthData.events.slice(0, 12).map((event, index) => <div key={`${event.at}-${index}`} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${event.status === 'error' ? 'bg-rose-300' : event.status === 'warning' ? 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{event.area}</div>{event.message && <div className="mt-0.5 truncate text-[10px] text-slate-600">{event.message}</div>}</div><span className="text-[9px] text-slate-700">{compactTime(event.at)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Событий пока нет</div>}</div></details>
                 </>
               )}
             </div>
@@ -6640,7 +6558,7 @@ export default function Home() {
           {/* ── Tonnage dashboard ── */}
           {mainSection === 'tonnage' && (
             <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
-              <header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Команда · последние 7 дней</p><h2>Нагрузка</h2><p>Выполненная работа, план и пробелы в записи результатов.</p></div><button type="button" disabled={tonnageLoading || teamStatusLoading} onClick={()=>tonnageTab==='tonnage'?setTonnageRefresh(value=>value+1):loadTeamStatus(todayISO())}><RefreshCw size={15}/> Обновить данные</button></header>
+              <header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Команда · последние 7 дней</p><h2>Нагрузка</h2><p>План и выполненная работа.</p></div><button type="button" disabled={tonnageLoading || teamStatusLoading} onClick={()=>tonnageTab==='tonnage'?setTonnageRefresh(value=>value+1):loadTeamStatus(todayISO())}><RefreshCw size={15}/> Обновить данные</button></header>
               {/* Sub-tab toggle */}
               <div className="mb-6 flex rounded-xl bg-white/[0.03] p-0.5 border border-white/[0.06]">
                 {[
@@ -6660,7 +6578,7 @@ export default function Home() {
                 ))}
               </div>
 
-              {tonnageTab==='tonnage' && <><OverviewFreshness updatedAt={tonnageUpdatedAt} loading={tonnageLoading} error={tonnageData?.error} label="Нагрузка"/>{tonnageData && !tonnageData.error && !tonnageLoading && <TeamLoadOverview key={workspace} data={tonnageData} filter={loadFilter} setFilter={setLoadFilter} onFacts={openHistoryFacts} onPlayer={openOverviewPlayer} onDraft={openBatchDraft} getDraft={overviewDraft}/>}</>}
+              {tonnageTab==='tonnage' && <><OverviewFreshness updatedAt={tonnageUpdatedAt} loading={tonnageLoading} error={tonnageData?.error} label="Нагрузка"/>{tonnageData && !tonnageData.error && !tonnageLoading && <TeamLoadOverview key={workspace} roster={players} data={tonnageData} filter={loadFilter} setFilter={setLoadFilter} onFacts={openHistoryFacts} onPlayer={openOverviewPlayer} onDraft={openBatchDraft} getDraft={overviewDraft}/>}</>}
 
               {/* ── Status today ── */}
               {tonnageTab === 'status' && (
@@ -6687,13 +6605,7 @@ export default function Home() {
                           hasSess ? 'border-emerald-500/20 bg-emerald-500/[0.04]' : 'border-white/[0.07] bg-white/[0.02]'
                         }`}
                       >
-                        {p.photo ? (
-                          <img src={p.photo} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover object-top" />
-                        ) : (
-                          <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-lg bg-white/[0.07] text-[10px] font-black text-slate-400">
-                            {(p.name || '').split(' ').map(w => w[0]).join('').slice(0, 2)}
-                          </div>
-                        )}
+                        <CoachAvatar player={p} className="coach-existing-avatar"/>
                         <div className="flex-1 min-w-0">
                           <p className="text-[13px] font-semibold text-slate-200 truncate">{p.name}</p>
                           {p.position && <p className="text-[10px] text-slate-600">{p.position}</p>}
@@ -6763,13 +6675,7 @@ export default function Home() {
               >
                 {/* Gradient ring */}
                 <div className="absolute -inset-[2px] rounded-[18px] bg-gradient-to-br from-accent/70 via-accent/30 to-transparent" />
-                {selectedPlayer.photo ? (
-                  <img src={selectedPlayer.photo} alt="" className="relative h-14 w-14 rounded-2xl object-cover object-top" />
-                ) : (
-                  <div className="relative h-14 w-14 flex items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-cyan-600 text-[15px] font-black text-[#060a0e]">
-                    {initials(selectedPlayer.name)}
-                  </div>
-                )}
+                <CoachAvatar player={selectedPlayer} className="coach-existing-avatar"/>
                 <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity text-[14px]">📷</div>
               </div>
               <div className="flex-1 min-w-0">
@@ -6823,7 +6729,7 @@ export default function Home() {
               <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-3">
                 <Shield size={12} className="text-blue-300/70" />
                 <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Доступ игрока</span>
-                <span className="ml-auto text-[10px] text-slate-700">управление ссылкой и устройствами</span>
+                <span className="ml-auto text-[10px] text-slate-700">Ссылка и устройства</span>
               </summary>
               <div className="flex flex-wrap gap-2 border-t border-white/[0.05] px-4 py-3">
                 <button type="button" disabled={Boolean(accessAction)} onClick={() => managePlayerAccess('get')} className="min-h-11 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] px-3 text-[11px] font-bold text-cyan-200 disabled:opacity-40">
@@ -6866,7 +6772,7 @@ export default function Home() {
                   <span className="ml-auto rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-400">{restrictions.length} активно</span>
                 )}
                 {restrictions.length === 0 && (
-                  <span className="ml-auto text-[10px] font-semibold text-slate-700">не добавлены вручную</span>
+                  <span className="ml-auto text-[10px] font-semibold text-slate-700">Нет дополнительных</span>
                 )}
               </summary>
               <div className="border-t border-white/[0.05] px-4 pb-4 pt-3"><p className="mb-3 text-xs text-slate-300">Здесь только дополнительные запреты тренера. Симптомы и медицинские ограничения ReadySix учитываются отдельно.</p>
@@ -6978,7 +6884,7 @@ export default function Home() {
           {/* ── Form + Results (only when player is selected, program tab) ── */}
           {workspaceTab === 'program' && playerId && <div>
           {executionConfirmed && savedProgram}
-          <details className="coach-program-preparation" open={!executionConfirmed || undefined}><summary>{executionConfirmed?'Подготовка следующей тренировки':'Настройки нового черновика'}</summary>
+          <details key={`${workspace}:${playerId}:${date}:${!!pendingSaved}`} className="coach-program-preparation" open={!pendingSaved && !session || undefined}><summary>{pendingSaved || session?'Новая программа':'Подготовить программу'}</summary>
 
           <form
             onSubmit={handleGenerate}
@@ -7006,7 +6912,7 @@ export default function Home() {
               </div>
             </div>
 
-            {pendingSaved && <div className="coach-saved-separation"><strong>Сохранённая программа: {meta?.focusLabel || 'Тренировка'} · {pendingSaved.date}</strong><p>Настройки ниже относятся к новому черновику. Сохранённое задание показано отдельно от настроек.</p>{executionConfirmed && <button type="button" onClick={()=>changeTrainingDate(addDaysToStr(date,1))}>Подготовить следующую тренировку →</button>}</div>}
+            {pendingSaved && <div className="coach-saved-separation"><strong>Сохранённая программа: {coachTrainingTitle(meta?.focusLabel)==='Тренировка'?TRAINING_TYPE_LABELS[meta?.trainingType] || 'Тренировка':coachTrainingTitle(meta?.focusLabel)} · {pendingSaved.date}</strong><p>Настройки ниже относятся к новому черновику. Сохранённое задание показано отдельно от настроек.</p>{executionConfirmed && <button type="button" onClick={()=>changeTrainingDate(addDaysToStr(date,1))}>Подготовить следующую тренировку →</button>}</div>}
             {workspace==='nkperf' && <PlayerTimeZoneControl key={playerId} playerId={playerId} timeZone={activePlayerTimeZone} apiKey={apiKey} disabled={saving||loading||!!batchId} onChange={changePlayerTimeZone} />}
             <div className="mb-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_1.15fr]">
               <div>
@@ -7281,8 +7187,8 @@ export default function Home() {
                 {focus === 'inseason_power' && (
                   <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-xl border border-violet-400/20 bg-violet-400/[0.05] p-1.5">
                     {[
-                      { value: 'development', label: 'Development', sub: '50–55 мин · полная работа' },
-                      { value: 'microdose', label: 'Microdose', sub: '30 мин · без тяжёлой пары' },
+                      { value: 'development', label: 'Полная сессия', sub: '50–55 мин · полная работа' },
+                      { value: 'microdose', label: 'Короткая сессия', sub: '30 мин · без тяжёлой пары' },
                     ].map(mode => (
                       <button
                         key={mode.value}
@@ -7763,13 +7669,7 @@ export default function Home() {
                   disabled={copying || !copyDate}
                   className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white/[0.06] disabled:opacity-50"
                 >
-                  {p.photo ? (
-                    <img src={p.photo} alt="" className="h-7 w-7 shrink-0 rounded-lg object-cover object-top" />
-                  ) : (
-                    <div className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg bg-white/[0.07] text-[10px] font-black text-slate-400">
-                      {initials(p.name)}
-                    </div>
-                  )}
+                  <CoachAvatar player={p} className="coach-existing-avatar"/>
                   <div className="flex-1 min-w-0">
                     <div className="text-[12px] font-semibold text-slate-200 truncate">{p.name}</div>
                     <div className="text-[10px] text-slate-600">{p.position || '—'}</div>

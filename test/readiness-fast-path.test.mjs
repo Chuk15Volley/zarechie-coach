@@ -317,8 +317,8 @@ test('readiness API validates date, normalizes workspace and exposes cache state
   assert.match(source, /Server-Timing/);
   assert.match(dashboard, /workspace=\$\{workspace\}&refresh=1/);
   assert.match(dashboard, /readinessData\?\.cache === 'stale'/);
-  assert.match(dashboard, /Readiness p95/);
-  assert.match(dashboard, /тёплый \/ холодный/);
+  assert.match(dashboard, /Скорость ReadySix · p95/);
+  assert.match(dashboard, /p95Ms/);
   const warmCron = readFileSync(new URL('../pages/api/cron/readiness-warm.js', import.meta.url), 'utf8');
   const vercel = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
   assert.match(warmCron, /prewarmTeamReadiness/);

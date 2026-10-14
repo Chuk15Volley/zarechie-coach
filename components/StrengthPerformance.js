@@ -7,13 +7,13 @@ const dateLabel = date => date.slice(8,10)+'.'+date.slice(5,7);
 const chains = {full_body:'Общая силовая',anterior_chain:'Передняя цепь',posterior_chain:'Задняя цепь'};
 function MetricChart({points,metric,title,unit}) {
   const id=useId(),width=Math.max(260,points.length*27+50),height=150,{min,max,coordinates,segments}=performanceChartGeometry(points,metric,width,height);
-  const known=coordinates.filter(Boolean),latest=known.at(-1),missing=points.length-known.length;
+  const known=coordinates.filter(Boolean),latest=known.at(-1),notPerformed=points.filter(p=>p.gap==='Этот вариант не выполнялся' || p.gap==='Такого подхода нет').length,missing=points.length-known.length-notPerformed;
   const plot=useRef(null),[overflow,setOverflow]=useState(false);
   useEffect(()=>{const element=plot.current;if(!element)return;const resize=()=>{const clipped=element.scrollWidth>element.clientWidth+1;setOverflow(clipped);if(clipped)element.scrollLeft=element.scrollWidth;};resize();const observer=typeof ResizeObserver==='function'?new ResizeObserver(resize):null;observer?.observe(element);return()=>observer?.disconnect();},[width,points]);
   return <figure className={'coach-fact-metric coach-fact-metric-'+metric}>
-    <figcaption><span>{title}</span><strong>{format(latest?.value)} <small>{unit}</small></strong><p>{latest?`Последняя запись · ${dateLabel(points[latest.index].date)}`:'Факт не записан'} · пропуски {missing}/{points.length}</p></figcaption>
+    <figcaption><span>{title}</span><strong>{format(latest?.value)} <small>{unit}</small></strong><p>{latest?`Последняя запись · ${dateLabel(points[latest.index].date)}`:'Факт не записан'} · не записано {missing}{notPerformed>0?` · не выполнялось ${notPerformed}`:''}</p></figcaption>
     {known.length>0 && <div className="coach-fact-plot" ref={plot} tabIndex={overflow?0:undefined} aria-label={overflow?`${title}: последние даты справа, график можно прокрутить`:undefined}><svg viewBox={`0 0 ${width} ${height}`} style={{minWidth:width}} role="img" aria-labelledby={id}>
-      <title id={id}>{title}: {known.length} записей, {missing} пропусков. Точные значения в таблице ниже.</title>
+      <title id={id}>{title}: {known.length} записей, {missing} незаписанных значений, {notPerformed} без этого варианта. Точные значения в таблице ниже.</title>
       {(metric==='rpe'?[1,5,10]:[min,(max+min)/2,max]).map((value,index)=>{const y=16+(max-value)/(max-min)*(height-42);return <g key={index}><line x1="36" x2={width-16} y1={y} y2={y} className="coach-fact-grid"/><text x="2" y={y+4} className="coach-fact-axis">{format(value)}</text></g>;})}
       {segments.filter(segment=>segment.length>1).map((segment,index)=><polyline key={index} points={segment.map(p=>`${p.x},${p.y}`).join(' ')} className="coach-fact-line"/>)}
       {coordinates.map((point,index)=>point?<circle key={index} cx={point.x} cy={point.y} r="4" className={points[index].adapted?'coach-fact-dot is-adapted':'coach-fact-dot'}><title>{points[index].date}: {format(point.value)} {unit}{points[index].adapted?' · локальная адаптация':''}</title></circle>:<g key={index} className="coach-fact-gap"><path d={`M ${38+index*(width-60)/Math.max(1,points.length-1)-3} ${height-29} l 6 6 m -6 0 l 6 -6`}/><title>{points[index].date}: {points[index].gap || 'Значение не записано'}</title></g>)}
