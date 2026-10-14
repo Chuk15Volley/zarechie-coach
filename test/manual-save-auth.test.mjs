@@ -13,7 +13,7 @@ test('active dashboard sessions are renewed and rechecked after Safari resumes',
 });
 
 test('manual save preserves work and retries automatically after re-authentication', () => {
-  assert.match(dashboard, /requestReauthentication\(\(\) => handleSave\(\)/);
+  assert.match(dashboard, /requestReauthentication\(\(\) => handleSave\(openNext===true\)/);
   assert.match(dashboard, /requestReauthentication\(\(\) => handleSaveWeekSession\(idx\)/);
   assert.match(dashboard, /pendingAuthRetryRef\.current = retry/);
   assert.match(dashboard, /Promise\.resolve\(retry\(\)\)/);

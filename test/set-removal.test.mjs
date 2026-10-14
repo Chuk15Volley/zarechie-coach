@@ -10,7 +10,7 @@ test('coach can remove an individual set while every exercise keeps at least one
 
   assert.match(editor, /aria-label=\{`Удалить подход \$\{index\+1\}`\}/);
   assert.match(editor, /sets\.length>1 &&/);
-  assert.match(source, /if \(targetSets\.length <= 1\) return ex/);
-  assert.match(source, /targetSets: targetSets\.filter\(\(_, si\) => si !== setIdx\)/);
+  assert.match(source, /if\(sets\.length>1\)updateExercise/);
+  assert.match(source, /targetSets:sets\.filter\(\(_,i\)=>i!==si\)/);
   assert.match(source, /onRemoveSet=\{si => removeSetRow\(bi, ei, si\)\}/);
 });

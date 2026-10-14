@@ -1,3 +1,6 @@
+import ProgramWorkCopy from '../components/ProgramWorkCopy';
+import CompactProgramEditor from '../components/CompactProgramEditor';
+import {plannedInputIssues,plannedRpePatch,workCopyKey} from '../lib/editorWorkflow.mjs';
 import TeamPreparation from '../components/TeamPreparation';
 import TeamProgramDialog from '../components/TeamProgramDialog';
 import {sameDraftView,teamDraftIdentity} from '../lib/teamPreparation.mjs';
@@ -43,7 +46,7 @@ import { replaceExerciseDescription,techniqueQuality,replacementTechnique } from
 import { estimateStrengthMinutes } from '../lib/strengthExecution.mjs';
 import { calendarToday } from '../lib/coachCalendar.mjs';
 import CoachCalendar from '../components/CoachCalendar';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useId } from 'react';
 import { createPortal } from 'react-dom';
 import PlannedLoadEditor from '../components/PlannedLoadEditor';
 import {plannedWeightPatch} from '../lib/plannedLoadEditor.mjs';
@@ -1080,7 +1083,10 @@ const PENCIL_ICON = (
 );
 
 function ExerciseVideoPanel({name,apiKey,editable=true}) {
-  const bankUrl=findExerciseUrl(name);
+  const bankUrl=findExerciseUrl(name),panelId=useId();
+  const [pinned,setPinned]=useState(false);
+  useEffect(()=>{const pin=e=>{if(e.detail!==panelId)setPinned(false);};window.addEventListener('gym-video-pin',pin);return()=>window.removeEventListener('gym-video-pin',pin);},[panelId]);
+  useEffect(()=>setPinned(false),[name]);
   const [manualVideoUrl,setManualVideoUrl]=useState(null),[editingVideo,setEditingVideo]=useState(false),[videoInput,setVideoInput]=useState(''),[savingVideo,setSavingVideo]=useState(false),[videoError,setVideoError]=useState(''),[playing,setPlaying]=useState(false),[reload,setReload]=useState(0),[expanded,setExpanded]=useState(false),[videoSaved,setVideoSaved]=useState(false);
   const epoch=useRef(0),mutation=useRef(null);
   useEffect(()=>{const version=++epoch.current;setManualVideoUrl(null);setEditingVideo(false);setVideoInput('');setSavingVideo(false);setVideoError('');setPlaying(false);setExpanded(false);setVideoSaved(false);return()=>{epoch.current++;mutation.current?.abort();};},[name,apiKey]);
@@ -1092,11 +1098,11 @@ function ExerciseVideoPanel({name,apiKey,editable=true}) {
       .catch(()=>{if(!controller.signal.aborted && version===epoch.current)setVideoError('Не удалось проверить видео тренера. Повторите загрузку.');});
     return()=>controller.abort();
   },[name,apiKey,reload]);
-  const videoUrl=manualVideoUrl || bankUrl,videoId=youtubeVideoId(videoUrl),watchUrl=videoId?`https://www.youtube.com/watch?v=${videoId}`:videoUrl;
-  useEffect(()=>setPlaying(false),[videoUrl]);
+  const videoUrl=manualVideoUrl || bankUrl,candidateId=editingVideo?youtubeVideoId(videoInput):null,previewing=!!candidateId && videoInput.trim()!==videoUrl,videoId=previewing?candidateId:youtubeVideoId(videoUrl),watchUrl=videoId?`https://www.youtube.com/watch?v=${videoId}`:videoUrl;
+  useEffect(()=>setPlaying(false),[videoUrl,candidateId]);
   useEffect(()=>{if(!editingVideo)setVideoInput(videoUrl || '');},[videoUrl,editingVideo]);
   async function handleSaveVideo(){
-    const url=videoInput.trim();if(!url || savingVideo)return;
+    const url=videoInput.trim();if(!url || savingVideo)return;if(!youtubeVideoId(url)){setVideoError('Вставьте корректную ссылку YouTube: watch, Shorts или youtu.be.');return;}
     const version=++epoch.current,controller=new AbortController();mutation.current=controller;setSavingVideo(true);setVideoError('');
     try{const data=await teamQueueCall(apiKey,'/api/exercises/manual-video',{body:{name,url},signal:controller.signal,timeoutMs:20000});if(!data.ok || !data.url)throw Error('Ссылка не сохранена.');if(version===epoch.current){setManualVideoUrl(data.url);setVideoInput(data.url);setEditingVideo(false);setVideoSaved(true);}}
     catch(error){if(version===epoch.current)setVideoError(error.message || 'Не удалось сохранить видео.');}
@@ -1108,14 +1114,15 @@ function ExerciseVideoPanel({name,apiKey,editable=true}) {
     catch(error){if(version===epoch.current)setVideoError(error.message || 'Не удалось сбросить видео.');}
     finally{clearTimeout(timer);if(version===epoch.current)setSavingVideo(false);}
   }
-  return <div className={`coach-video-panel coach-video-compact print:hidden ${!videoId?'is-empty':''} ${expanded?'is-expanded':''}`}>
+  const panel=<div className={`coach-video-panel coach-video-compact print:hidden ${!videoId?'is-empty':''} ${expanded?'is-expanded':''} ${pinned?'is-pinned':''}`}>
     <div className="coach-video-frame">{videoId?playing?<iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`} title={`Видео техники · ${name}`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:<button type="button" className="coach-video-poster" aria-label={`Смотреть видео техники: ${name}`} onClick={()=>setPlaying(true)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt={`Техника ${name}`} loading="lazy"/><span className="coach-video-shade"/><span className="coach-video-play">▶</span><span className="coach-video-caption">Смотреть технику</span>
     </button>:<div className="coach-video-empty"><strong>Видео ещё не добавлено</strong>{editable?<span>Вставьте ссылку ниже</span>:<p>Техника выполнения описана ниже.</p>}</div>}</div>
-    <div className="coach-video-meta"><span>{manualVideoUrl?'Видео тренера':videoId?'Библиотека техники':'Техника упражнения'}</span><div>{videoUrl && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке">YouTube ↗</a>}{videoId && <button type="button" aria-label={`${expanded?'Уменьшить':'Увеличить'} видео: ${name}`} onClick={()=>setExpanded(value=>!value)}>{expanded?'Уменьшить':'Увеличить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
-    {editable && <form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span>Добавить YouTube-видео · общая библиотека</span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button><div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form>}
-    {videoError && <div className="coach-video-error" role="alert"><p>{videoError}</p><button type="button" onClick={()=>setReload(value=>value+1)}>Проверить видео</button></div>}
+    <div className="coach-video-meta"><span>{previewing?'Предпросмотр · ещё не сохранено':manualVideoUrl?'Видео тренера':videoId?'Библиотека техники':'Техника упражнения'}</span><div>{(videoId || videoUrl) && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке">YouTube ↗</a>}{videoId && <button type="button" aria-label={`${expanded?'Уменьшить':'Увеличить'} видео: ${name}`} onClick={()=>setExpanded(value=>!value)}>{expanded?'Уменьшить':'Увеличить'}</button>}{videoId && <button type="button" aria-label={`${pinned?'Открепить':'Закрепить'} видео: ${name}`} onClick={()=>{if(!pinned)window.dispatchEvent(new CustomEvent('gym-video-pin',{detail:panelId}));setPinned(v=>!v);}}>{pinned?'Открепить':'Закрепить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
+    {editable && <form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span>Добавить YouTube-видео · общая библиотека обоих пространств</span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo || !candidateId}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button>{editingVideo && <button type="button" onClick={()=>{setEditingVideo(false);setVideoInput(videoUrl || '');setVideoError('');}}>Отменить ссылку</button>}<div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form>}
+    {videoError && <div className="coach-video-error" role="alert"><p>{videoError}</p><button type="button" onClick={()=>editingVideo?handleSaveVideo():setReload(value=>value+1)}>{editingVideo?'Повторить сохранение видео':'Повторить загрузку видео'}</button></div>}
   </div>;
+  return pinned?createPortal(panel,document.querySelector('dialog[open]') || document.querySelector('main') || document.body):panel;
 }
 
 function AutoResizeTextarea({ value, onChange, className, placeholder, minRows = 1, ariaLabel }) {
@@ -1161,6 +1168,7 @@ function ExerciseCard({
   apiKey,
   preview=false,
   onChangeTargetRpeMax,
+  onUndo,
   code,
   name,
   targetSets=[],
@@ -1261,8 +1269,8 @@ function ExerciseCard({
 
   function openSwap() {setSwapOpen(value=>!value);}
 
-  function doSwap(title) {
-    if (onChangeName) onChangeName(title);
+  function doSwap(card) {
+    if (onChangeName) onChangeName(card.title,card.description);
     setSwapOpen(false);
   }
 
@@ -1271,10 +1279,10 @@ function ExerciseCard({
       <header className="coach-exercise-heading">
         <span className="coach-exercise-code">{code || '＋'}</span>
         <div className="coach-exercise-title"><span>Упражнение</span>{preview?<h3>{name}</h3>:<AutoResizeTextarea value={name} onChange={onChangeName} ariaLabel={`${code} · название упражнения`} className="coach-exercise-name"/>}</div>
-        {!preview && <div className="coach-exercise-actions"><button type="button" onClick={openSwap} title="Найти и заменить упражнение"><ArrowLeftRight size={15}/><span>Заменить</span></button>{onRegenerate && <button type="button" onClick={handleRegenerate} disabled={regenerating} title="Подобрать замену автоматически">{regenerating?<Loader2 size={15} className="animate-spin"/>:<RefreshCw size={15}/>}<span>Автоподбор</span></button>}</div>}
+        {!preview && <div className="coach-exercise-actions">{onUndo && <button type="button" onClick={onUndo} aria-label={`Отменить правку ${code}`}><RotateCcw size={15}/>Отменить</button>}<button type="button" onClick={openSwap} title="Найти и заменить упражнение"><ArrowLeftRight size={15}/><span>Заменить</span></button>{onRegenerate && <button type="button" onClick={handleRegenerate} disabled={regenerating} title="Подобрать замену автоматически">{regenerating?<Loader2 size={15} className="animate-spin"/>:<RefreshCw size={15}/>}<span>Автоподбор</span></button>}</div>}
       </header>
       {regenerateError && <p role="alert" className="coach-exercise-notice">{regenerateError}</p>}
-      {!preview && swapOpen && <div className="coach-exercise-swap-studio"><header><strong>Замена · {code}</strong><button type="button" onClick={()=>setSwapOpen(false)}>Закрыть подбор</button></header><ExerciseLibraryPicker quick key={name} apiKey={apiKey} currentName={name} restrictions={restrictions} onClose={()=>setSwapOpen(false)} onSelect={card=>doSwap(card.title)}/></div>}
+      {!preview && swapOpen && <div className="coach-exercise-swap-studio"><header><strong>Замена · {code}</strong><button type="button" onClick={()=>setSwapOpen(false)}>Закрыть подбор</button></header><ExerciseLibraryPicker quick key={name} apiKey={apiKey} currentName={name} restrictions={restrictions} currentSets={targetSets} currentTempo={tempo} onClose={()=>setSwapOpen(false)} onSelect={doSwap}/></div>}
       {hasConflict && <div className="coach-exercise-notice">⚠ Ограничение для этого упражнения.{!preview && <button type="button" onClick={handleSuggestAlt} disabled={altLoading}>{altLoading?'Подбор…':'Подобрать альтернативу'}</button>}{altSuggestion && <p>{altSuggestion}</p>}</div>}
       <div className="coach-exercise-body">
         <aside className="coach-exercise-technique">
@@ -1282,13 +1290,13 @@ function ExerciseCard({
           <div className="coach-exercise-instruction"><div className="coach-section-caption"><span>02</span> Выполнение {hasDescriptionOverride && !preview && <button type="button" onClick={onResetDescription} title="Вернуть автоматически сформированное описание"><RotateCcw size={12}/>Исходное</button>}</div>
             {preview?<p>{displayedDescription || 'Описание пока не добавлено.'}</p>:<AutoResizeTextarea value={displayedDescription} onChange={onChangeDescription} ariaLabel={`${code} · описание выполнения`} minRows={3} placeholder="Опишите технику выполнения…" className="coach-description-input"/>}
             {!preview && <small>Правки увидит игрок после сохранения программы.</small>}
-            {descriptionWarning && <div className="coach-technique-quality" role="note"><p>Уточните подсказку: {descriptionWarning}</p>{!preview && <details><summary>Ориентир для уточнения</summary><p>{techniqueReference}</p><small>Сверьте точную вариацию и индивидуальные ограничения перед правкой.</small></details>}</div>}
+            {descriptionWarning && <div className="coach-technique-quality" role="note"><p>Уточните подсказку: {descriptionWarning}</p>{!preview && <details><summary>Ориентир для уточнения</summary><p>{techniqueReference}</p><small>Сверьте точную вариацию и индивидуальные ограничения перед правкой.</small><button type="button" onClick={()=>onChangeDescription(techniqueReference)}>Использовать этот ориентир</button></details>}</div>}
           </div>
         </aside>
         <div className="coach-exercise-prescription">
           <div className="coach-section-caption"><span>03</span> Нагрузка по плану</div>
           {preview?<ExercisePrescription weightNote={weightNote} weightKg={weightKg} sets={targetSets} targetRpeMax={targetRpeMax} loadUnits={loadUnitsForExercise({name,loadUnits})}/>:<>
-          <PlannedLoadEditor code={code} name={name} sets={targetSets} weightKg={weightKg} targetRpeMax={targetRpeMax} loadUnits={loadUnits} onChangeSet={onChangeSet} onChangeSets={onChangeSets} onAddSet={onAddSet} onRemoveSet={onRemoveSet} onChangeWeightKg={onChangeWeightKg} onChangeTargetRpeMax={onChangeTargetRpeMax} onChangeLoadUnits={onChangeLoadUnits}/>
+          <PlannedLoadEditor code={code} name={name} sets={targetSets} weightKg={weightKg} weightNote={weightNote} targetRpeMax={targetRpeMax} loadUnits={loadUnits} onChangeSet={onChangeSet} onChangeSets={onChangeSets} onAddSet={onAddSet} onRemoveSet={onRemoveSet} onChangeWeightKg={onChangeWeightKg} onChangeTargetRpeMax={onChangeTargetRpeMax} onChangeLoadUnits={onChangeLoadUnits}/>
           <details className="coach-exercise-plan-editor coach-plan-extras"><summary>Темп и комментарий к нагрузке</summary><div className="coach-plan-fields"><label><span>Темп</span><input aria-label={`${code} · темп упражнения`} value={tempo || ''} onChange={e=>onChangeTempo(e.target.value)} placeholder="Например, 5-0-X-0"/></label></div><label className="coach-plan-comment"><span>Комментарий к нагрузке</span><AutoResizeTextarea ariaLabel={`${code} · комментарий к нагрузке`} value={weightNote || ''} onChange={onChangeWeight} minRows={2} className="coach-load-comment-input" placeholder="Например, по усилию RPE 7–8"/></label></details></>}
           {preview && tempo && <p className="coach-preview-tempo">Темп <strong>{tempo}</strong></p>}
           {preview && weightNote && weightNote.trim()!==`${weightKg} кг` && <p className="coach-preview-note">{weightNote}</p>}
@@ -2009,6 +2017,7 @@ export default function Home() {
   const [progressionRefresh,setProgressionRefresh] = useState(0);
   const [editorActionsOpen,setEditorActionsOpen] = useState(false);
   const [editorPreview,setEditorPreview] = useState(false);
+  const [editorCompact,setEditorCompact]=useState(true),[compactSelected,setCompactSelected]=useState({bi:0,ei:0}),[exerciseUndo,setExerciseUndo]=useState({});
   const [progressionMap, setProgressionMap] = useState({}); // exerciseName → { kg, rpe, suggestedKg }
   const [tonnageData, setTonnageData] = useState(null);
   const [tonnageLoading, setTonnageLoading] = useState(false);
@@ -2213,6 +2222,8 @@ export default function Home() {
   const programSaveLockRef = useRef(false);
   const currentSaveViewRef = useRef(null);
   currentSaveViewRef.current = {workspace,playerId,date,session};
+  const plannedIssues=plannedInputIssues(session);
+  useEffect(()=>{setExerciseUndo({});setCompactSelected({bi:0,ei:0});},[workspace,playerId,date]);
   const executionConfirmed=playerExecution?.completed && playerExecution.date===date && playerExecution.savedAt===pendingSaved?.savedAt && !pendingSaved?.draft;
   useEffect(()=>{if(executionConfirmed){setEditorPreview(true);setRescheduleOpen(false);}},[executionConfirmed]);
   const openingDayRef=useRef(calendarToday());
@@ -3576,6 +3587,7 @@ export default function Home() {
   function closeTeamProgram(){rememberTeamDraft();draftOpenController.current?.abort();draftOpenRequest.current++;setTeamDraftOpening(false);setTeamModalOpen(false);}
   async function saveTeamCorrection(){
     const context=activeTeamDraftRef.current;if(!context || !meta?.teamDraft || !session || saving)return;
+    if(!validatePlannedEdit())return;
     setSaving(true);setError('');const submitted=session;
     try{const result=await teamQueue.saveDraft(context,submitted,meta.teamDraft.version);if(!result?.record)throw Error(result?.error || 'Не удалось подтвердить сохранение черновика. Обновите очередь.');
       setPendingSaved(result.record);if(currentSaveViewRef.current.session===submitted){setSession(result.record.session);setMeta(previous=>({...previous,quality:result.record.quality,teamDraft:result.record.teamDraft}));}setJustSaved(true);
@@ -3830,8 +3842,14 @@ export default function Home() {
     setError('');
   }
 
-  async function handleSave() {
+  function focusPlannedIssue(issue){
+    if(!issue)return;setCompactSelected({bi:issue.bi,ei:issue.ei});setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(session.blocks[issue.bi].label);return next;});
+    requestAnimationFrame(()=>{const label=`${issue.code} · ${issue.field}`;const input=Array.from(document.querySelectorAll('[aria-label]')).find(el=>el.getAttribute('aria-label')===label);input?.focus();input?.scrollIntoView({block:'center'});});
+  }
+  function validatePlannedEdit(){const first=plannedInputIssues(session)[0];if(!first)return true;setError(`${first.code}: ${first.message}`);focusPlannedIssue(first);return false;}
+  async function handleSave(openNext=false) {
     if (!session || !meta || session.kind === 'restricted_day_plan' || programSaveLockRef.current || executionConfirmed) return;
+    if(!validatePlannedEdit())return;
     programSaveLockRef.current = true;
     const submittedSession = session;
     const editPlayerId=programEditPlayerId(playerId,meta.sourcePlayerId);
@@ -3846,7 +3864,7 @@ export default function Home() {
       }, apiKey);
       if (!isCurrentView()) return;
       if (res.status === 401) {
-        requestReauthentication(() => handleSave(), 'Сессия истекла. Войдите снова — программа будет сохранена автоматически.');
+        requestReauthentication(() => handleSave(openNext===true), 'Сессия истекла. Войдите снова — программа будет сохранена автоматически.');
         return;
       }
       if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
@@ -3872,7 +3890,13 @@ export default function Home() {
         dayGoal:meta.dayGoal || '',
       });
       const teamContext=activeTeamDraftRef.current;
-      if(teamContext && meta.teamDraft){setSavedTeamBatches(previous=>new Set([...previous,teamContext.batchId]));teamDraftEdits.current.delete(teamDraftIdentity(teamContext));activeTeamDraftRef.current=null;setTeamModalOpen(false);}
+      if(teamContext && meta.teamDraft){
+        const list=batchResults.filter(row=>row.status==='done' && !row.saved && row.batchId!==teamContext.batchId),index=batchResults.findIndex(row=>row.batchId===teamContext.batchId),next=batchResults.slice(index+1).find(row=>row.status==='done' && !row.saved) || list[0];
+        setSavedTeamBatches(previous=>new Set([...previous,teamContext.batchId]));teamDraftEdits.current.delete(teamDraftIdentity(teamContext));
+        try{localStorage.removeItem(workCopyKey({workspace,playerId,date:meta.date,queueId:meta.teamDraft.queueId,batchId:teamContext.batchId}));}catch{}
+        activeTeamDraftRef.current=null;setTeamModalOpen(false);
+        if(openNext===true && next)await openBatchDraft(next);
+      }
       setTimeout(() => setJustSaved(false), 2500);
     } catch (err) {
       if (isCurrentView()) setError(err.message);
@@ -4071,16 +4095,16 @@ export default function Home() {
   }
 
   function updateExercise(blockIdx, exIdx, patch) {
-    setJustSaved(false);
-    setAutoSaved(false);
-    setSession(prev => ({
-      ...prev,
-      blocks: prev.blocks.map((b, bi) =>
-        bi !== blockIdx
-          ? b
-          : { ...b, exercises: b.exercises.map((ex, ei) => (ei !== exIdx ? ex : replaceExerciseDescription(ex, patch))) }
-      ),
-    }));
+    if(executionConfirmed || saving)return;
+    const before=session?.blocks?.[blockIdx]?.exercises?.[exIdx];if(!before)return;
+    setExerciseUndo(previous=>({...previous,[`${blockIdx}:${exIdx}`]:[...(previous[`${blockIdx}:${exIdx}`] || []).slice(-19),before]}));
+    setJustSaved(false);setAutoSaved(false);
+    setSession(prev=>({...prev,blocks:prev.blocks.map((b,bi)=>bi!==blockIdx?b:{...b,exercises:b.exercises.map((ex,ei)=>ei!==exIdx?ex:{...replaceExerciseDescription(ex,patch),...(patch.name && patch.cue?{cue:patch.cue}:{})})})}));
+  }
+  function undoExercise(bi,ei){
+    const key=`${bi}:${ei}`,stack=exerciseUndo[key];if(!stack?.length || saving || executionConfirmed)return;
+    setSession(prev=>({...prev,blocks:prev.blocks.map((b,index)=>index!==bi?b:{...b,exercises:b.exercises.map((ex,index)=>index!==ei?ex:stack.at(-1))})}));
+    setExerciseUndo(previous=>({...previous,[key]:stack.slice(0,-1)}));setJustSaved(false);setAutoSaved(false);
   }
 
   function applyProgressionRecommendations() {
@@ -4163,65 +4187,13 @@ export default function Home() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
     if (data.exercise) {
-      setSession(prev => prev ? ({
-        ...prev,
-        blocks: prev.blocks.map(b => ({ ...b, exercises: b.exercises.map(ex => ex === originalExercise ? data.exercise : ex) })),
-      }) : prev);
+      if(currentSaveViewRef.current.session?.blocks?.[blockIdx]?.exercises?.[exIdx]===originalExercise)updateExercise(blockIdx,exIdx,data.exercise);
     }
   }
 
-  function updateSet(blockIdx, exIdx, setIdx, value) {
-    setSession(prev => ({
-      ...prev,
-      blocks: prev.blocks.map((b, bi) =>
-        bi !== blockIdx
-          ? b
-          : {
-              ...b,
-              exercises: b.exercises.map((ex, ei) =>
-                ei !== exIdx
-                  ? ex
-                  : { ...ex, targetSets: ex.targetSets.map((s, si) => (si === setIdx ? value : s)) }
-              ),
-            }
-      ),
-    }));
-  }
-
-  function addSetRow(blockIdx, exIdx) {
-    setSession(prev => ({
-      ...prev,
-      blocks: prev.blocks.map((b, bi) =>
-        bi !== blockIdx
-          ? b
-          : {
-              ...b,
-              exercises: b.exercises.map((ex, ei) =>
-                ei !== exIdx ? ex : { ...ex, targetSets: [...ex.targetSets, ''] }
-              ),
-            }
-      ),
-    }));
-  }
-
-  function removeSetRow(blockIdx, exIdx, setIdx) {
-    setSession(prev => ({
-      ...prev,
-      blocks: prev.blocks.map((b, bi) =>
-        bi !== blockIdx
-          ? b
-          : {
-              ...b,
-              exercises: b.exercises.map((ex, ei) => {
-                if (ei !== exIdx) return ex;
-                const targetSets = Array.isArray(ex.targetSets) ? ex.targetSets : [];
-                if (targetSets.length <= 1) return ex;
-                return { ...ex, targetSets: targetSets.filter((_, si) => si !== setIdx) };
-              }),
-            }
-      ),
-    }));
-  }
+  function updateSet(bi,ei,si,value){const ex=session.blocks[bi].exercises[ei];updateExercise(bi,ei,{targetSets:ex.targetSets.map((s,i)=>i===si?value:s)});}
+  function addSetRow(bi,ei){const sets=session.blocks[bi].exercises[ei].targetSets || [];updateExercise(bi,ei,{targetSets:[...sets,sets.at(-1) || '']});}
+  function removeSetRow(bi,ei,si){const sets=session.blocks[bi].exercises[ei].targetSets || [];if(sets.length>1)updateExercise(bi,ei,{targetSets:sets.filter((_,i)=>i!==si)});}
 
   function saveScheduleToServer(events) {
     if (!apiKey) return;
@@ -4367,7 +4339,7 @@ export default function Home() {
 
   const teamQueuePanel = <div id="coach-team-drafts"><TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onCheckPublication={teamQueue.checkPublication} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} unsavedEdits={teamPendingEdits}/></div>;
     const savedProgram = session && meta && (
-            <div data-preview={editorPreview || !!executionConfirmed} className="premium-session-card coach-session-workspace mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
+            <div inert={saving || undefined} data-preview={editorPreview || !!executionConfirmed} className="premium-session-card coach-session-workspace mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
 
               {/* Result toolbar */}
               <div className="coach-editor-toolbar mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden" role="region" aria-label="Сохранение программы">
@@ -4434,9 +4406,9 @@ export default function Home() {
                   {/* Primary save */}
                   <button
                     type="button"
-                    onClick={handleSave}
+                    onClick={()=>handleSave()}
                     aria-label="Сохранить программу"
-                    disabled={saving || executionConfirmed || session.kind === 'restricted_day_plan'}
+                    disabled={saving || executionConfirmed || plannedIssues.length>0 || session.kind === 'restricted_day_plan'}
                     title={session.kind === 'restricted_day_plan' ? 'План дня не заменяет тренировку игрока' : undefined}
                     className={`flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3.5 py-2 text-xs font-bold text-[#04212b] shadow-[0_2px_12px_-2px_rgba(34,211,238,0.35)] transition hover:bg-cyan-400 disabled:opacity-50 ${focusRing}`}
                   >
@@ -4461,10 +4433,12 @@ export default function Home() {
 
               {executionConfirmed && <p className="coach-execution-confirmed" role="status">Тренировка выполнена · {playerExecution.totalSets} / {playerExecution.totalSets} подходов · {new Date(playerExecution.completedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Исходный план защищён: редактирование, сохранение и перенос отключены. Факты дополняются отдельно в истории.</p>}
               <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={meta.focusLabel || getFocusLabel(period,focus)} preview={editorPreview || !!executionConfirmed} onPreview={value=>{if(!executionConfirmed)setEditorPreview(value);}} onNavigate={index=>{
-                const block=session.blocks[index];setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
+                const block=session.blocks[index];setCompactSelected({bi:index,ei:0});setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
                 requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
               }}/>
 
+              {!editorPreview && !executionConfirmed && pendingSaved?.session && meta.date===date && <ProgramWorkCopy key={workCopyKey({workspace,playerId,date,queueId:meta.teamDraft?.queueId,batchId:activeTeamDraftRef.current?.batchId})} context={{workspace,playerId,date,queueId:meta.teamDraft?.queueId,batchId:activeTeamDraftRef.current?.batchId}} record={pendingSaved} session={session} onRestore={setSession}/>}
+              {!editorPreview && !executionConfirmed && <div className="coach-editor-layout-choice"><button type="button" aria-pressed={editorCompact} onClick={()=>setEditorCompact(true)}>Таблица · быстрая коррекция</button><button type="button" aria-pressed={!editorCompact} onClick={()=>setEditorCompact(false)}>Все карточки</button>{plannedIssues.length>0 && <button type="button" className="coach-field-warning" onClick={()=>focusPlannedIssue(plannedIssues[0])}>Проверить поля · {plannedIssues.length}</button>}</div>}
               {rescheduleOpen && pendingSaved && (
                 <div className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 print:hidden">
                   <div className="flex items-start gap-2.5">
@@ -4706,9 +4680,11 @@ export default function Home() {
               )}
 
               {/* Blocks — screen only */}
-              <div className="space-y-8 print:hidden">
+              <div className={!editorPreview && !executionConfirmed && editorCompact?'coach-compact-layout':'coach-full-layout'}>
+              {!editorPreview && !executionConfirmed && editorCompact && <CompactProgramEditor blocks={session.blocks || []} onChange={updateExercise} selected={compactSelected} onInspect={(bi,ei)=>{setCompactSelected({bi,ei});setCollapsedBlocks(new Set());}}/>}
+              <div className="space-y-8 print:hidden coach-compact-detail">
                 {(session.blocks || []).map((block, bi) => (
-                  <div id={`coach-program-block-${bi}`} className="coach-program-block" key={block.blockId || block.label || bi}>
+                  <div hidden={!editorPreview && !executionConfirmed && editorCompact && compactSelected.bi!==bi} id={`coach-program-block-${bi}`} className="coach-program-block" key={block.blockId || block.label || bi}>
                     {(() => {
                       const bc = blockCfg(block.label);
                       const isCollapsed = collapsedBlocks.has(block.label);
@@ -4750,6 +4726,7 @@ export default function Home() {
                     {!collapsedBlocks.has(block.label) && (
                     <div className="coach-exercise-grid">
                       {(block.exercises || []).map((ex, ei) => {
+                        if(!editorPreview && !executionConfirmed && editorCompact && compactSelected.ei!==ei)return null;
                         const identity = ex.exerciseId || canonicalExerciseId(ex.name);
                         const progression = (meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)] || {}:progressionMap[identity] || progressionMap[ex.name] || {};
                         const exerciseHistory = exHistoryMap[identity] || exHistoryMap[ex.name] || [];
@@ -4803,7 +4780,8 @@ export default function Home() {
                           replacementNote={ex.replacementNote}
                           onChangeReplacementReason={v => updateExercise(bi, ei, { replacementReason: v })}
                           onChangeReplacementNote={v => updateExercise(bi, ei, { replacementNote: v })}
-                          onChangeName={v => updateExercise(bi, ei, { name: v })}
+                          onChangeName={(v,cue) => updateExercise(bi, ei, { name: v,...cue?{cue}:{} })}
+                          onUndo={exerciseUndo[`${bi}:${ei}`]?.length?()=>undoExercise(bi,ei):null}
                           onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
                           onChangeSets={targetSets=>updateExercise(bi,ei,{targetSets})}
                           onAddSet={() => addSetRow(bi, ei)}
@@ -4812,7 +4790,7 @@ export default function Home() {
                           onChangeWeightKg={v => updateExercise(bi, ei, plannedWeightPatch(ex,v))}
                           onChangeLoadUnits={v => {if(v!==loadUnitsForExercise(ex))updateExercise(bi, ei, { loadUnits: v,loadEvidence:null,loadProgression:null });}}
                           onChangeTempo={v => updateExercise(bi, ei, { tempo: v })}
-                          onChangeTargetRpeMax={v => updateExercise(bi, ei, { targetRpeMax: v })}
+                          onChangeTargetRpeMax={v => updateExercise(bi, ei, plannedRpePatch(ex,v))}
                           onChangeAutoReg={v => updateExercise(bi, ei, { autoReg: v })}
                           onChangeDescription={v => updateExercise(bi, ei, { descriptionOverride: v })}
                           onResetDescription={() => updateExercise(bi, ei, { descriptionOverride: undefined })}
@@ -4904,6 +4882,7 @@ export default function Home() {
                 ))}
               </div>
 
+              </div>
               {/* Warnings — screen only */}
               {session.warnings && (
                 <div className="mt-6 rounded-2xl border border-amber-500/25 bg-gradient-to-b from-amber-500/[0.08] to-amber-500/[0.03] p-5 print:hidden">
@@ -6491,7 +6470,7 @@ export default function Home() {
           )}
 
           {keyConnected && mainSection==='team' && <TeamPreparation key={workspace+date} workspace={workspace} date={date} players={players} statuses={teamStatus} initialRequest={{period:'inseason',focus:'inseason_strength',trainingType:'full_body',strengthMode:'maintenance',powerMode:'development',dayGoal:'',notes:'',days:7,coachRecovery:'green'}} periods={PERIODS} phasesFor={value=>phasesForWorkspace(value,workspace).map(phase=>({...phase,label:phaseLabelForWorkspace(phase,workspace)}))} defaultTypeFor={defaultTrainingTypeForFocus} typesFor={value=>value==='inseason_strength'?STRENGTH_TRAINING_TYPES:TRAINING_TYPES} busy={teamQueue.recovering} running={batchRunning} queue={teamQueue.queue} queuePanel={teamQueuePanel} previousQueue={teamQueue.previousQueue} onPrevious={()=>changeTrainingDate(teamQueue.previousQueue.date)} onGenerate={executeTeamGeneration} calendar={<DatePicker navigate quickDays timeZone="Europe/Moscow" value={date} onChange={changeTrainingDate} disabled={saving || teamDraftOpening || !!batchId} maxDate={addDaysToStr(todayISO(),1)} size="sm"/>}/>}
-          {teamModalOpen && <TeamProgramDialog open name={selectedPlayer?.name || 'Программа игрока'} date={date} opening={teamDraftOpening} saving={saving || teamQueue.recovering} error={error || teamQueue.error} saved={!!batchResults.find(row=>String(row.playerId)===String(playerId))?.saved} onClose={closeTeamProgram} onSave={handleSave} saveBlocked={executionConfirmed || session?.kind==='restricted_day_plan'} draftSaved={justSaved && !!pendingSaved?.draft} onSaveDraft={meta?.teamDraft && pendingSaved?.draft?saveTeamCorrection:null} onPrevious={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>0?()=>openBatchDraft(list[index-1]):null;})()} onNext={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>=0 && index<list.length-1?()=>openBatchDraft(list[index+1]):null;})()}>{savedProgram}</TeamProgramDialog>}
+          {teamModalOpen && <TeamProgramDialog open name={selectedPlayer?.name || 'Программа игрока'} date={date} opening={teamDraftOpening} saving={saving || teamQueue.recovering} error={error || teamQueue.error} saved={!!batchResults.find(row=>String(row.playerId)===String(playerId))?.saved} onClose={closeTeamProgram} onSave={()=>handleSave()} onSaveNext={()=>handleSave(true)} validationBlocked={plannedIssues.length>0} saveBlocked={executionConfirmed || session?.kind==='restricted_day_plan'} draftSaved={justSaved && !!pendingSaved?.draft} onSaveDraft={meta?.teamDraft && pendingSaved?.draft?saveTeamCorrection:null} onPrevious={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>0?()=>openBatchDraft(list[index-1]):null;})()} onNext={(()=>{const list=batchResults.filter(row=>row.status==='done' && !row.saved),index=list.findIndex(row=>String(row.playerId)===String(playerId));return index>=0 && index<list.length-1?()=>openBatchDraft(list[index+1]):null;})()}>{savedProgram}</TeamProgramDialog>}
           {keyConnected && mainSection==='workouts' && workspaceTab==='program' && !playerId && batchSelectedIds.size===0 && <CoachHome workspace={workspace} players={players} date={date} onSelectPlayer={selectPlayer} onNavigate={setMainSection} calendar={<DatePicker navigate timeZone={activePlayerTimeZone} value={date} onChange={changeTrainingDate} disabled={loading || !!batchId || saving || batchRunning || weekPlanLoading} maxDate={addDaysToStr(playerToday,1)} size="sm" />} />}
           {keyConnected && mainSection==='workouts' && <TeamFactOverview key={workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
           {keyConnected && mainSection==='workouts' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}

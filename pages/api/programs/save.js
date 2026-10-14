@@ -71,6 +71,8 @@ export async function saveProgram(req, res, publicationGuard=null) {
     return res.status(400).json({ error: 'playerId, date and session are required' });
   }
 
+  const inputIssues=(session.blocks || []).flatMap(b=>(b.exercises || []).flatMap(e=>[...(e.targetRpeMax!=null && (!Number.isFinite(Number(e.targetRpeMax)) || e.targetRpeMax<1 || e.targetRpeMax>10)?[{code:e.code,message:'RPE должен быть от 1 до 10.'}]:[]),...(e.weightKg!=null && (!Number.isFinite(Number(e.weightKg)) || e.weightKg<0)?[{code:e.code,message:'Вес должен быть числом не меньше нуля.'}]:[])]));
+  if(inputIssues.length)return res.status(400).json({error:`${inputIssues[0].code}: ${inputIssues[0].message}`,inputIssues});
   try {
   const banned = coachBannedSessionExercises(session);
   if (banned.length) return res.status(409).json({error:'В программе есть упражнения, запрещённые тренером. Замените их перед сохранением.', banned});
