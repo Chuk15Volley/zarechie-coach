@@ -24,6 +24,9 @@ test('ReadySix yellow insufficient data is a data task without hiding actual cli
  const source={code:'readysix_insufficient_data',dataInsufficient:true,hardStop:false,targets:[{healthRecommendation:'full',healthCapPercent:100,restrictions:[],hardStopSignal:false,scheduleCapPercent:0}]};
  const item={readiness:{status:'yellow',readySixState:source}};
  assert.equal(coachNeedsDecision(item),false);
+ const unplannedMatch={target:'match',planApplicability:'not_planned',healthRecommendation:'full',healthCapPercent:100,capPercent:0,scheduleCapPercent:0,hardStopSignal:false,restrictions:['Матч не входит в подтверждённый план']};
+ assert.equal(coachNeedsDecision({readiness:{...item.readiness,readySixState:{...source,targets:[unplannedMatch]}}}),false);
+ assert.equal(coachNeedsDecision({readiness:{...item.readiness,readySixState:{...source,targets:[{...unplannedMatch,restrictions:[...unplannedMatch.restrictions,'Исключить прыжки']}]}}}),true);
  assert.equal(coachNeedsDecision({...item,readiness:{...item.readiness,status:'red'}}),true);
  for(const extra of [{hardStop:true},{detail:'Боль колено 3/10'},{targets:[{hardStopSignal:true}]},{targets:[{restrictions:['No loaded knee flexion']}]},{targets:[{healthRecommendation:'modified'}]},{targets:[{healthRecommendation:'limited'}]},{targets:[{healthRecommendation:'individual_plan'}]},{targets:[{healthRecommendation:'load_stop'}]},{targets:[{healthCapPercent:50}]}])assert.equal(coachNeedsDecision({readiness:{...item.readiness,readySixState:{...source,...extra}}}),true);
  assert.equal(coachNeedsDecision({...item,status:{activeInjuries:[{}]}}),true);
