@@ -87,7 +87,7 @@
 }
 
 /* Existing rows gain interaction, not a new arrangement. */
-.coach-premium .coach-session-workspace .coach-quick-sets-heading .coach-set-count { display:inline-block;width:34px;height:24px;min-height:24px!important;padding:1px 3px;border:1px solid transparent;border-radius:4px;background:transparent;color:inherit;font:inherit;font-size:16px;text-align:center;vertical-align:middle; }
+.coach-premium .coach-session-workspace .coach-quick-sets-heading .coach-set-count { display:inline-block;width:34px;height:24px;min-height:24px!important;padding:1px 3px;border:1px solid transparent;border-radius:4px;background:transparent;color:inherit;font:inherit;font-size:16px!important;text-align:center;vertical-align:middle; }
 .coach-premium .coach-session-workspace .coach-set-count:hover,
 .coach-premium .coach-session-workspace .coach-set-count:focus { border-color:#52685a;background:#101b17; }
 .coach-quick-replacement-technique .coach-candidate-video { display:block;width:100%;height:260px;margin-top:8px;border:1px solid #43514d;border-radius:8px;background:#101b17; }
