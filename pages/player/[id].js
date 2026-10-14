@@ -1663,7 +1663,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                   >
                     <div className="flex-1">
                       <div className="text-[13px] font-semibold text-slate-200">{formatDate(item.date)}</div>
-                      <div className="mt-1 text-[12px] font-bold text-[#4ade80]">{item.label}</div>
+                      <div className="mt-1 text-[12px] font-bold text-[#4ade80]">{compactWorkoutTitle(item.label)}</div>
                       {item.dayGoal && item.dayGoal !== item.label && (
                         <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-500">Цель: {item.dayGoal}</div>
                       )}
@@ -1689,7 +1689,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                 <div className="space-y-6">
                   <div className="rounded-2xl border border-[#4ade80]/20 bg-[#4ade80]/[0.05] px-4 py-3.5">
                     <div className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#4ade80]/50">Вид тренировки</div>
-                    <div className="text-[16px] font-black text-[#4ade80]">{histMeta?.label || 'Тренировка в зале'}</div>
+                    <div className="text-[16px] font-black text-[#4ade80]">{compactWorkoutTitle(histMeta?.label || 'Тренировка в зале')}</div>
                     <div className="mt-1 text-[11px] text-slate-500">{formatDate(selectedHistDate)}</div>
                   </div>
                   {(histMeta?.dayGoal || histSession.blocks?.[0]?.goal || histSession.goal || histSession.day_goal) && (

@@ -3857,7 +3857,7 @@ export default function Home() {
     setSaving(true);
     try {
       const {res,data} = await saveProgramRequest({
-        playerId:editPlayerId, date:meta.date, session:submittedSession, player:meta.player,
+        playerId:editPlayerId, date:meta.date, session:submittedSession, player:meta.player,teamDraft:meta.teamDraft || null,
         sourceState:meta.sourceState || null,sourceCapturedAt:meta.sourceCapturedAt || null,dataSummary:meta.dataSummary, dayGoal:meta.dayGoal || '', focus:meta.focus || focus,
         trainingType:meta.trainingType || trainingType, trainingLabel:meta.focusLabel || getFocusLabel(period,focus),
         strengthMode:meta.strengthMode || strengthMode, quality:meta.quality || null, workspace,

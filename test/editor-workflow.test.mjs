@@ -31,3 +31,12 @@ test('quality flags mobility contradictions and missing single-leg/landing setup
  const name='Half-Kneeling Ankle Dorsiflexion Mobilization (Band)',text='Двигайся плавно и максимально резко, но без рывка';assert.ok(techniqueQuality(name,text));assert.ok(techniqueQuality('Single-Leg DB Romanian Deadlift','Держать гантели близко к ногам.'));assert.equal(techniqueQuality('Single-Leg DB Romanian Deadlift',replacementTechnique('Single-Leg DB Romanian Deadlift')),'');
  const ex={name:'DB Bench Press',targetSets:['5','5'],weightKg:20,tempo:'2-0-X-0',descriptionOverride:'Индивидуальное описание'};const replaced=replaceExerciseDescription(ex,{name:'Single-Leg DB Romanian Deadlift'});assert.equal(replaced.weightKg,null);assert.deepEqual(replaced.targetSets,ex.targetSets);assert.equal(ex.descriptionOverride,'Индивидуальное описание');assert.match(replaced.cue,/опорной ноге/);
 });
+import {compactWorkoutTitle} from '../lib/playerGym.mjs';
+test('player title removes copy/review labels only, preserving the training direction and stored label',()=>{
+ const label='Копия программы · проверка тренером · Активация / мощность';assert.equal(compactWorkoutTitle(label),'Активация / мощность');assert.equal(label,'Копия программы · проверка тренером · Активация / мощность');assert.equal(compactWorkoutTitle('Мощность / скорость · Всё тело'),'Мощность / скорость · Всё тело');assert.equal(compactWorkoutTitle('Профилактика · индивидуальная программа'),'Профилактика');
+});
+import {savedProgramForTeamDay,teamSessionIds} from '../lib/teamSavedProgram.mjs';
+for(const workspace of ['zarechie','nkperf'])test(`${workspace}: a later separately saved copy finishes the queue day; old/foreign/draft records never do`,()=>{
+ const queue={workspace,id:'q',date:'2026-10-15',createdAt:'2026-10-14T18:00:00Z'},player={playerId:'123'},job={workspace,teamQueueId:'q',playerId:'123',status:'done',completedAt:'2026-10-14T18:20:00Z'},saved={date:queue.date,savedAt:'2026-10-14T20:38:00Z',session:{blocks:[]}};
+ assert.equal(savedProgramForTeamDay(queue,player,job,[saved]),saved);assert.deepEqual(teamSessionIds('whoop_123'),['123','whoop_123']);assert.equal(savedProgramForTeamDay(queue,player,job,[{...saved,savedAt:'2026-10-14T17:00:00Z'}]),null);assert.equal(savedProgramForTeamDay(queue,player,job,[{...saved,draft:true}]),null);assert.equal(savedProgramForTeamDay(queue,player,{...job,workspace:workspace==='nkperf'?'zarechie':'nkperf'},[saved]),null);assert.equal(savedProgramForTeamDay(queue,player,job,[{...saved,date:'2026-10-16'}]),null);
+});

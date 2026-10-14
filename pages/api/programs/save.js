@@ -1,3 +1,4 @@
+import {savedProgramForTeamDay} from '../../../lib/teamSavedProgram.mjs';
 import {completedProgramSnapshot,SAVE_UNEXECUTED_PROGRAM} from '../../../lib/completedProgramGuard.mjs';
 import {coachAuditCommands} from '../../../lib/coachAudit.mjs';
 import {coachAuditActor} from '../../../lib/auth';
@@ -84,6 +85,11 @@ export async function saveProgram(req, res, publicationGuard=null) {
   const editKeys=editIds.flatMap(id=>['session','session:actual','log'].map(type=>`${pfx(workspace)}:${type}:${id}:${date}`));
   const editRaw=await redisPipeline(editKeys.map(key=>['GET',key]));
   if(completedProgramSnapshot(editIds,editRaw))return res.status(409).json({error:'Выполненная программа защищена. Откройте историю для дополнения фактов или создайте отдельный черновик на другую дату.'});
+  if(req.body?.teamDraft?.batchId){
+    const draftContext=req.body.teamDraft,jobRaw=await redis('get','coach:batch:'+draftContext.batchId),job=typeof jobRaw==='string'?JSON.parse(jobRaw):jobRaw;
+    const savedElsewhere=savedProgramForTeamDay({id:draftContext.queueId,workspace,date,createdAt:job?.generatedAt},{playerId:String(playerId)},job,editIds.map((_,i)=>{const raw=editRaw[i*3];return typeof raw==='string'?JSON.parse(raw):raw;}));
+    if(savedElsewhere)return res.status(409).json({error:'Программа на этот день уже сохранена. Обновите очередь и откройте сохранённую программу; старый черновик её не заменяет.'});
+  }
   if((editRaw[editIds.indexOf(String(playerId)) * 3] || null)!==(previousRaw || null))return res.status(409).json({error:'Программа изменилась во время проверки. Откройте актуальную версию.'});
   let recentSessions;
   try {
