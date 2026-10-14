@@ -1,4 +1,6 @@
 import TeamFactOverview from '../components/TeamFactOverview';
+import {weekFactPeriod} from '../lib/coachFactSurface.mjs';
+import {ExerciseLibraryPicker} from '../components/ExerciseLibraryExplorer';
 import ProgramOverview from '../components/ProgramOverview';
 import StrengthPerformance from '../components/StrengthPerformance';
 import {cyclePerformanceSeries} from '../lib/strengthPerformance.mjs';
@@ -1195,9 +1197,6 @@ function ExerciseCard({
   const [regenerating, setRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState('');
   const [swapOpen, setSwapOpen] = useState(false);
-  const [swapSearch, setSwapSearch] = useState('');
-  const [swapLibrary, setSwapLibrary] = useState([]);
-  const [swapLoading, setSwapLoading] = useState(false);
   const [altLoading, setAltLoading] = useState(false);
   const [altSuggestion, setAltSuggestion] = useState(null);
 
@@ -1240,24 +1239,11 @@ function ExerciseCard({
     }
   }
 
-  async function openSwap() {
-    const next = !swapOpen;
-    setSwapOpen(next);
-    if (!next) return;
-    setSwapSearch('');
-    if (swapLibrary.length) return;
-    setSwapLoading(true);
-    try {
-      const r = await fetch('/api/exercises/library', { headers: { 'x-api-key': apiKey } });
-      const d = await r.json();
-      setSwapLibrary(Array.isArray(d.cards) ? d.cards : []);
-    } catch (_) {} finally { setSwapLoading(false); }
-  }
+  function openSwap() {setSwapOpen(value=>!value);}
 
   function doSwap(title) {
     if (onChangeName) onChangeName(title);
     setSwapOpen(false);
-    setSwapSearch('');
   }
 
   return (
@@ -1268,7 +1254,7 @@ function ExerciseCard({
         {!preview && <div className="coach-exercise-actions"><button type="button" onClick={openSwap} title="Заменить упражнение из библиотеки"><ArrowLeftRight size={15}/><span>Библиотека</span></button>{onRegenerate && <button type="button" onClick={handleRegenerate} disabled={regenerating} title="Перегенерировать упражнение">{regenerating?<Loader2 size={15} className="animate-spin"/>:<RefreshCw size={15}/>}<span>Подобрать замену</span></button>}</div>}
       </header>
       {regenerateError && <p role="alert" className="coach-exercise-notice">{regenerateError}</p>}
-      {!preview && swapOpen && <div className="coach-exercise-swap"><input autoFocus aria-label={`${code} · поиск замены`} value={swapSearch} onChange={e=>setSwapSearch(e.target.value)} placeholder="Поиск упражнения в библиотеке…"/><div>{swapLoading?<p>Загрузка…</p>:swapLibrary.filter(ex=>!swapSearch.trim() || (ex.title || '').toLowerCase().includes(swapSearch.toLowerCase())).slice(0,18).map(ex=><button key={ex.canonicalId} type="button" onClick={()=>doSwap(ex.title)}>{ex.title}<ArrowUpRight size={14}/></button>)}</div></div>}
+      {!preview && swapOpen && <div className="coach-exercise-swap-studio"><header><strong>Замена · {code}</strong><button type="button" onClick={()=>setSwapOpen(false)}>Закрыть подбор</button></header><ExerciseLibraryPicker key={name} apiKey={apiKey} currentName={name} restrictions={restrictions} onSelect={card=>doSwap(card.title)}/></div>}
       {hasConflict && <div className="coach-exercise-notice">⚠ Ограничение для этого упражнения.{!preview && <button type="button" onClick={handleSuggestAlt} disabled={altLoading}>{altLoading?'Подбор…':'Подобрать альтернативу'}</button>}{altSuggestion && <p>{altSuggestion}</p>}</div>}
       <div className="coach-exercise-body">
         <aside className="coach-exercise-technique">
@@ -5527,6 +5513,7 @@ export default function Home() {
               </div>
 
               <OverviewFreshness updatedAt={calendarUpdatedAt} error={calendarError} loading={calLoading} label="Неделя"/>
+              {apiKey && <TeamFactOverview key={'week:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} fixedPeriod={weekFactPeriod(calWeekStart)} initialOpen compact label="Факты недели · кг, повторы и RPE" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
               <div className="coach-overview-shortcuts"><button type="button" onClick={()=>setMainSection('today')}>Сегодня →</button><button type="button" onClick={()=>setMainSection('tonnage')}>Нагрузка и факт →</button><button type="button" onClick={()=>openOverviewSection('drafts')}>Командные черновики →</button></div>
               {calData?.summary && (
                 <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -5778,9 +5765,11 @@ export default function Home() {
           {keyConnected && ['today','workouts'].includes(mainSection) && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></div>}
 
           {/* ── Today · smart decision centre ── */}
+          {mainSection==='library' && apiKey && <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10"><header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Общая библиотека обоих пространств</p><h2>Библиотека упражнений</h2><p>Просматривайте технику, сохраняя программу в редакторе.</p></div><button type="button" onClick={()=>setMainSection('workouts')}>Вернуться к программе ↗</button><a href="/library" target="_blank" rel="noopener noreferrer">Управление каталогом ↗</a></header><ExerciseLibraryPicker key={workspace} apiKey={apiKey}/></div>}
           {mainSection === 'today' && (
             <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Команда · {todayISO().split('-').reverse().join('.')}</p><h2>Сегодня</h2><p>Решения, программы и качество исходных данных — в одном обзоре.</p></div><button type="button" disabled={readinessLoading} onClick={()=>loadTodayOverview(false,true)}><RefreshCw size={15} className={readinessLoading?'animate-spin':''}/> Обновить данные</button></header>
+              {apiKey && <TeamFactOverview key={'today:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} initialOpen compact label="Заполнить факты · последние занятия команды" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
               <TodayOverview key={workspace} center={todayCenter} readinessData={readinessData} loading={readinessLoading} error={todayError} updatedAt={todayUpdatedAt} onPlayer={openOverviewPlayer} onHistory={player=>openOverviewPlayer(player,todayISO(),'history')} onDraft={openBatchDraft} getDraft={overviewDraft} onVersions={openSessionVersions} onRtp={openReturnToPlay} onAdapt={applyTodayRecommendation} adaptationSaving={adaptationSaving} onNavigate={openOverviewSection}/>
 
               {rtpPlayer && <ReturnToPlayModal player={rtpPlayer} plan={rtpDraft} saving={rtpSaving} onChange={setRtpDraft} onSave={saveReturnToPlay} onClose={() => { setRtpPlayer(null); setRtpDraft(null); }} />}

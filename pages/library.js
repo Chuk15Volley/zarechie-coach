@@ -4,6 +4,8 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { findExerciseUrl } from '../lib/exerciseBank';
+import ExerciseLibraryExplorer from '../components/ExerciseLibraryExplorer';
+import {teamQueueCall} from '../lib/teamQueueClient.mjs';
 
 const LIBRARY_AI_ENABLED = process.env.NEXT_PUBLIC_ENABLE_LIBRARY_AI === 'true';
 
@@ -416,6 +418,7 @@ export default function LibraryPage() {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [manage,setManage]=useState(false),loadController=useRef(null);
 
   // Tabs & filter
   const [tab, setTab] = useState('all'); // 'all' | 'gym' | 'warmup' | 'none'
@@ -451,19 +454,21 @@ export default function LibraryPage() {
 
   const load = useCallback(() => {
     if (!apiKey) return;
+    loadController.current?.abort();const controller=new AbortController();loadController.current=controller;
     setLoading(true);
     setError('');
-    fetch('/api/exercises/library', { headers: { 'x-api-key': apiKey } })
-      .then(async r => {
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(data.error || `Ошибка (${r.status})`);
+    setCards([]);
+    teamQueueCall(apiKey,'/api/exercises/library',{signal:controller.signal,timeoutMs:25000})
+      .then(data => {
+        if(controller.signal.aborted)return;
+        if(!Array.isArray(data.cards))throw Error('Каталог получен не полностью');
         setCards(Array.isArray(data.cards) ? data.cards : []);
       })
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch(e => {if(!controller.signal.aborted)setError(e.message);})
+      .finally(() => {if(!controller.signal.aborted)setLoading(false);});
   }, [apiKey]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load();return()=>loadController.current?.abort(); }, [load]);
 
   // ── Derived counts ──────────────────────────────────────────────────────────
   const gymCount     = cards.filter(c => c.category === 'gym').length;
@@ -584,7 +589,7 @@ export default function LibraryPage() {
   return (
     <>
       <Head><title>Библиотека упражнений · Korenchuk Performance System</title></Head>
-      <div className="app-shell premium-library-shell min-h-screen px-4 py-6 text-slate-100 sm:px-8 sm:py-10" style={{ background: '#060c15' }}>
+      <div className="app-shell premium-library-shell library-premium min-h-screen px-4 py-6 text-slate-100 sm:px-8 sm:py-10">
         <div className="mx-auto max-w-6xl">
 
           {/* ── Header ── */}
@@ -604,7 +609,8 @@ export default function LibraryPage() {
 
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2">
-              {LIBRARY_AI_ENABLED && (
+              <button type="button" aria-pressed={manage} onClick={()=>setManage(value=>!value)}>{manage?'Вернуться к технике':'Управление каталогом'}</button>
+              {LIBRARY_AI_ENABLED && manage && (
                 <>
                   {/* AI Classify */}
                   <button
@@ -631,19 +637,20 @@ export default function LibraryPage() {
               )}
 
               {/* Dedupe */}
-              <button
+              {manage && <button
                 type="button"
                 onClick={openDedupe}
                 disabled={!apiKey}
                 className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-[12px] font-semibold text-slate-300 transition hover:border-white/[0.16] hover:text-white disabled:opacity-40"
               >
                 Дубли
-              </button>
+              </button>}
 
               {/* Refresh */}
               <button
                 type="button"
                 onClick={load}
+                aria-label="Обновить библиотеку"
                 className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-[12px] font-semibold text-slate-300 transition hover:border-white/[0.16] hover:text-white"
               >
                 ↻
@@ -679,7 +686,8 @@ export default function LibraryPage() {
             </div>
           )}
 
-          {apiKey && (
+          {apiKey && !manage && <ExerciseLibraryExplorer cards={cards} loading={loading} error={error} onRetry={load}/>}
+          {apiKey && manage && (
             <>
               {/* ── Tabs + Search + Sort ── */}
               <div className="mb-5 flex flex-wrap items-center gap-3">

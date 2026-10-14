@@ -1,0 +1,36 @@
+import {useEffect,useRef,useState} from 'react';
+import {teamQueueCall} from '../lib/teamQueueClient.mjs';
+import {LIBRARY_GROUPS,libraryGroup,libraryMatches,libraryVideoId,eligibleLibraryCard as eligibleCard} from '../lib/exerciseLibraryView.mjs';
+import {isCoachBannedExercise,hasRestriction} from '../lib/exerciseRestrictions';
+import {replacementTechnique} from '../lib/exerciseReplacement.mjs';
+
+const eligibleLibraryCard=(card,restrictions)=>eligibleCard(card,restrictions,isCoachBannedExercise,hasRestriction);
+
+export default function ExerciseLibraryExplorer({cards=[],loading=false,error='',onRetry,currentName='',restrictions=[],onSelect}){
+ const [search,setSearch]=useState(''),[group,setGroup]=useState(()=>currentName?libraryGroup(currentName):'all'),[media,setMedia]=useState('all'),[selectedId,setSelectedId]=useState(null),[limit,setLimit]=useState(12),[playing,setPlaying]=useState(false);
+ const detailRef=useRef(null),eligible=cards.filter(card=>eligibleLibraryCard(card,restrictions)),results=eligible.filter(card=>libraryMatches(card,{search,group,media}));
+ const selected=results.find(card=>card.canonicalId===selectedId) || results.find(card=>card.title===currentName) || results[0],videoId=libraryVideoId(selected?.video || selected?.autoVideo);
+ useEffect(()=>{setPlaying(false);},[selected?.canonicalId,videoId]);
+ useEffect(()=>setLimit(12),[search,group,media]);
+ function inspect(card){setSelectedId(card.canonicalId);if(window.matchMedia('(max-width: 760px)').matches)requestAnimationFrame(()=>detailRef.current?.scrollIntoView({block:'start'}));}
+ return <section className={'exercise-library-explorer '+(onSelect?'is-picker':'')} aria-label={onSelect?'Библиотека замен':'Каталог техники упражнений'}>
+  <header className="library-studio-heading"><div><p>ТЕХНИКА / ДВИЖЕНИЕ / ВЫБОР</p><h2>{onSelect?'Сначала техника. Затем замена.':'Атлас движений'}</h2><span>{onSelect?`Сейчас: ${currentName}`:'Видео, базовые ориентиры и точный вариант в одной карточке.'}</span></div><div className="library-studio-count"><strong>{eligible.length}</strong><span>упражнений</span></div></header>
+  <div className="library-studio-filters"><label>Поиск упражнения<input type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Название или несколько слов…"/></label><label>Движение<select value={group} onChange={event=>setGroup(event.target.value)}>{LIBRARY_GROUPS.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>Видео<select value={media} onChange={event=>setMedia(event.target.value)}><option value="all">Все упражнения</option><option value="video">Есть видео</option><option value="missing">Без видео</option></select></label></div>
+  {onSelect && <p className="library-studio-note">Сравните вариант и технику. После выбора проверьте дозу, ограничения и укажите причину замены в программе.</p>}
+  {loading?<p role="status" className="library-studio-message">Загружаю каталог техники…</p>:error?<div role="alert" className="library-studio-message"><p>Каталог не обновлён: {error}</p>{onRetry && <button type="button" onClick={onRetry}>Повторить загрузку</button>}</div>:!results.length?<div className="library-studio-message"><h3>Подходящих упражнений не найдено</h3><p>Измените запрос или фильтр движения.</p><button type="button" onClick={()=>{setSearch('');setGroup('all');setMedia('all');}}>Сбросить фильтры</button></div>:<div className="library-studio-layout">
+   <div className="library-studio-results"><p className="library-studio-result-count">Найдено {results.length} · показано {Math.min(limit,results.length)}</p><div>{results.slice(0,limit).map(card=><button type="button" key={card.canonicalId} className="library-studio-result" aria-pressed={selected?.canonicalId===card.canonicalId} onClick={()=>inspect(card)}><span className="library-studio-monogram">{card.title.split(/\s+/).map(word=>word[0]).slice(0,2).join('')}</span><span><strong>{card.title}</strong><small>{LIBRARY_GROUPS.find(([id])=>id===libraryGroup(card.title))?.[1]} · {libraryVideoId(card.video || card.autoVideo)?'Видео':'Без видео'}</small></span><span aria-hidden="true">↗</span></button>)}</div>{limit<results.length && <button className="library-studio-more" type="button" onClick={()=>setLimit(value=>value+12)}>Показать ещё 12</button>}</div>
+   {selected && <article className="library-studio-detail" ref={detailRef} aria-label={`Техника: ${selected.title}`}><header><p>ВЫБРАННЫЙ ВАРИАНТ</p><h3>{selected.title}</h3><span>{LIBRARY_GROUPS.find(([id])=>id===libraryGroup(selected.title))?.[1]}</span></header>
+    <div className="library-studio-media">{videoId?playing?<iframe key={videoId} src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`} title={`Видео техники: ${selected.title}`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:<button type="button" aria-label={`Смотреть видео: ${selected.title}`} onClick={()=>setPlaying(true)}>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt="" loading="lazy"/><span className="library-studio-play">▶</span><span className="library-studio-watch">Смотреть технику ↗</span></button>:<div><span>01 / ВИДЕО</span><strong>Видео ещё не добавлено</strong><p>Сверьте вариант с тренером. Добавить своё видео можно в карточке упражнения в программе.</p></div>}</div>
+    {videoId && <div className="library-studio-video-meta"><span>Видео библиотеки · сверьте вариант с названием</span><a href={`https://www.youtube.com/watch?v=${videoId}`} target="_blank" rel="noopener noreferrer">YouTube ↗</a>{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div>}
+    <div className="library-studio-instructions"><p>02 / БАЗОВЫЕ ОРИЕНТИРЫ</p><h4>Выполнение</h4><p>{selected.description || replacementTechnique(selected.title)}</p><small>Индивидуальные указания, темп и нагрузка — в программе игрока.</small></div>
+    {onSelect && <footer><button type="button" disabled={selected.title===currentName || !eligibleLibraryCard(selected,restrictions)} onClick={()=>onSelect(selected)}>{selected.title===currentName?'Сейчас в программе':'Выбрать замену ↗'}</button><p>Килограммы между разными упражнениями не переносятся.</p></footer>}
+   </article>}
+  </div>}
+ </section>;
+}
+
+export function ExerciseLibraryPicker({apiKey,...props}){
+ const [cards,setCards]=useState([]),[error,setError]=useState(''),[loading,setLoading]=useState(true),[reload,setReload]=useState(0);
+ useEffect(()=>{const controller=new AbortController();setLoading(true);setError('');setCards([]);teamQueueCall(apiKey,'/api/exercises/library',{signal:controller.signal,timeoutMs:25000}).then(data=>{if(!Array.isArray(data.cards))throw Error('Каталог получен не полностью');if(!controller.signal.aborted)setCards(data.cards);}).catch(error=>{if(!controller.signal.aborted)setError(error.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});return()=>controller.abort();},[apiKey,reload]);
+ return <ExerciseLibraryExplorer {...props} cards={cards} loading={loading} error={error} onRetry={()=>setReload(value=>value+1)}/>;
+}
