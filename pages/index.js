@@ -4534,7 +4534,7 @@ export default function Home() {
                 </details>
               )}
 
-              {pendingSaved && <p className="coach-source-snapshot">Обоснование ниже — снимок при сохранении {new Date(pendingSaved.savedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Текущие данные ReadySix показаны в настройках нового черновика; изменения после сохранения не переписывают исходный план.</p>}
+              {pendingSaved?.savedAt && Number.isFinite(Date.parse(pendingSaved.savedAt)) && <p className="coach-source-snapshot">Обоснование ниже — снимок при сохранении {new Date(pendingSaved.savedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Текущие данные ReadySix показаны в настройках нового черновика; изменения после сохранения не переписывают исходный план.</p>}
               {pendingSaved && decisionData?.source==='ReadySix' && <details className="coach-source-comparison"><summary>Сравнить текущий источник с обоснованием программы</summary><SourceComparison previous={meta?.sourceState} current={decisionData.sourceState} savedAt={meta?.sourceCapturedAt} checkedAt={decisionData.checkedAt}/><div><section><h3>При сохранении · {coachDate(pendingSaved.date)}</h3><p>{session.assessment || 'Обоснование не записано в этой версии.'}</p></section><section><h3>Текущий источник · {coachDate(decisionData.targetDate || date)}</h3><p>{decisionData.recommendation?.state?.detail || decisionData.decision?.detail || 'Подробности не переданы.'}</p></section></div><p>Тексты из разных моментов времени. Изменение формулировок само по себе не подтверждает изменение состояния или допуска; решение проверяется в ReadySix.</p></details>}
               {/* Volume stats bar */}
               {volumeStats && volumeStats.sessions > 0 && (
