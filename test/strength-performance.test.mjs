@@ -18,7 +18,7 @@ test('confirmed supplement updates charts, stale facts revert to real gaps, undo
 });
 test('exact name, slot, chain, implement count and per-side units stay separate; unperformed dates break chronology',()=>{
  const a=fixture(),b=fixture(2),c=fixture(3);b.record.session.blocks[0].exercises[0].name='DB Bench Press';b.record.session.blocks[0].exercises[0].loadUnits=2;c.log.done={};
- const series=historyPerformanceSeries([history(c.record,c.log),history(b.record,b.log),history(a.record,a.log)]);assert.equal(series.length,2);assert.equal(series[0].name,'One-Arm DB Bench Press');assert.equal(series[0].observations.length,3);assert.equal(series[0].observations[1].gap,'Этот вариант не выполнялся');assert.equal(series[0].observations[2].gap,'Полное выполнение не подтверждено');
+ const series=historyPerformanceSeries([history(c.record,c.log),history(b.record,b.log),history(a.record,a.log)]);assert.equal(series.length,2);const original=series.find(row=>row.name==='One-Arm DB Bench Press');assert.equal(original.observations.length,3);assert.equal(original.observations[1].gap,'Этот вариант не выполнялся');assert.equal(original.observations[2].gap,'Полное выполнение не подтверждено');
  const changed=history(a.record,a.log);changed.trainingType='posterior_chain';assert.equal(historyPerformanceSeries([history(a.record,a.log),{...changed,date:'2026-10-04'}]).length,2);
  for(const change of [row=>{row.loadUnits=2;},row=>{row.code='B2';},row=>{row.sets=row.sets.map(set=>({...set,target:'5'}));}]){const second=structuredClone(history(a.record,a.log));second.date='2026-10-04';change(second.factReview.rows[0]);assert.equal(historyPerformanceSeries([history(a.record,a.log),second]).length,2);}
 });

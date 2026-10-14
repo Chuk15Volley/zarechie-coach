@@ -9,6 +9,8 @@ import { normExName } from '../players/progression';
 import { adaptationHistoryKey, adaptationOutcomeKey, pfx, exweightKey, exhistKey, gymTonnageKey, gymTonnageDatesKey, sessionKey } from '../../../lib/workspacePrefix';
 import { loadUnitsForExercise } from '../../../lib/tonnage';
 import { exerciseId } from '../../../lib/exerciseIdentity.mjs';
+import {loadGymFacts} from '../../../lib/gymLoadStore';
+import {strengthSessionCompletion} from '../../../lib/strengthCompletion.mjs';
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) {
@@ -22,6 +24,7 @@ export default async function handler(req, res) {
   if (!playerId || !date) {
     return res.status(400).json({ error: 'playerId and date are required' });
   }
+  try{const [facts]=await loadGymFacts(workspace,[{playerId:String(playerId),date}]);if(facts && strengthSessionCompletion(facts.record,facts.rawActual,facts.rawLog).completed)return res.status(409).json({error:'Выполнение уже подтверждено игроком. Не завершайте повторно; недостающие значения дополните через историю.'});}catch{return res.status(503).json({error:'Не удалось проверить существующее выполнение. Повторите после обновления статуса.'});}
 
   // Compliance: among exercises with plannedKg > 0, share that were completed
   // and reached at least 80% of planned weight.

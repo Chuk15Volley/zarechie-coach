@@ -1,3 +1,4 @@
+import {selectGymEdition} from '../lib/gymEdition.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -77,7 +78,7 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: server history 
  const planned={...record,strengthCompletion:{completed:true,source:'player_feedback'}};
  let execution=actual;
  const calls=[];
- const deps={redis:async(_cmd,key)=>{assert.ok(key.startsWith(prefix+':'));return [record.date];},redisPipeline:async commands=>{calls.push(commands);return commands.map(([,key])=>key.includes(':session:actual:')?execution:key.includes(':log:')?null:planned);},pfx:()=>prefix,sessionKey:()=>'',strengthSessionCompletion};
+ const deps={selectGymEdition,redis:async(_cmd,key)=>{assert.ok(key.startsWith(prefix+':'));return [record.date];},redisPipeline:async commands=>{calls.push(commands);return commands.map(([,key])=>key.includes(':session:actual:')?execution:key.includes(':log:')?null:planned);},pfx:()=>prefix,sessionKey:()=>'',strengthSessionCompletion};
  const history=new Function(...Object.keys(deps),source+';return getRecentSessionRecords;')(...Object.values(deps));
  let rows=await history('p1',42,workspace,'2026-10-12',{strict:true,includeCycleHistory:true});assert.equal(rows[0].strengthCompletion.completed,true);
  execution=null;rows=await history('p1',42,workspace,'2026-10-12',{strict:true,includeCycleHistory:true});assert.equal(rows[0].strengthCompletion.completed,false);
@@ -97,7 +98,7 @@ test('strength progress persists without TTL while other workout logs retain the
  const source=readFileSync(new URL('../pages/api/player/log.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
  for(const focus of ['inseason_strength','inseason_prophylaxis']){
   const calls=[];
-  const deps={redis:async(...args)=>{calls.push(args);if(args[0]==='set')return 'OK';if(args[1].includes(':session:'))return JSON.stringify({focus});return null;},resolveShareToken:async()=>({playerId:'p1',workspace:'nkperf'}),pfx:()=> 'nkperf',mergeWorkoutProgress,recordPlatformEvent:async()=>{},crypto};
+  const deps={selectGymEdition,redis:async(...args)=>{calls.push(args);if(args[0]==='set')return 'OK';if(args[1].includes(':session:'))return JSON.stringify({focus});return null;},resolveShareToken:async()=>({playerId:'p1',workspace:'nkperf'}),pfx:()=> 'nkperf',mergeWorkoutProgress,recordPlatformEvent:async()=>{},crypto};
   const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
   const response={status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
   await handler({method:'POST',body:{token:'synthetic',date:'2026-10-12',done:{'0-0-0':true}}},response);

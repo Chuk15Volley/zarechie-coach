@@ -684,3 +684,33 @@
  .coach-premium .coach-player-history .coach-cycle-review>summary{padding:14px 0}
  .coach-premium .coach-player-history .coach-cycle-review>div{padding:12px 0}
 }
+.coach-premium .coach-fact-period{display:flex;align-items:flex-end;flex-wrap:wrap;gap:14px;padding:16px 0;border-block:1px solid #b5c9bb1a;margin:18px 0}
+.coach-premium .coach-fact-period label{display:flex;flex-direction:column;gap:6px;color:#afc2b6;font-size:11px;min-width:0}
+.coach-premium .coach-fact-period input{min-height:44px;padding:10px;border:1px solid #b1c2b833;border-radius:11px;font-size:13px;max-width:100%}
+.coach-premium .coach-fact-period .coach-overview-filters{margin:0}
+.coach-premium .coach-team-facts{margin:20px 0;border:1px solid #b5c9bb2b;border-radius:20px;background:linear-gradient(135deg,#b5c9bb08,transparent),#151d1f;min-width:0}
+.coach-premium .coach-team-facts>summary{cursor:pointer;padding:20px 24px;font-size:15px;color:#d3e1d9;font-weight:600}
+.coach-premium .coach-team-facts>div{padding:clamp(16px,2vw,24px);border-top:1px solid #b5c9bb1a}
+.coach-premium .coach-fact-team-stats{display:flex;flex-wrap:wrap;gap:12px;margin-block:20px}
+.coach-premium .coach-fact-team-stats span{border:1px solid #bac8bc24;border-radius:12px;background:#bac8bc07;padding:12px 14px;font-size:12px;color:#b4c6b9}
+.coach-premium .coach-fact-team-stats b{font-size:22px;font-weight:600;margin-left:8px;color:#deebe2;font-variant-numeric:tabular-nums}
+.coach-premium .coach-team-fact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:20px}
+.coach-premium .coach-team-fact-grid>article{min-width:0;border:1px solid #b5c9bb24;border-radius:16px;padding:18px;background:#192220}
+.coach-premium .coach-team-fact-grid h3{font-size:18px;color:#deebe3;font-weight:600}
+.coach-premium .coach-team-fact-grid header span{font-size:11px;color:#cfbf96;display:block;margin-top:8px}
+.coach-premium .coach-team-fact-grid details{border-top:1px solid #b5c9bb1a;margin-top:14px}
+.coach-premium .coach-team-fact-grid summary{padding:14px 0;cursor:pointer;font-size:12px;color:#bcd9c8;line-height:1.8}
+.coach-premium .coach-fact-task{margin:12px 0;padding:12px 0;border-top:1px solid #b5c9bb1a}
+.coach-premium .coach-fact-task strong{font-size:12px;color:#d4e3d9;line-height:1.8}
+.coach-premium .coach-fact-task>div{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.coach-premium .coach-team-facts button,.coach-premium .coach-focused-facts button,.coach-premium .coach-previous-queue button{min-height:40px;padding:9px 12px;border:1px solid #adc9b62b;border-radius:10px;background:#adc9b608;color:#c3dfce;font-size:12px}
+.coach-premium .coach-focused-facts{scroll-margin-top:24px;margin-block:20px;padding:18px;border:1px solid #cfbd8d50;border-radius:16px;background:#c7b38908}
+.coach-premium .coach-focused-facts>header{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.coach-premium .coach-focused-facts h3{font-size:17px;color:#deebe2}
+.coach-premium .coach-focused-facts input[type=number]{display:block;margin:8px 0;min-height:44px}
+.coach-premium .coach-fact-fill-buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.coach-premium .coach-fact-fill-buttons button{border:1px solid #cfbd8d35;padding:6px 9px;color:#dac69b;font-size:11px}
+.coach-premium .coach-previous-queue,.coach-premium .coach-execution-confirmed{border:1px solid #a3c3b041;border-radius:14px;padding:16px;margin-block:16px;background:#abc4b608;color:#c2dacc;font-size:12px;line-height:1.8}
+.coach-premium .coach-previous-queue button{margin-top:10px}
+@media(max-width:800px){.coach-premium .coach-team-fact-grid{grid-template-columns:1fr}}
+@media(max-width:640px){.coach-premium .coach-fact-period{align-items:stretch}.coach-premium .coach-fact-period>label{width:100%}.coach-premium .coach-team-facts>summary{padding:16px}.coach-premium .coach-team-fact-grid>article{padding:14px}.coach-premium .coach-focused-facts{padding:14px}.coach-premium .coach-team-facts button{min-height:44px}}

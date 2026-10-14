@@ -2,8 +2,8 @@ import {useEffect,useRef,useState} from 'react';
 import {teamQueueCall,queueResponseGate} from '../lib/teamQueueClient.mjs';
 export {teamQueueCall} from '../lib/teamQueueClient.mjs';
 const hintKey=workspace=>'gym:team-queue-view:v1:'+workspace;
-export default function useTeamGenerationQueue({workspace,date,apiKey,onRestoreDate}) {
-  const [queue,setQueue]=useState(null),[results,setResults]=useState([]),[recovering,setRecovering]=useState(false),[error,setError]=useState('');
+export default function useTeamGenerationQueue({workspace,date,apiKey}) {
+  const [queue,setQueue]=useState(null),[results,setResults]=useState([]),[recovering,setRecovering]=useState(false),[error,setError]=useState(''),[previousQueue,setPreviousQueue]=useState(null);
   const queueRef=useRef(null),scope=useRef(null),restored=useRef(new Set()),controllerRef=useRef(null);
   function apply(next){
     if(next && queueRef.current?.id===next.id && next.revision<queueRef.current.revision)return;
@@ -13,7 +13,7 @@ export default function useTeamGenerationQueue({workspace,date,apiKey,onRestoreD
   useEffect(()=>{
     const gate=queueResponseGate(),controller=new AbortController();let timer;
     const current={gate,controller,workspace,date};scope.current=current;controllerRef.current=controller;
-    apply(null);setError('');setRecovering(true);
+    apply(null);setPreviousQueue(null);setError('');setRecovering(true);
     async function read(id){return (await teamQueueCall(apiKey,'/api/programs/team-queue?workspace='+workspace+(id?'&queueId='+encodeURIComponent(id):'&date='+date),{signal:controller.signal})).queue;}
     async function poll(){
       if(gate.busy)return;
@@ -21,7 +21,7 @@ export default function useTeamGenerationQueue({workspace,date,apiKey,onRestoreD
       try{
         let hint;
         if(!restored.current.has(workspace) && !new URLSearchParams(window.location.search).has('assignedDate')){restored.current.add(workspace);try{hint=JSON.parse(localStorage.getItem(hintKey(workspace)));}catch{}}
-        if(hint?.id && hint.date!==date){let previous;try{previous=await read(hint.id);}catch(failure){if(failure.status!==404)throw failure;}if(previous && gate.accept(token)){onRestoreDate(previous.date);return;}}
+        if(hint?.id && hint.date!==date){let previous;try{previous=await read(hint.id);}catch(failure){if(failure.status!==404)throw failure;}if(previous && gate.accept(token))setPreviousQueue({id:previous.id,date:previous.date,workspace});}
         const next=await read(); // Always follow the latest queue for this date, including another tab's creation.
         if(gate.accept(token)){apply(next);setError('');}
       }catch(failure){if(gate.accept(token))setError(failure.message);}
@@ -49,7 +49,7 @@ export default function useTeamGenerationQueue({workspace,date,apiKey,onRestoreD
   }
   const action=(name,extra={})=>mutate(current=>current?[{action:name,workspace:current.workspace,queueId:current.id,...extra}]:null);
   const running=queue?.state==='running' && results.some(row=>['queued','generating'].includes(row.status));
-  return {queue,results,setResults,running,recovering,error,
+  return {queue,results,setResults,running,recovering,error,previousQueue,
     start:(players,request)=>mutate(current=>[{action:'create',request,players,expectedLatestId:current?.id || null,expectedRevision:current?.revision || 0}]),
     retry:()=>mutate(current=>current?.rows.filter(row=>row.status==='error').map(row=>({action:'retry',workspace:current.workspace,queueId:current.id,playerId:row.playerId,batchId:row.batchId}))),
     refreshPlayer:row=>action('refresh-player',{playerId:row.playerId,batchId:row.batchId}),

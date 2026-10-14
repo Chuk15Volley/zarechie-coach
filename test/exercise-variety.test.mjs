@@ -86,7 +86,7 @@ test('remaining repetitions request coach review even when overall score is high
 
 test('Redis history filters by date before limiting and stays in the requested workspace', async () => {
   let historySource = readFileSync(new URL('../lib/sessionHistory.js', import.meta.url), 'utf8');
-  historySource = historySource.replace("from './strengthActualSupplement.mjs'", `from '${new URL('../lib/strengthActualSupplement.mjs', import.meta.url).href}'`).replace("from './strengthCompletion.mjs'", `from '${new URL('../lib/strengthCompletion.mjs', import.meta.url).href}'`).replace("import { redis, redisPipeline } from './redis';", `
+  historySource = historySource.replace("from './strengthActualSupplement.mjs'", `from '${new URL('../lib/strengthActualSupplement.mjs', import.meta.url).href}'`).replace("from './gymEdition.mjs'", `from '${new URL('../lib/gymEdition.mjs', import.meta.url).href}'`).replace("from './strengthCompletion.mjs'", `from '${new URL('../lib/strengthCompletion.mjs', import.meta.url).href}'`).replace("import { redis, redisPipeline } from './redis';", `
     const redis = async (...args) => { globalThis.__varietyRedisCalls.push(args); return ['2026-09-15', '2026-09-14']; };
     const redisPipeline = async commands => { globalThis.__varietyRedisCalls.push(commands); return commands.map(() => JSON.stringify({session:{blocks:[{exercises:[]}]}})); };
   `).replace("import { pfx, sessionKey } from './workspacePrefix';", `const pfx = workspace => workspace === 'nkperf' ? 'nkperf' : 'coach';`);
@@ -125,7 +125,7 @@ test('strict history distinguishes first session from an outage or corrupt saved
     [['2026-09-15'], ['broken JSON'], true],
     [['2026-09-15'], [{ session: { blocks: [] } }], false],
   ]) {
-    const src = rawSource.replace("from './strengthActualSupplement.mjs'", `from '${new URL('../lib/strengthActualSupplement.mjs', import.meta.url).href}'`).replace("from './strengthCompletion.mjs'", `from '${new URL('../lib/strengthCompletion.mjs', import.meta.url).href}'`).replace("import { redis, redisPipeline } from './redis';", `
+    const src = rawSource.replace("from './strengthActualSupplement.mjs'", `from '${new URL('../lib/strengthActualSupplement.mjs', import.meta.url).href}'`).replace("from './gymEdition.mjs'", `from '${new URL('../lib/gymEdition.mjs', import.meta.url).href}'`).replace("from './strengthCompletion.mjs'", `from '${new URL('../lib/strengthCompletion.mjs', import.meta.url).href}'`).replace("import { redis, redisPipeline } from './redis';", `
       const redis = async () => ${JSON.stringify(dates)};
       const redisPipeline = async () => ${JSON.stringify(values)};
     `).replace("import { pfx, sessionKey } from './workspacePrefix';", 'const pfx = workspace => workspace;');

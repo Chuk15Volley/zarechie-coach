@@ -56,6 +56,7 @@ export default async function handler(req, res) {
   })).catch(() => []);
   const drafts = await redisPipeline(playerIds.map(id => ['GET', generatedDraftKey(workspace, String(id), date)]));
   const facts=await loadGymFacts(workspace,playerIds.map(id=>({playerId:String(id),date})));
+  const sourceFeedback=await redisPipeline(facts.map((fact,index)=>['GET',feedbackKey(workspace,fact?.sourcePlayerId || String(playerIds[index]),date)]));
   playerIds.forEach((id, index) => {
     const sid = String(id);
     const offset = index * 11;
@@ -90,7 +91,7 @@ export default async function handler(req, res) {
     if (rawActual) {
       try { actual = typeof rawActual === 'string' ? JSON.parse(rawActual) : rawActual; } catch (_) {}
     }
-    if(facts[index]){session=facts[index].record.session;actual=facts[index].actual;log=facts[index].log;}
+    if(facts[index]){session=facts[index].record.session;hasSession=true;savedAt=facts[index].record.savedAt || null;trainingLabel=sessionTrainingLabel(facts[index].record);actual=facts[index].actual;log=facts[index].log;feedback=parseJSON(sourceFeedback[index],feedback);}
     const restrictions = parseJSON(rawRestrictions, []);
     const developmentPlan = parseJSON(rawDevelopmentPlan);
     const returnToPlay = evaluateReturnToPlay(parseJSON(rawReturnToPlay, {}), date);

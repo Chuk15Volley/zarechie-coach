@@ -1,3 +1,4 @@
+import {selectGymEdition} from '../lib/gymEdition.mjs';
 import {resolveStrengthSupplement} from '../lib/strengthActualSupplement.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -85,7 +86,7 @@ test('review keeps exact variants, implement count and chain separate, retains r
 });
 for(const workspace of ['zarechie','nkperf'])test(`${workspace}: review endpoint authenticates, scopes history and fails closed`,async()=>{
  const source=readFileSync(new URL('../pages/api/players/strength-cycle-review.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','');
- const calls=[];const deps={redis:async()=>null,pfx:ws=>ws==='nkperf'?'nkperf':'coach',isAuthorized:()=>true,shiftIsoDate,buildStrengthCycleReview,getRecentSessionRecords:async(...args)=>{calls.push(args);return [record(1)];}};
+ const calls=[];const deps={selectGymEdition,redis:async()=>null,pfx:ws=>ws==='nkperf'?'nkperf':'coach',isAuthorized:()=>true,shiftIsoDate,buildStrengthCycleReview,getRecentSessionRecords:async(...args)=>{calls.push(args);return [record(1)];}};
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
  const response={headers:{},setHeader(key,value){this.headers[key]=value;},status(code){this.code=code;return this;},json(data){this.data=data;return this;}};
  await handler({method:'GET',query:{workspace,playerId:'123',asOf:date}},response);assert.equal(response.code,200);assert.equal(calls[0][2],workspace);assert.equal(calls[0][4].includeStrengthExecution,true);assert.equal(response.headers['Cache-Control'],'no-store');
@@ -105,7 +106,7 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: review joins on
  const actual=item.strengthExecutionFacts.actual;
  const stored={...item,strengthExecutionFacts:{actual:{source:'forged'},log:null}};
  const {strengthSessionCompletion}=await import('../lib/strengthCompletion.mjs');
- const deps={resolveStrengthSupplement,redis:async(_command,key)=>{assert.ok(key.startsWith(prefix+':'));return [date];},redisPipeline:async commands=>commands.map(([,key])=>key.includes(':session:actual:')?JSON.stringify(actual):key.includes(':log:') || key.includes(':actual-supplement:')?null:JSON.stringify(stored)),pfx:()=>prefix,sessionKey:()=>'',strengthSessionCompletion};
+ const deps={selectGymEdition,resolveStrengthSupplement,redis:async(_command,key)=>{assert.ok(key.startsWith(prefix+':'));return [date];},redisPipeline:async commands=>commands.map(([,key])=>key.includes(':session:actual:')?JSON.stringify(actual):key.includes(':log:') || key.includes(':actual-supplement:')?null:JSON.stringify(stored)),pfx:()=>prefix,sessionKey:()=>'',strengthSessionCompletion};
  const history=new Function(...Object.keys(deps),source+';return getRecentSessionRecords;')(...Object.values(deps));
  const rows=await history('player',42,workspace,shiftIsoDate(date,1),{strict:true,includeCycleHistory:true,includeStrengthExecution:true});
  assert.equal(rows[0].strengthExecutionFacts.actual.source,'player_feedback');assert.equal(buildStrengthCycleReview(rows,{asOf:date}).cycles[0].completedCount,1);
