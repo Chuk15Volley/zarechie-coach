@@ -17,7 +17,8 @@ test('coach and library UIs never trigger automatic YouTube search', async () =>
 test('manual YouTube saving remains available to the coach', async () => {
   const source = await readFile(new URL('pages/index.js', ROOT), 'utf8');
   assert.match(source, /\/api\/exercises\/manual-video/);
-  assert.match(source, /Добавить YouTube-видео/);
+  assert.match(source, /YouTube-видео для/);
+  assert.match(source, /onSubmit=\{event=>\{event.preventDefault\(\);handleSaveVideo\(\);\}\}/);
 });
 
 test('warmup exercises use the same YouTube video panel as gym exercises', async () => {

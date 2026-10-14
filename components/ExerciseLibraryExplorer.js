@@ -2,7 +2,7 @@ import {variantTechnique} from '../lib/coachAuditPresentation.mjs';
 import TechniqueVerification from './TechniqueVerification';
 import {useEffect,useRef,useState} from 'react';
 import {teamQueueCall} from '../lib/teamQueueClient.mjs';
-import {LIBRARY_EQUIPMENT,LIBRARY_REGIONS,LIBRARY_GROUPS,libraryGroup,libraryVariantMeta,searchableExercise,libraryMatches,libraryVideoId,eligibleLibraryCard as eligibleCard} from '../lib/exerciseLibraryView.mjs';
+import {LIBRARY_EQUIPMENT,LIBRARY_REGIONS,LIBRARY_GROUPS,libraryGroup,rankReplacementCards,libraryVariantMeta,searchableExercise,libraryMatches,libraryVideoId,eligibleLibraryCard as eligibleCard} from '../lib/exerciseLibraryView.mjs';
 import {isCoachBannedExercise,hasRestriction} from '../lib/exerciseRestrictions';
 import {replacementTechnique} from '../lib/exerciseReplacement.mjs';
 
@@ -39,30 +39,30 @@ export default function ExerciseLibraryExplorer({apiKey,cards=[],loading=false,e
 }
 
 function QuickReplacement({cards,loading,error,onRetry,currentName,currentSets,currentTempo,favorites,recent,onFavorite,onSelect,onClose,viewScope='',adding=false}){
- const key='gym-correction-picker-v1:'+viewScope;
+ const key='gym-correction-picker-v2:'+viewScope;
  const [filters,setFilters]=useState(()=>{try{const old=JSON.parse(sessionStorage.getItem(key));if(viewScope && old && typeof old.search==='string' && LIBRARY_GROUPS.some(([id])=>id===old.group) && ['all','favorites','recent'].includes(old.collection))return old;}catch{}return {search:'',group:currentName?libraryGroup(currentName):'all',collection:'all'};});
  const {search,group,collection}=filters,change=patch=>setFilters(old=>({...old,...patch}));
- const [limit,setLimit]=useState(20),[inspected,setInspected]=useState(null),root=useRef(null);
- const results=cards.filter(card=>libraryMatches(card,{search,group}) && (collection==='all' || (collection==='favorites'?favorites:recent).includes(card.canonicalId))).sort((a,b)=>Number(libraryGroup(b.title)===libraryGroup(currentName))-Number(libraryGroup(a.title)===libraryGroup(currentName)));
+ const [limit,setLimit]=useState(8),[inspected,setInspected]=useState(null),root=useRef(null);
+ const results=rankReplacementCards(cards.filter(card=>libraryMatches(card,{search,group}) && (collection==='all' || (collection==='favorites'?favorites:recent).includes(card.canonicalId))),currentName);
  const similar=title=>cards.filter(c=>searchableExercise(c.title)===searchableExercise(title)).length>1;
- useEffect(()=>{setLimit(20);if(viewScope)try{sessionStorage.setItem(key,JSON.stringify(filters));}catch{}},[search,group,collection,key,viewScope]);
+ useEffect(()=>{setLimit(8);if(viewScope)try{sessionStorage.setItem(key,JSON.stringify(filters));}catch{}},[search,group,collection,key,viewScope]);
  const select=card=>onSelect({...card,description:variantTechnique(card) || card.description || replacementTechnique(card.title)});
  function keyboard(event){
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose?.();return;}
   const buttons=[...root.current.querySelectorAll('.coach-quick-result-select:not(:disabled)')],index=buttons.indexOf(event.target),searching=event.target.getAttribute('aria-label')==='Найти замену упражнения';
   if(event.key==='ArrowDown' && (searching || index>=0)){event.preventDefault();buttons[Math.min(buttons.length-1,index+1)]?.focus();}
   if(event.key==='ArrowUp' && index>=0){event.preventDefault();(index>0?buttons[index-1]:root.current.querySelector('input[type=search]'))?.focus();}
-  if(event.key==='Enter' && searching && buttons.length){event.preventDefault();buttons[0].click();}
+  if(event.key==='Enter' && searching && search.trim() && buttons.length){event.preventDefault();buttons[0].click();}
  }
  return <section ref={root} className="coach-quick-replacement" aria-label={adding?'Добавление упражнения из каталога':'Быстрая замена упражнения'} onKeyDown={keyboard}>
   <div className="coach-quick-replacement-search"><label>Найти упражнение<input autoFocus type="search" aria-label="Найти замену упражнения" value={search} onChange={event=>change({search:event.target.value})} placeholder="Румынская тяга, гантели, DB row…" title="Стрелки — выбор результата; Enter — применить; Escape — закрыть"/></label><label>Движение<select value={group} onChange={event=>change({group:event.target.value})}>{LIBRARY_GROUPS.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label></div>
   <div className="coach-overview-filters">{[['all','Все'],['favorites','Избранные'],['recent','Недавние']].map(([id,label])=><button key={id} type="button" aria-pressed={collection===id} onClick={()=>change({collection:id})}>{label}</button>)}</div>
   {!adding && <><p><strong>Сейчас: {currentName}</strong> · {libraryVariantMeta(currentName)}</p><p>После замены останутся {currentSets.length} подхода: {currentSets.join(' · ') || 'задание не задано'}{currentTempo?' · темп '+currentTempo:''}. Кг и подсказка прогрессии сбросятся; техника обновится для выбранного варианта. Проверьте дозу и причину замены.</p></>}
   {adding && <p>Выберите точный вариант. Техника и видео — из каталога; нагрузку и дозу подтвердите в программе.</p>}
-  {loading?<p role="status">Загружаю упражнения…</p>:error?<div role="alert">{error}<button type="button" onClick={onRetry}>Повторить загрузку</button></div>:<><span>Найдено {results.length} · близкие по движению сначала</span><div className="coach-quick-replacement-results">{results.slice(0,limit).map(card=>{
+  {loading?<p role="status">Загружаю упражнения…</p>:error?<div role="alert">{error}<button type="button" onClick={onRetry}>Повторить загрузку</button></div>:<><span>Найдено {results.length} · показано {Math.min(limit,results.length)} · близкие варианты сначала</span><div className="coach-quick-replacement-results">{results.slice(0,limit).map(card=>{
    const videoId=libraryVideoId(card.video || card.autoVideo);
    return <div key={card.canonicalId}><button className="coach-quick-result-select" type="button" disabled={!adding && card.title===currentName} aria-label={`${adding?'Добавить':'Заменить на'} ${card.title}`} onClick={()=>select(card)}><strong>{card.title}</strong><small>{libraryVariantMeta(card.title)} · {LIBRARY_GROUPS.find(([id])=>id===libraryGroup(card.title))?.[1]}{similar(card.title)?' · похожие названия: проверьте вариант':''}{currentName && libraryGroup(card.title)!==libraryGroup(currentName)?' · другое движение':''}</small><small>{!adding && card.title===currentName?'Сейчас в программе':adding?'Добавить →':'Заменить →'}</small></button><button type="button" aria-label={`Избранное: ${card.title}`} aria-pressed={favorites.includes(card.canonicalId)} onClick={()=>onFavorite(card.canonicalId)}>{favorites.includes(card.canonicalId)?'★':'☆'}</button><button type="button" aria-label={`Посмотреть технику: ${card.title}`} aria-expanded={inspected===card.canonicalId} onClick={()=>setInspected(inspected===card.canonicalId?null:card.canonicalId)}>Сравнить технику</button>{inspected===card.canonicalId && <div className="coach-quick-replacement-technique"><p>{variantTechnique(card) || card.description || replacementTechnique(card.title)}</p>{videoId && <iframe className="coach-candidate-video" src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0`} title={`Видео кандидата: ${card.title}`} allow="encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>}</div>}</div>;
-  })}</div>{!results.length && <p>Ничего не найдено. Уточните запрос или выберите все движения.</p>}{limit<results.length && <button type="button" onClick={()=>setLimit(value=>value+20)}>Показать ещё</button>}</>}
+  })}</div>{!results.length && <p>Ничего не найдено. Уточните запрос или выберите все движения.</p>}{limit<results.length && <button type="button" onClick={()=>setLimit(value=>value+8)}>Показать ещё</button>}</>}
  </section>;
 }
 const catalogueCache=new Map();

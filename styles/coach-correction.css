@@ -196,3 +196,51 @@
 .coach-premium .coach-common-rule {font-size:12px;line-height:1.5;color:#d3c6ac;padding:9px 12px;border:1px solid #8e7e5840;border-radius:10px;margin:10px 0 14px;}
 .coach-premium .coach-exercise-regulation summary {font-size:12px;cursor:pointer;}
 .coach-premium .coach-exercise-regulation:not([open]) {padding:8px 10px;}
+/* Shared coach finishing: existing theme, grids, block order and video sizes remain. */
+.coach-premium :is(.coach-today-card,.coach-history-card,.team-queue-player,.coach-program-preparation,.coach-aux-panels) {box-sizing:border-box;min-width:0;}
+.coach-premium :is(.coach-today-card,.coach-history-card,.team-queue-player) :is(p,small) {line-height:1.5;}
+.coach-premium :is(.coach-overview-header,.team-queue-heading,.coach-history-section-heading,.coach-exercise-heading) {align-items:center;gap:12px;}
+.coach-premium :is(.coach-overview-header,.team-queue-heading,.coach-history-section-heading) :is(h2,h3,p) {margin-top:0;}
+.coach-premium :is(.coach-overview-actions,.team-queue-filters,.team-program-dialog-actions,.coach-exercise-actions) {align-items:center;gap:8px;}
+.coach-premium :is(.coach-overview-actions,.team-queue-filters,.coach-exercise-actions) button {min-height:40px;line-height:1.35;}
+.coach-premium :is(.team-queue-heading,.coach-overview-header) {margin-bottom:14px;}
+.coach-premium :is(.coach-today-card,.coach-history-card) {padding:14px 16px;}
+.coach-premium .coach-history-dose {grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:10px 0;}
+.coach-premium .coach-history-dose>div:last-child {grid-column:auto;}
+.coach-premium .coach-history-card-actions {align-items:center;gap:8px;}
+.coach-premium :is(.coach-overview-stats dd,.coach-history-dose strong,.team-queue-progress strong,.coach-quick-plan input) {font-variant-numeric:tabular-nums;}
+.coach-premium .coach-overview-stats>div {position:relative;padding:14px 16px;min-width:0;}
+.coach-premium .coach-stat-overlay {position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:inherit;background:transparent;padding:0;cursor:pointer;}
+.coach-premium .coach-stat-overlay:focus-visible {outline:2px solid #adc7b5;outline-offset:3px;}
+.coach-premium .coach-stat-overlay[aria-pressed=true] {box-shadow:inset 0 0 0 1px #adc7b5;}
+.coach-premium .coach-stat-action {display:flex;flex-direction:column;gap:6px;background:transparent;border:0;padding:0;width:100%;text-align:left;line-height:1.4;}
+.coach-premium .coach-stat-action>span {font-size:11px;color:#93a39a;}
+.coach-premium .coach-stat-action>strong {font-size:24px;font-weight:650;font-variant-numeric:tabular-nums;}
+.coach-premium .coach-stat-action>small {font-size:11px;color:#93a39a;}
+.coach-premium .coach-editor-validation {display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px;}
+.coach-premium .coach-editor-validation>button {min-height:32px;padding:6px 10px;font-size:12px;line-height:1.4;border:1px solid #536d5d60;border-radius:8px;}
+.coach-premium .coach-exercise-card:focus-visible {outline:2px solid #adc7b5;outline-offset:3px;}
+.coach-premium .coach-quick-sets-heading.is-single-set {grid-template-columns:minmax(0,1fr);margin-top:8px;}
+.coach-premium .coach-video-meta {align-items:center;gap:8px;}
+.coach-premium .coach-video-quick-edit {align-items:start;gap:8px;}
+.coach-premium .coach-video-quick-edit label {min-width:0;}
+.coach-premium .coach-video-quick-edit>button {align-self:start;min-height:40px;}
+.coach-premium .coach-health-journal {margin-top:8px;font-size:12px;line-height:1.5;color:#a7b8ad;}
+.coach-premium .coach-system-details {padding:10px 14px;}
+.coach-premium :is(.coach-overview-table,.coach-week-overview) :is(td,th) {vertical-align:top;}
+.coach-premium .coach-week-overview td p:empty {display:none;}
+@media(max-width:760px){
+ .coach-premium :is(.coach-today-card,.coach-history-card,.team-queue-player) {padding:12px;}
+ .coach-premium .coach-overview-stats>div {padding:12px;}
+ .coach-premium :is(.coach-overview-header,.team-queue-heading,.coach-history-section-heading) {align-items:flex-start;}
+ .coach-premium .coach-video-quick-edit>button {min-height:44px;}
+ .coach-premium .coach-editor-validation>button {min-height:40px;}
+ .coach-premium .coach-quick-sets-heading.is-single-set>span {grid-column:auto;}
+}
+.coach-premium .coach-video-panel.is-empty .coach-video-meta,
+.coach-premium .coach-video-panel.is-empty .coach-video-tools>summary {display:none;}
+.coach-workflow-overlay {line-height:1.5;font-variant-numeric:tabular-nums;}
+.coach-workflow-overlay :is(input:not([type=checkbox]):not([type=radio]),select,button) {min-height:40px;box-sizing:border-box;}
+.coach-workflow-overlay :is(.text-\[9px\],.text-\[10px\]) {font-size:11px;line-height:1.5;}
+.coach-workflow-overlay :is(.flex,.grid)>div {min-width:0;}
+@media(max-width:760px){.coach-workflow-overlay :is(input:not([type=checkbox]):not([type=radio]),select,textarea) {font-size:16px;}}
