@@ -8,7 +8,7 @@ import {replacementTechnique} from '../lib/exerciseReplacement.mjs';
 
 const eligibleLibraryCard=(card,restrictions)=>eligibleCard(card,restrictions,isCoachBannedExercise,hasRestriction);
 
-export default function ExerciseLibraryExplorer({apiKey,cards=[],loading=false,error='',onRetry,currentName='',restrictions=[],onSelect}){
+export default function ExerciseLibraryExplorer({apiKey,cards=[],loading=false,error='',onRetry,currentName='',restrictions=[],onSelect,quick=false,onClose}){
  const [search,setSearch]=useState(''),[group,setGroup]=useState(()=>currentName?libraryGroup(currentName):'all'),[media,setMedia]=useState('all'),[selectedId,setSelectedId]=useState(null),[limit,setLimit]=useState(12),[playing,setPlaying]=useState(false);
  const [equipment,setEquipment]=useState('all'),[region,setRegion]=useState('all'),[exact,setExact]=useState(false),[collection,setCollection]=useState('all'),[favorites,setFavorites]=useState([]),[recent,setRecent]=useState([]);
  useEffect(()=>{for(const [key,setter] of [['coach-library-favorites-v1',setFavorites],['coach-library-recent-v1',setRecent]]){try{const value=JSON.parse(localStorage.getItem(key) || '[]');setter(Array.isArray(value)?value.filter(id=>typeof id==='string').slice(0,100):[]);}catch{}}},[]);
@@ -18,6 +18,7 @@ export default function ExerciseLibraryExplorer({apiKey,cards=[],loading=false,e
  useEffect(()=>{setPlaying(false);},[selected?.canonicalId,videoId]);
  useEffect(()=>setLimit(12),[search,group,media,equipment,region,exact,collection]);
  function inspect(card){setSelectedId(card.canonicalId);remember('coach-library-recent-v1',[card.canonicalId,...recent.filter(id=>id!==card.canonicalId)].slice(0,30),setRecent);if(window.matchMedia('(max-width: 760px)').matches)requestAnimationFrame(()=>detailRef.current?.scrollIntoView({block:'start'}));}
+ if(quick)return <QuickReplacement cards={eligible} loading={loading} error={error} onRetry={onRetry} currentName={currentName} onSelect={card=>{remember('coach-library-recent-v1',[card.canonicalId,...recent.filter(id=>id!==card.canonicalId)].slice(0,30),setRecent);onSelect(card);}} onClose={onClose}/>;
  return <section className={'exercise-library-explorer '+(onSelect?'is-picker':'')} aria-label={onSelect?'Библиотека замен':'Каталог техники упражнений'}>
   <header className="library-studio-heading"><div><p>ТЕХНИКА / ДВИЖЕНИЕ / ВЫБОР</p><h2>{onSelect?'Сначала техника. Затем замена.':'Атлас движений'}</h2><span>{onSelect?`Сейчас: ${currentName}`:'Видео, базовые ориентиры и точный вариант в одной карточке.'}</span></div><div className="library-studio-count"><strong>{eligible.length}</strong><span>упражнений</span></div></header>
   <div className="library-studio-filters"><label>Поиск упражнения<input type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Название или несколько слов…"/></label><label>Движение<select value={group} onChange={event=>setGroup(event.target.value)}>{LIBRARY_GROUPS.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>Инвентарь<select value={equipment} onChange={e=>setEquipment(e.target.value)}>{LIBRARY_EQUIPMENT.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>Область<select value={region} onChange={e=>setRegion(e.target.value)}>{LIBRARY_REGIONS.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>Видео<select value={media} onChange={event=>setMedia(event.target.value)}><option value="all">Все упражнения</option><option value="video">Есть видео</option><option value="missing">Без видео</option></select></label></div>
@@ -34,6 +35,17 @@ export default function ExerciseLibraryExplorer({apiKey,cards=[],loading=false,e
     {onSelect && <footer><button type="button" disabled={selected.title===currentName || !eligibleLibraryCard(selected,restrictions)} onClick={()=>onSelect({...selected,description:variantTechnique(selected) || selected.description})}>{selected.title===currentName?'Сейчас в программе':'Выбрать замену ↗'}</button><p>Килограммы между разными упражнениями не переносятся.</p></footer>}
    </article>}
   </div>}
+ </section>;
+}
+
+function QuickReplacement({cards,loading,error,onRetry,currentName,onSelect,onClose}){
+ const [search,setSearch]=useState(''),[group,setGroup]=useState('all'),[limit,setLimit]=useState(20),[inspected,setInspected]=useState(null);
+ const results=cards.filter(card=>libraryMatches(card,{search,group}));
+ useEffect(()=>setLimit(20),[search,group]);
+ return <section className="coach-quick-replacement" aria-label="Быстрая замена упражнения" onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose?.();}}}>
+  <div className="coach-quick-replacement-search"><label>Найти упражнение<input autoFocus type="search" aria-label="Найти замену упражнения" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Например: DB row"/></label><label>Движение<select value={group} onChange={event=>setGroup(event.target.value)}>{LIBRARY_GROUPS.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label></div>
+  <p>Сейчас: {currentName}. После замены проверьте дозу и причину; кг не переносятся.</p>
+  {loading?<p role="status">Загружаю упражнения…</p>:error?<div role="alert">{error}<button type="button" onClick={onRetry}>Повторить загрузку</button></div>:<><span>Найдено {results.length}</span><div className="coach-quick-replacement-results">{results.slice(0,limit).map(card=><div key={card.canonicalId}><button type="button" disabled={card.title===currentName} aria-label={`Заменить на ${card.title}`} onClick={()=>onSelect(card)}><strong>{card.title}</strong><small>{card.title===currentName?'Сейчас в программе':'Заменить →'}</small></button><button type="button" aria-label={`Посмотреть технику: ${card.title}`} aria-expanded={inspected===card.canonicalId} onClick={()=>setInspected(inspected===card.canonicalId?null:card.canonicalId)}>Техника</button>{inspected===card.canonicalId && <div className="coach-quick-replacement-technique"><p>{variantTechnique(card) || card.description || replacementTechnique(card.title)}</p>{libraryVideoId(card.video || card.autoVideo) && <a href={`https://www.youtube.com/watch?v=${libraryVideoId(card.video || card.autoVideo)}`} target="_blank" rel="noopener noreferrer">Посмотреть видео ↗</a>}</div>}</div>)}</div>{!results.length && <p>Ничего не найдено. Уточните запрос или выберите все движения.</p>}{limit<results.length && <button type="button" onClick={()=>setLimit(value=>value+20)}>Показать ещё</button>}</>}
  </section>;
 }
 

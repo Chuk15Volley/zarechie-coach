@@ -39,12 +39,14 @@ import {REPLACEMENT_REASONS} from '../lib/strengthCycle.mjs';
 import PlayerTimeZoneControl from '../components/PlayerTimeZoneControl';
 import {playerTimeZone,playerLocalDate} from '../lib/playerTimeZone.mjs';
 import { saveProgramRequest } from '../lib/programSaveClient.mjs';
-import { replaceExerciseDescription } from '../lib/exerciseReplacement.mjs';
+import { replaceExerciseDescription,techniqueQuality,replacementTechnique } from '../lib/exerciseReplacement.mjs';
 import { estimateStrengthMinutes } from '../lib/strengthExecution.mjs';
 import { calendarToday } from '../lib/coachCalendar.mjs';
 import CoachCalendar from '../components/CoachCalendar';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import PlannedLoadEditor from '../components/PlannedLoadEditor';
+import {plannedWeightPatch} from '../lib/plannedLoadEditor.mjs';
 import Head from 'next/head';
 import {
   Activity,
@@ -162,13 +164,17 @@ function PremiumSelect({ value, onChange, options, className = '', title, disabl
       if (!trigger) return;
       const rect = trigger.getBoundingClientRect();
       const desiredHeight = Math.min(340, options.length * (compact ? 38 : 46) + 16);
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const opensUp = spaceBelow < Math.min(desiredHeight, 260) && rect.top > spaceBelow;
+      const dialogBounds=trigger.closest('dialog[open]')?.getBoundingClientRect();
+      const topBound=(dialogBounds?.top || 0)+8,bottomBound=(dialogBounds?.bottom || window.innerHeight)-8;
+      const leftBound=(dialogBounds?.left || 0)+8,rightBound=(dialogBounds?.right || window.innerWidth)-8;
+      const spaceBelow = Math.max(0,bottomBound-rect.bottom-8),spaceAbove=Math.max(0,rect.top-topBound-8);
+      const opensUp = spaceBelow < Math.min(desiredHeight, 260) && spaceAbove > spaceBelow;
+      const height=Math.min(desiredHeight,opensUp?spaceAbove:spaceBelow);
       setMenuStyle({
-        left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)),
-        top: opensUp ? Math.max(8, rect.top - desiredHeight - 8) : rect.bottom + 8,
-        width: rect.width,
-        maxHeight: desiredHeight,
+        left: Math.max(leftBound, Math.min(rect.left, rightBound-rect.width)),
+        top: opensUp ? Math.max(topBound, rect.top-height-8) : rect.bottom+8,
+        width: Math.min(rect.width,rightBound-leftBound),
+        maxHeight: height,
       });
     }
 
@@ -177,7 +183,7 @@ function PremiumSelect({ value, onChange, options, className = '', title, disabl
     }
 
     function handleKey(event) {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {event.preventDefault();event.stopPropagation();setOpen(false);}
     }
 
     positionMenu();
@@ -223,7 +229,7 @@ function PremiumSelect({ value, onChange, options, className = '', title, disabl
         );
       })}
     </div>,
-    document.querySelector('main') || document.body,
+    triggerRef.current?.closest('dialog[open]') || document.querySelector('main') || document.body,
   ) : null;
 
   return (
@@ -1075,9 +1081,9 @@ const PENCIL_ICON = (
 
 function ExerciseVideoPanel({name,apiKey,editable=true}) {
   const bankUrl=findExerciseUrl(name);
-  const [manualVideoUrl,setManualVideoUrl]=useState(null),[editingVideo,setEditingVideo]=useState(false),[videoInput,setVideoInput]=useState(''),[savingVideo,setSavingVideo]=useState(false),[videoError,setVideoError]=useState(''),[playing,setPlaying]=useState(false),[reload,setReload]=useState(0);
+  const [manualVideoUrl,setManualVideoUrl]=useState(null),[editingVideo,setEditingVideo]=useState(false),[videoInput,setVideoInput]=useState(''),[savingVideo,setSavingVideo]=useState(false),[videoError,setVideoError]=useState(''),[playing,setPlaying]=useState(false),[reload,setReload]=useState(0),[expanded,setExpanded]=useState(false),[videoSaved,setVideoSaved]=useState(false);
   const epoch=useRef(0),mutation=useRef(null);
-  useEffect(()=>{const version=++epoch.current;setManualVideoUrl(null);setEditingVideo(false);setVideoInput('');setSavingVideo(false);setVideoError('');setPlaying(false);return()=>{epoch.current++;mutation.current?.abort();};},[name,apiKey]);
+  useEffect(()=>{const version=++epoch.current;setManualVideoUrl(null);setEditingVideo(false);setVideoInput('');setSavingVideo(false);setVideoError('');setPlaying(false);setExpanded(false);setVideoSaved(false);return()=>{epoch.current++;mutation.current?.abort();};},[name,apiKey]);
   useEffect(()=>{
     if(!name?.trim() || !apiKey)return;
     const controller=new AbortController(),version=epoch.current;
@@ -1088,10 +1094,11 @@ function ExerciseVideoPanel({name,apiKey,editable=true}) {
   },[name,apiKey,reload]);
   const videoUrl=manualVideoUrl || bankUrl,videoId=youtubeVideoId(videoUrl),watchUrl=videoId?`https://www.youtube.com/watch?v=${videoId}`:videoUrl;
   useEffect(()=>setPlaying(false),[videoUrl]);
+  useEffect(()=>{if(!editingVideo)setVideoInput(videoUrl || '');},[videoUrl,editingVideo]);
   async function handleSaveVideo(){
     const url=videoInput.trim();if(!url || savingVideo)return;
     const version=++epoch.current,controller=new AbortController();mutation.current=controller;setSavingVideo(true);setVideoError('');
-    try{const data=await teamQueueCall(apiKey,'/api/exercises/manual-video',{body:{name,url},signal:controller.signal,timeoutMs:20000});if(!data.ok || !data.url)throw Error('Ссылка не сохранена.');if(version===epoch.current){setManualVideoUrl(data.url);setVideoInput(data.url);setEditingVideo(false);}}
+    try{const data=await teamQueueCall(apiKey,'/api/exercises/manual-video',{body:{name,url},signal:controller.signal,timeoutMs:20000});if(!data.ok || !data.url)throw Error('Ссылка не сохранена.');if(version===epoch.current){setManualVideoUrl(data.url);setVideoInput(data.url);setEditingVideo(false);setVideoSaved(true);}}
     catch(error){if(version===epoch.current)setVideoError(error.message || 'Не удалось сохранить видео.');}
     finally{if(version===epoch.current)setSavingVideo(false);}
   }
@@ -1101,13 +1108,12 @@ function ExerciseVideoPanel({name,apiKey,editable=true}) {
     catch(error){if(version===epoch.current)setVideoError(error.message || 'Не удалось сбросить видео.');}
     finally{clearTimeout(timer);if(version===epoch.current)setSavingVideo(false);}
   }
-  const openEdit=()=>{setVideoInput(videoUrl || '');setVideoError('');setEditingVideo(true);};
-  return <div className={`coach-video-panel print:hidden ${!videoId?'is-empty':''}`}>
+  return <div className={`coach-video-panel coach-video-compact print:hidden ${!videoId?'is-empty':''} ${expanded?'is-expanded':''}`}>
     <div className="coach-video-frame">{videoId?playing?<iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`} title={`Видео техники · ${name}`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:<button type="button" className="coach-video-poster" aria-label={`Смотреть видео техники: ${name}`} onClick={()=>setPlaying(true)}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt={`Техника ${name}`} loading="lazy"/><span className="coach-video-shade"/><span className="coach-video-play"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 5v14l11-7z"/></svg></span><span className="coach-video-caption">Смотреть технику<span>↗</span></span>
-    </button>:<div className="coach-video-empty"><span>{YT_ICON}</span><strong>Видео ещё не добавлено</strong>{editable?<button type="button" onClick={openEdit}>Добавить YouTube-видео</button>:<p>Техника выполнения описана ниже.</p>}</div>}</div>
-    <div className="coach-video-meta"><span>{manualVideoUrl?'Видео тренера':videoId?'Библиотека техники':'Техника упражнения'}</span><div>{videoUrl && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке"><ArrowUpRight size={14}/>YouTube</a>}{editable && <button type="button" onClick={openEdit} title={manualVideoUrl?'Изменить своё видео':'Указать своё видео'}>{PENCIL_ICON}{videoId?'Изменить':'Добавить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
-    {editable && editingVideo && <div className="coach-video-edit"><label>Ссылка на видео<input autoFocus type="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onChange={e=>{setVideoInput(e.target.value);setVideoError('');}} placeholder="https://youtube.com/watch?v=…" onKeyDown={e=>{if(e.key==='Enter')handleSaveVideo();if(e.key==='Escape')setEditingVideo(false);}}/></label><p>Сохраняется отдельно в общей библиотеке этого упражнения.</p><div><button type="button" onClick={handleSaveVideo} disabled={savingVideo || !videoInput.trim()}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить</button>}<button type="button" onClick={()=>setEditingVideo(false)} disabled={savingVideo}>Отмена</button></div></div>}
+      {/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt={`Техника ${name}`} loading="lazy"/><span className="coach-video-shade"/><span className="coach-video-play">▶</span><span className="coach-video-caption">Смотреть технику</span>
+    </button>:<div className="coach-video-empty"><strong>Видео ещё не добавлено</strong>{editable?<span>Вставьте ссылку ниже</span>:<p>Техника выполнения описана ниже.</p>}</div>}</div>
+    <div className="coach-video-meta"><span>{manualVideoUrl?'Видео тренера':videoId?'Библиотека техники':'Техника упражнения'}</span><div>{videoUrl && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке">YouTube ↗</a>}{videoId && <button type="button" aria-label={`${expanded?'Уменьшить':'Увеличить'} видео: ${name}`} onClick={()=>setExpanded(value=>!value)}>{expanded?'Уменьшить':'Увеличить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
+    {editable && <form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span>Добавить YouTube-видео · общая библиотека</span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button><div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form>}
     {videoError && <div className="coach-video-error" role="alert"><p>{videoError}</p><button type="button" onClick={()=>setReload(value=>value+1)}>Проверить видео</button></div>}
   </div>;
 }
@@ -1171,6 +1177,7 @@ function ExerciseCard({
   descriptionExerciseId,
   compactDescription,
   controlledExecution,
+  preserveStoredDescription=false,
   loadEvidence,
   focus,
   week,
@@ -1193,6 +1200,7 @@ function ExerciseCard({
   onChangeName,
   replacementFrom, replacementReason, replacementNote, onChangeReplacementReason, onChangeReplacementNote,
   onChangeSet,
+  onChangeSets,
   onAddSet,
   onRemoveSet,
   onChangeWeight,
@@ -1234,7 +1242,9 @@ function ExerciseCard({
   const rmSuggestion = useMemo(() => focus==='inseason_strength'?null:calcWeight(name, focus, week, oneRM, position), [name, focus, week, oneRM, position]);
   const effectiveSuggestedKg = suggestedKg || rmSuggestion?.kg || null;
   const hasDescriptionOverride = typeof descriptionOverride === 'string';
-  const displayedDescription = exerciseDescription({ name, tempo, targetSets, prehabRegion, cue, descriptionOverride, descriptionExerciseId, compactDescription, controlledExecution });
+  const displayedDescription = exerciseDescription({ name, tempo, targetSets, prehabRegion, cue, descriptionOverride, descriptionExerciseId, compactDescription, controlledExecution,preserveStoredDescription });
+  const descriptionWarning=techniqueQuality(name,displayedDescription);
+  const techniqueReference=descriptionWarning?exerciseDescription({name,tempo,targetSets,prehabRegion,controlledExecution,cue:replacementTechnique(name)}):'';
 
   async function handleRegenerate() {
     if (regenerating || !onRegenerate) return;
@@ -1261,10 +1271,10 @@ function ExerciseCard({
       <header className="coach-exercise-heading">
         <span className="coach-exercise-code">{code || '＋'}</span>
         <div className="coach-exercise-title"><span>Упражнение</span>{preview?<h3>{name}</h3>:<AutoResizeTextarea value={name} onChange={onChangeName} ariaLabel={`${code} · название упражнения`} className="coach-exercise-name"/>}</div>
-        {!preview && <div className="coach-exercise-actions"><button type="button" onClick={openSwap} title="Заменить упражнение из библиотеки"><ArrowLeftRight size={15}/><span>Библиотека</span></button>{onRegenerate && <button type="button" onClick={handleRegenerate} disabled={regenerating} title="Перегенерировать упражнение">{regenerating?<Loader2 size={15} className="animate-spin"/>:<RefreshCw size={15}/>}<span>Подобрать замену</span></button>}</div>}
+        {!preview && <div className="coach-exercise-actions"><button type="button" onClick={openSwap} title="Найти и заменить упражнение"><ArrowLeftRight size={15}/><span>Заменить</span></button>{onRegenerate && <button type="button" onClick={handleRegenerate} disabled={regenerating} title="Подобрать замену автоматически">{regenerating?<Loader2 size={15} className="animate-spin"/>:<RefreshCw size={15}/>}<span>Автоподбор</span></button>}</div>}
       </header>
       {regenerateError && <p role="alert" className="coach-exercise-notice">{regenerateError}</p>}
-      {!preview && swapOpen && <div className="coach-exercise-swap-studio"><header><strong>Замена · {code}</strong><button type="button" onClick={()=>setSwapOpen(false)}>Закрыть подбор</button></header><ExerciseLibraryPicker key={name} apiKey={apiKey} currentName={name} restrictions={restrictions} onSelect={card=>doSwap(card.title)}/></div>}
+      {!preview && swapOpen && <div className="coach-exercise-swap-studio"><header><strong>Замена · {code}</strong><button type="button" onClick={()=>setSwapOpen(false)}>Закрыть подбор</button></header><ExerciseLibraryPicker quick key={name} apiKey={apiKey} currentName={name} restrictions={restrictions} onClose={()=>setSwapOpen(false)} onSelect={card=>doSwap(card.title)}/></div>}
       {hasConflict && <div className="coach-exercise-notice">⚠ Ограничение для этого упражнения.{!preview && <button type="button" onClick={handleSuggestAlt} disabled={altLoading}>{altLoading?'Подбор…':'Подобрать альтернативу'}</button>}{altSuggestion && <p>{altSuggestion}</p>}</div>}
       <div className="coach-exercise-body">
         <aside className="coach-exercise-technique">
@@ -1272,22 +1282,14 @@ function ExerciseCard({
           <div className="coach-exercise-instruction"><div className="coach-section-caption"><span>02</span> Выполнение {hasDescriptionOverride && !preview && <button type="button" onClick={onResetDescription} title="Вернуть автоматически сформированное описание"><RotateCcw size={12}/>Исходное</button>}</div>
             {preview?<p>{displayedDescription || 'Описание пока не добавлено.'}</p>:<AutoResizeTextarea value={displayedDescription} onChange={onChangeDescription} ariaLabel={`${code} · описание выполнения`} minRows={3} placeholder="Опишите технику выполнения…" className="coach-description-input"/>}
             {!preview && <small>Правки увидит игрок после сохранения программы.</small>}
+            {descriptionWarning && <div className="coach-technique-quality" role="note"><p>Уточните подсказку: {descriptionWarning}</p>{!preview && <details><summary>Ориентир для уточнения</summary><p>{techniqueReference}</p><small>Сверьте точную вариацию и индивидуальные ограничения перед правкой.</small></details>}</div>}
           </div>
         </aside>
         <div className="coach-exercise-prescription">
           <div className="coach-section-caption"><span>03</span> Нагрузка по плану</div>
-          <ExercisePrescription weightNote={weightNote} weightKg={weightKg} sets={targetSets} targetRpeMax={targetRpeMax} loadUnits={loadUnitsForExercise({name,loadUnits})}/>
-          {!preview && <details className="coach-exercise-plan-editor"><summary>Изменить подходы, вес, RPE и темп</summary>
-            <div className="coach-field-heading">Повторы / время каждого подхода</div>
-            <div className="coach-set-inputs" aria-label="Редактирование подходов">{targetSets.map((set,i)=><div key={i}><span>{String(i+1).padStart(2,'0')}</span><input aria-label={`${code} · подход ${i+1} · повторы или время`} value={set} onChange={e=>onChangeSet(i,e.target.value)} placeholder="—"/>{targetSets.length > 1 && onRemoveSet && <button type="button" aria-label={`Удалить подход ${i + 1}`} onClick={()=>onRemoveSet(i)}><X size={12}/></button>}</div>)}<button type="button" aria-label={`${code} · добавить подход`} onClick={onAddSet}><Plus size={15}/></button></div>
-            <div className="coach-plan-fields">
-              <label><span>Вес {isPairableFreeWeightExercise(name)?'одного снаряда':'упражнения'}, кг</span><input type="number" step="any" min="0" aria-label={`${code} · плановый вес в кг`} value={weightKg ?? ''} onChange={e=>onChangeWeightKg(e.target.value===''?null:Number(e.target.value))} placeholder="По усилию"/></label>
-              <label><span>Целевой RPE, максимум</span><input type="number" step="0.5" min="1" max="10" aria-label={`${code} · целевой RPE упражнения`} value={targetRpeMax ?? ''} onChange={e=>onChangeTargetRpeMax?.(e.target.value===''?null:Number(e.target.value))} placeholder="Не задан"/></label>
-              <label><span>Темп</span><input aria-label={`${code} · темп упражнения`} value={tempo || ''} onChange={e=>onChangeTempo(e.target.value)} placeholder="Например, 5-0-X-0"/></label>
-              {isPairableFreeWeightExercise(name) && <label><span>Количество снарядов</span><PremiumSelect value={loadUnitsForExercise({name,loadUnits})} onChange={value=>onChangeLoadUnits?.(Number(value))} options={[{value:1,label:'1 снаряд'},{value:2,label:'2 снаряда'}]} title="Количество гантелей или гирь для расчёта тоннажа" compact/></label>}
-            </div>
-            <label className="coach-plan-comment"><span>Комментарий к нагрузке</span><AutoResizeTextarea ariaLabel={`${code} · комментарий к нагрузке`} value={weightNote || ''} onChange={onChangeWeight} minRows={2} className="coach-load-comment-input" placeholder="Например, по усилию RPE 7–8"/></label>
-          </details>}
+          {preview?<ExercisePrescription weightNote={weightNote} weightKg={weightKg} sets={targetSets} targetRpeMax={targetRpeMax} loadUnits={loadUnitsForExercise({name,loadUnits})}/>:<>
+          <PlannedLoadEditor code={code} name={name} sets={targetSets} weightKg={weightKg} targetRpeMax={targetRpeMax} loadUnits={loadUnits} onChangeSet={onChangeSet} onChangeSets={onChangeSets} onAddSet={onAddSet} onRemoveSet={onRemoveSet} onChangeWeightKg={onChangeWeightKg} onChangeTargetRpeMax={onChangeTargetRpeMax} onChangeLoadUnits={onChangeLoadUnits}/>
+          <details className="coach-exercise-plan-editor coach-plan-extras"><summary>Темп и комментарий к нагрузке</summary><div className="coach-plan-fields"><label><span>Темп</span><input aria-label={`${code} · темп упражнения`} value={tempo || ''} onChange={e=>onChangeTempo(e.target.value)} placeholder="Например, 5-0-X-0"/></label></div><label className="coach-plan-comment"><span>Комментарий к нагрузке</span><AutoResizeTextarea ariaLabel={`${code} · комментарий к нагрузке`} value={weightNote || ''} onChange={onChangeWeight} minRows={2} className="coach-load-comment-input" placeholder="Например, по усилию RPE 7–8"/></label></details></>}
           {preview && tempo && <p className="coach-preview-tempo">Темп <strong>{tempo}</strong></p>}
           {preview && weightNote && weightNote.trim()!==`${weightKg} кг` && <p className="coach-preview-note">{weightNote}</p>}
           <WeightProvenance name={name} evidence={loadEvidence}/>
@@ -4508,6 +4510,7 @@ export default function Home() {
                 </div>
               )}
 
+              <details className="coach-correction-context" open={editorPreview || !!executionConfirmed || undefined}><summary>Проверки и история нагрузки</summary>
               {generationQuality.length > 0 && (
               <details className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 print:hidden">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
@@ -4591,6 +4594,7 @@ export default function Home() {
                 </section>
               )}
 
+              </details>
               {/* Assessment */}
               {(session.assessment || session.periodization_note) && (
                 <div className="mb-5 grid gap-3 lg:grid-cols-2 print:hidden">
@@ -4771,6 +4775,7 @@ export default function Home() {
                           descriptionExerciseId={ex.descriptionExerciseId}
                           compactDescription={ex.compactDescription}
                           controlledExecution={ex.controlledExecution}
+                          preserveStoredDescription={!!pendingSaved && !pendingSaved.draft}
                           focus={meta?.focus || focus}
                           progressionLoading={progressionLoading}
                           onRetryProgression={()=>{setProgressionMap({});setProgressionError('');setProgressionLoading(true);setProgressionRefresh(value=>value+1);}}
@@ -4800,14 +4805,12 @@ export default function Home() {
                           onChangeReplacementNote={v => updateExercise(bi, ei, { replacementNote: v })}
                           onChangeName={v => updateExercise(bi, ei, { name: v })}
                           onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
+                          onChangeSets={targetSets=>updateExercise(bi,ei,{targetSets})}
                           onAddSet={() => addSetRow(bi, ei)}
                           onRemoveSet={si => removeSetRow(bi, ei, si)}
                           onChangeWeight={v => updateExercise(bi, ei, { weightNote: v })}
-                          onChangeWeightKg={v => updateExercise(bi, ei, {
-                            weightKg: v,
-                            weightNote: v != null ? `${v} кг` : (ex.weightNote || ''),
-                          })}
-                          onChangeLoadUnits={v => updateExercise(bi, ei, { loadUnits: v })}
+                          onChangeWeightKg={v => updateExercise(bi, ei, plannedWeightPatch(ex,v))}
+                          onChangeLoadUnits={v => {if(v!==loadUnitsForExercise(ex))updateExercise(bi, ei, { loadUnits: v,loadEvidence:null,loadProgression:null });}}
                           onChangeTempo={v => updateExercise(bi, ei, { tempo: v })}
                           onChangeTargetRpeMax={v => updateExercise(bi, ei, { targetRpeMax: v })}
                           onChangeAutoReg={v => updateExercise(bi, ei, { autoReg: v })}
