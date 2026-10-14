@@ -21,6 +21,8 @@ for(const workspace of ['zarechie','nkperf'])test(workspace+': bans do not break
 
 test('manual replacement library excludes coach bans from both bank and custom cards',async()=>{
  const fs=await import('node:fs');const source=fs.readFileSync(new URL('../pages/api/exercises/library.js',import.meta.url),'utf8').replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\s*/gm,'').replace(/export default /g,'').replace(/^export /gm,'');
- const handler=new Function('isAuthorized','EXERCISE_BANK','getAllCards','normalize','isCoachBannedExercise',source+';return handler;')(()=>true,[...banned,'Goblet Squat'].map(n=>({n,u:'https://example.org/video'})),async()=>[...banned,'Supine Bent-Knee March'].map(title=>({title,canonicalId:title,video:'https://example.org/video'})),name=>({canonicalId:name}),isCoachBannedExercise);
+ const catalogueSource=fs.readFileSync(new URL('../lib/coachLibraryCatalogue.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/^export /gm,'');
+ const coachLibraryCards=new Function('EXERCISE_BANK','getAllCards','normalize','isCoachBannedExercise',catalogueSource+';return coachLibraryCards;')([...banned,'Goblet Squat'].map(n=>({n,u:'https://example.org/video'})),async()=>[...banned,'Supine Bent-Knee March'].map(title=>({title,canonicalId:title,video:'https://example.org/video'})),name=>({canonicalId:name}),isCoachBannedExercise);
+ const handler=new Function('isAuthorized','coachLibraryCards',source+';return handler;')(()=>true,coachLibraryCards);
  const res={status(code){this.code=code;return this;},json(body){this.body=body;}};await handler({method:'GET'},res);assert.equal(res.code,200);assert.deepEqual(res.body.cards.map(card=>card.title).sort(),['Goblet Squat','Supine Bent-Knee March']);
 });

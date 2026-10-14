@@ -1,3 +1,5 @@
+import {shiftCalendarDate} from '../../../lib/coachCalendar.mjs';
+import {gymSessionDates} from '../../../lib/gymLoadStore';
 import {loadGymFacts} from '../../../lib/gymLoadStore';
 import { generatedDraftKey } from '../../../lib/generatedDraft.mjs';
 // pages/api/programs/team-status.js
@@ -31,7 +33,7 @@ export default async function handler(req, res) {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { playerIds, date, workspace = 'zarechie', readinessPlayers = [] } = req.body || {};
+  const { playerIds, date, workspace = 'zarechie', readinessPlayers = [], includeNearest = false } = req.body || {};
   if (!Array.isArray(playerIds) || !date) return res.status(400).json({ error: 'playerIds and date required' });
   if (playerIds.length > 100 || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return res.status(400).json({ error: 'Invalid request' });
 
@@ -129,5 +131,12 @@ export default async function handler(req, res) {
     status[id] = playerStatus;
   });
 
+  if(includeNearest===true){
+    try{
+    const nearestDates=await Promise.all(playerIds.map(async id=>{if(status[id]?.hasSession)return null;const dates=await gymSessionDates(workspace,id,Number(shiftCalendarDate(date,-28).replaceAll('-','')),Number(shiftCalendarDate(date,28).replaceAll('-','')));return dates.filter(value=>value!==date).sort((a,b)=>Math.abs(Date.parse(a)-Date.parse(date))-Math.abs(Date.parse(b)-Date.parse(date)) || a.localeCompare(b))[0] || null;}));
+    const entries=playerIds.flatMap((id,index)=>nearestDates[index]?[{playerId:id,date:nearestDates[index]}]:[]),nearby=entries.length?await loadGymFacts(workspace,entries):[];
+    entries.forEach((entry,index)=>{if(nearby[index]?.record?.session)status[entry.playerId].nearestSession={date:entry.date,label:sessionTrainingLabel(nearby[index].record)};else status[entry.playerId].nearestUnavailable=true;});
+    }catch{for(const id of playerIds)if(!status[id]?.hasSession)status[id].nearestUnavailable=true;}
+  }
   return res.status(200).json({ status });
 }

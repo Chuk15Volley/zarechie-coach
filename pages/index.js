@@ -1,8 +1,9 @@
+import OperationalIncidents from '../components/OperationalIncidents';
 import {overviewRestoreReady} from '../lib/coachAuditPresentation.mjs';
 import WeightProvenance from '../components/WeightProvenance';
 import WarmupConduct from '../components/WarmupConduct';
 import SourceComparison from '../components/SourceComparison';
-import {coachDate,trainingTitle,activeServiceProblems,factAmount,budgetLabel} from '../lib/coachPresentation.mjs';
+import {coachDate,trainingTitle,activeServiceProblems,sessionFactAmount,factAmount,budgetLabel} from '../lib/coachPresentation.mjs';
 import TeamFactOverview from '../components/TeamFactOverview';
 import {weekFactPeriod} from '../lib/coachFactSurface.mjs';
 import {ExerciseLibraryPicker} from '../components/ExerciseLibraryExplorer';
@@ -2006,7 +2007,7 @@ export default function Home() {
   const [tonnageLoading, setTonnageLoading] = useState(false);
   const [tonnageRefresh,setTonnageRefresh]=useState(0),[tonnageUpdatedAt,setTonnageUpdatedAt]=useState(null);
   const [todaySnapshot,setTodaySnapshot]=useState(null);
-  const [loadFilter,setLoadFilter]=useState('all');
+  const [loadFilters,setLoadFilters]=useState({});
   const [todayError,setTodayError]=useState(''),[todayUpdatedAt,setTodayUpdatedAt]=useState(null);
   const [calendarError,setCalendarError]=useState(''),[calendarUpdatedAt,setCalendarUpdatedAt]=useState(null);
   const overviewWorkspaceRef=useRef(null),todayControllerRef=useRef(null),overviewSectionRef=useRef(null),teamStatusRequestRef=useRef(0),overviewScrollTargetRef=useRef(null);
@@ -2048,7 +2049,7 @@ export default function Home() {
       .then(data => {if(!cancelled)setCopyPlayers(data.players || []);})
       .catch(error => {if(!cancelled)setCopyError(error.message);})
       .finally(() => {if(!cancelled)setCopyPlayersLoading(false);});
-    return () => {cancelled=true;};
+  return () => {cancelled=true;};
   }, [copyModalOpen,copyWorkspace,apiKey]);
   const [copyDone, setCopyDone] = useState(null);
 
@@ -2226,7 +2227,9 @@ export default function Home() {
   const [calData, setCalData] = useState(null);
   const [calLoading, setCalLoading] = useState(false);
   const calendarRequestRef = useRef(0);
-  const [weekConflictsOnly,setWeekConflictsOnly] = useState(false);
+  const [weekFilters,setWeekFilters] = useState({});
+  const weekConflictsOnly=!!weekFilters[workspace],setWeekConflictsOnly=value=>setWeekFilters(previous=>({...previous,[workspace]:typeof value==='function'?value(!!previous[workspace]):value}));
+  const loadFilter=loadFilters[workspace] || 'all',setLoadFilter=value=>setLoadFilters(previous=>({...previous,[workspace]:value}));
   const [liveAttentionOnly,setLiveAttentionOnly] = useState(false);
   const [weekBatchSelected, setWeekBatchSelected] = useState(new Set());
   const [weekBatchDraft, setWeekBatchDraft] = useState(null);
@@ -4332,6 +4335,682 @@ export default function Home() {
     );
   }
 
+  const teamQueuePanel = <div id="coach-team-drafts">{teamQueue.previousQueue && <div className="coach-previous-queue"><p>Сохранена командная очередь за {teamQueue.previousQueue.date}. Открыта актуальная дата; очередь не изменена.</p><button type="button" disabled={loading || saving || batchRunning} onClick={()=>changeTrainingDate(teamQueue.previousQueue.date)}>Открыть прежнюю очередь ↗</button></div>}<TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onCheckPublication={teamQueue.checkPublication} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} /></div>;
+    const savedProgram = session && meta && (
+            <div data-preview={editorPreview || !!executionConfirmed} className="premium-session-card coach-session-workspace mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
+
+              {/* Result toolbar */}
+              <div className="coach-editor-toolbar mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden" role="region" aria-label="Сохранение программы">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h2 className="text-base font-black tracking-tight text-white">Тренировка</h2>
+                  <span className="rounded-full border border-accent/25 bg-accent/[0.09] px-3 py-1 text-xs font-semibold text-accent">
+                    {meta.player?.name}
+                  </span>
+                  <span className="rounded-full border border-white/[0.07] bg-white/[0.04] px-3 py-1 text-xs font-medium text-slate-500">
+                    {meta.date}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button type="button" className="coach-editor-view-toggle" aria-pressed={editorPreview} disabled={executionConfirmed} onClick={()=>setEditorPreview(value=>!value)} title={editorPreview?'Перейти к редактированию':'Просмотреть программу без полей ввода'}>{editorPreview?<>{PENCIL_ICON}<span>Редактировать</span></>:<><BookOpen size={14}/><span>Просмотр</span></>}</button>
+                  {/* Secondary actions */}
+                  <div className="coach-editor-secondary" data-open={editorActionsOpen}>
+                  <button type="button" className="coach-editor-more" aria-label="Дополнительные действия программы" aria-expanded={editorActionsOpen} onClick={()=>setEditorActionsOpen(value=>!value)}>•••</button>
+                  <div className="coach-editor-secondary-items flex items-center rounded-xl border border-white/[0.07] bg-white/[0.025] p-1 gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className={`grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
+                      title="Печать"
+                    >
+                      <Printer size={14} />
+                    </button>
+                    {session?.blocks?.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleSaveTemplate}
+                        className={`grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
+                        title="Сохранить как шаблон микроцикла"
+                      >
+                        <Layers size={14} />
+                      </button>
+                    )}
+                    {(justSaved || autoSaved || pendingSaved) && (
+                      <button
+                        type="button"
+                        onClick={() => {setCopyWorkspace(workspace==='zarechie'?'nkperf':'zarechie');setCopyDate(date); setCopyKeepExact(false);setCopyError('');setCopyModalOpen(true);}}
+                        className={`grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
+                        title="Скопировать тренировку другому игроку"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    )}
+                    {pendingSaved && !executionConfirmed && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const minimum = rescheduleEarliestDate(pendingSaved.date);
+                          setRescheduleDate(current => current && current >= minimum ? current : minimum);
+                          setRescheduleOpen(open => !open);
+                        }}
+                        className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
+                        title="Перенести невыполненную тренировку"
+                      >
+                        <CalendarRange size={14} />
+                        Перенести
+                      </button>
+                    )}
+                  </div>
+                  </div>
+                  {/* Primary save */}
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    aria-label="Сохранить программу"
+                    disabled={saving || executionConfirmed || session.kind === 'restricted_day_plan'}
+                    title={session.kind === 'restricted_day_plan' ? 'План дня не заменяет тренировку игрока' : undefined}
+                    className={`flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3.5 py-2 text-xs font-bold text-[#04212b] shadow-[0_2px_12px_-2px_rgba(34,211,238,0.35)] transition hover:bg-cyan-400 disabled:opacity-50 ${focusRing}`}
+                  >
+                    {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    <span className="coach-save-label-long">{saving?'Сохранение…':justSaved ? 'Сохранено ✓' : (autoSaved || pendingSaved ? 'Сохранить изменения' : 'Сохранить программу')}</span><span className="coach-save-label-short">{saving?'Сохраняю…':justSaved?'Сохранено':'Сохранить'}</span>
+                  </button>
+                  {pendingSaved && session && (
+                    <button
+                      type="button"
+                      onClick={handleCompleteWorkout}
+                      aria-label={executionConfirmed?"Тренировка уже выполнена":"Завершить тренировку"}
+                      title={executionConfirmed?"Выполнение подтверждено по журналу игрока":"Завершить тренировку"}
+                      disabled={savingActual || executionConfirmed}
+                      className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] font-semibold text-emerald-400 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                    >
+                      {savingActual ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                      <span className="coach-complete-label">{executionConfirmed?"Выполнена":"Завершить"}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {executionConfirmed && <p className="coach-execution-confirmed" role="status">Тренировка выполнена · {playerExecution.totalSets} / {playerExecution.totalSets} подходов · {new Date(playerExecution.completedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Исходный план защищён: редактирование, сохранение и перенос отключены. Факты дополняются отдельно в истории.</p>}
+              <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={meta.focusLabel || getFocusLabel(period,focus)} preview={editorPreview || !!executionConfirmed} onPreview={value=>{if(!executionConfirmed)setEditorPreview(value);}} onNavigate={index=>{
+                const block=session.blocks[index];setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
+                requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
+              }}/>
+
+              {rescheduleOpen && pendingSaved && (
+                <div className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 print:hidden">
+                  <div className="flex items-start gap-2.5">
+                    <CalendarRange size={15} className="mt-0.5 shrink-0 text-amber-300" />
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-bold text-amber-200">Перенести тренировку</p>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-amber-100/60">
+                        Программа будет перенесена без изменения упражнений. Выполненную тренировку перенести нельзя.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <div className="min-w-[190px] flex-1">
+                      <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-amber-200/55">Новая дата</div>
+                      <DatePicker
+                        value={rescheduleDate}
+                        onChange={setRescheduleDate}
+                        minDate={rescheduleEarliestDate(pendingSaved.date)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRescheduleSession}
+                      disabled={rescheduling || !rescheduleDate}
+                      className="flex items-center gap-1.5 rounded-xl bg-amber-300 px-3.5 py-2.5 text-xs font-black text-[#181108] transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {rescheduling ? <Loader2 size={13} className="animate-spin" /> : <ArrowRight size={13} />}
+                      Перенести
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Plan vs Actual compliance summary */}
+              {compliance && (
+                <div className="mt-3 mb-4 flex flex-wrap items-center gap-4 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-2.5 text-[11px] animate-fade-in print:hidden">
+                  <span className="font-black text-emerald-400 text-[15px]">{compliance.percent}%</span>
+                  <span className="text-slate-500">выполнено</span>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-slate-400">план <span className="text-slate-200 font-semibold">{Math.round(compliance.plannedTonnage / 1000 * 10) / 10}т</span></span>
+                  <span className="text-slate-600">→</span>
+                  <span className="text-slate-400">факт <span className={`font-semibold ${compliance.actualTonnage / compliance.plannedTonnage < 0.8 ? 'text-rose-400' : 'text-emerald-400'}`}>{Math.round(compliance.actualTonnage / 1000 * 10) / 10}т</span></span>
+                </div>
+              )}
+
+              {generationQuality.length > 0 && (
+              <details className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 print:hidden">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={12} className="text-emerald-400" />
+                      <span className="text-[10px] font-black uppercase tracking-[0.20em] text-slate-500">Проверки структуры программы</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-600">
+                      {generationQuality.filter(i => i.ok).length}/{generationQuality.length}
+                    </span>
+                  </summary>
+                  <p className="mt-2 text-xs text-slate-300">Число пройденных автоматических проверок ниже. Перед назначением тренер проверяет метод, точный вариант упражнения, дозу, симптомы и медицинские противопоказания. Это не оценка допуска.</p><div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {generationQuality.map(item => (
+                      <div
+                        key={item.label}
+                        className={`rounded-lg border px-2 py-1 ${qualityTone(item.ok)}`}
+                        title={item.detail}
+                      >
+                        <span className="text-[10px] font-bold">{item.ok ? '✓' : '!' } {item.label}</span>
+                        <span className="ml-1 text-[10px] opacity-70">{item.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              {pendingSaved && <p className="coach-source-snapshot">Обоснование ниже — снимок при сохранении {new Date(pendingSaved.savedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Текущие данные ReadySix показаны в настройках нового черновика; изменения после сохранения не переписывают исходный план.</p>}
+              {pendingSaved && decisionData?.source==='ReadySix' && <details className="coach-source-comparison"><summary>Сравнить текущий источник с обоснованием программы</summary><SourceComparison previous={meta?.sourceState} current={decisionData.sourceState} savedAt={meta?.sourceCapturedAt} checkedAt={decisionData.checkedAt}/><div><section><h3>При сохранении · {coachDate(pendingSaved.date)}</h3><p>{session.assessment || 'Обоснование не записано в этой версии.'}</p></section><section><h3>Текущий источник · {coachDate(decisionData.targetDate || date)}</h3><p>{decisionData.recommendation?.state?.detail || decisionData.decision?.detail || 'Подробности не переданы.'}</p></section></div><p>Тексты из разных моментов времени. Изменение формулировок само по себе не подтверждает изменение состояния или допуска; решение проверяется в ReadySix.</p></details>}
+              {/* Volume stats bar */}
+              {volumeStats && volumeStats.sessions > 0 && (
+                <div className="mb-4 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-2.5 print:hidden">
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <BarChart2 size={10} className="text-slate-600" />
+                    <span className="text-[9px] font-black uppercase tracking-[0.20em] text-slate-600">Объём за 7д</span>
+                    <span className="ml-auto text-[9px] text-slate-700">{volumeStats.sessions} сессий</span>
+                  </div>
+                  <div className="flex items-end gap-3">
+                    {['A', 'B', 'C', 'D', 'E'].map(label => {
+                      const val = volumeStats.byBlock[label];
+                      if (!val) return null;
+                      const bc = blockCfg(label);
+                      const maxVal = Math.max(...['A','B','C','D','E'].map(l => volumeStats.byBlock[l] || 0));
+                      const pct = Math.max(8, Math.round((val / maxVal) * 100));
+                      return (
+                        <div key={label} className="flex flex-1 flex-col items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 tabular-nums">{val}</span>
+                          <div className="relative h-8 w-full max-w-[34px] overflow-hidden rounded-md bg-white/[0.04]">
+                            <div className={`absolute inset-x-0 bottom-0 rounded-md ${bc.circle} transition-all duration-500`} style={{ height: `${pct}%` }} />
+                          </div>
+                          <span className="text-[10px] font-black text-slate-500">{label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {continuitySummary.known > 0 && (
+                <section className="mb-5 rounded-2xl border border-cyan-300/[0.14] bg-gradient-to-r from-cyan-300/[0.065] to-emerald-300/[0.035] p-4 print:hidden" aria-label="Преемственность нагрузки">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-200/15 bg-cyan-300/10 text-cyan-200">
+                      <TrendingUp size={17} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/65">Преемственность нагрузки</div>
+                      <p className="mt-1 text-[12px] text-slate-300">
+                        История найдена для {continuitySummary.known} упражнений · рекомендаций {continuitySummary.recommendations}
+                        {continuitySummary.pain > 0 ? ` · ${continuitySummary.pain} с ограничением по боли` : ''}
+                      </p>
+                    </div>
+                    {continuitySummary.recommendations > 0 && !editorPreview && (
+                      <button
+                        type="button"
+                        onClick={applyProgressionRecommendations}
+                        className="min-h-11 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-[11px] font-bold text-cyan-100 transition hover:bg-cyan-300/16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
+                      >
+                        Применить безопасные рекомендации
+                      </button>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {/* Assessment */}
+              {(session.assessment || session.periodization_note) && (
+                <div className="mb-5 grid gap-3 lg:grid-cols-2 print:hidden">
+                {session.assessment && (
+                <div className="overflow-hidden rounded-xl border border-accent/[0.16] bg-accent/[0.05]">
+                  <div className="flex gap-0">
+                    <div className="w-1 shrink-0 bg-accent/40" />
+                    <div className="px-4 py-3.5">
+                      <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-accent/60">Оценка состояния</div>
+                      <p className="text-[13px] leading-relaxed text-slate-200">{session.assessment}</p>
+                    </div>
+                  </div>
+                </div>
+                )}
+                {session.periodization_note && (
+                <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.02]">
+                  <div className="flex gap-0">
+                    <div className="w-1 shrink-0 bg-slate-600/50" />
+                    <div className="px-4 py-3.5">
+                      <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-slate-600">Логика периодизации</div>
+                      <p className="text-[13px] leading-relaxed text-slate-400">{session.periodization_note}</p>
+                    </div>
+                  </div>
+                </div>
+                )}
+                </div>
+              )}
+
+              {/* Camp methodology violations */}
+              {methodViolations.length > 0 && (
+                <div className="mb-4 rounded-2xl border border-rose-500/25 bg-rose-500/[0.06] p-4 print:hidden">
+                  <div className="mb-2 flex items-center gap-2">
+                    <AlertTriangle size={13} className="text-rose-400" />
+                    <span className="text-[11px] font-black uppercase tracking-wider text-rose-400">Нарушение методики сборов</span>
+                  </div>
+                  <div className="space-y-1">
+                    {methodViolations.map((v, i) => (
+                      <p key={i} className="text-[12px] text-rose-300/80">· {v.name} — запрещён в фазе сборов ({v.label})</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recovery status warning */}
+              {recoveryStatus === 'yellow' && (
+                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-2.5 print:hidden">
+                  <AlertTriangle size={13} className="shrink-0 text-amber-400" />
+                  <span className="text-[12px] font-bold text-amber-300">Объём −25% · умеренная нагрузка</span>
+                </div>
+              )}
+              {recoveryStatus === 'red' && (
+                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/[0.06] px-4 py-2.5 print:hidden">
+                  <AlertTriangle size={13} className="shrink-0 text-rose-400" />
+                  <span className="text-[12px] font-bold text-rose-300">Только тонус · профилактика · без тяжёлого</span>
+                </div>
+              )}
+
+
+              {/* Volume stats bar */}
+              {sessionVolume && (
+                <div className="coach-program-dose-summary mb-6 flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 print:hidden">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Упр.</span>
+                    <span className="text-[18px] font-black text-slate-200">{sessionVolume.exCount}</span>
+                  </div>
+                  <div className="h-6 w-px bg-white/[0.06]" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Подх.</span>
+                    <span className="text-[18px] font-black text-slate-200">{sessionVolume.sets}</span>
+                  </div>
+                  {sessionVolume.tonnes && (
+                    <>
+                      <div className="h-6 w-px bg-white/[0.06]" />
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Тоннаж</span>
+                        <span className="text-[18px] font-black text-accent">~{sessionVolume.tonnes}т</span>
+                      </div>
+                    </>
+                  )}
+                  {jumpVolume && (
+                    <>
+                      <div className="h-6 w-px bg-white/[0.06]" />
+                      <div className={`flex items-center gap-1.5 ${jumpVolume.sets > 12 ? 'text-amber-400' : ''}`}>
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Прыжки</span>
+                        <span className={`text-[18px] font-black ${jumpVolume.sets > 12 ? 'text-amber-400' : 'text-slate-200'}`}>{jumpVolume.sets}</span>
+                        <span className="text-[10px] text-slate-700">под.</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* High jump volume warning */}
+              {jumpVolume && jumpVolume.sets > 12 && (
+                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/[0.05] px-4 py-2.5 print:hidden">
+                  <Zap size={13} className="shrink-0 text-amber-400" />
+                  <div>
+                    <span className="text-[12px] font-bold text-amber-300">Высокий прыжковый объём</span>
+                    <span className="ml-2 text-[11px] text-amber-400/70">{jumpVolume.exCount} упр. · {jumpVolume.sets} под. — проверь суставную нагрузку</span>
+                  </div>
+                </div>
+              )}
+
+              {removedBlock && (
+                <div role="status" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] px-4 py-3 text-sm text-amber-200 print:hidden">
+                  <span>Блок {removedBlock.label} удалён вместе с упражнениями. Нажмите «Сохранить изменения», чтобы сохранить программу.</span>
+                  <button type="button" onClick={undoRemoveBlock} disabled={saving} className={`shrink-0 rounded-lg border border-amber-300/30 px-3 py-2 font-semibold disabled:opacity-40 ${focusRing}`}>Отменить удаление</button>
+                </div>
+              )}
+
+              {/* Blocks — screen only */}
+              <div className="space-y-8 print:hidden">
+                {(session.blocks || []).map((block, bi) => (
+                  <div id={`coach-program-block-${bi}`} className="coach-program-block" key={block.blockId || block.label || bi}>
+                    {(() => {
+                      const bc = blockCfg(block.label);
+                      const isCollapsed = collapsedBlocks.has(block.label);
+                      return (
+                        <div className="coach-program-block-header">
+                        <div className="coach-program-block-heading flex items-start gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleBlock(block.label)}
+                          className={`flex min-w-0 flex-1 items-center gap-3.5 text-left rounded-xl py-1 transition-opacity hover:opacity-90 ${focusRing}`}
+                        >
+                          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${bc.circle} text-base font-black text-[#04212b] ring-1 ring-inset ring-white/20`}>
+                            {block.label}
+                          </span>
+                          <div className="min-w-0">
+                            <div className={`text-[11px] font-black uppercase tracking-[0.18em] ${bc.sub}`}>Блок {block.label}</div>
+                          </div>
+                          {isCollapsed && (
+                            <span className="shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 text-[10px] font-bold text-slate-500">
+                              {(block.exercises || []).length} упр.
+                            </span>
+                          )}
+                          <div className={`h-px flex-1 bg-gradient-to-r ${bc.line} to-transparent`} />
+                          <span className="shrink-0 grid h-7 w-7 place-items-center rounded-lg text-slate-600 transition hover:text-slate-300 print:hidden">
+                            {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                          </span>
+                        </button>
+                        <button type="button" onClick={() => removeBlock(bi)} disabled={saving}
+                          aria-label={`Удалить блок ${block.label || bi + 1}`}
+                          title="Удалить блок вместе со всеми упражнениями"
+                          className={`coach-edit-only flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-rose-400/20 px-3 text-xs font-semibold text-rose-300 transition hover:bg-rose-400/10 disabled:opacity-40 ${focusRing}`}>
+                          <X size={14} /><span className="hidden sm:inline">Удалить блок</span>
+                        </button>
+                        </div>
+                        {block.rest_note && <p className="coach-program-block-order">⏱ {block.rest_note}</p>}
+                        </div>
+                      );
+                    })()}
+                    {!collapsedBlocks.has(block.label) && (
+                    <div className="coach-exercise-grid">
+                      {(block.exercises || []).map((ex, ei) => {
+                        const identity = ex.exerciseId || canonicalExerciseId(ex.name);
+                        const progression = (meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)] || {}:progressionMap[identity] || progressionMap[ex.name] || {};
+                        const exerciseHistory = exHistoryMap[identity] || exHistoryMap[ex.name] || [];
+                        return (
+                        <ExerciseCard
+                          key={ex.code || ei}
+                          apiKey={apiKey}
+                          preview={editorPreview || !!executionConfirmed}
+                          code={ex.code}
+                          name={prehabEnglishName(ex.name)}
+                          targetSets={ex.targetSets || []}
+                          weightNote={ex.weightNote || ''}
+                          weightKg={ex.weightKg != null ? ex.weightKg : parseKgFromNote(ex.weightNote)}
+                          loadEvidence={ex.loadEvidence}
+                          targetRpeMax={ex.targetRpeMax}
+                          loadUnits={loadUnitsForExercise(ex)}
+                          tempo={ex.tempo || ''}
+                          prehabRegion={ex.prehabRegion}
+                          autoReg={ex.autoReg || ''}
+                          alternatives={ex.alternatives || []}
+                          cue={ex.cue || ''}
+                          descriptionOverride={ex.descriptionOverride}
+                          descriptionExerciseId={ex.descriptionExerciseId}
+                          compactDescription={ex.compactDescription}
+                          controlledExecution={ex.controlledExecution}
+                          focus={meta?.focus || focus}
+                          progressionLoading={progressionLoading}
+                          onRetryProgression={()=>{setProgressionMap({});setProgressionError('');setProgressionLoading(true);setProgressionRefresh(value=>value+1);}}
+                          progressionError={progressionError}
+                          strengthProposal={(meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)]:null}
+                          onApplyStrengthProgression={()=>{const proposed=applyStrengthCardProposal(ex,progressionMap[strengthProgressionKey(ex)],strengthProgressionScope({workspace,playerId,date:meta?.date || date,focus:'inseason_strength',trainingType:meta?.trainingType || trainingType,strengthMode:meta?.strengthMode || strengthMode}));if(proposed!==ex)updateExercise(bi,ei,proposed);}}
+                          week={weekFromFocus(focus)}
+                          oneRM={oneRM}
+                          position={selectedPlayer?.position || null}
+                          prevKg={progression.kg || null}
+                          prevRpe={progression.rpe || null}
+                          prevPain={progression.pain || false}
+                          suggestedKg={progression.suggestedKg || null}
+                          progressionDecision={progression.decision || ''}
+                          progressionConfidence={progression.confidence || ''}
+                          progressionTrend={progression.trend || ''}
+                          restrictions={restrictions}
+                          exHistory={exerciseHistory}
+                          actualKg={ex.actualKg ?? null}
+                          onActualKgChange={pendingSaved ? (v => updateExercise(bi, ei, { actualKg: v })) : undefined}
+                          actualRpe={ex.actualRpe ?? null}
+                          onActualRpeChange={pendingSaved ? (v => updateExercise(bi, ei, { actualRpe: v })) : undefined}
+                          replacementFrom={ex.replacementFrom}
+                          replacementReason={ex.replacementReason}
+                          replacementNote={ex.replacementNote}
+                          onChangeReplacementReason={v => updateExercise(bi, ei, { replacementReason: v })}
+                          onChangeReplacementNote={v => updateExercise(bi, ei, { replacementNote: v })}
+                          onChangeName={v => updateExercise(bi, ei, { name: v })}
+                          onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
+                          onAddSet={() => addSetRow(bi, ei)}
+                          onRemoveSet={si => removeSetRow(bi, ei, si)}
+                          onChangeWeight={v => updateExercise(bi, ei, { weightNote: v })}
+                          onChangeWeightKg={v => updateExercise(bi, ei, {
+                            weightKg: v,
+                            weightNote: v != null ? `${v} кг` : (ex.weightNote || ''),
+                          })}
+                          onChangeLoadUnits={v => updateExercise(bi, ei, { loadUnits: v })}
+                          onChangeTempo={v => updateExercise(bi, ei, { tempo: v })}
+                          onChangeTargetRpeMax={v => updateExercise(bi, ei, { targetRpeMax: v })}
+                          onChangeAutoReg={v => updateExercise(bi, ei, { autoReg: v })}
+                          onChangeDescription={v => updateExercise(bi, ei, { descriptionOverride: v })}
+                          onResetDescription={() => updateExercise(bi, ei, { descriptionOverride: undefined })}
+                          onRegenerate={() => regenerateExercise(bi, ei)}
+                        />
+                        );
+                      })}
+                    </div>
+                    )}
+                    {!editorPreview && !collapsedBlocks.has(block.label) && pendingSaved && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 print:hidden">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Факт блока {block.label}</span>
+                        <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                          RPE
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="1"
+                            max="10"
+                            value={block.actualRpe ?? ''}
+                            onChange={e => {
+                              const raw = e.target.value;
+                              const v = raw === '' ? null : parseFloat(raw);
+                              updateBlock(bi, { actualRpe: isNaN(v) ? null : v });
+                            }}
+                            className="w-14 rounded-md border border-white/[0.07] bg-white/[0.04] px-2 py-1 text-[11px] text-sky-300 outline-none focus:border-sky-400/50"
+                          />
+                        </label>
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                          <input
+                            type="checkbox"
+                            checked={!!block.pain}
+                            onChange={e => updateBlock(bi, { pain: e.target.checked })}
+                            className="h-3.5 w-3.5 rounded border-white/[0.15] bg-white/[0.04]"
+                          />
+                          боль/дискомфорт
+                        </label>
+                        <input
+                          value={block.feedbackNote || ''}
+                          onChange={e => updateBlock(bi, { feedbackNote: e.target.value })}
+                          placeholder="заметка по блоку"
+                          className="min-w-[160px] flex-1 rounded-md border border-white/[0.07] bg-white/[0.04] px-2 py-1 text-[11px] text-slate-300 outline-none placeholder:text-slate-700 focus:border-accent/40"
+                        />
+                      </div>
+                    )}
+                    {/* Quick-add exercise */}
+                    {!editorPreview && !collapsedBlocks.has(block.label) && (
+                      addExBlock === bi ? (
+                        <div className="mt-3 flex items-center gap-2 print:hidden">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={addExQuery}
+                            onChange={e => setAddExQuery(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') { e.preventDefault(); addExerciseToBlock(bi, addExQuery); }
+                              if (e.key === 'Escape') { setAddExBlock(null); setAddExQuery(''); }
+                            }}
+                            placeholder="Название упражнения..."
+                            className="flex-1 rounded-xl border border-accent/30 bg-white/[0.04] px-3 py-2 text-[13px] text-slate-200 outline-none placeholder:text-slate-700 focus:border-accent/50"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => addExerciseToBlock(bi, addExQuery)}
+                            className="shrink-0 rounded-xl bg-accent/10 px-3 py-2 text-[12px] font-bold text-accent transition hover:bg-accent/20"
+                          >
+                            Добавить
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setAddExBlock(null); setAddExQuery(''); }}
+                            className="shrink-0 rounded-xl p-2 text-slate-600 transition hover:text-slate-400"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setAddExBlock(bi); setAddExQuery(''); }}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.025] px-3 py-2 text-[12px] font-semibold text-slate-600 transition hover:border-accent/30 hover:bg-accent/[0.06] hover:text-accent print:hidden"
+                        >
+                          <Plus size={13} />
+                          Добавить упражнение
+                        </button>
+                      )
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Warnings — screen only */}
+              {session.warnings && (
+                <div className="mt-6 rounded-2xl border border-amber-500/25 bg-gradient-to-b from-amber-500/[0.08] to-amber-500/[0.03] p-5 print:hidden">
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <span className="text-base">⚠️</span>
+                    <span className="text-[9px] font-black uppercase tracking-[0.24em] text-amber-400/80">Предостережения</span>
+                  </div>
+                  <p className="text-[13px] leading-relaxed text-amber-200/75">{session.warnings}</p>
+                </div>
+              )}
+
+              {/* ── Print-only A4 landscape layout with exercise cards ── */}
+              <div className="hidden print:block" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+                <style>{`
+                  @page { size: A4 landscape; margin: 5mm 7mm; }
+                  @media print {
+                    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                    .print-sheet { page-break-inside: avoid; }
+                  }
+                `}</style>
+
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: '3px', marginBottom: '4px' }}>
+                  <div style={{ flexShrink: 0 }}>
+                    <div style={{ fontSize: '10pt', fontWeight: '900', letterSpacing: '0.12em', color: '#0f172a', lineHeight: 1 }}>PERIODYX</div>
+                    <div style={{ fontSize: '6pt', color: '#94a3b8', marginTop: '1px', letterSpacing: '0.05em' }}>AI PERFORMANCE COACH · ЗАРЕЧЬЕ ОДИНЦОВО</div>
+                  </div>
+                  <div style={{ textAlign: 'center', flex: 1, padding: '0 10px' }}>
+                    <div style={{ fontSize: '7pt', fontWeight: '700', color: '#334155' }}>{meta.sessionType === 'warmup' ? 'РАЗМИНКА' : meta.focusLabel}</div>
+                    {meta.dayGoal && <div style={{ fontSize: '6pt', color: '#64748b', marginTop: '1px' }}>Цель: {meta.dayGoal}</div>}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: '9pt', fontWeight: '800', color: '#0f172a', lineHeight: 1 }}>{meta.player?.name}</div>
+                    <div style={{ fontSize: '6.5pt', color: '#64748b', marginTop: '1px' }}>{meta.player?.position} · {meta.date}</div>
+                  </div>
+                </div>
+
+                {/* Exercise card grid — one column per block */}
+                <div className="print-sheet" style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${(session.blocks || []).length}, 1fr)`,
+                  gap: '3px',
+                  alignItems: 'start',
+                }}>
+                  {(session.blocks || []).map((block, bi) => (
+                    <div key={bi} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {/* Block label */}
+                      <div style={{
+                        backgroundColor: '#0f172a',
+                        color: 'white',
+                        padding: '2px 5px',
+                        fontWeight: '800',
+                        fontSize: '7pt',
+                        letterSpacing: '0.14em',
+                        textAlign: 'center',
+                        borderRadius: '2px',
+                      }}>
+                        БЛОК {block.label}
+                      </div>
+
+                      {/* Exercise mini-cards */}
+                      {(block.exercises || []).map((ex, ei) => (
+                        <div key={ei} style={{
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '3px',
+                          overflow: 'hidden',
+                          backgroundColor: 'white',
+                        }}>
+                          {/* Card header: code + name */}
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '3px',
+                            padding: '2px 4px',
+                            backgroundColor: '#f1f5f9',
+                            borderBottom: '1px solid #e2e8f0',
+                          }}>
+                            <span style={{ fontWeight: '900', color: '#0284c7', fontSize: '8pt', flexShrink: 0, lineHeight: '1.1', marginTop: '1px' }}>{ex.code}</span>
+                            <span style={{ fontWeight: '700', color: '#0f172a', fontSize: '6pt', lineHeight: '1.2', wordBreak: 'break-word' }}>{ex.name}</span>
+                          </div>
+
+                          {/* Sets · weight · cue */}
+                          <div style={{ padding: '2px 4px', backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                            <div style={{ fontFamily: 'monospace', fontWeight: '700', color: '#1d4ed8', fontSize: '7.5pt', textAlign: 'center', marginBottom: '1px', lineHeight: '1.1' }}>
+                              {(ex.targetSets || []).join(' · ')}
+                            </div>
+                            {ex.weightNote && (
+                              <div style={{ fontSize: '6pt', color: '#475569', lineHeight: '1.15', marginBottom: '1px' }}>{ex.weightNote}</div>
+                            )}
+                            {(ex.cue || ex.tempo) && (
+                              <div style={{ fontSize: '5.5pt', color: '#64748b', fontStyle: 'italic', lineHeight: '1.15' }}>{exerciseDescription(ex)}</div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Footer: assessment + warnings — clamped to 2 lines each to stay on page */}
+                {(session.assessment || session.warnings) && (
+                  <div style={{ marginTop: '4px', borderTop: '1px solid #e2e8f0', paddingTop: '3px', display: 'flex', gap: '10px', fontSize: '6pt' }}>
+                    {session.assessment && (
+                      <div style={{ flex: 2, overflow: 'hidden', maxHeight: '2.8em' }}>
+                        <span style={{ fontWeight: '800', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Оценка: </span>
+                        <span style={{ color: '#475569' }}>{session.assessment}</span>
+                      </div>
+                    )}
+                    {session.warnings && (
+                      <div style={{ flex: 1, overflow: 'hidden', maxHeight: '2.8em' }}>
+                        <span style={{ fontWeight: '800', color: '#b45309' }}>⚠ </span>
+                        <span style={{ color: '#92400e' }}>{session.warnings}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Data summary */}
+              <button
+                type="button"
+                onClick={() => setShowSummary(s => !s)}
+                className={`mt-5 flex items-center gap-1.5 text-[11px] font-medium text-slate-700 transition hover:text-slate-500 print:hidden ${focusRing} rounded`}
+              >
+                <ChevronDown
+                  size={13}
+                  className={`transition-transform ${showSummary ? 'rotate-180' : ''}`}
+                />
+                Данные, на которых построена тренировка
+              </button>
+              {showSummary && (
+                <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-white/[0.06] bg-white/[0.025] p-4 text-[11px] leading-relaxed text-slate-600 print:hidden">
+                  {meta.dataSummary}
+                </pre>
+              )}
+            </div>
+          );
+
   return (
     <>
       <Head>
@@ -5550,7 +6229,7 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="coach-overview-filters"><button type="button" aria-pressed={weekConflictsOnly} onClick={()=>setWeekConflictsOnly(v=>!v)}>Только конфликты</button></div><p className="coach-overview-caption">Бюджет — ориентир относительно предыдущих недель: учитываются подходы и тоннаж, источником базы может быть план или факт. Процент отражает плановый объём, не медицинский допуск. Пропуски факта показаны отдельно.</p>
+              <div className="coach-overview-filters"><button type="button" aria-pressed={weekConflictsOnly} onClick={()=>setWeekConflictsOnly(v=>!v)}>Только конфликты</button><span>Показано {(calData?.athletes || []).filter(athlete=>!weekConflictsOnly || athlete.conflicts?.length).length} из {calData?.athletes?.length || 0} игроков</span>{weekConflictsOnly && <button type="button" onClick={()=>setWeekConflictsOnly(false)}>Сбросить фильтр</button>}</div><p className="coach-overview-caption">Бюджет — ориентир относительно предыдущих недель: учитываются подходы и тоннаж, источником базы может быть план или факт. Процент отражает плановый объём, не медицинский допуск. Пропуски факта показаны отдельно.</p>
               {calData && calData.players.length > 0 ? (
                 <>
                 <div className="coach-week-scroll overflow-x-auto rounded-2xl border border-white/[0.07] bg-[#091116]/80 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
@@ -5592,12 +6271,12 @@ export default function Home() {
                                 <div className="text-[9px] text-slate-700 truncate">{p.position || 'Игрок'}</div>
                               </div>
                             </button>
-                            <OverviewSignals issues={readinessIssues(readinessData?.players?.find(item=>String(item.id)===String(p.id)),readinessData)}/>
+                            <OverviewSignals issues={readinessIssues(readinessData?.players?.find(item=>String(item.id)===String(p.id)),readinessData,workspace)}/>
                             <div className="mt-3">
                               <div className="flex items-center justify-between text-[9px]"><span className="font-bold text-slate-600">Бюджет</span><span className={`font-black tabular-nums ${athlete.budget.status === 'over' ? 'text-rose-300' : athlete.budget.status === 'near' ? 'text-amber-200' : 'text-slate-400'}`}>{budgetLabel(athlete.budget)}</span></div>
                               <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.05]"><div className={`h-full rounded-full ${budgetTone}`} style={{ width: `${athlete.budget.status==='calibrating' || !(athlete.budget.sets>0 || athlete.budget.tonnage>0)?0:Math.min(100, athlete.budget.utilizationPercent)}%` }} /></div>
                               <div className="mt-1.5 flex items-center justify-between text-[8px] text-slate-700"><span>{athlete.budget.source}</span><span>{compactLoad(athlete.budget.tonnage)}</span></div>
-                              <details className="coach-week-budget"><summary>Основание бюджета</summary><p className="mt-1 text-xs text-slate-300">База: {athlete.budget.referenceSets ?? '—'} подходов · {athlete.budget.referenceTonnage!=null?compactLoad(athlete.budget.referenceTonnage):'нет тоннажа'}. Факт недели: {compactLoad(athlete.totals?.actualTonnage)}; полноту проверяйте в занятиях.</p></details>{athlete.budget.rtp && <div className="mt-1 text-[8px] font-bold text-violet-300/60">RTP {athlete.budget.rtp.phase} · лимит {athlete.budget.rtp.volumeCap}%</div>}
+                              <details className="coach-week-budget"><summary>Основание бюджета</summary><p className="mt-1 text-xs text-slate-300">База: {athlete.budget.referenceSets ?? '—'} подходов · {athlete.budget.referenceTonnage!=null?compactLoad(athlete.budget.referenceTonnage):'нет тоннажа'}. Факт недели: {compactLoad(athlete.totals?.actualTonnage)}; полноту проверяйте в занятиях.</p>{(athlete.budget.sourceWeeks || []).map(week=><section key={week.from}><strong>{week.from} → {week.to}</strong><p>{week.sessions} занятий · {week.referenceSets} подходов · {compactLoad(week.referenceTonnage)}{!week.sessions?' · нет занятий, в медиану не входит':''}</p>{week.entries.map(entry=><p key={entry.date}>{entry.date} · {entry.label} · {entry.sets} подходов ({entry.setsBasis==='fact'?'факт':'план'}) · {compactLoad(entry.tonnage)} ({entry.tonnageBasis==='fact'?'факт':'план'})</p>)}</section>)}</details>{athlete.budget.rtp && <div className="mt-1 text-[8px] font-bold text-violet-300/60">RTP {athlete.budget.rtp.phase} · лимит {athlete.budget.rtp.volumeCap}%</div>}
                             </div>
                           </td>
                           {(athlete.days || []).map(day => {
@@ -5621,7 +6300,7 @@ export default function Home() {
                                   </div>
                                   <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-600"><span>{day.plannedSets} подх.</span><span>·</span><span>План {compactLoad(day.plannedTonnage)}</span></div>
                                   {day.completed ? <div className="mt-2"><div className="flex items-center justify-between text-[8px]"><span className="font-bold text-emerald-200/60">Подходы завершены</span><span className="text-slate-500">{day.completionPercent}%</span></div><div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-emerald-300" style={{ width: `${Math.min(100, day.completionPercent)}%` }} /></div></div> : <div className={`mt-2 text-[8px] font-semibold ${day.started ? 'text-cyan-200/60' : 'text-slate-700'}`}>{day.started ? 'Выполняется сейчас' : 'Запланировано'}</div>}
-                                  <p className="mt-1 text-xs text-slate-300">Записано: {factAmount(day.actualTonnage,day.loadEvidence)}</p><details className="coach-week-evidence"><summary>Полнота факта</summary><OverviewSignals issues={day.date>todayISO() && day.loadEvidence?.source==='missing'?[]:loadEvidenceLabel(day.loadEvidence)?[loadEvidenceLabel(day.loadEvidence)]:[]}/></details>
+                                  <p className="mt-1 text-xs text-slate-300">Записано: {sessionFactAmount(day.actualTonnage,day.loadEvidence,{completed:day.completed,completedSets:day.completedSets})}</p><details className="coach-week-evidence"><summary>Полнота факта</summary><OverviewSignals issues={day.date>todayISO() && day.loadEvidence?.source==='missing'?[]:loadEvidenceLabel(day.loadEvidence)?[loadEvidenceLabel(day.loadEvidence)]:[]}/></details>
                                   {(dayConflicts.length > 0 || generalConflict) && <div className="mt-2 flex items-center gap-1 text-[8px] font-bold text-amber-200/70"><AlertTriangle size={9} /> {dayConflicts[0]?.title || 'Проверьте бюджет недели'}</div>}
                                 </div> : (
                                 <button
@@ -5789,7 +6468,7 @@ export default function Home() {
           {mainSection === 'today' && (
             <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Команда · {todayISO().split('-').reverse().join('.')}</p><h2>Сегодня</h2><p>Решения, программы и качество исходных данных — в одном обзоре.</p></div><button type="button" disabled={readinessLoading} onClick={()=>loadTodayOverview(false,true)}><RefreshCw size={15} className={readinessLoading?'animate-spin':''}/> Обновить данные</button></header>
-              <TodayOverview key={workspace} center={todayCenter} readinessData={todaySnapshot?.workspace===workspace?todaySnapshot.readiness:readinessData} loading={readinessLoading || teamStatusLoading} error={todayError || teamStatusError} updatedAt={todayUpdatedAt} onPlayer={openOverviewPlayer} onHistory={player=>openOverviewPlayer(player,todayISO(),'history')} onDraft={openBatchDraft} getDraft={overviewDraft} onVersions={openSessionVersions} onRtp={openReturnToPlay} onAdapt={applyTodayRecommendation} adaptationSaving={adaptationSaving} onNavigate={openOverviewSection}/>
+              <TodayOverview workspace={workspace} key={workspace} center={todayCenter} readinessData={todaySnapshot?.workspace===workspace?todaySnapshot.readiness:readinessData} loading={readinessLoading || teamStatusLoading} error={todayError || teamStatusError} updatedAt={todayUpdatedAt} onPlayer={openOverviewPlayer} onHistory={player=>openOverviewPlayer(player,todayISO(),'history')} onDraft={openBatchDraft} getDraft={overviewDraft} onVersions={openSessionVersions} onRtp={openReturnToPlay} onAdapt={applyTodayRecommendation} adaptationSaving={adaptationSaving} onNavigate={openOverviewSection}/>
               {apiKey && <TeamFactOverview key={'today:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} compact label="Заполнить факты · последние занятия команды" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
           {keyConnected && mainSection==='today' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}
 
@@ -5938,13 +6617,13 @@ export default function Home() {
               {healthLoading && !healthData ? <div className="py-24 text-center text-sm text-slate-500">Проверяю сервисы…</div> : healthData && (
                 <>
                   <div className={`mb-5 rounded-2xl border p-5 ${healthData.status === 'healthy' ? 'border-emerald-300/20 bg-emerald-300/[0.055]' : healthData.status === 'warning' ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-rose-300/20 bg-rose-300/[0.055]'}`}>
-                    <div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Общий статус</div><div className="mt-1 text-xl font-black text-white">{healthData.status === 'healthy' ? 'Все системы работают' : healthData.status === 'warning' ? 'Есть предупреждения' : 'Требуется внимание'}</div></div><div className="text-right text-[10px] text-slate-500">{healthData.latencyMs} мс<br />{compactTime(healthData.checkedAt)}</div></div>
+                    <div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Общий статус</div><div className="mt-1 text-xl font-black text-white">{healthData.status === 'healthy' ? 'Все системы работают' : healthData.status === 'warning' ? 'Есть предупреждения' : 'Требуется внимание'}</div></div><div className="text-right text-[10px] text-slate-500">{healthData.latencyMs} мс<br />{compactTime(healthData.checkedAt)}</div></div><ul className="coach-health-reasons">{(healthData.activeReasons || []).map(reason=><li key={reason}>{reason}</li>)}</ul>
                   </div>
-                  <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Production release</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{String(healthData.release?.commit || 'local').slice(0, 12)}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Readiness p95 · тёплый / холодный</div><div className={`mt-2 font-mono text-[12px] font-bold ${healthData.readinessPerformance?.healthy ? 'text-emerald-200' : 'text-amber-200'}`}>{healthData.readinessPerformance?.warm?.p95Ms ?? healthData.readinessPerformance?.p95Ms ?? '—'} мс <span className="text-slate-700">/</span> {healthData.readinessPerformance?.cold?.p95Ms ?? '—'} мс</div><div className="mt-1 text-[10px] text-slate-600">Цели ≤ {healthData.readinessPerformance?.warm?.targetP95Ms || 750} / {healthData.readinessPerformance?.cold?.targetP95Ms || 5000} мс · кеш {healthData.readinessPerformance?.cacheHitRate ?? '—'}% · {healthData.alerting?.channel === 'in-app' ? 'встроенный канал' : healthData.alerting?.channel || 'канал неизвестен'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя резервная копия</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.createdAt || healthData.backup?.createdAt?new Date(latestSnapshot?.createdAt || healthData.backup.createdAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} ключей · зашифровано` : healthData.backup ? `${healthData.backup.keyCount} ключей · ${healthData.backup.ageHours} ч назад` : 'Ежедневное защищённое копирование'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Контроль восстановления</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-cyan-200">{latestRecoveryDrill?.checkedAt || healthData.recovery?.checkedAt?new Date(latestRecoveryDrill?.checkedAt || healthData.recovery.checkedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Дата не передана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestRecoveryDrill ? `${latestRecoveryDrill.sampledKeyCount} ключей · очищено` : healthData.recovery ? `${healthData.recovery.sampledKeyCount} ключей · ${healthData.recovery.ageHours} ч назад` : 'Еженедельная DR-проверка'}</div></div></div>
+                  <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Production release</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{healthData.release?.commit?String(healthData.release.commit).slice(0,12):'Ревизия не передана'}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}<p>Сборка: {healthData.release?.builtAt?new Date(healthData.release.builtAt).toLocaleString('ru-RU'):'дата не передана'}</p><p>Публикация: {healthData.release?.publishedAt?new Date(healthData.release.publishedAt).toLocaleString('ru-RU'):'дата не передана'}</p></div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Readiness p95 · тёплый / холодный</div><div className={`mt-2 font-mono text-[12px] font-bold ${healthData.readinessPerformance?.healthy ? 'text-emerald-200' : 'text-amber-200'}`}>{healthData.readinessPerformance?.warm?.p95Ms ?? healthData.readinessPerformance?.p95Ms ?? '—'} мс <span className="text-slate-700">/</span> {healthData.readinessPerformance?.cold?.p95Ms ?? '—'} мс</div><div className="mt-1 text-[10px] text-slate-600">Цели ≤ {healthData.readinessPerformance?.warm?.targetP95Ms || 750} / {healthData.readinessPerformance?.cold?.targetP95Ms || 5000} мс · кеш {healthData.readinessPerformance?.cacheHitRate ?? '—'}% · {healthData.alerting?.channel === 'in-app' ? 'встроенный канал' : healthData.alerting?.channel || 'канал неизвестен'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя резервная копия</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.createdAt || healthData.backup?.createdAt?new Date(latestSnapshot?.createdAt || healthData.backup.createdAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} ключей · зашифровано` : healthData.backup ? `${healthData.backup.keyCount} ключей · ${healthData.backup.ageHours} ч назад` : 'Ежедневное защищённое копирование'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Контроль восстановления</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-cyan-200">{latestRecoveryDrill?.checkedAt || healthData.recovery?.checkedAt?new Date(latestRecoveryDrill?.checkedAt || healthData.recovery.checkedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Дата не передана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestRecoveryDrill ? `${latestRecoveryDrill.sampledKeyCount} ключей · очищено` : healthData.recovery ? `${healthData.recovery.sampledKeyCount} ключей · ${healthData.recovery.ageHours} ч назад` : 'Еженедельная DR-проверка'}</div></div></div>
                   <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">{Object.entries(healthData.services || {}).map(([name, ok]) => <div key={name} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className={`h-2 w-2 rounded-full ${ok ? 'bg-emerald-300' : 'bg-rose-300'}`} /><div className="mt-3 text-[12px] font-bold text-slate-200">{name === 'redis' ? 'Хранилище' : name === 'readySix' ? 'ReadySix' : name === 'ai' ? 'AI генерация' : name === 'backup' ? 'Резервные копии' : name === 'recovery' ? 'DR-проверка' : 'Доступ тренера'}</div><div className="mt-1 text-[10px] text-slate-600">{ok ? 'Работает' : name === 'backup' ? 'Нет свежей копии' : name === 'recovery' ? 'Нет свежей проверки' : 'Не настроено'}</div></div>)}</div>
                   <div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ошибки за 24 часа</div><div className="mt-2 text-3xl font-black text-rose-200">{healthData.errors24h}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">События-предупреждения за 24 часа</div><div className="mt-2 text-3xl font-black text-amber-200">{healthData.warnings24h}</div></div></div>
                   <section className="coach-active-problems" aria-label="Активные проблемы"><h3>Активные проблемы сервисов · {activeServiceProblems(healthData.services).length}</h3>{activeServiceProblems(healthData.services).map(problem=><p key={problem}>{problem}</p>)}<p>Счётчики ниже относятся к событиям за 24 часа и могут быть нулевыми при сохраняющейся проблеме.</p></section><GenerationMonitor workspace={workspace} apiKey={apiKey} />
-                  <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 flex items-center justify-between"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Канал SLO-инцидентов</div><span className="rounded-full border border-cyan-300/12 px-2 py-1 text-[9px] font-bold text-cyan-200">{healthData.alerting?.channel === 'in-app' ? 'Встроенный inbox' : healthData.alerting?.channel}</span></div><div className="space-y-2">{(healthData.notifications || []).length ? healthData.notifications.slice(0, 10).map(notification => <div key={notification.eventId} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${notification.status === 'firing' ? notification.severity === 'critical' || notification.severity === 'error' ? 'bg-rose-300' : 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{notification.title}</div><div className="mt-0.5 text-[10px] leading-relaxed text-slate-600">{notification.message}</div></div><span className="shrink-0 text-[9px] text-slate-700">{compactTime(notification.occurredAt)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Активных SLO-событий нет</div>}</div></div>
+                  <OperationalIncidents notifications={healthData.notifications || []}/>
                   <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Последние события</div><div className="space-y-2">{(healthData.events || []).length ? healthData.events.slice(0, 12).map((event, index) => <div key={`${event.at}-${index}`} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${event.status === 'error' ? 'bg-rose-300' : event.status === 'warning' ? 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{event.area}</div>{event.message && <div className="mt-0.5 truncate text-[10px] text-slate-600">{event.message}</div>}</div><span className="text-[9px] text-slate-700">{compactTime(event.at)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Событий пока нет</div>}</div></div>
                 </>
               )}
@@ -5974,7 +6653,7 @@ export default function Home() {
                 ))}
               </div>
 
-              {tonnageTab==='tonnage' && <><OverviewFreshness updatedAt={tonnageUpdatedAt} loading={tonnageLoading} error={tonnageData?.error} label="Нагрузка"/>{tonnageData && !tonnageData.error && !tonnageLoading && <TeamLoadOverview key={workspace} data={tonnageData} filter={loadFilter} setFilter={setLoadFilter} onPlayer={openOverviewPlayer} onDraft={openBatchDraft} getDraft={overviewDraft}/>}</>}
+              {tonnageTab==='tonnage' && <><OverviewFreshness updatedAt={tonnageUpdatedAt} loading={tonnageLoading} error={tonnageData?.error} label="Нагрузка"/>{tonnageData && !tonnageData.error && !tonnageLoading && <TeamLoadOverview key={workspace} data={tonnageData} filter={loadFilter} setFilter={setLoadFilter} onFacts={openHistoryFacts} onPlayer={openOverviewPlayer} onDraft={openBatchDraft} getDraft={overviewDraft}/>}</>}
 
               {/* ── Status today ── */}
               {tonnageTab === 'status' && (
@@ -6224,7 +6903,7 @@ export default function Home() {
           {mainSection==='workouts' && overviewReturn?.workspace===workspace && <button type="button" className="coach-return-button" onClick={()=>{overviewScrollTargetRef.current={type:'restore',...overviewReturn,requestedAt:Date.now()};setMainSection(overviewReturn.section);setOverviewReturn(null);}}>← Вернуться: {({calendar:'Неделя',tonnage:'Нагрузка',today:'Сегодня',live:'LIVE'})[overviewReturn.section]}</button>}
           {workspaceTab==='history' && playerId && selectedPlayer && <PlayerHistory key={`${workspace}:${playerId}`} workspace={workspace} player={selectedPlayer} apiKey={apiKey} targetDate={date} focusTarget={historyFactTarget} onClearTarget={()=>setHistoryFactTarget(null)} factsRefresh={factsRefresh} onOpenProgram={openOverviewPlayer} cycleReview={<StrengthCycleReviewPanel workspace={workspace} playerId={playerId} apiKey={apiKey} date={date} refreshToken={factsRefresh} initialOpen title="Результаты решений по циклам"/>}/>}
 
-          {workspaceTab === 'program' && <div id="coach-team-drafts">{teamQueue.previousQueue && <div className="coach-previous-queue"><p>Сохранена командная очередь за {teamQueue.previousQueue.date}. Открыта актуальная дата; очередь не изменена.</p><button type="button" disabled={loading || saving || batchRunning} onClick={()=>changeTrainingDate(teamQueue.previousQueue.date)}>Открыть прежнюю очередь ↗</button></div>}<TeamQueueReview queue={teamQueue.queue} results={batchResults} running={batchRunning} recovering={teamQueue.recovering} error={teamQueue.error} onOpen={openBatchDraft} onRetry={retryFailedBatch} onRefreshPlayer={teamQueue.refreshPlayer} onResume={teamQueue.resume} onRefresh={teamQueue.refresh} onReview={teamQueue.review} onPause={teamQueue.pause} onCancel={teamQueue.cancel} onCheckPublication={teamQueue.checkPublication} onPublish={teamQueue.publish} workspace={workspace} apiKey={apiKey} /></div>}
+          {workspaceTab === 'program' && !executionConfirmed && teamQueuePanel}
 
           {workspaceTab === 'program' && !playerId && batchSelectedIds.size > 0 && (
             <div className="mx-auto flex min-h-[58vh] max-w-xl flex-col justify-center print:hidden">
@@ -6290,7 +6969,10 @@ export default function Home() {
           )}
 
           {/* ── Form + Results (only when player is selected, program tab) ── */}
-          {workspaceTab === 'program' && playerId && <>
+          {workspaceTab === 'program' && playerId && <div>
+          {executionConfirmed && savedProgram}
+          <details className="coach-program-preparation" open={!executionConfirmed || undefined}><summary>{executionConfirmed?'Подготовка следующей тренировки':'Настройки нового черновика'}</summary>
+          {executionConfirmed && teamQueuePanel}
           <form
             onSubmit={handleGenerate}
             className="premium-form relative overflow-hidden rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-6 print:hidden"
@@ -6317,7 +6999,7 @@ export default function Home() {
               </div>
             </div>
 
-            {pendingSaved && <div className="coach-saved-separation"><strong>Сохранённая программа: {meta?.focusLabel || 'Тренировка'} · {pendingSaved.date}</strong><p>Настройки ниже относятся к новому черновику. Сохранённое задание показано отдельно под формой.</p>{executionConfirmed && <button type="button" onClick={()=>changeTrainingDate(addDaysToStr(date,1))}>Подготовить следующую тренировку →</button>}</div>}
+            {pendingSaved && <div className="coach-saved-separation"><strong>Сохранённая программа: {meta?.focusLabel || 'Тренировка'} · {pendingSaved.date}</strong><p>Настройки ниже относятся к новому черновику. Сохранённое задание показано отдельно от настроек.</p>{executionConfirmed && <button type="button" onClick={()=>changeTrainingDate(addDaysToStr(date,1))}>Подготовить следующую тренировку →</button>}</div>}
             {workspace==='nkperf' && <PlayerTimeZoneControl key={playerId} playerId={playerId} timeZone={activePlayerTimeZone} apiKey={apiKey} disabled={saving||loading||!!batchId} onChange={changePlayerTimeZone} />}
             <div className="mb-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_1.15fr]">
               <div>
@@ -6878,6 +7560,7 @@ export default function Home() {
             </div>
           )}
 
+          </details>
           {/* ── Error ── */}
           {error && (
             <div className="mt-5 flex items-start gap-3 rounded-2xl border border-rose-500/20 bg-rose-500/[0.07] p-4 text-sm animate-fade-in backdrop-blur-xl print:hidden">
@@ -6940,680 +7623,7 @@ export default function Home() {
           )}
 
           {/* ── Session result ── */}
-          {session && meta && (
-            <div data-preview={editorPreview || !!executionConfirmed} className="premium-session-card coach-session-workspace mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
-
-              {/* Result toolbar */}
-              <div className="coach-editor-toolbar mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden" role="region" aria-label="Сохранение программы">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <h2 className="text-base font-black tracking-tight text-white">Тренировка</h2>
-                  <span className="rounded-full border border-accent/25 bg-accent/[0.09] px-3 py-1 text-xs font-semibold text-accent">
-                    {meta.player?.name}
-                  </span>
-                  <span className="rounded-full border border-white/[0.07] bg-white/[0.04] px-3 py-1 text-xs font-medium text-slate-500">
-                    {meta.date}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button type="button" className="coach-editor-view-toggle" aria-pressed={editorPreview} disabled={executionConfirmed} onClick={()=>setEditorPreview(value=>!value)} title={editorPreview?'Перейти к редактированию':'Просмотреть программу без полей ввода'}>{editorPreview?<>{PENCIL_ICON}<span>Редактировать</span></>:<><BookOpen size={14}/><span>Просмотр</span></>}</button>
-                  {/* Secondary actions */}
-                  <div className="coach-editor-secondary" data-open={editorActionsOpen}>
-                  <button type="button" className="coach-editor-more" aria-label="Дополнительные действия программы" aria-expanded={editorActionsOpen} onClick={()=>setEditorActionsOpen(value=>!value)}>•••</button>
-                  <div className="coach-editor-secondary-items flex items-center rounded-xl border border-white/[0.07] bg-white/[0.025] p-1 gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => window.print()}
-                      className={`grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
-                      title="Печать"
-                    >
-                      <Printer size={14} />
-                    </button>
-                    {session?.blocks?.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleSaveTemplate}
-                        className={`grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
-                        title="Сохранить как шаблон микроцикла"
-                      >
-                        <Layers size={14} />
-                      </button>
-                    )}
-                    {(justSaved || autoSaved || pendingSaved) && (
-                      <button
-                        type="button"
-                        onClick={() => {setCopyWorkspace(workspace==='zarechie'?'nkperf':'zarechie');setCopyDate(date); setCopyKeepExact(false);setCopyError('');setCopyModalOpen(true);}}
-                        className={`grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
-                        title="Скопировать тренировку другому игроку"
-                      >
-                        <Copy size={14} />
-                      </button>
-                    )}
-                    {pendingSaved && !executionConfirmed && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const minimum = rescheduleEarliestDate(pendingSaved.date);
-                          setRescheduleDate(current => current && current >= minimum ? current : minimum);
-                          setRescheduleOpen(open => !open);
-                        }}
-                        className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-slate-500 transition hover:bg-white/[0.07] hover:text-slate-200 ${focusRing}`}
-                        title="Перенести невыполненную тренировку"
-                      >
-                        <CalendarRange size={14} />
-                        Перенести
-                      </button>
-                    )}
-                  </div>
-                  </div>
-                  {/* Primary save */}
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    aria-label="Сохранить программу"
-                    disabled={saving || executionConfirmed || session.kind === 'restricted_day_plan'}
-                    title={session.kind === 'restricted_day_plan' ? 'План дня не заменяет тренировку игрока' : undefined}
-                    className={`flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3.5 py-2 text-xs font-bold text-[#04212b] shadow-[0_2px_12px_-2px_rgba(34,211,238,0.35)] transition hover:bg-cyan-400 disabled:opacity-50 ${focusRing}`}
-                  >
-                    {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                    <span className="coach-save-label-long">{saving?'Сохранение…':justSaved ? 'Сохранено ✓' : (autoSaved || pendingSaved ? 'Сохранить изменения' : 'Сохранить программу')}</span><span className="coach-save-label-short">{saving?'Сохраняю…':justSaved?'Сохранено':'Сохранить'}</span>
-                  </button>
-                  {pendingSaved && session && (
-                    <button
-                      type="button"
-                      onClick={handleCompleteWorkout}
-                      aria-label={executionConfirmed?"Тренировка уже выполнена":"Завершить тренировку"}
-                      title={executionConfirmed?"Выполнение подтверждено по журналу игрока":"Завершить тренировку"}
-                      disabled={savingActual || executionConfirmed}
-                      className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] font-semibold text-emerald-400 transition hover:bg-emerald-500/20 disabled:opacity-50"
-                    >
-                      {savingActual ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                      <span className="coach-complete-label">{executionConfirmed?"Выполнена":"Завершить"}</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {executionConfirmed && <p className="coach-execution-confirmed" role="status">Тренировка выполнена · {playerExecution.totalSets} / {playerExecution.totalSets} подходов · {new Date(playerExecution.completedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Исходный план защищён: редактирование, сохранение и перенос отключены. Факты дополняются отдельно в истории.</p>}
-              <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={meta.focusLabel || getFocusLabel(period,focus)} preview={editorPreview || !!executionConfirmed} onPreview={value=>{if(!executionConfirmed)setEditorPreview(value);}} onNavigate={index=>{
-                const block=session.blocks[index];setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
-                requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
-              }}/>
-
-              {rescheduleOpen && pendingSaved && (
-                <div className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 print:hidden">
-                  <div className="flex items-start gap-2.5">
-                    <CalendarRange size={15} className="mt-0.5 shrink-0 text-amber-300" />
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-bold text-amber-200">Перенести тренировку</p>
-                      <p className="mt-0.5 text-[11px] leading-relaxed text-amber-100/60">
-                        Программа будет перенесена без изменения упражнений. Выполненную тренировку перенести нельзя.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-end gap-2">
-                    <div className="min-w-[190px] flex-1">
-                      <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-amber-200/55">Новая дата</div>
-                      <DatePicker
-                        value={rescheduleDate}
-                        onChange={setRescheduleDate}
-                        minDate={rescheduleEarliestDate(pendingSaved.date)}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleRescheduleSession}
-                      disabled={rescheduling || !rescheduleDate}
-                      className="flex items-center gap-1.5 rounded-xl bg-amber-300 px-3.5 py-2.5 text-xs font-black text-[#181108] transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {rescheduling ? <Loader2 size={13} className="animate-spin" /> : <ArrowRight size={13} />}
-                      Перенести
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Plan vs Actual compliance summary */}
-              {compliance && (
-                <div className="mt-3 mb-4 flex flex-wrap items-center gap-4 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-2.5 text-[11px] animate-fade-in print:hidden">
-                  <span className="font-black text-emerald-400 text-[15px]">{compliance.percent}%</span>
-                  <span className="text-slate-500">выполнено</span>
-                  <span className="text-slate-600">·</span>
-                  <span className="text-slate-400">план <span className="text-slate-200 font-semibold">{Math.round(compliance.plannedTonnage / 1000 * 10) / 10}т</span></span>
-                  <span className="text-slate-600">→</span>
-                  <span className="text-slate-400">факт <span className={`font-semibold ${compliance.actualTonnage / compliance.plannedTonnage < 0.8 ? 'text-rose-400' : 'text-emerald-400'}`}>{Math.round(compliance.actualTonnage / 1000 * 10) / 10}т</span></span>
-                </div>
-              )}
-
-              {generationQuality.length > 0 && (
-              <details className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 print:hidden">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 size={12} className="text-emerald-400" />
-                      <span className="text-[10px] font-black uppercase tracking-[0.20em] text-slate-500">Проверки структуры программы</span>
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-600">
-                      {generationQuality.filter(i => i.ok).length}/{generationQuality.length}
-                    </span>
-                  </summary>
-                  <p className="mt-2 text-xs text-slate-300">Число пройденных автоматических проверок ниже. Перед назначением тренер проверяет метод, точный вариант упражнения, дозу, симптомы и медицинские противопоказания. Это не оценка допуска.</p><div className="mt-2.5 flex flex-wrap gap-1.5">
-                    {generationQuality.map(item => (
-                      <div
-                        key={item.label}
-                        className={`rounded-lg border px-2 py-1 ${qualityTone(item.ok)}`}
-                        title={item.detail}
-                      >
-                        <span className="text-[10px] font-bold">{item.ok ? '✓' : '!' } {item.label}</span>
-                        <span className="ml-1 text-[10px] opacity-70">{item.detail}</span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )}
-
-              {pendingSaved && <p className="coach-source-snapshot">Обоснование ниже — снимок при сохранении {new Date(pendingSaved.savedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Текущие данные ReadySix показаны в настройках выше; изменения после сохранения не переписывают исходный план.</p>}
-              {pendingSaved && decisionData?.source==='ReadySix' && <details className="coach-source-comparison"><summary>Сравнить текущий источник с обоснованием программы</summary><SourceComparison previous={meta?.sourceState} current={decisionData.sourceState} savedAt={meta?.sourceCapturedAt} checkedAt={decisionData.checkedAt}/><div><section><h3>При сохранении · {coachDate(pendingSaved.date)}</h3><p>{session.assessment || 'Обоснование не записано в этой версии.'}</p></section><section><h3>Текущий источник · {coachDate(decisionData.targetDate || date)}</h3><p>{decisionData.recommendation?.state?.detail || decisionData.decision?.detail || 'Подробности не переданы.'}</p></section></div><p>Тексты из разных моментов времени. Изменение формулировок само по себе не подтверждает изменение состояния или допуска; решение проверяется в ReadySix.</p></details>}
-              {/* Volume stats bar */}
-              {volumeStats && volumeStats.sessions > 0 && (
-                <div className="mb-4 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-2.5 print:hidden">
-                  <div className="mb-2.5 flex items-center gap-2">
-                    <BarChart2 size={10} className="text-slate-600" />
-                    <span className="text-[9px] font-black uppercase tracking-[0.20em] text-slate-600">Объём за 7д</span>
-                    <span className="ml-auto text-[9px] text-slate-700">{volumeStats.sessions} сессий</span>
-                  </div>
-                  <div className="flex items-end gap-3">
-                    {['A', 'B', 'C', 'D', 'E'].map(label => {
-                      const val = volumeStats.byBlock[label];
-                      if (!val) return null;
-                      const bc = blockCfg(label);
-                      const maxVal = Math.max(...['A','B','C','D','E'].map(l => volumeStats.byBlock[l] || 0));
-                      const pct = Math.max(8, Math.round((val / maxVal) * 100));
-                      return (
-                        <div key={label} className="flex flex-1 flex-col items-center gap-1.5">
-                          <span className="text-[10px] font-bold text-slate-400 tabular-nums">{val}</span>
-                          <div className="relative h-8 w-full max-w-[34px] overflow-hidden rounded-md bg-white/[0.04]">
-                            <div className={`absolute inset-x-0 bottom-0 rounded-md ${bc.circle} transition-all duration-500`} style={{ height: `${pct}%` }} />
-                          </div>
-                          <span className="text-[10px] font-black text-slate-500">{label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {continuitySummary.known > 0 && (
-                <section className="mb-5 rounded-2xl border border-cyan-300/[0.14] bg-gradient-to-r from-cyan-300/[0.065] to-emerald-300/[0.035] p-4 print:hidden" aria-label="Преемственность нагрузки">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-200/15 bg-cyan-300/10 text-cyan-200">
-                      <TrendingUp size={17} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/65">Преемственность нагрузки</div>
-                      <p className="mt-1 text-[12px] text-slate-300">
-                        История найдена для {continuitySummary.known} упражнений · рекомендаций {continuitySummary.recommendations}
-                        {continuitySummary.pain > 0 ? ` · ${continuitySummary.pain} с ограничением по боли` : ''}
-                      </p>
-                    </div>
-                    {continuitySummary.recommendations > 0 && !editorPreview && (
-                      <button
-                        type="button"
-                        onClick={applyProgressionRecommendations}
-                        className="min-h-11 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-[11px] font-bold text-cyan-100 transition hover:bg-cyan-300/16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
-                      >
-                        Применить безопасные рекомендации
-                      </button>
-                    )}
-                  </div>
-                </section>
-              )}
-
-              {/* Assessment */}
-              {(session.assessment || session.periodization_note) && (
-                <div className="mb-5 grid gap-3 lg:grid-cols-2 print:hidden">
-                {session.assessment && (
-                <div className="overflow-hidden rounded-xl border border-accent/[0.16] bg-accent/[0.05]">
-                  <div className="flex gap-0">
-                    <div className="w-1 shrink-0 bg-accent/40" />
-                    <div className="px-4 py-3.5">
-                      <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-accent/60">Оценка состояния</div>
-                      <p className="text-[13px] leading-relaxed text-slate-200">{session.assessment}</p>
-                    </div>
-                  </div>
-                </div>
-                )}
-                {session.periodization_note && (
-                <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.02]">
-                  <div className="flex gap-0">
-                    <div className="w-1 shrink-0 bg-slate-600/50" />
-                    <div className="px-4 py-3.5">
-                      <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-slate-600">Логика периодизации</div>
-                      <p className="text-[13px] leading-relaxed text-slate-400">{session.periodization_note}</p>
-                    </div>
-                  </div>
-                </div>
-                )}
-                </div>
-              )}
-
-              {/* Camp methodology violations */}
-              {methodViolations.length > 0 && (
-                <div className="mb-4 rounded-2xl border border-rose-500/25 bg-rose-500/[0.06] p-4 print:hidden">
-                  <div className="mb-2 flex items-center gap-2">
-                    <AlertTriangle size={13} className="text-rose-400" />
-                    <span className="text-[11px] font-black uppercase tracking-wider text-rose-400">Нарушение методики сборов</span>
-                  </div>
-                  <div className="space-y-1">
-                    {methodViolations.map((v, i) => (
-                      <p key={i} className="text-[12px] text-rose-300/80">· {v.name} — запрещён в фазе сборов ({v.label})</p>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Recovery status warning */}
-              {recoveryStatus === 'yellow' && (
-                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-2.5 print:hidden">
-                  <AlertTriangle size={13} className="shrink-0 text-amber-400" />
-                  <span className="text-[12px] font-bold text-amber-300">Объём −25% · умеренная нагрузка</span>
-                </div>
-              )}
-              {recoveryStatus === 'red' && (
-                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/[0.06] px-4 py-2.5 print:hidden">
-                  <AlertTriangle size={13} className="shrink-0 text-rose-400" />
-                  <span className="text-[12px] font-bold text-rose-300">Только тонус · профилактика · без тяжёлого</span>
-                </div>
-              )}
-
-
-              {/* Volume stats bar */}
-              {sessionVolume && (
-                <div className="coach-program-dose-summary mb-6 flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 print:hidden">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Упр.</span>
-                    <span className="text-[18px] font-black text-slate-200">{sessionVolume.exCount}</span>
-                  </div>
-                  <div className="h-6 w-px bg-white/[0.06]" />
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Подх.</span>
-                    <span className="text-[18px] font-black text-slate-200">{sessionVolume.sets}</span>
-                  </div>
-                  {sessionVolume.tonnes && (
-                    <>
-                      <div className="h-6 w-px bg-white/[0.06]" />
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Тоннаж</span>
-                        <span className="text-[18px] font-black text-accent">~{sessionVolume.tonnes}т</span>
-                      </div>
-                    </>
-                  )}
-                  {jumpVolume && (
-                    <>
-                      <div className="h-6 w-px bg-white/[0.06]" />
-                      <div className={`flex items-center gap-1.5 ${jumpVolume.sets > 12 ? 'text-amber-400' : ''}`}>
-                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Прыжки</span>
-                        <span className={`text-[18px] font-black ${jumpVolume.sets > 12 ? 'text-amber-400' : 'text-slate-200'}`}>{jumpVolume.sets}</span>
-                        <span className="text-[10px] text-slate-700">под.</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* High jump volume warning */}
-              {jumpVolume && jumpVolume.sets > 12 && (
-                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/[0.05] px-4 py-2.5 print:hidden">
-                  <Zap size={13} className="shrink-0 text-amber-400" />
-                  <div>
-                    <span className="text-[12px] font-bold text-amber-300">Высокий прыжковый объём</span>
-                    <span className="ml-2 text-[11px] text-amber-400/70">{jumpVolume.exCount} упр. · {jumpVolume.sets} под. — проверь суставную нагрузку</span>
-                  </div>
-                </div>
-              )}
-
-              {removedBlock && (
-                <div role="status" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] px-4 py-3 text-sm text-amber-200 print:hidden">
-                  <span>Блок {removedBlock.label} удалён вместе с упражнениями. Нажмите «Сохранить изменения», чтобы сохранить программу.</span>
-                  <button type="button" onClick={undoRemoveBlock} disabled={saving} className={`shrink-0 rounded-lg border border-amber-300/30 px-3 py-2 font-semibold disabled:opacity-40 ${focusRing}`}>Отменить удаление</button>
-                </div>
-              )}
-
-              {/* Blocks — screen only */}
-              <div className="space-y-8 print:hidden">
-                {(session.blocks || []).map((block, bi) => (
-                  <div id={`coach-program-block-${bi}`} className="coach-program-block" key={block.blockId || block.label || bi}>
-                    {(() => {
-                      const bc = blockCfg(block.label);
-                      const isCollapsed = collapsedBlocks.has(block.label);
-                      return (
-                        <div className="coach-program-block-header">
-                        <div className="coach-program-block-heading flex items-start gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleBlock(block.label)}
-                          className={`flex min-w-0 flex-1 items-center gap-3.5 text-left rounded-xl py-1 transition-opacity hover:opacity-90 ${focusRing}`}
-                        >
-                          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${bc.circle} text-base font-black text-[#04212b] ring-1 ring-inset ring-white/20`}>
-                            {block.label}
-                          </span>
-                          <div className="min-w-0">
-                            <div className={`text-[11px] font-black uppercase tracking-[0.18em] ${bc.sub}`}>Блок {block.label}</div>
-                          </div>
-                          {isCollapsed && (
-                            <span className="shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 text-[10px] font-bold text-slate-500">
-                              {(block.exercises || []).length} упр.
-                            </span>
-                          )}
-                          <div className={`h-px flex-1 bg-gradient-to-r ${bc.line} to-transparent`} />
-                          <span className="shrink-0 grid h-7 w-7 place-items-center rounded-lg text-slate-600 transition hover:text-slate-300 print:hidden">
-                            {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-                          </span>
-                        </button>
-                        <button type="button" onClick={() => removeBlock(bi)} disabled={saving}
-                          aria-label={`Удалить блок ${block.label || bi + 1}`}
-                          title="Удалить блок вместе со всеми упражнениями"
-                          className={`coach-edit-only flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-rose-400/20 px-3 text-xs font-semibold text-rose-300 transition hover:bg-rose-400/10 disabled:opacity-40 ${focusRing}`}>
-                          <X size={14} /><span className="hidden sm:inline">Удалить блок</span>
-                        </button>
-                        </div>
-                        {block.rest_note && <p className="coach-program-block-order">⏱ {block.rest_note}</p>}
-                        </div>
-                      );
-                    })()}
-                    {!collapsedBlocks.has(block.label) && (
-                    <div className="coach-exercise-grid">
-                      {(block.exercises || []).map((ex, ei) => {
-                        const identity = ex.exerciseId || canonicalExerciseId(ex.name);
-                        const progression = (meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)] || {}:progressionMap[identity] || progressionMap[ex.name] || {};
-                        const exerciseHistory = exHistoryMap[identity] || exHistoryMap[ex.name] || [];
-                        return (
-                        <ExerciseCard
-                          key={ex.code || ei}
-                          apiKey={apiKey}
-                          preview={editorPreview || !!executionConfirmed}
-                          code={ex.code}
-                          name={prehabEnglishName(ex.name)}
-                          targetSets={ex.targetSets || []}
-                          weightNote={ex.weightNote || ''}
-                          weightKg={ex.weightKg != null ? ex.weightKg : parseKgFromNote(ex.weightNote)}
-                          loadEvidence={ex.loadEvidence}
-                          targetRpeMax={ex.targetRpeMax}
-                          loadUnits={loadUnitsForExercise(ex)}
-                          tempo={ex.tempo || ''}
-                          prehabRegion={ex.prehabRegion}
-                          autoReg={ex.autoReg || ''}
-                          alternatives={ex.alternatives || []}
-                          cue={ex.cue || ''}
-                          descriptionOverride={ex.descriptionOverride}
-                          descriptionExerciseId={ex.descriptionExerciseId}
-                          compactDescription={ex.compactDescription}
-                          controlledExecution={ex.controlledExecution}
-                          focus={meta?.focus || focus}
-                          progressionLoading={progressionLoading}
-                          onRetryProgression={()=>{setProgressionMap({});setProgressionError('');setProgressionLoading(true);setProgressionRefresh(value=>value+1);}}
-                          progressionError={progressionError}
-                          strengthProposal={(meta?.focus || focus)==='inseason_strength'?progressionMap[strengthProgressionKey(ex)]:null}
-                          onApplyStrengthProgression={()=>{const proposed=applyStrengthCardProposal(ex,progressionMap[strengthProgressionKey(ex)],strengthProgressionScope({workspace,playerId,date:meta?.date || date,focus:'inseason_strength',trainingType:meta?.trainingType || trainingType,strengthMode:meta?.strengthMode || strengthMode}));if(proposed!==ex)updateExercise(bi,ei,proposed);}}
-                          week={weekFromFocus(focus)}
-                          oneRM={oneRM}
-                          position={selectedPlayer?.position || null}
-                          prevKg={progression.kg || null}
-                          prevRpe={progression.rpe || null}
-                          prevPain={progression.pain || false}
-                          suggestedKg={progression.suggestedKg || null}
-                          progressionDecision={progression.decision || ''}
-                          progressionConfidence={progression.confidence || ''}
-                          progressionTrend={progression.trend || ''}
-                          restrictions={restrictions}
-                          exHistory={exerciseHistory}
-                          actualKg={ex.actualKg ?? null}
-                          onActualKgChange={pendingSaved ? (v => updateExercise(bi, ei, { actualKg: v })) : undefined}
-                          actualRpe={ex.actualRpe ?? null}
-                          onActualRpeChange={pendingSaved ? (v => updateExercise(bi, ei, { actualRpe: v })) : undefined}
-                          replacementFrom={ex.replacementFrom}
-                          replacementReason={ex.replacementReason}
-                          replacementNote={ex.replacementNote}
-                          onChangeReplacementReason={v => updateExercise(bi, ei, { replacementReason: v })}
-                          onChangeReplacementNote={v => updateExercise(bi, ei, { replacementNote: v })}
-                          onChangeName={v => updateExercise(bi, ei, { name: v })}
-                          onChangeSet={(si, v) => updateSet(bi, ei, si, v)}
-                          onAddSet={() => addSetRow(bi, ei)}
-                          onRemoveSet={si => removeSetRow(bi, ei, si)}
-                          onChangeWeight={v => updateExercise(bi, ei, { weightNote: v })}
-                          onChangeWeightKg={v => updateExercise(bi, ei, {
-                            weightKg: v,
-                            weightNote: v != null ? `${v} кг` : (ex.weightNote || ''),
-                          })}
-                          onChangeLoadUnits={v => updateExercise(bi, ei, { loadUnits: v })}
-                          onChangeTempo={v => updateExercise(bi, ei, { tempo: v })}
-                          onChangeTargetRpeMax={v => updateExercise(bi, ei, { targetRpeMax: v })}
-                          onChangeAutoReg={v => updateExercise(bi, ei, { autoReg: v })}
-                          onChangeDescription={v => updateExercise(bi, ei, { descriptionOverride: v })}
-                          onResetDescription={() => updateExercise(bi, ei, { descriptionOverride: undefined })}
-                          onRegenerate={() => regenerateExercise(bi, ei)}
-                        />
-                        );
-                      })}
-                    </div>
-                    )}
-                    {!editorPreview && !collapsedBlocks.has(block.label) && pendingSaved && (
-                      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 print:hidden">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Факт блока {block.label}</span>
-                        <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                          RPE
-                          <input
-                            type="number"
-                            step="0.5"
-                            min="1"
-                            max="10"
-                            value={block.actualRpe ?? ''}
-                            onChange={e => {
-                              const raw = e.target.value;
-                              const v = raw === '' ? null : parseFloat(raw);
-                              updateBlock(bi, { actualRpe: isNaN(v) ? null : v });
-                            }}
-                            className="w-14 rounded-md border border-white/[0.07] bg-white/[0.04] px-2 py-1 text-[11px] text-sky-300 outline-none focus:border-sky-400/50"
-                          />
-                        </label>
-                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-                          <input
-                            type="checkbox"
-                            checked={!!block.pain}
-                            onChange={e => updateBlock(bi, { pain: e.target.checked })}
-                            className="h-3.5 w-3.5 rounded border-white/[0.15] bg-white/[0.04]"
-                          />
-                          боль/дискомфорт
-                        </label>
-                        <input
-                          value={block.feedbackNote || ''}
-                          onChange={e => updateBlock(bi, { feedbackNote: e.target.value })}
-                          placeholder="заметка по блоку"
-                          className="min-w-[160px] flex-1 rounded-md border border-white/[0.07] bg-white/[0.04] px-2 py-1 text-[11px] text-slate-300 outline-none placeholder:text-slate-700 focus:border-accent/40"
-                        />
-                      </div>
-                    )}
-                    {/* Quick-add exercise */}
-                    {!editorPreview && !collapsedBlocks.has(block.label) && (
-                      addExBlock === bi ? (
-                        <div className="mt-3 flex items-center gap-2 print:hidden">
-                          <input
-                            type="text"
-                            autoFocus
-                            value={addExQuery}
-                            onChange={e => setAddExQuery(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') { e.preventDefault(); addExerciseToBlock(bi, addExQuery); }
-                              if (e.key === 'Escape') { setAddExBlock(null); setAddExQuery(''); }
-                            }}
-                            placeholder="Название упражнения..."
-                            className="flex-1 rounded-xl border border-accent/30 bg-white/[0.04] px-3 py-2 text-[13px] text-slate-200 outline-none placeholder:text-slate-700 focus:border-accent/50"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => addExerciseToBlock(bi, addExQuery)}
-                            className="shrink-0 rounded-xl bg-accent/10 px-3 py-2 text-[12px] font-bold text-accent transition hover:bg-accent/20"
-                          >
-                            Добавить
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setAddExBlock(null); setAddExQuery(''); }}
-                            className="shrink-0 rounded-xl p-2 text-slate-600 transition hover:text-slate-400"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => { setAddExBlock(bi); setAddExQuery(''); }}
-                          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.025] px-3 py-2 text-[12px] font-semibold text-slate-600 transition hover:border-accent/30 hover:bg-accent/[0.06] hover:text-accent print:hidden"
-                        >
-                          <Plus size={13} />
-                          Добавить упражнение
-                        </button>
-                      )
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Warnings — screen only */}
-              {session.warnings && (
-                <div className="mt-6 rounded-2xl border border-amber-500/25 bg-gradient-to-b from-amber-500/[0.08] to-amber-500/[0.03] p-5 print:hidden">
-                  <div className="mb-2.5 flex items-center gap-2">
-                    <span className="text-base">⚠️</span>
-                    <span className="text-[9px] font-black uppercase tracking-[0.24em] text-amber-400/80">Предостережения</span>
-                  </div>
-                  <p className="text-[13px] leading-relaxed text-amber-200/75">{session.warnings}</p>
-                </div>
-              )}
-
-              {/* ── Print-only A4 landscape layout with exercise cards ── */}
-              <div className="hidden print:block" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
-                <style>{`
-                  @page { size: A4 landscape; margin: 5mm 7mm; }
-                  @media print {
-                    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-                    .print-sheet { page-break-inside: avoid; }
-                  }
-                `}</style>
-
-                {/* Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: '3px', marginBottom: '4px' }}>
-                  <div style={{ flexShrink: 0 }}>
-                    <div style={{ fontSize: '10pt', fontWeight: '900', letterSpacing: '0.12em', color: '#0f172a', lineHeight: 1 }}>PERIODYX</div>
-                    <div style={{ fontSize: '6pt', color: '#94a3b8', marginTop: '1px', letterSpacing: '0.05em' }}>AI PERFORMANCE COACH · ЗАРЕЧЬЕ ОДИНЦОВО</div>
-                  </div>
-                  <div style={{ textAlign: 'center', flex: 1, padding: '0 10px' }}>
-                    <div style={{ fontSize: '7pt', fontWeight: '700', color: '#334155' }}>{meta.sessionType === 'warmup' ? 'РАЗМИНКА' : meta.focusLabel}</div>
-                    {meta.dayGoal && <div style={{ fontSize: '6pt', color: '#64748b', marginTop: '1px' }}>Цель: {meta.dayGoal}</div>}
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: '9pt', fontWeight: '800', color: '#0f172a', lineHeight: 1 }}>{meta.player?.name}</div>
-                    <div style={{ fontSize: '6.5pt', color: '#64748b', marginTop: '1px' }}>{meta.player?.position} · {meta.date}</div>
-                  </div>
-                </div>
-
-                {/* Exercise card grid — one column per block */}
-                <div className="print-sheet" style={{
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${(session.blocks || []).length}, 1fr)`,
-                  gap: '3px',
-                  alignItems: 'start',
-                }}>
-                  {(session.blocks || []).map((block, bi) => (
-                    <div key={bi} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      {/* Block label */}
-                      <div style={{
-                        backgroundColor: '#0f172a',
-                        color: 'white',
-                        padding: '2px 5px',
-                        fontWeight: '800',
-                        fontSize: '7pt',
-                        letterSpacing: '0.14em',
-                        textAlign: 'center',
-                        borderRadius: '2px',
-                      }}>
-                        БЛОК {block.label}
-                      </div>
-
-                      {/* Exercise mini-cards */}
-                      {(block.exercises || []).map((ex, ei) => (
-                        <div key={ei} style={{
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '3px',
-                          overflow: 'hidden',
-                          backgroundColor: 'white',
-                        }}>
-                          {/* Card header: code + name */}
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: '3px',
-                            padding: '2px 4px',
-                            backgroundColor: '#f1f5f9',
-                            borderBottom: '1px solid #e2e8f0',
-                          }}>
-                            <span style={{ fontWeight: '900', color: '#0284c7', fontSize: '8pt', flexShrink: 0, lineHeight: '1.1', marginTop: '1px' }}>{ex.code}</span>
-                            <span style={{ fontWeight: '700', color: '#0f172a', fontSize: '6pt', lineHeight: '1.2', wordBreak: 'break-word' }}>{ex.name}</span>
-                          </div>
-
-                          {/* Sets · weight · cue */}
-                          <div style={{ padding: '2px 4px', backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
-                            <div style={{ fontFamily: 'monospace', fontWeight: '700', color: '#1d4ed8', fontSize: '7.5pt', textAlign: 'center', marginBottom: '1px', lineHeight: '1.1' }}>
-                              {(ex.targetSets || []).join(' · ')}
-                            </div>
-                            {ex.weightNote && (
-                              <div style={{ fontSize: '6pt', color: '#475569', lineHeight: '1.15', marginBottom: '1px' }}>{ex.weightNote}</div>
-                            )}
-                            {(ex.cue || ex.tempo) && (
-                              <div style={{ fontSize: '5.5pt', color: '#64748b', fontStyle: 'italic', lineHeight: '1.15' }}>{exerciseDescription(ex)}</div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Footer: assessment + warnings — clamped to 2 lines each to stay on page */}
-                {(session.assessment || session.warnings) && (
-                  <div style={{ marginTop: '4px', borderTop: '1px solid #e2e8f0', paddingTop: '3px', display: 'flex', gap: '10px', fontSize: '6pt' }}>
-                    {session.assessment && (
-                      <div style={{ flex: 2, overflow: 'hidden', maxHeight: '2.8em' }}>
-                        <span style={{ fontWeight: '800', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Оценка: </span>
-                        <span style={{ color: '#475569' }}>{session.assessment}</span>
-                      </div>
-                    )}
-                    {session.warnings && (
-                      <div style={{ flex: 1, overflow: 'hidden', maxHeight: '2.8em' }}>
-                        <span style={{ fontWeight: '800', color: '#b45309' }}>⚠ </span>
-                        <span style={{ color: '#92400e' }}>{session.warnings}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Data summary */}
-              <button
-                type="button"
-                onClick={() => setShowSummary(s => !s)}
-                className={`mt-5 flex items-center gap-1.5 text-[11px] font-medium text-slate-700 transition hover:text-slate-500 print:hidden ${focusRing} rounded`}
-              >
-                <ChevronDown
-                  size={13}
-                  className={`transition-transform ${showSummary ? 'rotate-180' : ''}`}
-                />
-                Данные, на которых построена тренировка
-              </button>
-              {showSummary && (
-                <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-white/[0.06] bg-white/[0.025] p-4 text-[11px] leading-relaxed text-slate-600 print:hidden">
-                  {meta.dataSummary}
-                </pre>
-              )}
-            </div>
-          )}
+          {!executionConfirmed && savedProgram}
 
           {/* ── Week Plan ── */}
           {weekPlan && weekPlan.length > 0 && (
@@ -7698,7 +7708,7 @@ export default function Home() {
             </div>
           )}
 
-          </>}{/* /playerId && */}
+          </div>}{/* /playerId && */}
 
           {/* ── Footer ── */}
           {playerId && (

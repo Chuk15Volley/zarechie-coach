@@ -203,6 +203,7 @@ test('SLO cron is authenticated, workspace-aware and runs every five minutes', (
   assert.match(source, /'zarechie', 'nkperf'/);
   assert.match(health, /operationalAlertStatus/);
   assert.match(health, /operationalNotificationKey/);
-  assert.match(dashboard, /Канал SLO-инцидентов/);
+  assert.match(dashboard, /OperationalIncidents/);
+  assert.match(readFileSync(new URL('../components/OperationalIncidents.js',import.meta.url),'utf8'), /Активные SLO-инциденты/);
   assert.ok(vercel.crons.some(job => job.path === '/api/cron/slo-alerts' && job.schedule === '*/5 * * * *'));
 });

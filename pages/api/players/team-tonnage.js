@@ -1,3 +1,5 @@
+import {playerHistoryFacts} from '../../../lib/playerHistoryFacts.mjs';
+import {factTasks} from '../../../lib/factPeriod.mjs';
 import {strengthSessionCompletion} from '../../../lib/strengthCompletion.mjs';
 import {workspaceRoster} from '../../../lib/workspaceRoster';
 import {sessionPlanFact} from '../../../lib/floorOperations.mjs';
@@ -36,13 +38,15 @@ export default async function handler(req, res) {
 
   const facts=await loadGymFacts(workspace,players.flatMap(p=>dates.map(date=>({playerId:p.id,date}))));
   const playerRows = players.map((p, pi) => {
-    const byDay = {},plannedByDay={},evidenceByDay={},executionByDay={};
+    const byDay = {},plannedByDay={},evidenceByDay={},executionByDay={},factFieldsByDay={};
     dates.forEach((d, di) => {
       const fact=facts[pi*dates.length+di],rec=fact?.record;
       const completion=rec?strengthSessionCompletion(rec,fact.rawActual,fact.rawLog):null;
       const saved=Date.parse(rec?.savedAt || rec?.generatedAt || '');
       const currentLog=fact?.rawLog && Date.parse(fact.rawLog.savedAt)>=saved && (!fact.rawActual || Date.parse(fact.rawLog.savedAt)>=Date.parse(fact.rawActual.savedAt))?fact.rawLog:null;
       const progress=sessionPlanFact(rec?.session,fact?.actual,currentLog);
+      const review=rec?playerHistoryFacts(rec,fact.rawActual,fact.rawLog,fact.supplement):null;
+      factFieldsByDay[d]=review?{completed:review.completed,missing:review.missing,rows:factTasks(review)}:null;
       executionByDay[d]=rec?{...completion,completedSets:progress.completedSets,totalSets:progress.plannedSets}:null;
       plannedByDay[d]=sessionPlanFact(rec?.session).plannedTonnage;
       byDay[d]=Number(fact?.actual?.actualTonnage) || 0;
@@ -52,7 +56,7 @@ export default async function handler(req, res) {
       id: p.id,
       name: p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim(),
       position: p.position || '',
-      byDay,plannedByDay,evidenceByDay,executionByDay,
+      byDay,plannedByDay,evidenceByDay,executionByDay,factFieldsByDay,
     };
   });
 

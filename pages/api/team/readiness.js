@@ -313,7 +313,9 @@ async function buildTeamReadiness(workspace, date) {
           source: readySixTeam ? 'ReadySix' : 'Legacy Redis',
           generatedAt: snapshot.readySixMeta?.generatedAt || null,
           revision: snapshot.readySixMeta?.revision || null,
-          sourceFreshness,
+          // Scheduling metadata is display-only; clinical status and completeness above are unchanged.
+          ...(Array.isArray(snapshot.readySixMeta?.dataQuality?.requiredSources)?{requiredSources:snapshot.readySixMeta.dataQuality.requiredSources.filter(source=>['whoop','survey','neuro','lsi'].includes(source))}:{}),
+          sourceFreshness:Object.fromEntries(Object.entries(sourceFreshness).map(([source,freshness])=>{const policy=snapshot.readySixMeta?.dataQuality?.sourceFreshness?.[source];return [source,{...freshness,...typeof policy?.required==='boolean'?{required:policy.required}:{},...policy?.nextExpectedAt?{nextExpectedAt:policy.nextExpectedAt}:{}}];})),
           missingSources,
           staleSources,
         },

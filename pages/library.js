@@ -686,7 +686,7 @@ export default function LibraryPage() {
             </div>
           )}
 
-          {apiKey && !manage && <ExerciseLibraryExplorer cards={cards} loading={loading} error={error} onRetry={load}/>}
+          {apiKey && !manage && <ExerciseLibraryExplorer apiKey={apiKey} cards={cards} loading={loading} error={error} onRetry={load}/>}
           {apiKey && manage && (
             <>
               {/* ── Tabs + Search + Sort ── */}

@@ -824,3 +824,36 @@
 .coach-premium .coach-warmup-conduct li{padding:12px 0;border-bottom:1px solid #adc9b622}
 .coach-premium .coach-warmup-conduct li p{font-size:16px}
 @media(max-width:640px){.coach-premium .coach-week-table tr>:first-child{min-width:130px;max-width:145px}.coach-premium .coach-period-comparison{padding:12px;overflow-x:auto}}
+
+/* Coach audit round 3: presentation and navigation only. */
+.coach-program-preparation>summary{cursor:pointer;padding:16px;border:1px solid #ffffff18;border-radius:16px;color:#b5c4ca;margin-top:16px;font-weight:700}
+.coach-program-preparation[open]>summary{margin-bottom:12px}
+.coach-data-signals [data-kind=updating]{color:#8dbbd0;border-color:#6bb9d333}
+.coach-global-fact-queue{display:grid;gap:12px;margin-top:16px}
+.coach-global-fact-queue article,.coach-incident-event{padding:16px;border:1px solid #ffffff15;border-radius:14px;background:#ffffff03}
+.coach-global-fact-queue article h3{font-weight:700;color:#e4e9e6;margin-bottom:10px}
+.coach-global-fact-queue article>div{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.coach-global-fact-queue button,.coach-load-field-gaps button{min-height:40px;padding:8px;border:1px solid #ffffff20;border-radius:9px;color:#a7d5d2;font-size:12px}
+.coach-load-field-gaps{font-size:11px;max-width:220px;white-space:normal;margin-top:8px}
+.coach-load-field-gaps summary{cursor:pointer;color:#d6c995}
+.coach-load-field-gaps strong{display:block;margin-top:10px}
+.coach-incident-journal{margin-top:20px;padding:16px;border:1px solid #ffffff18;border-radius:16px}
+.coach-incident-journal h3{font-weight:700;margin-bottom:12px;color:#e1e7e6}
+.coach-incident-journal details{margin-top:14px;color:#93b9c5}
+.coach-incident-event{margin-top:8px;color:#b7c4c6;font-size:12px}
+.coach-incident-event p{margin:6px 0}.coach-incident-event small{color:#91a0a7}
+.coach-health-reasons{margin-top:12px;padding-left:20px;list-style:disc;color:#d6c88e;font-size:12px}
+.coach-technique-review small{display:block;color:#9aaeb5;font-size:11px;margin:6px 0}
+.library-studio-detail>header{position:sticky;top:0;z-index:4;background:#101c22;border-bottom:1px solid #ffffff20;padding:12px}
+.library-video-disclosure{margin-top:16px}.library-video-disclosure>summary{cursor:pointer;padding:12px;color:#b1c9ce;border:1px solid #ffffff18;border-radius:12px}
+.library-video-disclosure .library-studio-media{max-height:300px;margin-top:12px}
+.coach-warmup-sticky{position:sticky;top:0;z-index:8;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px;background:#101b22;border:1px solid #ffffff26;border-radius:12px}
+.coach-warmup-sticky button{margin:0!important;min-height:44px}.coach-warmup-sticky strong{margin-right:auto}
+.coach-warmup-conduct article h2{scroll-margin-top:170px}
+.coach-warmup-conduct:fullscreen,.coach-warmup-conduct.is-fullscreen{background:#0c171e;overflow:auto;padding:24px;color:#d4dddf}
+.coach-warmup-conduct.is-fullscreen:not(:fullscreen){position:fixed;inset:0;z-index:100}
+@media(max-width:600px){.coach-warmup-sticky{gap:4px;padding:8px}.coach-warmup-sticky strong{width:100%}.coach-warmup-sticky button{font-size:11px;padding:8px!important}.library-studio-detail>header h3{font-size:17px}.coach-warmup-conduct.is-fullscreen{padding:12px}}
+@media print{.coach-program-preparation,.coach-warmup-sticky{display:none}}
+
+.library-studio-detail{position:relative;overflow:visible}
+.library-studio-detail>header{border-radius:20px 20px 0 0}

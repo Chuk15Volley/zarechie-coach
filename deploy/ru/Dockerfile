@@ -9,6 +9,8 @@ RUN npm run build
 
 FROM ${NODE_IMAGE} AS runtime
 ARG SOURCE_REVISION
+ARG GYM_BUILD_AT
+ENV GYM_BUILD_AT=${GYM_BUILD_AT}
 ENV SOURCE_REVISION=${SOURCE_REVISION}
 LABEL org.opencontainers.image.revision=${SOURCE_REVISION}
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
@@ -20,6 +22,7 @@ COPY --from=build --chown=node:node /app/scripts/gym-container-env.mjs ./scripts
 COPY --from=build --chown=node:node /app/lib/gymValkeyTransport.mjs /app/lib/gymBackupStore.mjs ./lib/
 COPY --from=build --chown=node:node /app/scripts/gym-runtime.mjs /app/scripts/gym-team-worker.mjs ./scripts/
 COPY --from=build --chown=node:node /app/lib/teamQueue.mjs /app/lib/teamQueueWorker.mjs /app/lib/teamQueuePolicy.mjs /app/lib/teamPublicationPolicy.mjs ./lib/
+RUN node -e "require('node:fs').writeFileSync('/app/gym-build-metadata.json', JSON.stringify({builtAt:new Date().toISOString()}))"
 USER 1000:1000
 EXPOSE 3000
 CMD ["node", "--import", "./scripts/gym-container-env.mjs", "./scripts/gym-runtime.mjs"]

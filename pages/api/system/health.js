@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs';
+import {healthReasons,releasePassport} from '../../../lib/coachOperationsPresentation.mjs';
 import {generationMonitor} from '../../../lib/generationMonitoring';
 import { isAuthorized } from '../../../lib/auth';
 import { redis, redisPipeline } from '../../../lib/redis';
@@ -77,6 +79,7 @@ export default async function handler(req, res) {
     ? 'error'
     : generationPerformance.needsAttention || errors24h > 0 || !config.readySix || !config.ai || !backupFresh || !recoveryFresh || !readinessPerformance.healthy ? 'warning' : 'healthy';
   res.setHeader('Cache-Control', 'no-store');
+  let buildMetadata={};try{buildMetadata=JSON.parse(readFileSync('gym-build-metadata.json','utf8'));}catch{}
   return res.status(200).json({
     status,
     checkedAt: new Date().toISOString(),
@@ -97,11 +100,8 @@ export default async function handler(req, res) {
     alerting: operationalAlertStatus(),
     notifications: (Array.isArray(rawNotifications) ? rawNotifications : []).map(parseJson).filter(Boolean).slice(0, 30),
     readySixMode,
-    release: {
-      commit: process.env.VERCEL_GIT_COMMIT_SHA || 'local',
-      deploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
-      environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
-    },
+    release: releasePassport({...process.env,GYM_BUILD_AT:process.env.GYM_BUILD_AT || buildMetadata.builtAt}),
+    activeReasons: healthReasons({checks:{historyIntegrity:historyIntegrity.ok},services:{redis:redisOk && redisReadWrite && config.redis,readySix:config.readySix,ai:config.ai,trainerAuth:config.trainerKey,backup:backupFresh,recovery:recoveryFresh},generationPerformance,errors24h,readinessPerformance}),
     latestSnapshotId: latestBackup?.id || null,
     backup: latestBackup ? { ...latestBackup, ageHours: Math.round(backupAgeHours * 10) / 10, fresh: backupFresh } : null,
     recovery: latestRecovery ? { ...latestRecovery, ageHours: Math.round(recoveryAgeHours * 10) / 10, fresh: recoveryFresh } : null,
