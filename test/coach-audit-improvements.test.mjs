@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {coachDate,trainingTitle,factAmount,commentRpe,activeServiceProblems,sourceStatusLabel} from '../lib/coachPresentation.mjs';
+import {coachDate,trainingTitle,factAmount,commentRpe,activeServiceProblems,sourceStatusLabel,budgetLabel} from '../lib/coachPresentation.mjs';
 import {libraryEquipment,libraryRegion,libraryGroup,libraryMatches} from '../lib/exerciseLibraryView.mjs';
 import {completedProgramSnapshot,SAVE_UNEXECUTED_PROGRAM} from '../lib/completedProgramGuard.mjs';
 
@@ -52,4 +52,11 @@ test('save API rejects a completed legacy alias before quality/history writes in
   await handler({method:'POST',body:{workspace,playerId:'1',date:'2026-10-14',session:record.session}},res);
   assert.equal(res.code,409);assert.match(res.data.error,/Выполненная программа защищена/);assert.equal(writes,0);
  }
+});
+
+
+test('zero capped budget is not mislabelled missing history; bodyweight set budget still has a valid percent',()=>{
+ assert.equal(budgetLabel({status:'within',sets:0,tonnage:0,utilizationPercent:0}),'Процент не рассчитан');
+ assert.equal(budgetLabel({status:'calibrating',sets:40,tonnage:2000,utilizationPercent:100}),'Недостаточно истории');
+ assert.equal(budgetLabel({status:'within',sets:40,tonnage:0,utilizationPercent:80}),'80%');
 });

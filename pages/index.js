@@ -1,4 +1,4 @@
-import {coachDate,trainingTitle,activeServiceProblems,factAmount} from '../lib/coachPresentation.mjs';
+import {coachDate,trainingTitle,activeServiceProblems,factAmount,budgetLabel} from '../lib/coachPresentation.mjs';
 import TeamFactOverview from '../components/TeamFactOverview';
 import {weekFactPeriod} from '../lib/coachFactSurface.mjs';
 import {ExerciseLibraryPicker} from '../components/ExerciseLibraryExplorer';
@@ -5579,8 +5579,8 @@ export default function Home() {
                             </button>
                             <OverviewSignals issues={readinessIssues(readinessData?.players?.find(item=>String(item.id)===String(p.id)),readinessData)}/>
                             <div className="mt-3">
-                              <div className="flex items-center justify-between text-[9px]"><span className="font-bold text-slate-600">Бюджет</span><span className={`font-black tabular-nums ${athlete.budget.status === 'over' ? 'text-rose-300' : athlete.budget.status === 'near' ? 'text-amber-200' : 'text-slate-400'}`}>{athlete.budget.tonnage>0 && athlete.budget.status!=='calibrating'?`${athlete.budget.utilizationPercent}%`:'Недостаточно истории'}</span></div>
-                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.05]"><div className={`h-full rounded-full ${budgetTone}`} style={{ width: `${athlete.budget.status==='calibrating'?0:Math.min(100, athlete.budget.utilizationPercent)}%` }} /></div>
+                              <div className="flex items-center justify-between text-[9px]"><span className="font-bold text-slate-600">Бюджет</span><span className={`font-black tabular-nums ${athlete.budget.status === 'over' ? 'text-rose-300' : athlete.budget.status === 'near' ? 'text-amber-200' : 'text-slate-400'}`}>{budgetLabel(athlete.budget)}</span></div>
+                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.05]"><div className={`h-full rounded-full ${budgetTone}`} style={{ width: `${athlete.budget.status==='calibrating' || !(athlete.budget.sets>0 || athlete.budget.tonnage>0)?0:Math.min(100, athlete.budget.utilizationPercent)}%` }} /></div>
                               <div className="mt-1.5 flex items-center justify-between text-[8px] text-slate-700"><span>{athlete.budget.source}</span><span>{compactLoad(athlete.budget.tonnage)}</span></div>
                               <p className="mt-1 text-xs text-slate-300">База: {athlete.budget.referenceSets ?? '—'} подходов · {athlete.budget.referenceTonnage!=null?compactLoad(athlete.budget.referenceTonnage):'нет тоннажа'}. Факт недели: {compactLoad(athlete.totals?.actualTonnage)}; полноту проверяйте в занятиях.</p>{athlete.budget.rtp && <div className="mt-1 text-[8px] font-bold text-violet-300/60">RTP {athlete.budget.rtp.phase} · лимит {athlete.budget.rtp.volumeCap}%</div>}
                             </div>
