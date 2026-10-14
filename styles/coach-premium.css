@@ -777,3 +777,30 @@
 .coach-premium .coach-team-fact-tasks>summary,.coach-premium .coach-fact-scope>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;padding:10px 0;color:#b6d5c2;font-size:13px;}
 .coach-premium .coach-team-fact-tasks[open]>.coach-team-fact-grid{margin-top:12px;}
 @media(max-width:440px){.library-studio-filters{grid-template-columns:minmax(0,1fr);}.library-studio-media:has(iframe){min-height:200px;}}
+
+/* Coach audit: compact evidence and consistent readable controls; athlete skin is untouched. */
+.coach-premium :is(.text-slate-500,.text-slate-600,.text-slate-700){color:#a9b6b3;}
+.coach-premium .coach-today-recommendation details{margin-top:10px;}
+.coach-premium .coach-today-recommendation summary,.coach-premium .coach-technique-disclosure summary{cursor:pointer;color:#b7d9cb;font-weight:600;min-height:44px;padding:10px 0;}
+.coach-premium .coach-today-recommendation li{margin:8px 0;line-height:1.5;}
+.coach-premium .coach-today-evidence{display:flex;flex-wrap:wrap;gap:10px;color:#b5c2be;font-size:12px;margin:12px 0;}
+.coach-premium .coach-exercise-prescription{grid-row:1;grid-column:1;}
+.coach-premium .coach-exercise-technique{grid-row:1;grid-column:2;}
+.coach-premium .coach-exercise-body{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px;padding:20px;}
+.coach-premium .coach-video-panel.is-empty .coach-video-frame{aspect-ratio:auto;box-shadow:none;}
+.coach-premium .coach-video-panel.is-empty .coach-video-empty{padding:14px;min-height:0;gap:8px;}
+.coach-premium .coach-video-panel.is-empty .coach-video-empty>span{display:none;}
+.coach-premium .coach-source-snapshot,.coach-premium .coach-active-problems{padding:14px;border:1px solid #52615a;border-radius:12px;font-size:13px;color:#d2ddd8;margin:14px 0;line-height:1.6;}
+.coach-premium .library-studio-filters{grid-template-columns:repeat(3,minmax(0,1fr));}
+.coach-premium .library-favorite{padding:10px;border:1px solid #4b6559;border-radius:10px;color:#c5e6d8;margin:10px 0;}
+.coach-premium button:disabled{cursor:not-allowed;}
+.coach-premium .coach-overview-table th{position:sticky;top:0;z-index:1;background:#1b2521;}
+@media(min-width:1024px){.coach-premium .coach-home-roster{padding:16px;}.coach-premium .coach-home-player{padding:10px;}.coach-premium .coach-home-header h1{font-size:clamp(30px,3vw,44px);}}
+@media(max-width:760px){.coach-premium .coach-exercise-body{grid-template-columns:minmax(0,1fr);padding:16px;}.coach-premium .coach-exercise-prescription,.coach-premium .coach-exercise-technique{grid-column:1;grid-row:auto;}.coach-premium .coach-exercise-technique{order:2;}.coach-premium .coach-exercise-prescription{order:1;}.coach-premium .library-studio-filters{grid-template-columns:minmax(0,1fr);}}
+@media print{.coach-premium .coach-technique-disclosure{display:none;}}
+.coach-premium .coach-source-highlights{font-size:12px;color:#e2d6b3;margin:8px 0;}
+.coach-premium .coach-source-comparison{padding:14px;border:1px solid #52615a;border-radius:12px;margin:12px 0;color:#cedbd5;font-size:13px;line-height:1.6;}
+.coach-premium .coach-source-comparison summary{cursor:pointer;font-weight:700;}
+.coach-premium .coach-source-comparison>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:14px 0;}
+@media(max-width:760px){.coach-premium .coach-source-comparison>div{grid-template-columns:minmax(0,1fr);}}
+.coach-premium .coach-exercise-plan-editor>summary{cursor:pointer;min-height:44px;color:#b7d9cb;font-size:13px;font-weight:600;padding:12px 0;}

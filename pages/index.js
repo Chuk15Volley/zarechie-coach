@@ -1,3 +1,4 @@
+import {coachDate,trainingTitle,activeServiceProblems,factAmount} from '../lib/coachPresentation.mjs';
 import TeamFactOverview from '../components/TeamFactOverview';
 import {weekFactPeriod} from '../lib/coachFactSurface.mjs';
 import {ExerciseLibraryPicker} from '../components/ExerciseLibraryExplorer';
@@ -310,7 +311,7 @@ function RMChart({ history, fields }) {
             return (
               <text key={h.date} x={xFn(i)} y={H - 4} textAnchor="middle"
                 fill="rgba(255,255,255,0.2)" fontSize="8">
-                {h.date.slice(5).replace('-', '/')}
+                {coachDate(h.date)}
               </text>
             );
           })}
@@ -387,13 +388,13 @@ function TrendCharts({ data, showNeuro = true }) {
           <text x={W - PAD.right} y={baseY - 3} textAnchor="end" fill="rgba(255,255,255,0.3)" fontSize="8">base {baseline.toFixed(1)}</text>
           {cmj.map((p, i) => {
             if (n > 6 && i % Math.ceil(n / 5) !== 0 && i !== n - 1) return null;
-            return <text key={i} x={xFn(i)} y={H - 4} textAnchor="middle" fill="rgba(255,255,255,0.2)" fontSize="7">{p.date.slice(5).replace('-', '/')}</text>;
+            return <text key={i} x={xFn(i)} y={H - 4} textAnchor="middle" fill="rgba(255,255,255,0.2)" fontSize="7">{coachDate(p.date)}</text>;
           })}
           <path d={d} fill="none" stroke={lineColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
           {cmj.map((p, i) => <circle key={i} cx={xFn(i)} cy={yFn(p.cmj)} r="2.5" fill={lineColor} />)}
         </svg>
         <p className="mt-1 text-[10px] text-slate-500">
-          Последний CMJ ({cmj[n - 1].date.slice(5).replace('-', '/')}): <span className="font-bold text-slate-300">{last.toFixed(1)} см</span>{' '}
+          Последний CMJ ({coachDate(cmj[n - 1].date)}): <span className="font-bold text-slate-300">{last.toFixed(1)} см</span>{' '}
           (<span className={drop >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{drop >= 0 ? '+' : ''}{drop}%</span> от baseline {baseline.toFixed(1)})
         </p>
       </div>
@@ -507,7 +508,7 @@ function TSBChart({ data }) {
         <path d={path('tsb')} fill="none" stroke="#e2e8f0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
         {pts.map((p, i) => {
           if (n > 8 && i % Math.ceil(n / 6) !== 0 && i !== n - 1) return null;
-          return <text key={i} x={xFn(i)} y={H - 4} textAnchor="middle" fill="rgba(255,255,255,0.2)" fontSize="7">{p.date.slice(5).replace('-', '/')}</text>;
+          return <text key={i} x={xFn(i)} y={H - 4} textAnchor="middle" fill="rgba(255,255,255,0.2)" fontSize="7">{coachDate(p.date)}</text>;
         })}
       </svg>
       <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-500">
@@ -1093,7 +1094,7 @@ function ExerciseVideoPanel({name,apiKey,editable=true}) {
     finally{clearTimeout(timer);if(version===epoch.current)setSavingVideo(false);}
   }
   const openEdit=()=>{setVideoInput(videoUrl || '');setVideoError('');setEditingVideo(true);};
-  return <div className="coach-video-panel print:hidden">
+  return <div className={`coach-video-panel print:hidden ${!videoId?'is-empty':''}`}>
     <div className="coach-video-frame">{videoId?playing?<iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`} title={`Видео техники · ${name}`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:<button type="button" className="coach-video-poster" aria-label={`Смотреть видео техники: ${name}`} onClick={()=>setPlaying(true)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt={`Техника ${name}`} loading="lazy"/><span className="coach-video-shade"/><span className="coach-video-play"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 5v14l11-7z"/></svg></span><span className="coach-video-caption">Смотреть технику<span>↗</span></span>
     </button>:<div className="coach-video-empty"><span>{YT_ICON}</span><strong>Видео ещё не добавлено</strong>{editable?<button type="button" onClick={openEdit}>Добавить YouTube-видео</button>:<p>Техника выполнения описана ниже.</p>}</div>}</div>
@@ -1258,8 +1259,7 @@ function ExerciseCard({
       {hasConflict && <div className="coach-exercise-notice">⚠ Ограничение для этого упражнения.{!preview && <button type="button" onClick={handleSuggestAlt} disabled={altLoading}>{altLoading?'Подбор…':'Подобрать альтернативу'}</button>}{altSuggestion && <p>{altSuggestion}</p>}</div>}
       <div className="coach-exercise-body">
         <aside className="coach-exercise-technique">
-          <div className="coach-section-caption"><span>01</span> Видео техники</div>
-          <ExerciseVideoPanel name={name} apiKey={apiKey} editable={!preview}/>
+          <details className="coach-technique-disclosure"><summary>Видео техники</summary><ExerciseVideoPanel name={name} apiKey={apiKey} editable={!preview}/></details>
           <div className="coach-exercise-instruction"><div className="coach-section-caption"><span>02</span> Выполнение {hasDescriptionOverride && !preview && <button type="button" onClick={onResetDescription} title="Вернуть автоматически сформированное описание"><RotateCcw size={12}/>Исходное</button>}</div>
             {preview?<p>{displayedDescription || 'Описание пока не добавлено.'}</p>:<AutoResizeTextarea value={displayedDescription} onChange={onChangeDescription} ariaLabel={`${code} · описание выполнения`} minRows={3} placeholder="Опишите технику выполнения…" className="coach-description-input"/>}
             {!preview && <small>Правки увидит игрок после сохранения программы.</small>}
@@ -1267,8 +1267,8 @@ function ExerciseCard({
         </aside>
         <div className="coach-exercise-prescription">
           <div className="coach-section-caption"><span>03</span> Нагрузка по плану</div>
-          <ExercisePrescription weightKg={weightKg} sets={targetSets} targetRpeMax={targetRpeMax} loadUnits={loadUnitsForExercise({name,loadUnits})}/>
-          {!preview && <div className="coach-exercise-plan-editor">
+          <ExercisePrescription weightNote={weightNote} weightKg={weightKg} sets={targetSets} targetRpeMax={targetRpeMax} loadUnits={loadUnitsForExercise({name,loadUnits})}/>
+          {!preview && <details className="coach-exercise-plan-editor"><summary>Изменить подходы, вес, RPE и темп</summary>
             <div className="coach-field-heading">Повторы / время каждого подхода</div>
             <div className="coach-set-inputs" aria-label="Редактирование подходов">{targetSets.map((set,i)=><div key={i}><span>{String(i+1).padStart(2,'0')}</span><input aria-label={`${code} · подход ${i+1} · повторы или время`} value={set} onChange={e=>onChangeSet(i,e.target.value)} placeholder="—"/>{targetSets.length > 1 && onRemoveSet && <button type="button" aria-label={`Удалить подход ${i + 1}`} onClick={()=>onRemoveSet(i)}><X size={12}/></button>}</div>)}<button type="button" aria-label={`${code} · добавить подход`} onClick={onAddSet}><Plus size={15}/></button></div>
             <div className="coach-plan-fields">
@@ -1278,9 +1278,9 @@ function ExerciseCard({
               {isPairableFreeWeightExercise(name) && <label><span>Количество снарядов</span><PremiumSelect value={loadUnitsForExercise({name,loadUnits})} onChange={value=>onChangeLoadUnits?.(Number(value))} options={[{value:1,label:'1 снаряд'},{value:2,label:'2 снаряда'}]} title="Количество гантелей или гирь для расчёта тоннажа" compact/></label>}
             </div>
             <label className="coach-plan-comment"><span>Комментарий к нагрузке</span><AutoResizeTextarea ariaLabel={`${code} · комментарий к нагрузке`} value={weightNote || ''} onChange={onChangeWeight} minRows={2} className="coach-load-comment-input" placeholder="Например, по усилию RPE 7–8"/></label>
-          </div>}
+          </details>}
           {preview && tempo && <p className="coach-preview-tempo">Темп <strong>{tempo}</strong></p>}
-          {preview && weightNote && <p className="coach-preview-note">{weightNote}</p>}
+          {preview && weightNote && weightNote.trim()!==`${weightKg} кг` && <p className="coach-preview-note">{weightNote}</p>}
           {!preview && <div className="coach-exercise-progression">{focus==='inseason_strength'?<StrengthProgressionHint proposal={strengthProposal} error={progressionError} loading={progressionLoading} onRetry={onRetryProgression} onApply={onApplyStrengthProgression}/>:prevKg ? (
           <div className="mt-1 flex flex-wrap items-center gap-1.5 print:hidden">
             <span className="text-[11px] text-slate-600">
@@ -1396,7 +1396,7 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery, onApply })
     return (
       <section className="mt-4 space-y-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.04] p-4" aria-live="polite">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs font-bold text-cyan-300">ReadySix · состояние и расписание</span>
+          <span className="text-xs font-bold text-cyan-300">ReadySix · текущие данные состояния и расписания</span>
           <a href="https://readysix.app/dashboard" target="_blank" rel="noreferrer" className="text-xs text-slate-400 underline">Открыть аналитику</a>
         </div>
         {rec?.planning?.preliminary && <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
@@ -1411,7 +1411,7 @@ function DecisionDataPanel({ data, loading, workspace, coachRecovery, onApply })
         {rec && <div className="space-y-2">
           <p className="text-xs text-slate-400">{data.targetDate} · {rec.calendar?.todayEvent?.type === 'game' ? 'День матча' : rec.calendar?.nextGame ? `Следующая игра ${rec.calendar.nextGame} · MD−${rec.calendar.daysToGame}` : 'Дата ближайшей игры не передана'}</p>
           <p className="text-sm font-semibold text-white">Предложение: {rec.label}</p>
-          {rec.reasons.map((reason, index) => <p key={index} className="text-xs text-slate-300">{reason}</p>)}
+          {rec.reasons.filter(reason=>reason!==state?.detail && reason!==rec.label).map((reason, index) => <p key={index} className="text-xs text-slate-300">{reason}</p>)}
           {rec.warnings.filter(warning => !warning.startsWith('Предварительная программа на ')).map((warning, index) => <p key={index} className="text-xs text-amber-300">{warning}</p>)}
           {rec.canApply && <button type="button" onClick={() => onApply?.(rec)} className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-xs font-semibold text-cyan-200">Применить вариант для зала</button>}
           <p className="text-[11px] text-slate-500">Применение меняет настройки программы. Генерация и сохранение — отдельным действием тренера.</p>
@@ -2197,6 +2197,7 @@ export default function Home() {
   const currentSaveViewRef = useRef(null);
   currentSaveViewRef.current = {workspace,playerId,date,session};
   const executionConfirmed=playerExecution?.completed && playerExecution.date===date && playerExecution.savedAt===pendingSaved?.savedAt && !pendingSaved?.draft;
+  useEffect(()=>{if(executionConfirmed){setEditorPreview(true);setRescheduleOpen(false);}},[executionConfirmed]);
   const openingDayRef=useRef(calendarToday());
   useEffect(()=>{const wake=()=>{if(document.hidden)return;const today=calendarToday();if(today===openingDayRef.current)return;openingDayRef.current=today;const view=currentSaveViewRef.current;if(!view?.playerId && !view?.session)setDate(today);};window.addEventListener('pageshow',wake);document.addEventListener('visibilitychange',wake);return()=>{window.removeEventListener('pageshow',wake);document.removeEventListener('visibilitychange',wake);};},[]);
   const matchDayManualReview = isManualMatchDayFocus(focus);
@@ -2217,6 +2218,8 @@ export default function Home() {
   const [calData, setCalData] = useState(null);
   const [calLoading, setCalLoading] = useState(false);
   const calendarRequestRef = useRef(0);
+  const [weekConflictsOnly,setWeekConflictsOnly] = useState(false);
+  const [liveAttentionOnly,setLiveAttentionOnly] = useState(false);
   const [weekBatchSelected, setWeekBatchSelected] = useState(new Set());
   const [weekBatchDraft, setWeekBatchDraft] = useState(null);
   const [weekBatchSaving, setWeekBatchSaving] = useState(false);
@@ -2717,7 +2720,7 @@ export default function Home() {
   }, [filteredPlayers, playerIndex]);
 
   const keyConnected = apiKey && !playersError;
-  const liveRows = useMemo(() => players.map(player => ({ player, status: teamStatus[player.id] || {} })), [players, teamStatus]);
+  const liveRows = useMemo(() => players.map(player => ({ player, status: teamStatus[player.id] || {} })).sort((a,b)=>(Number(!!b.status.live?.alerts?.length)*10+Number(!!b.status.pendingCommands?.length)*5+Number(!!b.status.live?.started))-(Number(!!a.status.live?.alerts?.length)*10+Number(!!a.status.pendingCommands?.length)*5+Number(!!a.status.live?.started))), [players, teamStatus]);
   const liveSummary = useMemo(() => liveRows.reduce((summary, row) => {
     if (row.status.live?.started) summary.started += 1;
     if (row.status.live?.completed || row.status.live?.endedEarly) summary.completed += 1;
@@ -3782,7 +3785,7 @@ export default function Home() {
   }
 
   async function handleSave() {
-    if (!session || !meta || session.kind === 'restricted_day_plan' || programSaveLockRef.current) return;
+    if (!session || !meta || session.kind === 'restricted_day_plan' || programSaveLockRef.current || executionConfirmed) return;
     programSaveLockRef.current = true;
     const submittedSession = session;
     const editPlayerId=programEditPlayerId(playerId,meta.sourcePlayerId);
@@ -3833,7 +3836,7 @@ export default function Home() {
 
   async function handleRescheduleSession() {
     const fromDate = pendingSaved?.date;
-    if (!fromDate || !rescheduleDate || !playerId) return;
+    if (!fromDate || !rescheduleDate || !playerId || executionConfirmed) return;
     setRescheduling(true);
     try {
       const res = await fetch('/api/programs/reschedule', {
@@ -4551,7 +4554,7 @@ export default function Home() {
               {/* Week date range label */}
               {calWeekStart && (
                 <p className="text-center text-[11px] font-semibold text-slate-600">
-                  {calWeekStart.slice(5).replace('-', '/')} — {addDaysToStr(calWeekStart, 6).slice(5).replace('-', '/')}
+                  {coachDate(calWeekStart)} — {coachDate(addDaysToStr(calWeekStart, 6))}
                 </p>
               )}
               {/* Session count summary */}
@@ -4640,7 +4643,7 @@ export default function Home() {
           )}
 
           {/* Player list (workouts section only) */}
-          {mainSection === 'workouts' && (
+          {mainSection === 'workouts' && (playerId || !keyConnected || leftTab==='day') && (
           <div className="sidebar-context sidebar-player-scroll min-h-0 flex-1 overflow-y-auto px-3 py-2.5">
             {!keyConnected && (
               <p className="px-3 py-5 text-[11px] text-slate-600">Введи ключ чтобы загрузить состав</p>
@@ -5024,7 +5027,7 @@ export default function Home() {
                     {p.position || '—'}
                     {p.lastSessionDate && (
                       <span className="ml-1.5 opacity-50">
-                        {p.lastSessionDate.slice(5).replace('-', '/')}
+                        {coachDate(p.lastSessionDate)}
                       </span>
                     )}
                   </div>
@@ -5471,7 +5474,7 @@ export default function Home() {
                   <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200/45">План → факт → решение</div>
                   <h2 className="mt-1 text-2xl font-black tracking-tight text-white">Неделя команды</h2>
                   <p className="mt-1 text-[12px] text-slate-500">
-                    {calWeekStart && `${calWeekStart.slice(5).replace('-', '/')} — ${addDaysToStr(calWeekStart, 6).slice(5).replace('-', '/')}`}
+                    {calWeekStart && `${coachDate(calWeekStart)} — ${coachDate(addDaysToStr(calWeekStart, 6))}`}
                     {' · '}план, выполнение и точки внимания по каждому игроку
                   </p>
                 </div>
@@ -5520,7 +5523,7 @@ export default function Home() {
                   {[
                     { label: 'Сессии', value: calData.summary.sessions || 0, sub: `${calData.summary.completed || 0} завершено`, tone: 'text-white' },
                     { label: 'Плановый объём', value: compactLoad(calData.summary.plannedTonnage), sub: `${calData.summary.plannedSets || 0} подходов`, tone: 'text-cyan-100' },
-                    { label: 'Бюджет команды', value: `${calData.summary.utilizationPercent || 0}%`, sub: compactLoad(calData.summary.budgetTonnage), tone: calData.summary.utilizationPercent > 103 ? 'text-rose-300' : calData.summary.utilizationPercent >= 90 ? 'text-amber-200' : 'text-emerald-200' },
+                    { label: 'План / бюджет команды', value: calData.summary.budgetTonnage>0?`${calData.summary.utilizationPercent || 0}%`:'Нет базы', sub: compactLoad(calData.summary.budgetTonnage), tone: calData.summary.utilizationPercent > 103 ? 'text-rose-300' : calData.summary.utilizationPercent >= 90 ? 'text-amber-200' : 'text-emerald-200' },
                     { label: 'Конфликты', value: calData.summary.conflicts || 0, sub: calData.summary.overBudget ? `${calData.summary.overBudget} выше бюджета` : `${calData.summary.calibrating || 0} калибруются`, tone: calData.summary.conflicts ? 'text-amber-200' : 'text-emerald-200' },
                   ].map(card => (
                     <div key={card.label} className="rounded-2xl border border-white/[0.07] bg-gradient-to-br from-white/[0.035] to-transparent p-4">
@@ -5532,6 +5535,7 @@ export default function Home() {
                 </div>
               )}
 
+              <div className="coach-overview-filters"><button type="button" aria-pressed={weekConflictsOnly} onClick={()=>setWeekConflictsOnly(v=>!v)}>Только конфликты</button></div><p className="coach-overview-caption">Бюджет — ориентир относительно предыдущих недель: учитываются подходы и тоннаж, источником базы может быть план или факт. Процент отражает плановый объём, не медицинский допуск. Пропуски факта показаны отдельно.</p>
               {calData && calData.players.length > 0 ? (
                 <>
                 <div className="overflow-x-auto rounded-2xl border border-white/[0.07] bg-[#091116]/80 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
@@ -5546,7 +5550,7 @@ export default function Home() {
                             <th key={d} className={`min-w-[128px] px-2 py-3 text-left ${isToday ? 'bg-cyan-300/[0.035] text-cyan-200' : 'text-slate-600'}`}>
                               <div className="text-[10px] font-black uppercase tracking-wide">{dow}</div>
                               <div className={`mt-0.5 text-[9px] font-semibold ${isToday ? 'text-cyan-200/50' : 'text-slate-700'}`}>
-                                {d.slice(5).replace('-', '/')}
+                                {coachDate(d)}
                               </div>
                             </th>
                           );
@@ -5554,7 +5558,7 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(calData.athletes || []).map((athlete, pi) => {
+                      {(calData.athletes || []).filter(athlete=>!weekConflictsOnly || athlete.conflicts?.length).map((athlete, pi) => {
                         const p = athlete.player;
                         const budgetTone = athlete.budget.status === 'over' ? 'bg-rose-300' : athlete.budget.status === 'near' ? 'bg-amber-300' : athlete.budget.status === 'calibrating' ? 'bg-slate-500' : 'bg-emerald-300';
                         return (
@@ -5575,10 +5579,10 @@ export default function Home() {
                             </button>
                             <OverviewSignals issues={readinessIssues(readinessData?.players?.find(item=>String(item.id)===String(p.id)),readinessData)}/>
                             <div className="mt-3">
-                              <div className="flex items-center justify-between text-[9px]"><span className="font-bold text-slate-600">Бюджет</span><span className={`font-black tabular-nums ${athlete.budget.status === 'over' ? 'text-rose-300' : athlete.budget.status === 'near' ? 'text-amber-200' : 'text-slate-400'}`}>{athlete.budget.utilizationPercent}%</span></div>
-                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.05]"><div className={`h-full rounded-full ${budgetTone}`} style={{ width: `${Math.min(100, athlete.budget.utilizationPercent)}%` }} /></div>
+                              <div className="flex items-center justify-between text-[9px]"><span className="font-bold text-slate-600">Бюджет</span><span className={`font-black tabular-nums ${athlete.budget.status === 'over' ? 'text-rose-300' : athlete.budget.status === 'near' ? 'text-amber-200' : 'text-slate-400'}`}>{athlete.budget.tonnage>0 && athlete.budget.status!=='calibrating'?`${athlete.budget.utilizationPercent}%`:'Недостаточно истории'}</span></div>
+                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.05]"><div className={`h-full rounded-full ${budgetTone}`} style={{ width: `${athlete.budget.status==='calibrating'?0:Math.min(100, athlete.budget.utilizationPercent)}%` }} /></div>
                               <div className="mt-1.5 flex items-center justify-between text-[8px] text-slate-700"><span>{athlete.budget.source}</span><span>{compactLoad(athlete.budget.tonnage)}</span></div>
-                              {athlete.budget.rtp && <div className="mt-1 text-[8px] font-bold text-violet-300/60">RTP {athlete.budget.rtp.phase} · лимит {athlete.budget.rtp.volumeCap}%</div>}
+                              <p className="mt-1 text-xs text-slate-300">База: {athlete.budget.referenceSets ?? '—'} подходов · {athlete.budget.referenceTonnage!=null?compactLoad(athlete.budget.referenceTonnage):'нет тоннажа'}. Факт недели: {compactLoad(athlete.totals?.actualTonnage)}; полноту проверяйте в занятиях.</p>{athlete.budget.rtp && <div className="mt-1 text-[8px] font-bold text-violet-300/60">RTP {athlete.budget.rtp.phase} · лимит {athlete.budget.rtp.volumeCap}%</div>}
                             </div>
                           </td>
                           {(athlete.days || []).map(day => {
@@ -5596,13 +5600,13 @@ export default function Home() {
                                 {day.hasSession ? <div className={`min-h-[94px] rounded-xl border p-2.5 transition ${selected ? 'border-cyan-300/35 bg-cyan-300/[0.08]' : dayConflicts.length || generalConflict ? 'border-amber-300/15 bg-amber-300/[0.025]' : 'border-white/[0.055] bg-white/[0.018]'}`}>
                                   <div className="flex items-start justify-between gap-2">
                                     <button type="button" onClick={() => openOverviewPlayer(p,d)} className="min-w-0 flex-1 text-left">
-                                      <div className="truncate text-[10px] font-black text-slate-300">{day.label}</div>
+                                      <div className="truncate text-[10px] font-black text-slate-300">{trainingTitle(day.label)}</div>
                                     </button>
                                     {selectable && <button type="button" onClick={() => toggleWeekBatch(String(p.id), d)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg border transition ${selected ? 'border-cyan-200/40 bg-cyan-200 text-[#071013]' : 'border-white/[0.09] text-slate-600 hover:text-cyan-200'}`} title="Добавить в пакет адаптации">{selected ? <Check size={12} strokeWidth={3} /> : <Square size={12} />}</button>}
                                   </div>
-                                  <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-600"><span>{day.plannedSets} подх.</span><span>·</span><span>{compactLoad(day.plannedTonnage)}</span></div>
-                                  {day.completed ? <div className="mt-2"><div className="flex items-center justify-between text-[8px]"><span className="font-bold text-emerald-200/60">Факт</span><span className="text-slate-500">{day.completionPercent}%</span></div><div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-emerald-300" style={{ width: `${Math.min(100, day.completionPercent)}%` }} /></div></div> : <div className={`mt-2 text-[8px] font-semibold ${day.started ? 'text-cyan-200/60' : 'text-slate-700'}`}>{day.started ? 'Выполняется сейчас' : 'Запланировано'}</div>}
-                                  <OverviewSignals issues={day.date>todayISO() && day.loadEvidence?.source==='missing'?[]:loadEvidenceLabel(day.loadEvidence)?[loadEvidenceLabel(day.loadEvidence)]:[]}/>
+                                  <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-600"><span>{day.plannedSets} подх.</span><span>·</span><span>План {compactLoad(day.plannedTonnage)}</span></div>
+                                  {day.completed ? <div className="mt-2"><div className="flex items-center justify-between text-[8px]"><span className="font-bold text-emerald-200/60">Подходы завершены</span><span className="text-slate-500">{day.completionPercent}%</span></div><div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-emerald-300" style={{ width: `${Math.min(100, day.completionPercent)}%` }} /></div></div> : <div className={`mt-2 text-[8px] font-semibold ${day.started ? 'text-cyan-200/60' : 'text-slate-700'}`}>{day.started ? 'Выполняется сейчас' : 'Запланировано'}</div>}
+                                  <p className="mt-1 text-xs text-slate-300">Записано: {factAmount(day.actualTonnage,day.loadEvidence)}</p><OverviewSignals issues={day.date>todayISO() && day.loadEvidence?.source==='missing'?[]:loadEvidenceLabel(day.loadEvidence)?[loadEvidenceLabel(day.loadEvidence)]:[]}/>
                                   {(dayConflicts.length > 0 || generalConflict) && <div className="mt-2 flex items-center gap-1 text-[8px] font-bold text-amber-200/70"><AlertTriangle size={9} /> {dayConflicts[0]?.title || 'Проверьте бюджет недели'}</div>}
                                 </div> : (
                                 <button
@@ -5628,7 +5632,7 @@ export default function Home() {
                       {(calData.athletes || []).flatMap(athlete => (athlete.conflicts || []).map(conflict => ({ ...conflict, player: athlete.player }))).map((conflict, index) => (
                         <div key={`${conflict.player.id}-${conflict.code}-${conflict.date || index}`} className="rounded-xl border border-white/[0.055] bg-black/10 px-3 py-2.5">
                           <button type="button" onClick={()=>openOverviewPlayer(conflict.player,conflict.date || calWeekStart)} className="coach-player-link">{conflict.player.name} · {conflict.title} ↗</button>
-                          <div className="mt-1 text-[9px] leading-relaxed text-slate-600">{conflict.date ? `${conflict.date.slice(5).replace('-', '/')} · ` : ''}{conflict.detail}</div>
+                          <div className="mt-1 text-[9px] leading-relaxed text-slate-600">{conflict.date ? `${coachDate(conflict.date)} · ` : ''}{trainingTitle(conflict.detail)}</div>{conflict.code==='dense_loading' && <div className="coach-overview-actions">{[addDaysToStr(conflict.date,-1),conflict.date].map(d=><button type="button" key={d} onClick={()=>openOverviewPlayer(conflict.player,d)}>{coachDate(d)} · программа ↗</button>)}</div>}
                         </div>
                       ))}
                     </div>
@@ -5823,6 +5827,7 @@ export default function Home() {
                 ))}
               </div>
 
+              <div className="coach-overview-filters"><button type="button" aria-pressed={liveAttentionOnly} onClick={()=>setLiveAttentionOnly(v=>!v)}>Требуют внимания</button><button type="button" onClick={()=>openOverviewSection('drafts')}>Подготовить программы →</button></div>{!liveSummary.planned && <p className="coach-overview-empty">На сегодня программы не назначены. Откройте командные черновики для подготовки.</p>}<details className="coach-overview-secondary"><summary>Без программы · {liveRows.filter(row=>!row.status.hasSession).length}</summary><div className="coach-overview-actions">{liveRows.filter(row=>!row.status.hasSession).map(({player})=><button type="button" key={player.id} onClick={()=>openOverviewPlayer(player,todayISO())}>{player.name} →</button>)}</div></details>
               {stationRotation.length > 0 && (
                 <div className="mb-6 rounded-3xl border border-cyan-300/10 bg-gradient-to-br from-cyan-300/[0.055] to-violet-300/[0.025] p-4 backdrop-blur-xl">
                   <div className="mb-3 flex items-center justify-between gap-3"><div><div className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-200/60">Автоматическая разводка</div><div className="mt-1 text-[14px] font-black text-white">Станции и ротация групп</div></div><span className="rounded-full border border-cyan-300/15 px-2.5 py-1 text-[9px] font-bold text-cyan-200">до 3 игроков</span></div>
@@ -5836,7 +5841,7 @@ export default function Home() {
                 <div className="flex items-center justify-center py-24 text-sm text-slate-500"><Loader2 size={18} className="mr-2 animate-spin" /> Загружаю команду…</div>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {liveRows.map(({ player, status }) => {
+                  {liveRows.filter(row=>row.status.hasSession && (!liveAttentionOnly || row.status.live?.alerts?.length || row.status.pendingCommands?.length)).map(({ player, status }) => {
                     const live = status.live;
                     const tone = !status.hasSession ? 'border-white/[0.07]' : live?.completed ? 'border-emerald-300/20' : live?.started ? 'border-cyan-300/20' : 'border-amber-300/15';
                     return (
@@ -5918,10 +5923,10 @@ export default function Home() {
                   <div className={`mb-5 rounded-2xl border p-5 ${healthData.status === 'healthy' ? 'border-emerald-300/20 bg-emerald-300/[0.055]' : healthData.status === 'warning' ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-rose-300/20 bg-rose-300/[0.055]'}`}>
                     <div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Общий статус</div><div className="mt-1 text-xl font-black text-white">{healthData.status === 'healthy' ? 'Все системы работают' : healthData.status === 'warning' ? 'Есть предупреждения' : 'Требуется внимание'}</div></div><div className="text-right text-[10px] text-slate-500">{healthData.latencyMs} мс<br />{compactTime(healthData.checkedAt)}</div></div>
                   </div>
-                  <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Production release</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{String(healthData.release?.commit || 'local').slice(0, 12)}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Readiness p95 · тёплый / холодный</div><div className={`mt-2 font-mono text-[12px] font-bold ${healthData.readinessPerformance?.healthy ? 'text-emerald-200' : 'text-amber-200'}`}>{healthData.readinessPerformance?.warm?.p95Ms ?? healthData.readinessPerformance?.p95Ms ?? '—'} мс <span className="text-slate-700">/</span> {healthData.readinessPerformance?.cold?.p95Ms ?? '—'} мс</div><div className="mt-1 text-[10px] text-slate-600">Цели ≤ {healthData.readinessPerformance?.warm?.targetP95Ms || 750} / {healthData.readinessPerformance?.cold?.targetP95Ms || 5000} мс · кеш {healthData.readinessPerformance?.cacheHitRate ?? '—'}% · {healthData.alerting?.channel === 'in-app' ? 'встроенный канал' : healthData.alerting?.channel || 'канал неизвестен'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя резервная копия</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.id || healthData.latestSnapshotId || 'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} ключей · зашифровано` : healthData.backup ? `${healthData.backup.keyCount} ключей · ${healthData.backup.ageHours} ч назад` : 'Ежедневное защищённое копирование'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Контроль восстановления</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-cyan-200">{latestRecoveryDrill?.id || healthData.recovery?.id || 'Ещё не выполнялся'}</div><div className="mt-1 text-[10px] text-slate-600">{latestRecoveryDrill ? `${latestRecoveryDrill.sampledKeyCount} ключей · очищено` : healthData.recovery ? `${healthData.recovery.sampledKeyCount} ключей · ${healthData.recovery.ageHours} ч назад` : 'Еженедельная DR-проверка'}</div></div></div>
+                  <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Production release</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{String(healthData.release?.commit || 'local').slice(0, 12)}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Readiness p95 · тёплый / холодный</div><div className={`mt-2 font-mono text-[12px] font-bold ${healthData.readinessPerformance?.healthy ? 'text-emerald-200' : 'text-amber-200'}`}>{healthData.readinessPerformance?.warm?.p95Ms ?? healthData.readinessPerformance?.p95Ms ?? '—'} мс <span className="text-slate-700">/</span> {healthData.readinessPerformance?.cold?.p95Ms ?? '—'} мс</div><div className="mt-1 text-[10px] text-slate-600">Цели ≤ {healthData.readinessPerformance?.warm?.targetP95Ms || 750} / {healthData.readinessPerformance?.cold?.targetP95Ms || 5000} мс · кеш {healthData.readinessPerformance?.cacheHitRate ?? '—'}% · {healthData.alerting?.channel === 'in-app' ? 'встроенный канал' : healthData.alerting?.channel || 'канал неизвестен'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя резервная копия</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.createdAt || healthData.backup?.createdAt?new Date(latestSnapshot?.createdAt || healthData.backup.createdAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} ключей · зашифровано` : healthData.backup ? `${healthData.backup.keyCount} ключей · ${healthData.backup.ageHours} ч назад` : 'Ежедневное защищённое копирование'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Контроль восстановления</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-cyan-200">{latestRecoveryDrill?.checkedAt || healthData.recovery?.checkedAt?new Date(latestRecoveryDrill?.checkedAt || healthData.recovery.checkedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Дата не передана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestRecoveryDrill ? `${latestRecoveryDrill.sampledKeyCount} ключей · очищено` : healthData.recovery ? `${healthData.recovery.sampledKeyCount} ключей · ${healthData.recovery.ageHours} ч назад` : 'Еженедельная DR-проверка'}</div></div></div>
                   <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">{Object.entries(healthData.services || {}).map(([name, ok]) => <div key={name} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className={`h-2 w-2 rounded-full ${ok ? 'bg-emerald-300' : 'bg-rose-300'}`} /><div className="mt-3 text-[12px] font-bold text-slate-200">{name === 'redis' ? 'Хранилище' : name === 'readySix' ? 'ReadySix' : name === 'ai' ? 'AI генерация' : name === 'backup' ? 'Резервные копии' : name === 'recovery' ? 'DR-проверка' : 'Доступ тренера'}</div><div className="mt-1 text-[10px] text-slate-600">{ok ? 'Работает' : name === 'backup' ? 'Нет свежей копии' : name === 'recovery' ? 'Нет свежей проверки' : 'Не настроено'}</div></div>)}</div>
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ошибки за 24 часа</div><div className="mt-2 text-3xl font-black text-rose-200">{healthData.errors24h}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Предупреждения за 24 часа</div><div className="mt-2 text-3xl font-black text-amber-200">{healthData.warnings24h}</div></div></div>
-                  <GenerationMonitor workspace={workspace} apiKey={apiKey} />
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ошибки за 24 часа</div><div className="mt-2 text-3xl font-black text-rose-200">{healthData.errors24h}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">События-предупреждения за 24 часа</div><div className="mt-2 text-3xl font-black text-amber-200">{healthData.warnings24h}</div></div></div>
+                  <section className="coach-active-problems" aria-label="Активные проблемы"><h3>Активные проблемы сервисов · {activeServiceProblems(healthData.services).length}</h3>{activeServiceProblems(healthData.services).map(problem=><p key={problem}>{problem}</p>)}<p>Счётчики ниже относятся к событиям за 24 часа и могут быть нулевыми при сохраняющейся проблеме.</p></section><GenerationMonitor workspace={workspace} apiKey={apiKey} />
                   <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 flex items-center justify-between"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Канал SLO-инцидентов</div><span className="rounded-full border border-cyan-300/12 px-2 py-1 text-[9px] font-bold text-cyan-200">{healthData.alerting?.channel === 'in-app' ? 'Встроенный inbox' : healthData.alerting?.channel}</span></div><div className="space-y-2">{(healthData.notifications || []).length ? healthData.notifications.slice(0, 10).map(notification => <div key={notification.eventId} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${notification.status === 'firing' ? notification.severity === 'critical' || notification.severity === 'error' ? 'bg-rose-300' : 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{notification.title}</div><div className="mt-0.5 text-[10px] leading-relaxed text-slate-600">{notification.message}</div></div><span className="shrink-0 text-[9px] text-slate-700">{compactTime(notification.occurredAt)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Активных SLO-событий нет</div>}</div></div>
                   <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Последние события</div><div className="space-y-2">{(healthData.events || []).length ? healthData.events.slice(0, 12).map((event, index) => <div key={`${event.at}-${index}`} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${event.status === 'error' ? 'bg-rose-300' : event.status === 'warning' ? 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{event.area}</div>{event.message && <div className="mt-0.5 truncate text-[10px] text-slate-600">{event.message}</div>}</div><span className="text-[9px] text-slate-700">{compactTime(event.at)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Событий пока нет</div>}</div></div>
                 </>
@@ -6153,15 +6158,15 @@ export default function Home() {
             }`}>
               <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3">
                 <AlertTriangle size={12} className={restrictions.length > 0 ? 'text-rose-400' : 'text-slate-600'} />
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Ограничения</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Запреты тренера</span>
                 {restrictions.length > 0 && (
                   <span className="ml-auto rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-400">{restrictions.length} активно</span>
                 )}
                 {restrictions.length === 0 && (
-                  <span className="ml-auto text-[10px] font-semibold text-slate-700">нет активных</span>
+                  <span className="ml-auto text-[10px] font-semibold text-slate-700">не добавлены вручную</span>
                 )}
               </summary>
-              <div className="border-t border-white/[0.05] px-4 pb-4 pt-3">
+              <div className="border-t border-white/[0.05] px-4 pb-4 pt-3"><p className="mb-3 text-xs text-slate-300">Здесь только дополнительные запреты тренера. Симптомы и медицинские ограничения ReadySix учитываются отдельно.</p>
               <div className="flex flex-wrap gap-1.5">
                 {RESTRICTIONS.map(r => {
                   const active = restrictions.includes(r.id);
@@ -6917,7 +6922,7 @@ export default function Home() {
 
           {/* ── Session result ── */}
           {session && meta && (
-            <div data-preview={editorPreview} className="premium-session-card coach-session-workspace mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
+            <div data-preview={editorPreview || !!executionConfirmed} className="premium-session-card coach-session-workspace mt-7 animate-fade-in rounded-3xl border border-white/[0.10] p-5 backdrop-blur-xl sm:p-7 print:border-none print:bg-white print:p-0 print:shadow-none">
 
               {/* Result toolbar */}
               <div className="coach-editor-toolbar mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden" role="region" aria-label="Сохранение программы">
@@ -6931,7 +6936,7 @@ export default function Home() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button type="button" className="coach-editor-view-toggle" aria-pressed={editorPreview} onClick={()=>setEditorPreview(value=>!value)} title={editorPreview?'Перейти к редактированию':'Просмотреть программу без полей ввода'}>{editorPreview?<>{PENCIL_ICON}<span>Редактировать</span></>:<><BookOpen size={14}/><span>Просмотр</span></>}</button>
+                  <button type="button" className="coach-editor-view-toggle" aria-pressed={editorPreview} disabled={executionConfirmed} onClick={()=>setEditorPreview(value=>!value)} title={editorPreview?'Перейти к редактированию':'Просмотреть программу без полей ввода'}>{editorPreview?<>{PENCIL_ICON}<span>Редактировать</span></>:<><BookOpen size={14}/><span>Просмотр</span></>}</button>
                   {/* Secondary actions */}
                   <div className="coach-editor-secondary" data-open={editorActionsOpen}>
                   <button type="button" className="coach-editor-more" aria-label="Дополнительные действия программы" aria-expanded={editorActionsOpen} onClick={()=>setEditorActionsOpen(value=>!value)}>•••</button>
@@ -6964,7 +6969,7 @@ export default function Home() {
                         <Copy size={14} />
                       </button>
                     )}
-                    {pendingSaved && (
+                    {pendingSaved && !executionConfirmed && (
                       <button
                         type="button"
                         onClick={() => {
@@ -6986,7 +6991,7 @@ export default function Home() {
                     type="button"
                     onClick={handleSave}
                     aria-label="Сохранить программу"
-                    disabled={saving || session.kind === 'restricted_day_plan'}
+                    disabled={saving || executionConfirmed || session.kind === 'restricted_day_plan'}
                     title={session.kind === 'restricted_day_plan' ? 'План дня не заменяет тренировку игрока' : undefined}
                     className={`flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3.5 py-2 text-xs font-bold text-[#04212b] shadow-[0_2px_12px_-2px_rgba(34,211,238,0.35)] transition hover:bg-cyan-400 disabled:opacity-50 ${focusRing}`}
                   >
@@ -7009,8 +7014,8 @@ export default function Home() {
                 </div>
               </div>
 
-              {executionConfirmed && <p className="coach-execution-confirmed" role="status">Тренировка выполнена · {playerExecution.totalSets} / {playerExecution.totalSets} подходов · {new Date(playerExecution.completedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Факт сохранён по журналу игрока; повторно завершать не нужно.</p>}
-              <ProgramOverview blocks={session.blocks || []} title={meta.focusLabel || getFocusLabel(period,focus)} preview={editorPreview} onPreview={setEditorPreview} onNavigate={index=>{
+              {executionConfirmed && <p className="coach-execution-confirmed" role="status">Тренировка выполнена · {playerExecution.totalSets} / {playerExecution.totalSets} подходов · {new Date(playerExecution.completedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Исходный план защищён: редактирование, сохранение и перенос отключены. Факты дополняются отдельно в истории.</p>}
+              <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={meta.focusLabel || getFocusLabel(period,focus)} preview={editorPreview || !!executionConfirmed} onPreview={value=>{if(!executionConfirmed)setEditorPreview(value);}} onNavigate={index=>{
                 const block=session.blocks[index];setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
                 requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
               }}/>
@@ -7065,13 +7070,13 @@ export default function Home() {
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 size={12} className="text-emerald-400" />
-                      <span className="text-[10px] font-black uppercase tracking-[0.20em] text-slate-500">Качество генерации</span>
+                      <span className="text-[10px] font-black uppercase tracking-[0.20em] text-slate-500">Проверки структуры программы</span>
                     </div>
                     <span className="text-[10px] font-bold text-slate-600">
                       {generationQuality.filter(i => i.ok).length}/{generationQuality.length}
                     </span>
                   </summary>
-                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <p className="mt-2 text-xs text-slate-300">Число пройденных автоматических проверок ниже. Перед назначением тренер проверяет метод, точный вариант упражнения, дозу, симптомы и медицинские противопоказания. Это не оценка допуска.</p><div className="mt-2.5 flex flex-wrap gap-1.5">
                     {generationQuality.map(item => (
                       <div
                         key={item.label}
@@ -7086,6 +7091,8 @@ export default function Home() {
                 </details>
               )}
 
+              {pendingSaved && <p className="coach-source-snapshot">Обоснование ниже — снимок при сохранении {new Date(pendingSaved.savedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Текущие данные ReadySix показаны в настройках выше; изменения после сохранения не переписывают исходный план.</p>}
+              {pendingSaved && decisionData?.source==='ReadySix' && <details className="coach-source-comparison"><summary>Сравнить текущий источник с обоснованием программы</summary><div><section><h3>При сохранении · {coachDate(pendingSaved.date)}</h3><p>{session.assessment || 'Обоснование не записано в этой версии.'}</p></section><section><h3>Текущий источник · {coachDate(decisionData.targetDate || date)}</h3><p>{decisionData.recommendation?.state?.detail || decisionData.decision?.detail || 'Подробности не переданы.'}</p></section></div><p>Тексты из разных моментов времени. Изменение формулировок само по себе не подтверждает изменение состояния или допуска; решение проверяется в ReadySix.</p></details>}
               {/* Volume stats bar */}
               {volumeStats && volumeStats.sessions > 0 && (
                 <div className="mb-4 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-2.5 print:hidden">
@@ -7198,6 +7205,7 @@ export default function Home() {
                 </div>
               )}
 
+              {pendingSaved && <p className="coach-source-snapshot">Обоснование ниже — снимок при сохранении {new Date(pendingSaved.savedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Текущие данные ReadySix показаны в настройках выше; изменения после сохранения не переписывают исходный план.</p>}
               {/* Volume stats bar */}
               {sessionVolume && (
                 <div className="coach-program-dose-summary mb-6 flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 print:hidden">
@@ -7302,7 +7310,7 @@ export default function Home() {
                         <ExerciseCard
                           key={ex.code || ei}
                           apiKey={apiKey}
-                          preview={editorPreview}
+                          preview={editorPreview || !!executionConfirmed}
                           code={ex.code}
                           name={prehabEnglishName(ex.name)}
                           targetSets={ex.targetSets || []}

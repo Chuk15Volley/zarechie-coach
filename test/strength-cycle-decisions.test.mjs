@@ -1,3 +1,4 @@
+import {completedProgramSnapshot,SAVE_UNEXECUTED_PROGRAM} from '../lib/completedProgramGuard.mjs';
 import {coachAuditCommands,EXECUTE_AUDIT_COMMANDS} from '../lib/coachAudit.mjs';
 import {buildExerciseVarietyContext} from '../lib/exerciseVariety.mjs';
 import {assessSessionQuality} from '../lib/sessionValidator.js';
@@ -80,7 +81,7 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: API persists, r
   assert.equal(args[0],SAVE_DECISION_SCRIPT);if((storage.get(key)||'')!==args[3])return 0;storage.set(key,args[4]);return 1;
  };
  const source=readFileSync(new URL('../pages/api/players/strength-cycle-review.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
- const deps={coachAuditCommands,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}),randomUUID,redis,pfx:ws=>ws==='nkperf'?'nkperf':'coach',DECISION_VERSION,validateCycleDecision,SAVE_DECISION_SCRIPT,isAuthorized:req=>req.auth!==false,getRecentSessionRecords:async()=>records,buildStrengthCycleReview,shiftIsoDate};
+ const deps={completedProgramSnapshot,SAVE_UNEXECUTED_PROGRAM,pfx:ws=>ws,coachAuditCommands,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}),randomUUID,redis,pfx:ws=>ws==='nkperf'?'nkperf':'coach',DECISION_VERSION,validateCycleDecision,SAVE_DECISION_SCRIPT,isAuthorized:req=>req.auth!==false,getRecentSessionRecords:async()=>records,buildStrengthCycleReview,shiftIsoDate};
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
  const response=()=>({setHeader(){},status(code){this.code=code;return this;},json(data){this.data=data;return this;}});
  const body={workspace,playerId:'synthetic-player',cycleId:cycle.id,entries:decision.entries.map(e=>({key:e.key,exercise:e.exercise,progression:e.progression,note:e.note,volume:'reduce_one',volumeReason:'Плановое снижение'}))};
@@ -137,11 +138,11 @@ for(const workspace of ['zarechie','nkperf'])test(`${workspace}: first next-cycl
  const source=readFileSync(new URL('../pages/api/programs/save.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ','').replace(/^export /gm,'');
  let serverDecision=selected,written=[];
  const identity=x=>x,prefix=workspace==='nkperf'?'nkperf':'coach';
- const deps={coachAuditCommands,EXECUTE_AUDIT_COMMANDS,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}),applyCycleDecision,previousCycleId,pfx:()=>prefix,buildExerciseVarietyContext,assessSessionQuality,recordCoachReplacements,coachBannedSessionExercises,
+ const deps={completedProgramSnapshot,SAVE_UNEXECUTED_PROGRAM,pfx:ws=>ws,coachAuditCommands,EXECUTE_AUDIT_COMMANDS,coachAuditActor:()=>({role:"coach",access:"shared_key",id:null}),applyCycleDecision,previousCycleId,pfx:()=>prefix,buildExerciseVarietyContext,assessSessionQuality,recordCoachReplacements,coachBannedSessionExercises,
   validCopyRepeatException:()=>false,sessionPlayerAliases:id=>[id],getPlayerTimeZone:async()=>'Europe/Moscow',isAuthorized:()=>true,
   redis:async(command,key)=>{assert.ok(key.startsWith(prefix+':'));return key.includes(':cycle-decision:')?JSON.stringify(serverDecision):null;},sessionKey:(ws,id,date)=>`${prefix}:session:${id}:${date}`,sessionsKey:()=>prefix+':sessions:synthetic',
   getRecentSessionRecords:async(id,depth,ws)=>{assert.equal(ws,workspace);return records;},reconcileReplacementDescriptions:identity,approveProgramSession:identity,normalizeSessionTempoDescriptions:identity,ensureSessionExerciseIds:identity,sanitizeUnavailableEquipmentExercises:identity,
-  weightKgFromExercise:()=>0,loadUnitsForExercise:()=>1,approvedProgramLabel:identity,advisorySessionQuality:identity,buildDosePrescription:()=>({}),redisPipeline:async commands=>{written=commands;}};
+  weightKgFromExercise:()=>0,loadUnitsForExercise:()=>1,approvedProgramLabel:identity,advisorySessionQuality:identity,buildDosePrescription:()=>({}),redisPipeline:async commands=>{if(commands[0][0]==='GET')return commands.map(()=>null);written=commands;return [1];}};
  const handler=new Function(...Object.keys(deps),source+';return handler;')(...Object.values(deps));
  const response=()=>({status(code){this.code=code;return this;},json(data){this.data=data;return this;}});
  const body={workspace,playerId:'synthetic',date:'2026-10-12',focus:result.focus,trainingType:'full_body',session:result.session,quality:result.quality};

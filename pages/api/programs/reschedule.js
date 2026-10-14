@@ -1,3 +1,5 @@
+import {sessionPlayerAliases} from '../../../lib/manualCopyRepeat.mjs';
+import {completedProgramSnapshot,SAVE_UNEXECUTED_PROGRAM} from '../../../lib/completedProgramGuard.mjs';
 // POST { playerId, fromDate, toDate, workspace }
 // Moves an uncompleted saved session to a new date without changing its content.
 
@@ -72,6 +74,10 @@ export default async function handler(req, res) {
 
     const source = parseRecord(sourceRaw);
     if (!source?.session) return res.status(404).json({ error: 'Исходная тренировка не найдена' });
+    const ids=sessionPlayerAliases(playerId),guardKeys=ids.flatMap(id=>['session','session:actual','log'].map(type=>`${prefix}:${type}:${id}:${fromDate}`));
+    const guardRaw=await redisPipeline(guardKeys.map(key=>['GET',key]));
+    if(completedProgramSnapshot(ids,guardRaw))return res.status(409).json({error:'Выполненная программа защищена от переноса.'});
+    if((guardRaw[ids.indexOf(String(playerId)) * 3] || null)!==(sourceRaw || null))return res.status(409).json({error:'Исходная программа изменилась. Обновите статус.'});
     if (targetRaw) return res.status(409).json({ error: 'На выбранную дату уже есть сохранённая тренировка' });
     if (feedbackRaw || actualRaw || hasPlayerProgress(playerLogRaw)) {
       return res.status(409).json({ error: 'Тренировка уже отмечена как выполненная и не может быть перенесена' });
@@ -161,7 +167,8 @@ export default async function handler(req, res) {
       }
     }
 
-    await redisPipeline(cmds);
+    const [written]=await redisPipeline([['EVAL',SAVE_UNEXECUTED_PROGRAM,guardKeys.length+1,...guardKeys,targetKey,JSON.stringify(cmds),...guardRaw.map(raw=>raw || ''),'']]);
+    if(Number(written)!==1)return res.status(409).json({error:'Программа или выполнение изменились во время переноса. Исходные данные сохранены.'});
     return res.status(200).json({ ok: true, record: movedRecord });
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Не удалось перенести тренировку' });

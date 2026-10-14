@@ -1,4 +1,5 @@
-import {coachAuditCommands,EXECUTE_AUDIT_COMMANDS} from '../../../lib/coachAudit.mjs';
+import {completedProgramSnapshot,SAVE_UNEXECUTED_PROGRAM} from '../../../lib/completedProgramGuard.mjs';
+import {coachAuditCommands} from '../../../lib/coachAudit.mjs';
 import {coachAuditActor} from '../../../lib/auth';
 import {applyCycleDecision,previousCycleId} from '../../../lib/strengthCycleDecisions.mjs';
 import {recordCoachReplacements} from '../../../lib/strengthCycle.mjs';
@@ -77,6 +78,11 @@ export async function saveProgram(req, res, publicationGuard=null) {
   const previousRecord = typeof previousRaw === 'string' ? JSON.parse(previousRaw) : previousRaw;
   const requestId = /^[a-zA-Z0-9-]{16,80}$/.test(saveRequestId) ? saveRequestId : '';
   if (requestId && previousRecord?.saveRequestId === requestId) return res.status(200).json({status:'ok',session:previousRecord.session,quality:previousRecord.quality,trainingLabel:previousRecord.trainingLabel,approval:previousRecord.approval,savedAt:previousRecord.savedAt});
+  const editIds=sessionPlayerAliases(playerId);
+  const editKeys=editIds.flatMap(id=>['session','session:actual','log'].map(type=>`${pfx(workspace)}:${type}:${id}:${date}`));
+  const editRaw=await redisPipeline(editKeys.map(key=>['GET',key]));
+  if(completedProgramSnapshot(editIds,editRaw))return res.status(409).json({error:'Выполненная программа защищена. Откройте историю для дополнения фактов или создайте отдельный черновик на другую дату.'});
+  if((editRaw[editIds.indexOf(String(playerId)) * 3] || null)!==(previousRaw || null))return res.status(409).json({error:'Программа изменилась во время проверки. Откройте актуальную версию.'});
   let recentSessions;
   try {
     recentSessions = await getRecentSessionRecords(String(playerId), focus === 'inseason_strength' ? 42 : 12, workspace, date, { strict: true, includeCycleHistory: focus === 'inseason_strength' });
@@ -190,7 +196,10 @@ export async function saveProgram(req, res, publicationGuard=null) {
       const script="if redis.call('GET',KEYS[1]) or redis.call('GET',KEYS[4])~=ARGV[4] then return 0 end; for i=5,#KEYS do if redis.call('EXISTS',KEYS[i])==1 then return 0 end end; if redis.call('HGET',KEYS[2],ARGV[1])~=ARGV[2] then return 0 end; local current=redis.call('HGET',KEYS[3],ARGV[1]); if current and current~=ARGV[2] then return 0 end; if ARGV[5] and ARGV[5]~='' and (redis.call('GET',ARGV[5]) or '')~=ARGV[6] then return 0 end; if ARGV[7] and ARGV[7]~='' and (redis.call('GET',ARGV[7]) or '')~=ARGV[8] then return 0 end; local cmds=cjson.decode(ARGV[3]); for _,cmd in ipairs(cmds) do redis.call(unpack(cmd)) end; return 1";
       const [written]=await redisPipeline([['EVAL',script,4+sessionPlayerAliases(playerId).filter(id=>String(id)!==String(playerId)).length,sessionKey(workspace,playerId,date),publicationGuard.key+':reviews',publicationGuard.key+':jobs',publicationGuard.lock,...sessionPlayerAliases(playerId).filter(id=>String(id)!==String(playerId)).map(id=>sessionKey(workspace,id,date)),String(playerId),publicationGuard.batchId,JSON.stringify(cmds),publicationGuard.token,publicationGuard.actualKey || '',publicationGuard.actualVersion || '',publicationGuard.inventoryKey || '',publicationGuard.inventoryVersion || '']]);
       if(Number(written)!==1)return res.status(409).json({error:'Программа или проверка изменились. Откройте игрока и проверьте актуальную версию.'});
-    }else await redisPipeline([['EVAL',EXECUTE_AUDIT_COMMANDS,0,JSON.stringify(cmds)]]);
+    }else {
+      const [written]=await redisPipeline([['EVAL',SAVE_UNEXECUTED_PROGRAM,editKeys.length,...editKeys,JSON.stringify(cmds),...editRaw.map(raw=>raw || '')]]);
+      if(Number(written)!==1)return res.status(409).json({error:'Программа или её выполнение изменились. Обновите статус перед сохранением; исходные результаты сохранены.'});
+    }
     return res.status(200).json({ status: 'ok', quality: persistenceQuality, session: normalizedSession, trainingLabel: record.trainingLabel, approval: record.approval, savedAt });
   } catch (e) {
     return res.status(503).json({ error: 'Не удалось подтвердить сохранение. Правки остаются на экране; повторите сохранение.' });
