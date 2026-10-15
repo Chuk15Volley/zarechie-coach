@@ -1,3 +1,4 @@
+import {correctionPreview,rememberCorrectionPreview,weekBudgetCoverage} from '../lib/coachQuickWork.mjs';
 import {correctionNeighbours,weekFactText,coachHealthSummary} from '../lib/coachFastWork.mjs';
 import CoachAvatar from '../components/CoachAvatar';
 import useWarmupPlan from '../hooks/useWarmupPlan';
@@ -2023,6 +2024,7 @@ export default function Home() {
   const [progressionRefresh,setProgressionRefresh] = useState(0);
   const [editorActionsOpen,setEditorActionsOpen] = useState(false);
   const [editorPreview,setEditorPreview] = useState(false);
+  function chooseEditorPreview(value){if(executionConfirmed)return;const next=typeof value==='function'?value(editorPreview):value;setEditorPreview(next);rememberCorrectionPreview(window.sessionStorage,workspace,next);}
   const [exerciseUndo,setExerciseUndo]=useState({});
   const [progressionMap, setProgressionMap] = useState({}); // exerciseName → { kg, rpe, suggestedKg }
   const [tonnageData, setTonnageData] = useState(null);
@@ -3073,6 +3075,7 @@ export default function Home() {
     if(!current)return;
     selectPlayer(current);setDate(targetDate);setWorkspaceTab(tab);setMainSection('workouts');
   }
+  useEffect(()=>{const target=overviewScrollTargetRef.current;if(target?.type!=='program' || target.workspace!==workspace || target.playerId!==String(playerId) || target.date!==meta?.date || !session || mainSection!=='workouts')return;const frame=requestAnimationFrame(()=>{document.querySelector('.coach-session-workspace')?.scrollIntoView({block:'start'});overviewScrollTargetRef.current=null;});return()=>cancelAnimationFrame(frame);},[workspace,playerId,meta?.date,session,mainSection]);
   function openHistoryFacts(player,target){openOverviewPlayer(player,target.date,'history');setHistoryFactTarget({...target,token:crypto.randomUUID()});}
   function overviewDraft(playerId,targetDate=todayISO()) {return draftForPlayer(batchResults,playerId,workspace,targetDate);}
   function openOverviewSection(section){
@@ -3568,7 +3571,7 @@ export default function Home() {
       const cached=teamDraftEdits.current.get(teamDraftIdentity(context));
       setPendingSaved(data.record);loadSavedRecord(data.record);
       if(cached && cached.meta.teamDraft?.version===data.record.teamDraft?.version){setSession(cached.session);setMeta(cached.meta);}
-      setEditorPreview(!!result.saved);setCollapsedBlocks(new Set());
+      setEditorPreview(correctionPreview(window.sessionStorage,workspace,!!result.saved));setCollapsedBlocks(new Set());
       // useCorrectionView restores this player's position after the draft is mounted.
     }catch(error){if(requestId===draftOpenRequest.current && !controller.signal.aborted)setError(error.message);}
     finally{if(requestId===draftOpenRequest.current)setTeamDraftOpening(false);}
@@ -3815,6 +3818,7 @@ export default function Home() {
       || null;
     if (savedStrengthMode) setStrengthMode(savedStrengthMode);
     setSession(record.session);
+    setEditorPreview(correctionPreview(window.sessionStorage,workspace,!!activeTeamDraftRef.current?.saved));
     setMeta({
       player: record.player,
       dataSummary: record.dataSummary,
@@ -4346,7 +4350,7 @@ export default function Home() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button type="button" className="coach-editor-view-toggle" aria-pressed={editorPreview} disabled={executionConfirmed} onClick={()=>setEditorPreview(value=>!value)} title={editorPreview?'Перейти к редактированию':'Просмотреть программу без полей ввода'}>{editorPreview?<>{PENCIL_ICON}<span>Редактировать</span></>:<><BookOpen size={14}/><span>Просмотр</span></>}</button>
+                  <button type="button" className="coach-editor-view-toggle" aria-pressed={editorPreview} disabled={executionConfirmed} onClick={()=>chooseEditorPreview(value=>!value)} title={editorPreview?'Перейти к редактированию':'Просмотреть программу без полей ввода'}>{editorPreview?<>{PENCIL_ICON}<span>Редактировать</span></>:<><BookOpen size={14}/><span>Просмотр</span></>}</button>
                   {/* Secondary actions */}
                   <div className="coach-editor-secondary" data-open={editorActionsOpen}>
                   <button type="button" className="coach-editor-more" aria-label="Дополнительные действия программы" aria-expanded={editorActionsOpen} onClick={()=>setEditorActionsOpen(value=>!value)}>•••</button>
@@ -4427,7 +4431,7 @@ export default function Home() {
               </div>
 
               {executionConfirmed && <p className="coach-execution-confirmed" role="status">Тренировка выполнена · {playerExecution.totalSets} / {playerExecution.totalSets} подходов · {new Date(playerExecution.completedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Исходный план защищён: редактирование, сохранение и перенос отключены. Факты дополняются отдельно в истории.</p>}
-              <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={coachTrainingTitle(meta.focusLabel)==='Тренировка'?TRAINING_TYPE_LABELS[meta.trainingType] || getFocusLabel(period,focus):coachTrainingTitle(meta.focusLabel)} preview={editorPreview || !!executionConfirmed} onPreview={value=>{if(!executionConfirmed)setEditorPreview(value);}} onNavigate={index=>{
+              <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={coachTrainingTitle(meta.focusLabel)==='Тренировка'?TRAINING_TYPE_LABELS[meta.trainingType] || getFocusLabel(period,focus):coachTrainingTitle(meta.focusLabel)} preview={editorPreview || !!executionConfirmed} onPreview={chooseEditorPreview} onNavigate={index=>{
                 const block=session.blocks[index];setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
                 requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
               }}/>
@@ -4766,8 +4770,7 @@ export default function Home() {
                     </div>
                     )}
                     {!editorPreview && !collapsedBlocks.has(block.label) && pendingSaved && !pendingSaved.draft && (
-                      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 print:hidden">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Факт блока {block.label}</span>
+                      <details className="coach-block-facts mt-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 print:hidden" open={block.actualRpe!=null || !!block.pain || !!block.feedbackNote?.trim() || undefined}><summary className="text-[10px] font-black uppercase tracking-wider text-slate-600">Факт блока {block.label}</summary><div className="mt-2 flex flex-wrap items-center gap-2">
                         <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
                           RPE
                           <input
@@ -4796,10 +4799,10 @@ export default function Home() {
                         <input
                           value={block.feedbackNote || ''}
                           onChange={e => updateBlock(bi, { feedbackNote: e.target.value })}
-                          placeholder="заметка по блоку"
+                          aria-label={`Факт блока ${block.label} · заметка`} placeholder="заметка по блоку"
                           className="min-w-[160px] flex-1 rounded-md border border-white/[0.07] bg-white/[0.04] px-2 py-1 text-[11px] text-slate-300 outline-none placeholder:text-slate-700 focus:border-accent/40"
                         />
-                      </div>
+                      </div></details>
                     )}
                     {/* Quick-add exercise */}
                     {!editorPreview && !collapsedBlocks.has(block.label) && (
@@ -5163,35 +5166,6 @@ export default function Home() {
           {/* Calendar sidebar: week navigation */}
           {mainSection === 'calendar' && keyConnected && (
             <div className="sidebar-context flex-1 overflow-y-auto p-4 space-y-3">
-              <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">Навигация</p>
-              {/* Prev / current / next week */}
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setCalWeekStart(addDaysToStr(calWeekStart, -7))}
-                  className="grid h-8 w-8 place-items-center rounded-xl text-slate-500 hover:bg-white/[0.06] hover:text-slate-200 transition"
-                >
-                  <ChevronLeft size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCalWeekStart(getMondayOf(todayISO()))}
-                  className={`flex-1 rounded-xl py-2 text-[11px] font-bold transition ${
-                    calWeekStart === getMondayOf(todayISO())
-                      ? 'bg-violet-500/[0.12] text-violet-400'
-                      : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
-                  }`}
-                >
-                  Текущая
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCalWeekStart(addDaysToStr(calWeekStart, 7))}
-                  className="grid h-8 w-8 place-items-center rounded-xl text-slate-500 hover:bg-white/[0.06] hover:text-slate-200 transition"
-                >
-                  <ChevronRight size={15} />
-                </button>
-              </div>
               {/* Week date range label */}
               {calWeekStart && (
                 <p className="text-center text-[11px] font-semibold text-slate-600">
@@ -6147,7 +6121,7 @@ export default function Home() {
                   {[
                     { label: 'Сессии', value: calData.summary.sessions || 0, sub: `${calData.summary.completed || 0} завершено`, tone: 'text-white' },
                     { label: 'Плановый объём', value: compactLoad(calData.summary.plannedTonnage), sub: `${calData.summary.plannedSets || 0} подходов`, tone: 'text-cyan-100' },
-                    { label: 'План / бюджет команды', value: calData.summary.budgetTonnage>0?`${calData.summary.utilizationPercent || 0}%`:'Нет базы', sub: compactLoad(calData.summary.budgetTonnage), tone: calData.summary.utilizationPercent > 103 ? 'text-rose-300' : calData.summary.utilizationPercent >= 90 ? 'text-amber-200' : 'text-emerald-200' },
+                    { label: 'План / бюджет команды', value: calData.summary.budgetTonnage>0?`${calData.summary.utilizationPercent || 0}%`:'Нет базы', sub: compactLoad(calData.summary.budgetTonnage)+' · '+weekBudgetCoverage(calData.athletes), tone: calData.summary.utilizationPercent > 103 ? 'text-rose-300' : calData.summary.utilizationPercent >= 90 ? 'text-amber-200' : 'text-emerald-200' },
                     { label: 'Конфликты', value: calData.summary.conflicts || 0, sub: calData.summary.overBudget ? `${calData.summary.overBudget} выше бюджета` : `${calData.summary.calibrating || 0} калибруются`, tone: calData.summary.conflicts ? 'text-amber-200' : 'text-emerald-200' },
                   ].map(card => (
                     <div key={card.label} className="rounded-2xl border border-white/[0.07] bg-gradient-to-br from-white/[0.035] to-transparent p-4">{card.label==='Конфликты'?<button type="button" className="coach-stat-action" aria-label="Конфликты" aria-pressed={weekConflictsOnly} onClick={()=>setWeekConflictsOnly(true)}><span>{card.label}</span><strong className={card.tone}>{card.value}</strong><small>{card.sub}</small></button>:<>
@@ -6222,7 +6196,7 @@ export default function Home() {
                                 {day.hasSession ? <div className={`min-h-[68px] rounded-xl border p-2.5 transition ${selected ? 'border-cyan-300/35 bg-cyan-300/[0.08]' : dayConflicts.length || generalConflict ? 'border-amber-300/15 bg-amber-300/[0.025]' : 'border-white/[0.055] bg-white/[0.018]'}`}>
                                   <div className="flex items-start justify-between gap-2">
                                     <button type="button" onClick={() => openOverviewPlayer(p,d)} className="min-w-0 flex-1 text-left">
-                                      <div className="truncate text-[10px] font-black text-slate-300">{trainingTitle(day.label)}</div>
+                                      <div className="truncate text-[10px] font-black text-slate-300">{trainingTitle(day.trainingDirection || day.label)}</div>
                                     </button>
                                     {selectable && <button type="button" onClick={() => toggleWeekBatch(String(p.id), d)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg border transition ${selected ? 'border-cyan-200/40 bg-cyan-200 text-[#071013]' : 'border-white/[0.09] text-slate-600 hover:text-cyan-200'}`} title="Добавить в пакет адаптации">{selected ? <Check size={12} strokeWidth={3} /> : <Square size={12} />}</button>}
                                   </div>
@@ -6398,7 +6372,7 @@ export default function Home() {
           {mainSection === 'today' && (
             <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Команда · {todayISO().split('-').reverse().join('.')}</p><h2>Сегодня</h2><p>Программы и задачи на сегодня.</p></div><button type="button" disabled={readinessLoading} onClick={()=>loadTodayOverview(false,true)}><RefreshCw size={15} className={readinessLoading?'animate-spin':''}/> Обновить данные</button></header>
-              <TodayOverview workspace={workspace} key={workspace} center={todayCenter} readinessData={todaySnapshot?.workspace===workspace?todaySnapshot.readiness:readinessData} loading={readinessLoading || teamStatusLoading} error={todayError || teamStatusError} updatedAt={todayUpdatedAt} onPlayer={openOverviewPlayer} onHistory={player=>openOverviewPlayer(player,todayISO(),'history')} onDraft={openBatchDraft} getDraft={overviewDraft} onVersions={openSessionVersions} onRtp={openReturnToPlay} onAdapt={applyTodayRecommendation} adaptationSaving={adaptationSaving} onNavigate={openOverviewSection}/>
+              <TodayOverview workspace={workspace} key={workspace} center={todayCenter} readinessData={todaySnapshot?.workspace===workspace?todaySnapshot.readiness:readinessData} loading={readinessLoading || teamStatusLoading} error={todayError || teamStatusError} updatedAt={todayUpdatedAt} onPlayer={openOverviewPlayer} onProgram={player=>{openOverviewPlayer(player,todayISO());overviewScrollTargetRef.current={type:'program',workspace,playerId:String(player.id),date:todayISO()};}} onHistory={player=>openOverviewPlayer(player,todayISO(),'history')} onDraft={openBatchDraft} getDraft={overviewDraft} onVersions={openSessionVersions} onRtp={openReturnToPlay} onAdapt={applyTodayRecommendation} adaptationSaving={adaptationSaving} onNavigate={openOverviewSection}/>
               {apiKey && <TeamFactOverview roster={players} key={'today:'+workspace} workspace={workspace} apiKey={apiKey} refreshToken={factsRefresh} compact label="Заполнить факты · последние занятия команды" onFacts={openHistoryFacts} onProgram={openOverviewPlayer}/>}
           {keyConnected && mainSection==='today' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}
 

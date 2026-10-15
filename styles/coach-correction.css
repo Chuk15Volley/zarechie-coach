@@ -244,3 +244,9 @@
 .coach-workflow-overlay :is(.text-\[9px\],.text-\[10px\]) {font-size:11px;line-height:1.5;}
 .coach-workflow-overlay :is(.flex,.grid)>div {min-width:0;}
 @media(max-width:760px){.coach-workflow-overlay :is(input:not([type=checkbox]):not([type=radio]),select,textarea) {font-size:16px;}}
+
+/* Faster coach controls stay inside their existing cards and inherit the theme. */
+.coach-premium .coach-quick-replacement-search{grid-template-columns:minmax(0,2fr) minmax(100px,1fr) minmax(100px,1fr)}
+.coach-premium .coach-technique-status,.library-premium .coach-technique-status{display:block;font-size:11px;line-height:1.5;color:var(--atlas-muted,#bcd0c1);font-weight:400;white-space:normal}
+.coach-premium .coach-block-facts>summary{cursor:pointer}
+@media(max-width:760px){.coach-premium .coach-quick-replacement-search{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.coach-premium .coach-quick-replacement-search>label:first-child{grid-column:1/-1}}
