@@ -32,8 +32,8 @@ export default function OfflineProgram({ token, date, session, lastContact }) {
   }, [token, date]);
   return <section className="gym-offline" aria-label="Доступность программы">
     <div className="flex items-center justify-between gap-3">
-      <span role="status" className={cache?.ready ? 'text-emerald-200' : 'text-slate-300'}>{busy ? (preparing ? 'Подготовка…' : 'Проверка офлайн-копии…') : cache?.ready ? 'Программа доступна без интернета' : 'Доступ без интернета'}</span>
-      {!cache?.ready && <button type="button" disabled={!online || busy} onClick={() => check(true)} className="shrink-0 rounded-lg border border-white/20 px-3 py-2 font-semibold disabled:opacity-40">{busy ? '…' : cache?.error ? 'Повторить' : 'Подготовить'}</button>}
+      <span role="status" className={cache?.ready ? 'text-emerald-200' : 'text-slate-300'}>{busy ? (preparing ? 'Подготовка…' : 'Проверка офлайн-копии…') : cache?.ready && !cache?.changed ? 'Программа доступна без интернета' : cache?.changed ? 'Офлайн-копия устарела' : cache?.unavailable ? 'Офлайн-копия недоступна' : cache?.error ? 'Не удалось подготовить программу' : 'Программа не подготовлена'}</span>
+      {(!cache?.ready || cache?.changed) && <button type="button" disabled={!online || busy} onClick={() => check(true)} className="shrink-0 rounded-lg border border-white/20 px-3 py-2 font-semibold disabled:opacity-40">{busy ? '…' : cache?.error ? 'Повторить' : cache?.changed ? 'Обновить копию' : 'Подготовить'}</button>}
     </div>
     {cache?.error && <p role="status" className="mt-2 text-amber-200">Не удалось подготовить копию. Повтори при устойчивом соединении.</p>}
     {cache?.unavailable && <p className="mt-2 text-slate-400">Офлайн-копия пока недоступна. Обнови страницу после подключения.</p>}
