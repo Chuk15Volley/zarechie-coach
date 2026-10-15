@@ -79,7 +79,7 @@ exact 15 October partial actual readout and original card heights. Temporary
 existing team-queue request limit expired normally; a successful retry restored
 14 saved rows, without changing/clearing the rate policy or stored records.
 Final browser console error list empty; desktop viewport restored.
-Proof: `/private/tmp/gym-refinement15-production-2026-10-15.png`.
+Proof: `/private/tmp/gym-refinement15-production-2026-10-15.jpg`.
 
 Before, pre-publication, after initial release and after final public UI snapshots
 are identical: 2540 protected keys (including all 611 player journal keys),
