@@ -1,2 +1,2 @@
 import useWarmupVideo from '../hooks/useWarmupVideo';
-export default function WarmupVideoLink({exercise,apiKey}){const url=useWarmupVideo(exercise,apiKey);return url?<a href={url} target="_blank" rel="noopener noreferrer">Видео техники ↗</a>:null;}
+export default function WarmupVideoLink({exercise,apiKey}){const video=useWarmupVideo(exercise,apiKey);return video.url?<a href={video.url} title={`Вариант каталога: ${video.sourceName}`} target="_blank" rel="noopener noreferrer">Видео техники ↗</a>:video.loading?<span role="status">Проверяю видео…</span>:video.error?<span role="status">{video.error} <button type="button" onClick={video.retry}>Повторить поиск видео</button></span>:null;}

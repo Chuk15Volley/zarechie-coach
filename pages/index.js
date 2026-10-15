@@ -1,6 +1,9 @@
+import CoachCorrectionContext from '../components/CoachCorrectionContext';
+import CoachSystemEvents from '../components/CoachSystemEvents';
+import {variantCueWarnings} from '../lib/coachEasePresentation.mjs';
 import CoachOverlay from '../components/CoachOverlay';
 import WarmupVideoPanel from '../components/WarmupVideoPanel';
-import {coachTechniqueWarning as techniqueQuality,commonWeightGuidance,sharesWeightGuidance,previewWeightNote,coachCount,liveCommandValid} from '../lib/coachOrderPresentation.mjs';
+import {coachTechniqueWarning as techniqueQuality,commonWeightGuidance,sharesWeightGuidance,previewWeightNote,coachCount,coachNumber,liveCommandValid} from '../lib/coachOrderPresentation.mjs';
 import {correctionPreview,rememberCorrectionPreview,weekBudgetCoverage} from '../lib/coachQuickWork.mjs';
 import {correctionNeighbours,weekFactText,coachHealthSummary} from '../lib/coachFastWork.mjs';
 import CoachAvatar from '../components/CoachAvatar';
@@ -21,7 +24,7 @@ import SourceComparison from '../components/SourceComparison';
 import {coachDate,trainingTitle,activeServiceProblems,sessionFactAmount,factAmount,budgetLabel} from '../lib/coachPresentation.mjs';
 import TeamFactOverview from '../components/TeamFactOverview';
 import {weekFactPeriod} from '../lib/coachFactSurface.mjs';
-import {ExerciseLibraryPicker,preloadExerciseCatalogue} from '../components/ExerciseLibraryExplorer';
+import {ExerciseLibraryPicker,preloadExerciseCatalogue,invalidateExerciseCatalogue} from '../components/ExerciseLibraryExplorer';
 import ProgramOverview from '../components/ProgramOverview';
 import StrengthPerformance from '../components/StrengthPerformance';
 import {cyclePerformanceSeries} from '../lib/strengthPerformance.mjs';
@@ -1091,46 +1094,51 @@ const PENCIL_ICON = (
   </svg>
 );
 
-function ExerciseVideoPanel({name,apiKey,editable=true,onAvailability,fallbackUrl=null,exactSource=false}) {
+function ExerciseVideoPanel({name,apiKey,editable=true,onAvailability,fallbackUrl=null,fallbackName='',fallbackLoading=false,fallbackError='',onRetryFallback,exactSource=false}) {
   const bankUrl=exactSource?null:findExerciseUrl(name),panelId=useId();
-  const [pinned,setPinned]=useState(false),[videoChecked,setVideoChecked]=useState(false);
+  const scope=JSON.stringify([name,apiKey]);
+  const [pinned,setPinned]=useState(false),[checkedScope,setCheckedScope]=useState('');
+  const videoChecked=checkedScope===scope,setVideoChecked=value=>setCheckedScope(value?scope:'');
   const availabilityRef=useRef(onAvailability);availabilityRef.current=onAvailability;
   useEffect(()=>{const pin=e=>{if(e.detail!==panelId)setPinned(false);};window.addEventListener('gym-video-pin',pin);return()=>window.removeEventListener('gym-video-pin',pin);},[panelId]);
   useEffect(()=>setPinned(false),[name]);
-  const [manualVideoUrl,setManualVideoUrl]=useState(null),[editingVideo,setEditingVideo]=useState(false),[videoTools,setVideoTools]=useState(false),[videoInput,setVideoInput]=useState(''),[savingVideo,setSavingVideo]=useState(false),[videoError,setVideoError]=useState(''),[playing,setPlaying]=useState(false),[reload,setReload]=useState(0),[expanded,setExpanded]=useState(false),[videoSaved,setVideoSaved]=useState(false);
+  const [manualVideo,setManualVideo]=useState(null),[editingVideo,setEditingVideo]=useState(false),[videoTools,setVideoTools]=useState(false),[videoInput,setVideoInput]=useState(''),[savingVideo,setSavingVideo]=useState(false),[videoError,setVideoError]=useState(''),[playing,setPlaying]=useState(false),[reload,setReload]=useState(0),[expanded,setExpanded]=useState(false),[videoSaved,setVideoSaved]=useState(false);
+  const manualVideoUrl=manualVideo?.scope===scope?manualVideo.url:null,setManualVideoUrl=url=>setManualVideo({scope,url});
+  const pendingVideo=!!apiKey && !videoChecked && !videoError || fallbackLoading;
   const epoch=useRef(0),mutation=useRef(null);
   useEffect(()=>{const version=++epoch.current;setManualVideoUrl(null);setVideoChecked(false);setEditingVideo(false);setVideoTools(false);setVideoInput('');setSavingVideo(false);setVideoError('');setPlaying(false);setExpanded(false);setVideoSaved(false);return()=>{epoch.current++;mutation.current?.abort();};},[name,apiKey]);
   useEffect(()=>{
     if(!name?.trim() || !apiKey)return;
-    const controller=new AbortController(),version=epoch.current;
+    const controller=new AbortController(),version=epoch.current;setVideoChecked(false);setVideoError('');
     teamQueueCall(apiKey,`/api/exercises/manual-video?name=${encodeURIComponent(name)}`,{signal:controller.signal,timeoutMs:15000})
       .then(data=>{if(!controller.signal.aborted && version===epoch.current){setManualVideoUrl(data.url || null);setVideoChecked(true);setVideoError('');}})
       .catch(()=>{if(!controller.signal.aborted && version===epoch.current)setVideoError('Не удалось проверить видео тренера. Повторите загрузку.');});
     return()=>controller.abort();
   },[name,apiKey,reload]);
   const videoUrl=manualVideoUrl || bankUrl || fallbackUrl,candidateId=editingVideo?youtubeVideoId(videoInput):null,previewing=!!candidateId && videoInput.trim()!==videoUrl,videoId=previewing?candidateId:youtubeVideoId(videoUrl),watchUrl=videoId?`https://www.youtube.com/watch?v=${videoId}`:videoUrl;
-  useEffect(()=>{if(videoChecked || bankUrl)availabilityRef.current?.(!!youtubeVideoId(videoUrl));},[videoChecked,bankUrl,videoUrl]);
+  useEffect(()=>{if(youtubeVideoId(videoUrl) || !pendingVideo && !videoError && !fallbackError)availabilityRef.current?.(!!youtubeVideoId(videoUrl));},[pendingVideo,videoError,fallbackError,videoUrl]);
   useEffect(()=>setPlaying(false),[videoUrl,candidateId]);
   useEffect(()=>{if(!editingVideo)setVideoInput(videoUrl || '');},[videoUrl,editingVideo]);
   async function handleSaveVideo(){
     const url=videoInput.trim();if(!url || savingVideo)return;if(!youtubeVideoId(url)){setVideoError('Вставьте корректную ссылку YouTube: watch, Shorts или youtu.be.');return;}
     const version=++epoch.current,controller=new AbortController();mutation.current=controller;setSavingVideo(true);setVideoError('');
-    try{const data=await teamQueueCall(apiKey,'/api/exercises/manual-video',{body:{name,url},signal:controller.signal,timeoutMs:20000});if(!data.ok || !data.url)throw Error('Ссылка не сохранена.');if(version===epoch.current){setManualVideoUrl(data.url);setVideoInput(data.url);setEditingVideo(false);setVideoTools(false);setVideoSaved(true);}}
+    try{const data=await teamQueueCall(apiKey,'/api/exercises/manual-video',{body:{name,url},signal:controller.signal,timeoutMs:20000});if(!data.ok || !data.url)throw Error('Ссылка не сохранена.');if(version===epoch.current){setManualVideoUrl(data.url);setVideoInput(data.url);setEditingVideo(false);setVideoTools(false);setVideoSaved(true);setVideoChecked(true);invalidateExerciseCatalogue(apiKey);window.dispatchEvent(new CustomEvent('gym-exercise-video-changed',{detail:{name}}));}}
     catch(error){if(version===epoch.current)setVideoError(error.message || 'Не удалось сохранить видео.');}
     finally{if(version===epoch.current)setSavingVideo(false);}
   }
   async function handleDeleteVideo(){
     if(savingVideo)return;const version=++epoch.current,controller=new AbortController();mutation.current=controller;setSavingVideo(true);setVideoError('');const timer=setTimeout(()=>controller.abort(),20000);
-    try{const response=await fetch(`/api/exercises/manual-video?name=${encodeURIComponent(name)}`,{method:'DELETE',headers:{'x-api-key':apiKey},signal:controller.signal});const data=await response.json();if(!response.ok || !data.ok)throw Error(data.error || 'Не удалось сбросить видео.');if(version===epoch.current){setManualVideoUrl(null);setEditingVideo(false);}}
+    try{const response=await fetch(`/api/exercises/manual-video?name=${encodeURIComponent(name)}`,{method:'DELETE',headers:{'x-api-key':apiKey},signal:controller.signal});const data=await response.json();if(!response.ok || !data.ok)throw Error(data.error || 'Не удалось сбросить видео.');if(version===epoch.current){setManualVideoUrl(null);setEditingVideo(false);invalidateExerciseCatalogue(apiKey);window.dispatchEvent(new CustomEvent('gym-exercise-video-changed',{detail:{name}}));}}
     catch(error){if(version===epoch.current)setVideoError(error.message || 'Не удалось сбросить видео.');}
     finally{clearTimeout(timer);if(version===epoch.current)setSavingVideo(false);}
   }
   const panel=<div className={`coach-video-panel coach-video-compact print:hidden ${!videoId?'is-empty':''} ${expanded?'is-expanded':''} ${pinned?'is-pinned':''}`}>
     <div className="coach-video-frame">{videoId?playing?<iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`} title={`Видео техники · ${name}`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:<button type="button" className="coach-video-poster" aria-label={`Смотреть видео техники: ${name}`} onClick={()=>setPlaying(true)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt={`Техника ${name}`} loading="lazy"/><span className="coach-video-shade"/><span className="coach-video-play">▶</span><span className="coach-video-caption">Смотреть технику</span>
-    </button>:<div className="coach-video-empty"><strong>{editable?'Добавить видео':'Видео ещё не добавлено'}</strong>{!editable && <p>Техника выполнения описана ниже.</p>}</div>}</div>
-    <div className="coach-video-meta"><span>{previewing?'Предпросмотр · ещё не сохранено':manualVideoUrl?'Видео тренера':videoId?'Библиотека техники':'Техника упражнения'}</span><div>{(videoId || videoUrl) && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке">YouTube ↗</a>}{videoId && <button type="button" aria-label={`${expanded?'Уменьшить':'Увеличить'} видео: ${name}`} onClick={()=>setExpanded(value=>!value)}>{expanded?'Уменьшить':'Увеличить'}</button>}{videoId && <button type="button" aria-label={`${pinned?'Открепить':'Закрепить'} видео: ${name}`} onClick={()=>{if(!pinned)window.dispatchEvent(new CustomEvent('gym-video-pin',{detail:panelId}));setPinned(v=>!v);}}>{pinned?'Открепить':'Закрепить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
-    {editable && <details className="coach-video-tools" open={!videoId || videoTools || editingVideo || undefined} ><summary onClick={e=>{e.preventDefault();if(videoId)setVideoTools(v=>!v);}}>{videoId?'Изменить видео':'Добавить видео'}</summary><form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span className="sr-only" title="Общая библиотека видео обоих пространств">Ссылка YouTube</span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo || !candidateId}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button>{editingVideo && <button type="button" onClick={()=>{setEditingVideo(false);setVideoInput(videoUrl || '');setVideoError('');}}>Отменить ссылку</button>}<div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form></details>}
+    </button>:<div className="coach-video-empty"><strong role={pendingVideo?'status':undefined}>{pendingVideo?'Проверяю видео…':videoError || fallbackError?'Видео не проверено':editable?'Добавить видео':'Видео ещё не добавлено'}</strong>{!editable && !pendingVideo && <p>Техника выполнения описана ниже.</p>}</div>}</div>
+    <div className="coach-video-meta"><span title={videoId?`Источник видео: ${manualVideoUrl?name:bankUrl?'Банк видео; запрос: '+name:fallbackName || name}`:undefined}>{previewing?'Предпросмотр · ещё не сохранено':manualVideoUrl?'Видео тренера':videoId?fallbackName && !bankUrl?'Библиотека · '+fallbackName:'Библиотека техники':pendingVideo?'Поиск ссылки…':'Техника упражнения'}</span><div>{(videoId || videoUrl) && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке">YouTube ↗</a>}{videoId && <button type="button" aria-label={`${expanded?'Уменьшить':'Увеличить'} видео: ${name}`} onClick={()=>setExpanded(value=>!value)}>{expanded?'Уменьшить':'Увеличить'}</button>}{videoId && <button type="button" aria-label={`${pinned?'Открепить':'Закрепить'} видео: ${name}`} onClick={()=>{if(!pinned)window.dispatchEvent(new CustomEvent('gym-video-pin',{detail:panelId}));setPinned(v=>!v);}}>{pinned?'Открепить':'Закрепить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
+    {editable && (videoId || !pendingVideo) && <details className="coach-video-tools" open={!videoId || videoTools || editingVideo || undefined} ><summary onClick={e=>{e.preventDefault();if(videoId)setVideoTools(v=>!v);}}>{videoId?'Изменить видео':'Добавить видео'}</summary><form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span className="sr-only" title="Общая библиотека видео обоих пространств">Ссылка YouTube</span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo || !candidateId}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button>{editingVideo && <button type="button" onClick={()=>{setEditingVideo(false);setVideoInput(videoUrl || '');setVideoError('');}}>Отменить ссылку</button>}<div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form></details>}
+    {fallbackError && <div className="coach-video-error" role="alert"><p>{fallbackError}</p><button type="button" onClick={onRetryFallback}>Повторить поиск видео</button></div>}
     {videoError && <div className="coach-video-error" role="alert"><p>{videoError}</p><button type="button" onClick={()=>editingVideo?handleSaveVideo():setReload(value=>value+1)}>{editingVideo?'Повторить сохранение видео':'Повторить загрузку видео'}</button></div>}
   </div>;
   return pinned?createPortal(panel,document.querySelector('dialog[open]') || document.querySelector('main') || document.body):panel;
@@ -1234,7 +1242,7 @@ function ExerciseCard({
   onResetDescription,
   onRegenerate,
 }) {
-  const articleRef=useRef(null);
+  const articleRef=useRef(null),swapTrigger=useRef(null);
   const [regenerating, setRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState('');
   const [swapOpen, setSwapOpen] = useState(false);
@@ -1267,7 +1275,7 @@ function ExerciseCard({
   const hasDescriptionOverride = typeof descriptionOverride === 'string';
   const displayedDescription = exerciseDescription({ name, tempo, targetSets, prehabRegion, cue, descriptionOverride, descriptionExerciseId, compactDescription, controlledExecution,preserveStoredDescription });
   const descriptionWarning=techniqueQuality(name,displayedDescription);
-  const techniqueReference=descriptionWarning?exerciseDescription({name,tempo,targetSets,prehabRegion,controlledExecution,cue:replacementTechnique(name)}):'';
+  const techniqueReference=descriptionWarning && !variantCueWarnings(name,displayedDescription).length?exerciseDescription({name,tempo,targetSets,prehabRegion,controlledExecution,cue:replacementTechnique(name)}):'';
 
   async function handleRegenerate() {
     if (regenerating || !onRegenerate) return;
@@ -1282,7 +1290,8 @@ function ExerciseCard({
     }
   }
 
-  function openSwap() {setSwapOpen(value=>!value);}
+  function closeSwap(){setSwapOpen(false);requestAnimationFrame(()=>swapTrigger.current?.focus({preventScroll:true}));}
+  function openSwap(){if(swapOpen)closeSwap();else setSwapOpen(true);}
 
   function doSwap(card) {
     if (onChangeName) onChangeName(card.title,card.description);
@@ -1295,17 +1304,17 @@ function ExerciseCard({
       <header className="coach-exercise-heading">
         <span className="coach-exercise-code">{code || '＋'}</span>
         <div className="coach-exercise-title"><span>Упражнение</span>{preview?<h3>{name}</h3>:<AutoResizeTextarea value={name} onChange={onChangeName} ariaLabel={`${code} · название упражнения`} className="coach-exercise-name"/>}</div>
-        {!preview && <div className="coach-exercise-actions">{onUndo && <button type="button" onClick={onUndo} aria-label={`Отменить правку ${code}`}><RotateCcw size={15}/>Отменить</button>}<button type="button" onClick={openSwap} title="Найти и заменить упражнение"><ArrowLeftRight size={15}/><span>Заменить</span></button>{onRegenerate && <button type="button" onClick={handleRegenerate} disabled={regenerating} title="Подобрать замену автоматически">{regenerating?<Loader2 size={15} className="animate-spin"/>:<RefreshCw size={15}/>}<span>Автоподбор</span></button>}</div>}
+        {!preview && <div className="coach-exercise-actions">{onUndo && <button type="button" onClick={onUndo} aria-label={`Отменить правку ${code}`}><RotateCcw size={15}/>Отменить</button>}<button ref={swapTrigger} type="button" onClick={openSwap} title="Найти и заменить упражнение"><ArrowLeftRight size={15}/><span>Заменить</span></button>{onRegenerate && <button type="button" onClick={handleRegenerate} disabled={regenerating} title="Подобрать замену автоматически">{regenerating?<Loader2 size={15} className="animate-spin"/>:<RefreshCw size={15}/>}<span>Автоподбор</span></button>}</div>}
       </header>
       {regenerateError && <p role="alert" className="coach-exercise-notice">{regenerateError}</p>}
-      {!preview && swapOpen && <div className="coach-exercise-swap-studio"><header><strong>Замена · {code}</strong><button type="button" onClick={()=>setSwapOpen(false)}>Закрыть подбор</button></header><ExerciseLibraryPicker quick key={name} viewScope={viewScope} apiKey={apiKey} currentName={name} restrictions={restrictions} currentSets={targetSets} currentTempo={tempo} onClose={()=>setSwapOpen(false)} onSelect={doSwap}/></div>}
+      {!preview && swapOpen && <div className="coach-exercise-swap-studio"><header><strong>Замена · {code}</strong><button type="button" onClick={closeSwap}>Закрыть подбор</button></header><ExerciseLibraryPicker quick key={name} viewScope={viewScope} apiKey={apiKey} currentName={name} restrictions={restrictions} currentSets={targetSets} currentTempo={tempo} onClose={closeSwap} onSelect={doSwap}/></div>}
       {hasConflict && <div className="coach-exercise-notice">⚠ Ограничение для этого упражнения.{!preview && <button type="button" onClick={handleSuggestAlt} disabled={altLoading}>{altLoading?'Подбор…':'Подобрать альтернативу'}</button>}{altSuggestion && <p>{altSuggestion}</p>}</div>}
       <div className="coach-exercise-body">
         <aside className="coach-exercise-technique">
           <section className="coach-technique-disclosure is-always-open" aria-label="Видео техники"><ExerciseVideoPanel name={name} apiKey={apiKey} editable={!preview} onAvailability={onVideoAvailability}/></section>
           <div className="coach-exercise-instruction"><div className="coach-section-caption"><span>02</span> Выполнение {hasDescriptionOverride && !preview && <button type="button" onClick={onResetDescription} title="Вернуть автоматически сформированное описание"><RotateCcw size={12}/>Исходное</button>}</div>
             {preview?<p>{displayedDescription || 'Описание пока не добавлено.'}</p>:<AutoResizeTextarea value={displayedDescription} onChange={onChangeDescription} ariaLabel={`${code} · описание выполнения`} minRows={3} placeholder="Опишите технику выполнения…" className="coach-description-input"/>}
-            {descriptionWarning && <div className="coach-technique-quality" role="note"><p>Уточните подсказку: {descriptionWarning}</p>{!preview && <details><summary>Ориентир для уточнения</summary><p>{techniqueReference}</p><small>Сверьте точную вариацию и индивидуальные ограничения перед правкой.</small><button type="button" onClick={()=>onChangeDescription(techniqueReference)}>Использовать этот ориентир</button></details>}</div>}
+            {descriptionWarning && <div className="coach-technique-quality" role="note"><p>Уточните подсказку: {descriptionWarning}</p>{!preview && techniqueReference && <details><summary>Ориентир для уточнения</summary><p>{techniqueReference}</p><small>Сверьте точную вариацию и индивидуальные ограничения перед правкой.</small><button type="button" onClick={()=>onChangeDescription(techniqueReference)}>Использовать этот ориентир</button></details>}</div>}
           </div>
         </aside>
         <div className="coach-exercise-prescription">
@@ -1971,6 +1980,8 @@ export default function Home() {
   const [teamStatus, setTeamStatus] = useState({});
   const [liveUpdatedAt, setLiveUpdatedAt] = useState(null);
   const [healthData, setHealthData] = useState(null);
+  const [healthEventTarget,setHealthEventTarget]=useState(null);
+
   const [healthLoading, setHealthLoading] = useState(false);
   const [accessAction, setAccessAction] = useState('');
   const [accessConfirm, setAccessConfirm] = useState('');
@@ -2786,6 +2797,8 @@ export default function Home() {
 
   const keyConnected = apiKey && !playersError;
   const liveRows = useMemo(() => players.map(player => ({ player, status: teamStatus[player.id] || {} })).sort((a,b)=>(Number(!!b.status.live?.alerts?.length)*10+Number(!!b.status.pendingCommands?.length)*5+Number(!!b.status.live?.started))-(Number(!!a.status.live?.alerts?.length)*10+Number(!!a.status.pendingCommands?.length)*5+Number(!!a.status.live?.started))), [players, teamStatus]);
+  useEffect(()=>setHealthEventTarget(null),[workspace]);
+  function closeAddExercisePicker(index){setAddExBlock(null);requestAnimationFrame(()=>(document.querySelector('dialog[open]') || document).querySelector(`[data-add-exercise-block="${index}"]`)?.focus({preventScroll:true}));}
   const [warmupPreparation,setWarmupPreparation]=useState(false);
   const [warmupConduct,setWarmupConduct]=useState(false);
   useEffect(()=>setWarmupConduct(false),[workspace,warmupDate]);
@@ -4485,13 +4498,13 @@ export default function Home() {
                   <span className="font-black text-emerald-400 text-[15px]">{compliance.percent}%</span>
                   <span className="text-slate-500">выполнено</span>
                   <span className="text-slate-600">·</span>
-                  <span className="text-slate-400">план <span className="text-slate-200 font-semibold">{Math.round(compliance.plannedTonnage / 1000 * 10) / 10}т</span></span>
+                  <span className="text-slate-400">план <span className="text-slate-200 font-semibold">{coachNumber(Math.round(compliance.plannedTonnage / 1000 * 10) / 10)} т</span></span>
                   <span className="text-slate-600">→</span>
-                  <span className="text-slate-400">факт <span className={`font-semibold ${compliance.actualTonnage / compliance.plannedTonnage < 0.8 ? 'text-rose-400' : 'text-emerald-400'}`}>{Math.round(compliance.actualTonnage / 1000 * 10) / 10}т</span></span>
+                  <span className="text-slate-400">факт <span className={`font-semibold ${compliance.actualTonnage / compliance.plannedTonnage < 0.8 ? 'text-rose-400' : 'text-emerald-400'}`}>{coachNumber(Math.round(compliance.actualTonnage / 1000 * 10) / 10)} т</span></span>
                 </div>
               )}
 
-              <details className="coach-correction-context" open={editorPreview || !!executionConfirmed || undefined}><summary>Проверки и история нагрузки</summary>
+              <CoachCorrectionContext key={workspace} workspace={workspace} checks={generationQuality}>
               {generationQuality.length > 0 && (
               <details className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 print:hidden">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
@@ -4526,7 +4539,7 @@ export default function Home() {
                   <div className="mb-2.5 flex items-center gap-2">
                     <BarChart2 size={10} className="text-slate-600" />
                     <span className="text-[9px] font-black uppercase tracking-[0.20em] text-slate-600">Объём за 7д</span>
-                    <span className="ml-auto text-[9px] text-slate-700">{volumeStats.sessions} сессий</span>
+                    <span className="ml-auto text-[9px] text-slate-700">{coachCount(volumeStats.sessions,['сессия','сессии','сессий'])}</span>
                   </div>
                   <div className="flex items-end gap-3">
                     {['A', 'B', 'C', 'D', 'E'].map(label => {
@@ -4575,7 +4588,7 @@ export default function Home() {
                 </section>
               )}
 
-              </details>
+              </CoachCorrectionContext>
               {/* Explanations remain in place; source warnings are never abbreviated. */}
               {(session.assessment || session.periodization_note) && <div className="coach-session-context mb-4 grid gap-3 lg:grid-cols-2 print:hidden">
                 {session.assessment && <details className="coach-assessment" open={!!(session.warnings?.length || session.kind==='restricted_day_plan' || /боль|медицин|противопоказ|без отягощ|адаптац|сократ|без прибав|уточнит|недоступ|запрет|огранич|лихорад|травм/i.test(session.assessment)) || undefined}><summary>Состояние и ограничения</summary><p>{session.assessment}</p></details>}
@@ -4620,7 +4633,7 @@ export default function Home() {
                       <div className="h-6 w-px bg-white/[0.06]" />
                       <div className="flex items-center gap-1.5">
                         <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Тоннаж</span>
-                        <span className="text-[18px] font-black text-accent">~{sessionVolume.tonnes}т</span>
+                        <span className="text-[18px] font-black text-accent">~{coachNumber(sessionVolume.tonnes)} т</span>
                       </div>
                     </>
                   )}
@@ -4817,11 +4830,11 @@ export default function Home() {
                     {/* Quick-add exercise */}
                     {!editorPreview && !collapsedBlocks.has(block.label) && (
                       addExBlock === bi ? (
-                        <div className="coach-exercise-swap-studio mt-3 print:hidden"><header><strong>Добавить в блок {block.label}</strong><button type="button" onClick={()=>setAddExBlock(null)}>Закрыть подбор</button></header><ExerciseLibraryPicker quick adding apiKey={apiKey} restrictions={restrictions} viewScope={correctionViewScope+`:add:${bi}`} onClose={()=>setAddExBlock(null)} onSelect={card=>addExerciseToBlock(bi,card)}/></div>
+                        <div className="coach-exercise-swap-studio mt-3 print:hidden"><header><strong>Добавить в блок {block.label}</strong><button type="button" onClick={()=>closeAddExercisePicker(bi)}>Закрыть подбор</button></header><ExerciseLibraryPicker quick adding apiKey={apiKey} restrictions={restrictions} viewScope={correctionViewScope+`:add:${bi}`} onClose={()=>closeAddExercisePicker(bi)} onSelect={card=>addExerciseToBlock(bi,card)}/></div>
                       ) : (
                         <button
                           type="button"
-                          onClick={() => { setAddExBlock(bi); setAddExQuery(''); }}
+                          data-add-exercise-block={bi} onClick={() => { setAddExBlock(bi); setAddExQuery(''); }}
                           className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.025] px-3 py-2 text-[12px] font-semibold text-slate-600 transition hover:border-accent/30 hover:bg-accent/[0.06] hover:text-accent print:hidden"
                         >
                           <Plus size={13} />
@@ -5121,7 +5134,7 @@ export default function Home() {
                             : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
                         }`}
                       >
-                        {d}
+                        {coachDate(d)}
                       </button>
                     ))}
                   </div>
@@ -5853,7 +5866,7 @@ export default function Home() {
         ══════════════════════════════════════ */}
         <div className={`workspace-main h-screen min-w-0 flex-1 overflow-y-auto flex-col${mobileView === 'players' ? ' hidden sm:flex' : ' flex'}`}>
           <div className="coach-top-rule print:hidden" />
-          <div className="coach-mobile-toolbar sm:hidden print:hidden"><button type="button" onClick={()=>setMobileView('players')}><Menu size={17}/>Меню и состав</button><span>{workspace==='nkperf'?'NK Performance':'Заречье'}</span></div>
+          <div className="coach-mobile-toolbar sm:hidden print:hidden"><button type="button" onClick={()=>setMobileView('players')}><Menu size={17}/>Меню и состав</button><span>{workspace==='nkperf'?'NK Pro':'Заречье'}</span></div>
 
           {/* ── Warmup workspace ── */}
           {mainSection === 'warmup' && (
@@ -5865,11 +5878,11 @@ export default function Home() {
                   <p className="text-[13px] text-slate-500">{warmupGenerating?'Генерирую разминку…':'Загружаю разминку…'}</p>
                 </div>
               )}
-              {warmupPreparation && <section className="coach-warmup-preparation sm:hidden" aria-label="Подготовка разминки"><DatePicker navigate value={warmupDate} onChange={setWarmupDate} disabled={warmupLoading}/><p>Тип разминки определяется действующим календарём.</p><button type="button" disabled={warmupLoading} onClick={generateWarmup}>Сгенерировать разминку</button><button type="button" onClick={()=>setWarmupPreparation(false)}>Закрыть подготовку</button></section>}
+              {warmupPreparation && !warmupPlan && <section className="coach-warmup-preparation sm:hidden" aria-label="Подготовка разминки"><DatePicker navigate value={warmupDate} onChange={setWarmupDate} disabled={warmupLoading}/><p>Тип разминки определяется действующим календарём.</p><button type="button" disabled={warmupLoading} onClick={generateWarmup}>Сгенерировать разминку</button><button type="button" onClick={()=>setWarmupPreparation(false)}>Закрыть подготовку</button></section>}
               {!warmupLoading && !warmupPlan && (
                 <div className="flex flex-col items-center justify-center py-24 gap-3">
                   <div className="text-4xl opacity-20">🏃</div>
-                  <h2 className="text-[18px] font-black text-slate-600">Командная разминка</h2>
+                  <h2 className="text-[18px] font-black text-slate-600">Командная разминка</h2>{!warmupPreparation && <div className="coach-warmup-mobile-date sm:hidden"><DatePicker navigate value={warmupDate} onChange={setWarmupDate} disabled={warmupLoading} size="sm"/></div>}
                   <p className="text-[13px] text-slate-700">На выбранную дату разминки нет.</p><button type="button" className="coach-warmup-prepare-link" onClick={()=>{if(window.matchMedia('(max-width:639px)').matches){setWarmupPreparation(true);}else{setSidebarCollapsed(false);requestAnimationFrame(()=>document.getElementById('coach-warmup-prepare')?.focus());}}}>Подготовить разминку →</button>
                 </div>
               )}
@@ -5878,7 +5891,7 @@ export default function Home() {
                   <div className="mb-7">
                     <h1 className="text-[24px] font-black tracking-tight text-white leading-tight">Командная разминка</h1>
                     <div className="mt-1.5 flex items-center gap-3">
-                      <span className="text-[12px] text-slate-500">{coachDate(warmupPlan.date)}</span>
+                      <span className="hidden text-[12px] text-slate-500 sm:inline">{coachDate(warmupPlan.date)}</span><div className="coach-warmup-mobile-date sm:hidden"><DatePicker navigate value={warmupDate} onChange={setWarmupDate} disabled={warmupLoading} size="sm"/></div>
                       <span className="h-1 w-1 rounded-full bg-slate-700" />
                       <span className="text-[12px] text-cyan-400/80">{WARMUP_PHASE_MAP[warmupPlan.phase]}</span>
                       {warmupPlan.morningFocus && warmupPlan.morningFocus !== 'general' && WARMUP_FOCUS_MAP[warmupPlan.morningFocus] && (
@@ -6377,7 +6390,7 @@ export default function Home() {
           {keyConnected && mainSection==='workouts' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}
 
           {/* ── Today · smart decision centre ── */}
-          {mainSection==='library' && apiKey && <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10"><header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Общая библиотека обоих пространств</p><h2>Библиотека упражнений</h2><p>Техника и точные варианты упражнений.</p></div><button type="button" onClick={()=>setMainSection('workouts')}>Вернуться к программе ↗</button><a href="/library" target="_blank" rel="noopener noreferrer">Управление каталогом ↗</a></header><ExerciseLibraryPicker key={workspace} apiKey={apiKey}/></div>}
+          {mainSection==='library' && apiKey && <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10"><header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Общая библиотека обоих пространств</p><h2>Библиотека упражнений</h2><p>Техника и точные варианты упражнений.</p></div><button type="button" onClick={()=>setMainSection('workouts')}>Вернуться к программе ↗</button><a href="/library" target="_blank" rel="noopener noreferrer">Управление каталогом ↗</a></header><ExerciseLibraryPicker key={workspace} viewScope={'library:'+workspace} apiKey={apiKey}/></div>}
           {mainSection === 'today' && (
             <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               <header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Команда · {todayISO().split('-').reverse().join('.')}</p><h2>Сегодня</h2><p>Программы и задачи на сегодня.</p></div><button type="button" disabled={readinessLoading} onClick={()=>loadTodayOverview(false,true)}><RefreshCw size={15} className={readinessLoading?'animate-spin':''}/> Обновить данные</button></header>
@@ -6536,10 +6549,10 @@ export default function Home() {
                   <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Версия приложения</div><div className="mt-2 font-mono text-[12px] font-bold text-blue-200">{healthData.release?.commit?String(healthData.release.commit).slice(0,12):'Ревизия не передана'}</div><div className="mt-1 text-[10px] text-slate-600">{healthData.release?.environment || 'unknown'}<p>Сборка: {healthData.release?.builtAt?new Date(healthData.release.builtAt).toLocaleString('ru-RU'):'дата не передана'}</p><p>Публикация: {healthData.release?.publishedAt?new Date(healthData.release.publishedAt).toLocaleString('ru-RU'):'дата не передана'}</p></div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Скорость ReadySix · p95</div><div className={`mt-2 font-mono text-[12px] font-bold ${healthData.readinessPerformance?.healthy ? 'text-emerald-200' : 'text-amber-200'}`}>{healthData.readinessPerformance?.warm?.p95Ms ?? healthData.readinessPerformance?.p95Ms ?? '—'} мс <span className="text-slate-700">/</span> {healthData.readinessPerformance?.cold?.p95Ms ?? '—'} мс</div><div className="mt-1 text-[10px] text-slate-600">Цели ≤ {healthData.readinessPerformance?.warm?.targetP95Ms || 750} / {healthData.readinessPerformance?.cold?.targetP95Ms || 5000} мс · кеш {healthData.readinessPerformance?.cacheHitRate ?? '—'}% · {healthData.alerting?.channel === 'in-app' ? 'встроенный канал' : healthData.alerting?.channel || 'канал неизвестен'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Последняя резервная копия</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-emerald-200">{latestSnapshot?.createdAt || healthData.backup?.createdAt?new Date(latestSnapshot?.createdAt || healthData.backup.createdAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Ещё не создана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestSnapshot ? `${latestSnapshot.keyCount} ключей · зашифровано` : healthData.backup ? `${healthData.backup.keyCount} ключей · ${healthData.backup.ageHours} ч назад` : 'Ежедневное защищённое копирование'}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[9px] font-black uppercase tracking-wider text-slate-600">Контроль восстановления</div><div className="mt-2 truncate font-mono text-[12px] font-bold text-cyan-200">{latestRecoveryDrill?.checkedAt || healthData.recovery?.checkedAt?new Date(latestRecoveryDrill?.checkedAt || healthData.recovery.checkedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Дата не передана'}</div><div className="mt-1 text-[10px] text-slate-600">{latestRecoveryDrill ? `${latestRecoveryDrill.sampledKeyCount} ключей · очищено` : healthData.recovery ? `${healthData.recovery.sampledKeyCount} ключей · ${healthData.recovery.ageHours} ч назад` : 'Еженедельная DR-проверка'}</div></div></div>
                   </details>
                   <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">{Object.entries(healthData.services || {}).map(([name, ok]) => <div key={name} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className={`h-2 w-2 rounded-full ${ok ? 'bg-emerald-300' : 'bg-rose-300'}`} /><div className="mt-3 text-[12px] font-bold text-slate-200">{name === 'redis' ? 'Хранилище' : name === 'readySix' ? 'ReadySix' : name === 'ai' ? 'AI генерация' : name === 'backup' ? 'Резервные копии' : name === 'recovery' ? 'DR-проверка' : 'Доступ тренера'}</div><div className="mt-1 text-[10px] text-slate-600">{ok ? 'Работает' : name === 'backup' ? 'Нет свежей копии' : name === 'recovery' ? 'Нет свежей проверки' : 'Не настроено'}</div></div>)}</div>
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ошибки за 24 часа</div><div className="mt-2 text-3xl font-black text-rose-200">{healthData.errors24h}</div></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">События-предупреждения за 24 часа</div><div className="mt-2 text-3xl font-black text-amber-200">{healthData.warnings24h}</div></div></div>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2"><button type="button" onClick={()=>setHealthEventTarget({status:'error',token:crypto.randomUUID()})} className="text-left rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ошибки за 24 часа</div><div className="mt-2 text-3xl font-black text-rose-200">{healthData.errors24h}</div></button><button type="button" onClick={()=>setHealthEventTarget({status:'warning',token:crypto.randomUUID()})} className="text-left rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] font-black uppercase tracking-wider text-slate-600">События-предупреждения за 24 часа</div><div className="mt-2 text-3xl font-black text-amber-200">{healthData.warnings24h}</div></button></div>
                   <section className="coach-active-problems" aria-label="Активные проблемы"><h3>Активные проблемы сервисов · {activeServiceProblems(healthData.services).length}</h3>{activeServiceProblems(healthData.services).map(problem=><p key={problem}>{problem}</p>)}<details><summary>О счётчиках событий</summary><p>Счётчики ниже относятся к событиям за 24 часа и могут быть нулевыми при сохраняющейся проблеме.</p></details></section><GenerationMonitor workspace={workspace} apiKey={apiKey} />
                   <OperationalIncidents notifications={healthData.notifications || []}/>
-                  <details className="coach-system-details mt-5"><summary>Последние события</summary><div className="space-y-2">{(healthData.events || []).length ? healthData.events.slice(0, 12).map((event, index) => <div key={`${event.at}-${index}`} className="flex items-start gap-3 rounded-xl border border-white/[0.05] bg-black/10 px-3 py-2.5"><span className={`mt-1 h-2 w-2 rounded-full ${event.status === 'error' ? 'bg-rose-300' : event.status === 'warning' ? 'bg-amber-300' : 'bg-emerald-300'}`} /><div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-300">{event.area}</div>{event.message && <div className="mt-0.5 truncate text-[10px] text-slate-600">{event.message}</div>}</div><span className="text-[9px] text-slate-700">{compactTime(event.at)}</span></div>) : <div className="py-6 text-center text-[11px] text-slate-600">Событий пока нет</div>}</div></details>
+                  <CoachSystemEvents key={workspace} events={healthData.events || []} selection={healthEventTarget} total={{error:healthData.errors24h,warning:healthData.warnings24h}} checkedAt={healthData.checkedAt}/>
                 </>
               )}
             </div>
@@ -6681,7 +6694,7 @@ export default function Home() {
               {selectedPlayer.lastSessionDate && (
                 <div className="hidden sm:block shrink-0 text-right">
                   <p className="text-[9px] uppercase tracking-wider text-slate-700">Последняя тр.</p>
-                  <p className="text-[11px] font-semibold text-slate-500">{selectedPlayer.lastSessionDate}</p>
+                  <p className="text-[11px] font-semibold text-slate-500">{coachDate(selectedPlayer.lastSessionDate)}</p>
                 </div>
               )}
             </div>

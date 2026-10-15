@@ -277,3 +277,14 @@
 .coach-warmup-preparation{padding:14px;border:1px solid #ffffff18;border-radius:12px;margin-bottom:12px}
 .coach-warmup-preparation p{font-size:12px;margin:10px 0;line-height:1.5;color:#b9c9bf}
 @media(max-width:600px){.coach-premium .coach-quick-replacement-results>div>button:first-child{flex-basis:calc(100% - 40px);min-width:calc(100% - 40px)}.coach-premium .coach-quick-replacement-results>div>button:nth-child(3){margin-left:auto}.coach-actual-exercise{padding:9px}.coach-actual-set{gap:7px;grid-template-columns:66px repeat(2,minmax(0,1fr))}}
+/* Coach ease: density and focus within the existing sections. */
+.coach-premium .coach-focused-facts input.coach-actual-input,.coach-premium .coach-player-history input.coach-actual-input{display:block;margin:0;min-height:44px;height:44px}
+.coach-actual-columns{display:grid;grid-template-columns:minmax(70px,1fr) repeat(2,minmax(0,1fr));gap:10px;font-size:11px;color:#b9c9bf;margin-top:8px;line-height:1.4}
+.coach-actual-unit{margin:0 0 5px;font-size:11px;line-height:1.4;color:#a8bfb1}
+.coach-actual-set{padding:4px 0;min-height:52px}.coach-actual-known b{min-height:44px}
+.coach-actual-navigation{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:10px 0;font-size:12px;color:#bdd2c7}
+.coach-actual-navigation button{min-height:40px;padding:8px 10px;border:1px solid #ffffff24;border-radius:8px;background:#ffffff06}.coach-actual-navigation button:disabled{opacity:.4}
+.coach-context-issues{display:grid;gap:4px;margin:7px 0 0;font-weight:400;line-height:1.45;color:#d8c798}.coach-context-issues small{font-size:11px}
+.coach-event-coverage{font-size:11px;color:#b9c9bf;line-height:1.5;margin:8px 0}.coach-system-details time{max-width:130px;flex-shrink:0;font-variant-numeric:tabular-nums}
+.coach-video-meta>span{min-width:0;overflow-wrap:anywhere}.coach-warmup-mobile-date{max-width:100%;min-width:0}
+@media(max-width:600px){.coach-actual-columns{gap:7px;grid-template-columns:66px repeat(2,minmax(0,1fr))}.coach-system-details time{max-width:86px}.coach-warmup-mobile-date .premium-date-picker{max-width:100%}}
