@@ -41,3 +41,34 @@ Production protection uses eight narrow program/journal/actual/feedback hashes
 for the two reviewed players, never a broad private export. Runtime publication
 will change only Gym image/release metadata, with rollback and transport/secrets,
 Valkey, worker, backups and1GiB memory preserved.
+
+## Published release and final verification
+
+Application `8c63faa` published 15 October 2026 at 21:16:41 MSK
+(18:16:41.271777Z), image
+`sha256:c97fb6ae47c947f4f70a3125d56df5070fd06e65ddd7c1413490efcaefcecaa2`.
+Rollback compose: `/srv/readysix-ru-production/apps.private.compose.yaml.before-player-finish10-8c63faa`.
+Only Gym recreated; runtime, transport, mounts, Valkey, worker, backups and1GiB
+retained. Production running, zero restarts. Candidate container removed.
+
+1082 tests passed, one existing skip; final local/server builds passed. Candidate
+and production smoke passed health, authentication, storage, backup/recovery,
+both player pages/exact stored videos and all four course libraries (48/48/56/48).
+No player writes by the smoke checks. API, methodology, timer/order/tonnage,
+sync/feedback hooks and prevention source diff against published e94a651 is empty.
+
+Published UI: both spaces retain 22/22 and12/12 completion with original dates,
+saved times and actual values. Direct correction opens5 reps/50kg and8 reps/2.5kg,
+with unchanged Save disabled; Cancel-only real checks, no real input/save.
+Global correction button absent. Video shows2 identical sets compactly with the
+same original clip, cue/warning/fallback. Both-space history is read-only with
+zero correction buttons, original per-exercise warnings outside closed full-text
+details and unchanged distance/repetition targets. The false legacy0kg display
+is gone from the reviewed locomotion cards. Pair legend/compact facts verified.
+Both spaces at390px have380px document width; no horizontal overflow.
+
+The eight narrow protected keys have identical before/final hashes. No global
+private export or global-hash claim; real programs/results were not written.
+Original user Safari/coach tabs retained, temporary tabs closed, viewport reset,
+synthetic local servers stopped. Screenshot:
+`/private/tmp/gym-player-finish10-production-2026-10-15.jpg`.
