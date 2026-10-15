@@ -4,6 +4,7 @@ import '../styles/globals.css';
 import '../styles/player-design.css';
 import '../styles/coach-premium.css';
 import '../styles/coach-correction.css';
+import '../styles/coach-classic.css';
 
 const manrope = Manrope({
   subsets: ['latin', 'cyrillic'],

@@ -5133,6 +5133,7 @@ export default function Home() {
                         key={d}
                         type="button"
                         onClick={() => loadWarmupByDate(d)}
+                        aria-pressed={d === warmupDate}
                         className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[11px] font-semibold transition-all ${
                           d === warmupDate
                             ? 'bg-cyan-500/[0.12] text-cyan-400'
@@ -5875,7 +5876,7 @@ export default function Home() {
 
           {/* ── Warmup workspace ── */}
           {mainSection === 'warmup' && (
-            <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
+            <div className="coach-warmup-workspace mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">
               {warmupError && <p role="alert" className="coach-data-warning">{warmupError} <button type="button" onClick={retryWarmup}>Повторить загрузку</button></p>}
               {warmupLoading && (
                 <div className="flex flex-col items-center justify-center py-24 gap-4">
@@ -5912,7 +5913,7 @@ export default function Home() {
                     {(warmupPlan.sections || []).map((section, si) => {
                       const st = WARMUP_SECTION_STYLES[section.id] || WARMUP_SECTION_STYLES.speed;
                       return (
-                        <div key={si} className="rounded-2xl border border-white/[0.06] bg-[#0d1520] p-5">
+                        <div key={si} className="coach-warmup-section rounded-2xl border border-white/[0.06] bg-[#0d1520] p-5">
                           <div className="mb-4 flex items-center gap-3">
                             <span className={`h-7 w-1 rounded-full ${st.bar}`} />
                             <span className={`text-base ${st.text}`}>{st.icon}</span>
@@ -5920,7 +5921,7 @@ export default function Home() {
                           </div>
                           <ul className="space-y-2.5">
                             {(section.exercises || []).map((ex, i) => (
-                              <li key={i} className={`rounded-xl border p-3 ${st.chip}`}>
+                              <li key={i} className={`coach-warmup-exercise rounded-xl border p-3 ${st.chip}`}>
                                 <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
                                   <div className="min-w-0">
                                     <span className="text-[13px] font-semibold text-white">{ex.name}</span>
@@ -6720,6 +6721,7 @@ export default function Home() {
                   key={t.id}
                   type="button"
                   onClick={() => setWorkspaceTab(t.id)}
+                  aria-pressed={workspaceTab === t.id}
                   className={`flex flex-1 items-center justify-center gap-1.5 rounded-[9px] py-2 text-[12px] font-semibold transition-all duration-200 ${
                     workspaceTab === t.id
                       ? 'bg-white/[0.09] text-white shadow-sm'

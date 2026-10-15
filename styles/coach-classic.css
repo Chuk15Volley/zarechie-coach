@@ -1,0 +1,208 @@
+/* Shared coach finish. Every selector is scoped to the coach root; no player,
+   print, layout, order, visibility, media dimensions or data rules are changed. */
+@media screen {
+  /* 1. Neutral graphite, warm white and one quiet jade accent. */
+  .coach-premium {
+    --coach-bg:#111314;
+    --coach-panel:#191c1d;
+    --coach-panel-hover:#222728;
+    --coach-border:#343a3b;
+    --coach-ink:#eeeee8;
+    --coach-muted:#aeb5b2;
+    --coach-jade:#a7c4b6;
+    --coach-jade-ink:#17251e;
+    --classic-inner-border:#ffffff12;
+    --classic-field:#121617;
+    --classic-selected:#293831;
+    --classic-selected-border:#637a6e;
+    color:var(--coach-ink);
+    color-scheme:dark;
+  }
+  .coach-premium .premium-sidebar {background:#171a1b;border-color:var(--coach-border);}
+  .coach-premium :is(.text-slate-500,.text-slate-600,.text-slate-700) {color:var(--coach-muted);}
+  .coach-premium .text-slate-400 {color:#c1c7c3;}
+  .coach-premium .exercise-library-explorer {
+    --atlas-bg:var(--coach-bg);--atlas-panel:var(--coach-panel);
+    --atlas-border:var(--coach-border);--atlas-ink:var(--coach-ink);
+    --atlas-muted:var(--coach-muted);--atlas-jade:var(--coach-jade);
+  }
+
+  /* 2. Warmup keeps its category markers and its original two-column structure. */
+  .coach-premium .coach-warmup-section {background:var(--coach-panel);border-color:var(--coach-border);border-radius:14px;}
+  .coach-premium .coach-warmup-section h3 {color:var(--coach-ink);font-weight:600;}
+  .coach-premium .coach-warmup-exercise {background:#1e2223;border-color:var(--classic-inner-border);border-radius:10px;}
+  .coach-premium .coach-warmup-exercise :is(.text-white\/35,.text-white\/40) {color:var(--coach-muted);}
+  .coach-premium .coach-warmup-exercise .text-white\/70 {color:#d3d9d4;}
+  .coach-premium .coach-warmup-exercise>p {font-size:12px;line-height:1.6;}
+  .coach-premium #coach-warmup-prepare {background:var(--coach-jade);color:var(--coach-jade-ink);box-shadow:none;}
+  .coach-premium .coach-warmup-workspace [class*='text-cyan-400'] {color:var(--coach-jade);}
+
+  /* 3. Readable secondary type, without changing prescription values. */
+  .coach-premium :is(.coach-program-find,.coach-program-structure header,
+    .coach-exercise-title>span,.coach-section-caption,.coach-field-heading,
+    .coach-quick-load-row label>span,.coach-implement-choice legend,
+    .coach-quick-sets-heading>span,.coach-session-context summary,
+    .coach-correction-context>summary,.coach-context-issues small,
+    .coach-video-meta,.coach-video-quick-links,.coach-video-quick-edit label>span,
+    .library-studio-result small,.library-studio-video-meta,.library-studio-result-count,
+    .coach-technique-status,.coach-overview-stats dt,.team-queue-progress span) {
+    font-size:12px;line-height:1.5;
+  }
+  .coach-premium :is(.coach-program-find,.coach-exercise-title>span,.coach-field-heading,
+    .coach-video-meta,.library-studio-result small,.library-studio-video-meta,
+    .library-studio-result-count,.coach-overview-freshness,.coach-overview-stats dt,
+    .coach-today-card header p,.team-queue-open small) {color:var(--coach-muted);}
+  .coach-premium .coach-session-workspace .coach-video-meta :is(a,button),
+  .coach-premium .coach-session-workspace .coach-video-quick-links :is(a,button) {font-size:12px;}
+  .coach-premium :is(.coach-exercise-instruction>small,.coach-quick-load-row small,
+    .coach-implement-choice small,.coach-section-caption>span) {font-size:11px;color:var(--coach-muted);}
+
+  /* 4. A consistent, restrained heading hierarchy in the existing locations. */
+  .coach-premium :is(.coach-overview-header h2,.team-day-heading h1,
+    .coach-warmup-workspace h1,.premium-library-title,.coach-player-history>header h2) {
+    font-family:var(--font-manrope),system-ui,sans-serif;
+    font-size:clamp(26px,2.5vw,34px);font-weight:600;letter-spacing:-.035em;line-height:1.25;
+    color:var(--coach-ink);
+  }
+  .coach-premium :is(.team-queue-heading h2,.library-studio-heading h2,
+    .coach-history-section-heading h3,.coach-fact-studio h3) {font-size:21px;font-weight:600;letter-spacing:-.025em;}
+  .coach-premium :is(.coach-exercise-title h3,.coach-exercise-title .coach-exercise-name) {font-weight:550;letter-spacing:-.025em;}
+  .coach-premium :is(.coach-eyebrow,.coach-overview-eyebrow,.coach-nav-label,
+    .coach-history-date-code,.coach-studio-eyebrow) {letter-spacing:.08em;color:var(--coach-muted);}
+
+  /* 5–6. Mat­te surfaces and quieter nested frames; clinical notices stay distinct. */
+  .coach-premium :is(.premium-form,.premium-session-card,.premium-player-header,
+    .coach-today-card,.coach-history-card,.coach-player-history,.coach-fact-studio,
+    .coach-cycle-review,.coach-team-review,.coach-team-facts,.coach-aux-panels,
+    .coach-program-preparation,.coach-overview-stats>div,.coach-exercise-studio,
+    .coach-program-structure,.exercise-library-explorer,.library-studio-detail,
+    .team-day-setup,.team-queue-player,.coach-warmup-conduct) {
+    background:var(--coach-panel);border-color:var(--coach-border);box-shadow:none;
+    backdrop-filter:none;-webkit-backdrop-filter:none;
+  }
+  .coach-premium .team-queue-studio {background:var(--coach-panel)!important;border-color:var(--coach-border)!important;}
+  .coach-premium :is(.coach-quick-plan,.coach-session-context details,
+    .coach-correction-context,.coach-program-dose-summary,.coach-history-dose,
+    .coach-exercise-details,.coach-progression,.coach-video-quick-edit,
+    .coach-quick-replacement-technique,.coach-fact-metric,.coach-team-fact-grid>article) {
+    background:#ffffff02;border-color:var(--classic-inner-border);box-shadow:none;
+  }
+  .coach-premium :is(.coach-exercise-heading,.team-program-dialog-heading,.coach-editor-toolbar,
+    .coach-queue-actions,.team-day-previous,.coach-program-block-heading>button:first-child) {
+    background:#202625;border-color:var(--coach-border);box-shadow:none;
+  }
+  .coach-premium :is(.coach-exercise-code,.coach-program-block-heading>button:first-child>span:first-child) {
+    background:#303b35;border-color:#53635a;box-shadow:none;color:var(--coach-ink);
+  }
+  .coach-premium .team-program-dialog {background:var(--coach-bg);border-color:#515c56;box-shadow:0 18px 60px #0006;}
+  .coach-premium .team-program-dialog::backdrop {background:#070909dc;backdrop-filter:none;}
+
+  /* 7. Two radii for surfaces and controls; circular play/avatars are not flattened. */
+  .coach-premium :is(.premium-form,.premium-session-card,.coach-today-card,.coach-history-card,
+    .coach-player-history,.coach-fact-studio,.coach-cycle-review,.coach-team-review,
+    .coach-team-facts,.coach-overview-stats>div,.coach-exercise-studio,
+    .exercise-library-explorer,.library-studio-detail,.team-day-setup,.team-queue-player) {border-radius:14px;}
+  .coach-premium .team-queue-studio {border-radius:14px!important;}
+  .coach-premium :is(.coach-studio-badge,.coach-draft-status,.coach-count,
+    .coach-overview-filters button,.coach-overview-actions button,.coach-overview-shortcuts button,
+    .coach-program-modes button,.team-queue-filters button,.team-day-studio button,
+    .team-program-dialog-actions button,.library-studio-result,.library-extra-filters summary) {border-radius:8px;}
+
+  /* 8. One action hierarchy; destructive/clinical buttons retain their semantics. */
+  .coach-premium :is(.coach-overview-header>button,.coach-overview-actions button,
+    .coach-overview-shortcuts button,.team-queue-filters button,.team-queue-heading button,
+    .team-program-dialog-actions>button,.coach-exercise-actions button,
+    .coach-recheck,.coach-progression-apply,.coach-save-options>summary) {
+    background:#ffffff03;border-color:#48514d;color:#d6dfd9;box-shadow:none;font-weight:550;
+  }
+  .coach-premium :is(.coach-overview-actions,.coach-overview-shortcuts,.coach-exercise-actions) button {line-height:1.4;}
+  .coach-premium :is(.coach-primary,.team-primary-action,.team-day-start button,
+    .coach-editor-toolbar button[aria-label='Сохранить программу']),
+  .coach-premium button[class*='bg-gradient-']:not([class*='from-amber']):not([class*='from-rose']) {
+    background:var(--coach-jade)!important;background-image:none;color:var(--coach-jade-ink)!important;box-shadow:none;
+  }
+  .coach-premium :is(.coach-primary,.team-primary-action,.team-day-start button):hover:not(:disabled),
+  .coach-premium #coach-warmup-prepare:hover:not(:disabled) {background:#bed4c8!important;color:var(--coach-jade-ink);filter:none;transform:none;}
+  .coach-premium :is(.coach-primary,.team-primary-action,.team-day-start button):disabled {background:#303b35!important;color:#9faaa3!important;opacity:1;}
+  .coach-premium .team-queue-open {background:transparent;border-color:transparent;}
+
+  /* 9. Selected state is the same for filters, editor modes and the two spaces. */
+  .coach-premium button[aria-pressed='true']:not(.sidebar-player-row button),
+  .coach-premium .coach-session-workspace .coach-program-modes button[aria-pressed='true'],
+  .coach-premium .library-studio-results .library-studio-result[aria-pressed='true'] {
+    background:var(--classic-selected);border-color:var(--classic-selected-border);color:#e4ece5;box-shadow:none;
+  }
+  .coach-premium .sidebar-workspace-switcher button[aria-pressed='true'],
+  .coach-premium .sidebar-roster-tabs button[aria-pressed='true'] {background:var(--coach-jade);color:var(--coach-jade-ink);}
+  .coach-premium .coach-nav-link[aria-current='page'] {background:var(--classic-selected);color:#e4ece5;}
+  .coach-premium .coach-nav-link[aria-current='page']::before {background:var(--coach-jade);}
+  .coach-premium .sidebar-player-row:has(button[aria-pressed='true']),
+  .coach-premium .team-day-member:has(input:checked) {background:var(--classic-selected);border-color:var(--classic-selected-border);}
+
+  /* 10. Match fields without touching dimensions, units or their behaviour. */
+  .coach-premium :is(input:not([type='checkbox']):not([type='radio']),textarea,select),
+  .coach-premium .coach-session-workspace .coach-quick-plan input {
+    background-color:var(--classic-field);color:var(--coach-ink);border-color:#48514d;box-shadow:none;
+    font-family:var(--font-manrope),system-ui,sans-serif;font-variant-numeric:tabular-nums;
+  }
+  .coach-premium :is(input,textarea)::placeholder {color:#99a39d;opacity:1;}
+  .coach-premium :is(.coach-set-inputs>div,.coach-quick-replacement-results,.coach-implement-choice button) {background:var(--classic-field);border-color:#48514d;}
+  .coach-premium :is(.library-studio-filters,.team-day-fields) :is(input,select),
+  .coach-premium .coach-quick-plan {border-radius:8px;}
+  .coach-premium .coach-session-workspace .coach-quick-plan .coach-set-inputs :is(input,select) {background:transparent;}
+  .coach-premium .coach-exercise-title .coach-exercise-name {background:transparent;border-color:transparent;}
+  .coach-premium .coach-exercise-title .coach-exercise-name:hover {border-color:#48514d;}
+
+  /* 11. Neutral status chips are quiet; warning/medical/error styles stay binding. */
+  .coach-premium :is(.coach-studio-badge:not(.is-warning),.coach-draft-status) {background:#ffffff03;border-color:#ffffff20;color:#c4cec7;}
+  .coach-premium .coach-today-state {color:#c4cec7;}
+  .coach-premium :is(.coach-data-warning,.coach-common-rule,.coach-technique-quality,.coach-context-issues) {color:#dfcba5;}
+  .coach-premium .team-queue-player.is-error {border-color:#a67c5c;}
+
+  /* 12. Even rhythm inside the existing rows; no containers or columns move. */
+  .coach-premium :is(.coach-today-card,.coach-history-card,.team-queue-player) :is(p,small) {line-height:1.55;}
+  .coach-premium :is(.coach-quick-load-row label>span,.coach-implement-choice legend) {line-height:18px;min-height:18px;}
+  .coach-premium .coach-quick-load-row:has(.coach-implement-choice) :is(label>span,.coach-implement-choice legend) {min-height:36px;white-space:normal;}
+  .coach-premium .coach-program-find {gap:10px;}
+  .coach-premium .team-queue-open small {margin-top:4px;}
+  .coach-premium .coach-session-context p {line-height:1.65;}
+  .coach-premium .coach-program-structure header {line-height:1.5;}
+
+  /* 13. Stable numerical rhythm, including dates and graph labels. */
+  .coach-premium :is(table,.coach-prescription,.coach-overview-stats,.coach-history-dose,
+    .coach-fact-metric,.team-queue-progress,.coach-program-chart,.premium-date-picker,time) {font-variant-numeric:tabular-nums lining-nums;}
+  .coach-premium :is(.coach-overview-table,.coach-week-overview) th {font-size:12px;font-weight:550;color:#c1c9c3;letter-spacing:.02em;}
+  .coach-premium :is(.coach-overview-table,.coach-week-overview) :is(th,td) {border-color:var(--classic-inner-border);}
+  .coach-premium .coach-load-day>strong {font-weight:600;color:var(--coach-ink);}
+  .coach-premium .coach-fact-metric svg text {font-size:11px;fill:var(--coach-muted);}
+
+  /* 14. Real portraits keep their dimensions/crop; remove the coloured photo tint. */
+  .coach-premium :is(.coach-avatar,.coach-existing-avatar,.sidebar-player-row img,
+    .premium-player-header img,.coach-avatar-fallback) {border-radius:8px;box-shadow:none;filter:none;}
+  .coach-premium :is(.coach-avatar,.coach-avatar-fallback) {background:#2c3430;color:#d6dfd8;}
+  .coach-premium .premium-player-header [title='Изменить фото']>div:first-child {background:none;border:1px solid #53635a;border-radius:10px;}
+  .coach-premium :is(.coach-nav-link,.coach-overview-actions,.coach-exercise-actions) svg {stroke-width:1.6;}
+
+  /* 15. Quiet action links, predictable hover/focus, and an unchanged video size. */
+  .coach-premium .coach-context-issues button {text-decoration:none;color:#e0d0ae;border-radius:4px;}
+  .coach-premium .coach-context-issues button:hover {background:#ffffff08;text-decoration:underline;text-underline-offset:3px;}
+  .coach-premium :is(.coach-video-meta,.coach-video-quick-links,.library-studio-video-meta) :is(a,button) {color:#c6d5cb;text-decoration:none;}
+  .coach-premium :is(.coach-video-meta,.coach-video-quick-links,.library-studio-video-meta) :is(a,button):hover {text-decoration:underline;text-underline-offset:3px;}
+  .coach-premium :is(.coach-video-frame,.coach-candidate-video) {border-color:#48514d;border-radius:8px;box-shadow:none;}
+  .coach-premium .coach-video-empty {background:var(--classic-field);}
+  .coach-premium .coach-video-play {background:#202b25e6;border-color:#c4d3c8;box-shadow:none;backdrop-filter:none;}
+  .coach-premium .coach-video-poster:hover img {transform:none;}
+  .coach-premium :is(button,a,summary,input,select,textarea) {transition:background-color 140ms,border-color 140ms,color 140ms;}
+  .coach-premium :is(button,a,summary):hover:not(:disabled) {filter:none;}
+  .coach-premium :is(button,a,summary,input,select,textarea):focus-visible {outline:2px solid var(--coach-jade);outline-offset:2px;box-shadow:none;}
+  .coach-premium :is(button,input,select,textarea):disabled {cursor:not-allowed;}
+  .coach-premium :is(.coach-overview-actions button,.team-queue-heading button,
+    .coach-exercise-actions button,.coach-recheck,.coach-save-options>summary):hover:not(:disabled) {background:#ffffff08;border-color:#738378;}
+  @media (max-width:760px) {
+    .coach-premium :is(.coach-overview-header h2,.team-day-heading h1,
+      .coach-warmup-workspace h1,.premium-library-title,.coach-player-history>header h2) {font-size:26px;}
+  }
+  @media (prefers-reduced-motion:reduce) {
+    .coach-premium :is(button,a,summary,input,select,textarea) {transition:none;}
+  }
+}
