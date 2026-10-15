@@ -43,7 +43,7 @@ test('equipment filters and variant labels distinguish named position and implem
 });
 test('fold only exact generic progression prose; individual clinical messages and unknown formats stay visible',()=>{
  const decision='Вес подобрать подводящими подходами по технике и усилию; точные кг заранее не назначены. RPE 6–7; без отказа. Сопоставимой фактической истории для этого упражнения нет; вес другой вариации не переносить. При ухудшении техники или усилии выше цели снизить вес; автоматически не повышать.';
- assert.match(progressionSummary({decision}),/Подбор по RPE/);assert.equal(progressionSummary({decision:decision+' Боль: исключить нагрузку.'}),null);assert.equal(progressionSummary({decision:'Ограничить нагрузку плеча'}),null);
+ assert.match(progressionSummary({decision}),/Подбор по RPE/);assert.match(progressionSummary({decision:decision.replace(' При ухудшении','  \n При ухудшении')}),/Подбор по RPE/);assert.equal(progressionSummary({decision:decision+' Боль: исключить нагрузку.'}),null);assert.equal(progressionSummary({decision:'Ограничить нагрузку плеча'}),null);
 });
 test('week adds saved training direction for display while keeping original classification label and source unchanged',()=>{
  const entries=[{date:'2026-10-15',record:{trainingLabel:'Копия программы · проверка тренером · Активация / мощность',session:{blocks:[]}}}],before=JSON.stringify(entries);
