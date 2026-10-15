@@ -38,3 +38,9 @@ Player components/pages, APIs, methodology/calculation/save transport unchanged.
 mini-bar labels (zero/missing/partial) and pointer/keyboard boundary access.
 Local fictional save/count/pair-weight/readout and final build/release checks
 will be recorded after completion.
+
+Mobile finishing check: prescribed sets use separate lines on narrow screens;
+visual separators are hidden there so a slash cannot occupy an orphan line.
+The existing description list retains the full original joined prescription as
+its accessible label. Desktop sets keep their separator inside one inline part.
+No source assignments were changed.

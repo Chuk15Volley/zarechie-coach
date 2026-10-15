@@ -4,7 +4,7 @@
  /* 1. Keep each short prescribed set intact; long custom instructions can wrap. */
  .coach-premium .coach-prescription-sets {letter-spacing:normal!important;line-height:1.65!important;}
  .coach-premium .coach-exercise-studio .coach-prescription dd.coach-prescription-sets {font-size:18px;}
- .coach-premium .coach-prescription-part {display:inline;}
+ .coach-premium .coach-prescription-part {display:inline-block;max-width:100%;}
  .coach-premium .coach-prescription-set {display:inline-block;white-space:nowrap;max-width:100%;vertical-align:baseline;}
  .coach-premium .coach-prescription-set[data-long=true] {white-space:normal;overflow-wrap:anywhere;}
  .coach-premium .coach-prescription-separator {font-size:.8em;color:var(--coach-muted);}
@@ -110,6 +110,8 @@
   .coach-premium .coach-overview-table table {min-width:1226px;}
   .coach-premium .coach-exercise-studio .coach-prescription dd.coach-prescription-sets {font-size:15px;}
   .coach-premium .coach-prescription-set {white-space:normal;overflow-wrap:normal;}
+  .coach-premium .coach-prescription-part {display:block;}
+  .coach-premium .coach-prescription-separator {display:none;}
   .coach-premium .coach-prescription-set[data-long=true] {overflow-wrap:anywhere;}
   .coach-premium .coach-mini-chart {left:12px;width:calc(100% - 24px);}
  }
