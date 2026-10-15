@@ -1,3 +1,4 @@
+import CoachPrevention from '../components/prevention/CoachPrevention';
 import CoachCompletedNotice from '../components/CoachCompletedNotice';
 import {conciseFactText} from '../lib/coachClarity.mjs';
 import {MiniBars,CoachLoading} from '../components/CoachMiniChart';
@@ -6402,6 +6403,7 @@ export default function Home() {
           {keyConnected && mainSection==='workouts' && <div className="mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-8 lg:px-10"><details className="coach-aux-panels"><summary>Инвентарь и подготовка следующего цикла</summary><StrengthEquipmentPanel key={workspace} workspace={workspace} apiKey={apiKey} /><StrengthTeamNextReview key={`next:${workspace}`} workspace={workspace} players={players} apiKey={apiKey} date={date} onSelectPlayer={player=>{selectPlayer(player);setMainSection('workouts');}} /></details></div>}
 
           {/* ── Today · smart decision centre ── */}
+          {keyConnected && mainSection==='prevention' && <CoachPrevention key={workspace} workspace={workspace} players={players} initialPlayerId={playerId || ''} apiKey={apiKey} />}
           {mainSection==='library' && apiKey && <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10"><header className="coach-overview-header"><div><p className="coach-overview-eyebrow">Общая библиотека обоих пространств</p><h2>Библиотека упражнений</h2><p>Техника и точные варианты упражнений.</p></div><button type="button" onClick={()=>setMainSection('workouts')}>Вернуться к программе ↗</button><a href="/library" target="_blank" rel="noopener noreferrer">Управление каталогом ↗</a></header><ExerciseLibraryPicker key={workspace} viewScope={'library:'+workspace} apiKey={apiKey}/></div>}
           {mainSection === 'today' && (
             <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-8 lg:px-10 lg:py-8">

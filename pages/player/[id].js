@@ -1,4 +1,5 @@
 import { serverWorkoutComplete, playerSessionStatus, restorePlayerProgress, implementWeightLabel, actualLoadLabel } from '../../lib/playerPresentation.mjs';
+import PlayerPrevention from '../../components/prevention/PlayerPrevention';
 import {getPlayerTimeZone} from '../../lib/playerTimeZoneStore';
 import {playerLocalDate,playerLocalClock,playerTimeZoneLabel} from '../../lib/playerTimeZone.mjs';
 import CompletionConfetti from '../../components/player/CompletionConfetti';
@@ -1155,6 +1156,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
 
   useEffect(() => {
     if (window.location.hash === '#history') setActiveTab('history');
+    if (window.location.hash === '#prevention') setActiveTab('prevention');
   }, []);
 
   async function loadHistSession(date) {
@@ -1384,6 +1386,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                 </>
               ) : activeTab === 'workout' ? (
                 <div className="player-status-pill is-latest"><span />Ожидает программу</div>
+              ) : activeTab === 'prevention' ? (
+                <div className="player-status-pill is-muted"><span />Профилактика</div>
               ) : selectedHistDate ? (
                 <div className="player-session-date">{formatDate(selectedHistDate)}</div>
               ) : (
@@ -1483,9 +1487,9 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         )}
 
         {/* ── Tab bar ── */}
-        {!notFound && sessionDates.length > 0 && (
+        {!notFound && (
           <nav className="player-tabs flex gap-1.5 border-b border-white/[0.05] px-4 py-2">
-            {[['workout', 'Тренировка'], ['history', `История (${sessionDates.length})`]].map(([tab, label]) => (
+            {[['workout', 'Тренировка'], ['prevention', 'Профилактика'], ['history', `История (${sessionDates.length})`]].map(([tab, label]) => (
               <button
                 key={tab}
                 aria-pressed={activeTab === tab}
@@ -1681,6 +1685,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
           </main>
         )}
 
+        {!notFound && activeTab === 'prevention' && <PlayerPrevention token={token} />}
+
         {/* ── History tab ── */}
         {!notFound && activeTab === 'history' && (
           <main className="player-history px-4 pb-24 pt-4">
@@ -1831,7 +1837,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             onUndo={undoLastSet}
           />
         )}
-        <UndoSetToast undo={restTimer && !finishOpen ? null : undoSet} onUndo={undoLastSet} onDismiss={() => setUndoSet(null)} />
+        {activeTab === 'workout' && <UndoSetToast undo={restTimer && !finishOpen ? null : undoSet} onUndo={undoLastSet} onDismiss={() => setUndoSet(null)} />}
 
         </div>
 
@@ -1841,7 +1847,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             <span className="h-1 w-1 rounded-full bg-emerald-400/70" />
             NK Performance
           </span>
-          {session && <SyncBadge status={serverCompleted && !progressRevision ? 'viewing' : syncStatus} savedAt={serverSavedAt} timeZone={timeZone} />}
+          {activeTab === 'workout' && session && <SyncBadge status={serverCompleted && !progressRevision ? 'viewing' : syncStatus} savedAt={serverSavedAt} timeZone={timeZone} />}
         </div>
       </div>
 

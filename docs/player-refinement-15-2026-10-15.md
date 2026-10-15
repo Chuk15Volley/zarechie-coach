@@ -21,7 +21,7 @@ fixtures; real publication checks only view the two existing player links.
 14. Aligned fields/cards, tabular numbers, readable supporting type, wrapping rest/safety text, 390px responsive check.
 15. Graphite/warm white/jade palette with quiet contours, existing celebration and reduced-motion protection retained. Pending/error/read-only sync states explicit and saved time uses player timezone. Offline check/preparation/failure/unavailable states are separate; video clearly requires internet.
 
-Validation: 1042 passing tests, one existing skip; final local build passed.
+Validation: 1064 passing tests, one existing skip; final local build passed.
 Local UI used only four fictional tokens and an in-memory store. Both-space completion
 correction and active-set input validated; Cancel produced zero journal/feedback
 requests, explicit Save retained completion, rest remained 60 seconds. Tested decimal
@@ -31,3 +31,11 @@ compact history, modal close/return and 390px/no horizontal overflow.
 Production record guard is narrowly scoped: program, journal, actual and feedback
 for Perova15Oct and Darya14Oct; only eight hashes, no private record export.
 Publication and final verification details are appended after release.
+
+Release reconciliation: publication guard detected a newer independent production
+release422f444 while this work was in progress. Merged codex/prevention-courses
+7bcd22a, retained exact Low Back/Knee libraries, APIs, player/coach prevention tabs
+and independent course records. Resolved player chrome conflicts by keeping the
+new single gym settings disclosure and prevention-only tab isolation. No course
+methodology or assignment migration is part of this change. Repeated merged tests
+and builds before publishing against422f444 instead of the stale efa7e6b baseline.
