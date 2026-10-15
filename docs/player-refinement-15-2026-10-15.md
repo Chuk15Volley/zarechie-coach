@@ -2,7 +2,7 @@
 
 Shared player frontend serves Zarechie and NK Pro. Baseline application efa7e6b.
 No generation/methodology, prescribed-session save, log/feedback API persistence,
-calendar or result calculations changed. Production write checks use fictional local
+calendar or result calculations changed. Save checks use fictional local
 fixtures; real publication checks only view the two existing player links.
 
 1. Completed server workouts restore server facts and render read-only. No cached-view revision increments or pending/feedback replay on opening. Explicit correction mode exposes only done-set actual inputs, never unmarks completed sets or reopens the workout.
@@ -39,3 +39,34 @@ and independent course records. Resolved player chrome conflicts by keeping the
 new single gym settings disclosure and prevention-only tab isolation. No course
 methodology or assignment migration is part of this change. Repeated merged tests
 and builds before publishing against422f444 instead of the stale efa7e6b baseline.
+
+## Published release and final checks
+
+Published 15 October 2026 at 19:55:00 MSK (16:55:00.225214Z), application
+`6aa414b`, image `sha256:04cd480daf0fbeec9c688bdc30b4e00b785e47511670b700631727b219509715`.
+Only the existing Russian Gym service was recreated. Runtime secrets, mounts,
+transport, Valkey, worker, backup and 1 GiB memory limit were preserved.
+Rollback compose is `/srv/readysix-ru-production/apps.private.compose.yaml.before-player15-6aa414b`.
+Final container is running with zero restarts.
+
+Merged final tests: 1064 passed, one existing skip. Local and server production
+builds passed. Candidate and published smoke checks passed health, auth, storage,
+backup/recovery, both player SSR pages, exact trainer video selection and both
+48-exercise prevention libraries. No player writes were performed by smoke checks.
+
+Published browser checks in both spaces: existing completed session remains
+read-only (Zarechie 22/22, NK Pro 12/12), correct portrait/workspace/date, actual
+values shown in correction sheet and Cancel returns without saving, technique
+modal/fallback opens and closes, history rows are compact and accurate. NK Pro
+390px viewport has no horizontal overflow. Stored videos were not replaced;
+YouTube may disable individual embeds, with original-video fallback retained.
+Real save transactions were not used for verification; explicit Save/Cancel,
+decimal inputs and fast-navigation recovery were validated only on fictional data.
+
+Eight narrowly scoped program/journal/actual/feedback keys for the two reviewed
+players have identical hashes before publication, after publication and after
+final browser actions. This is not a claim of a global private-record export.
+No real programs or results were written, and training methodology was not changed.
+Final screenshot: `/private/tmp/gym-player15-production-2026-10-15.jpg`.
+Temporary browser tabs were closed and viewport override reset; the user's
+existing coach/Safari tabs were retained. Owned candidate container cleaned up.
