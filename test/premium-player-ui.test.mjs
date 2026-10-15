@@ -33,9 +33,11 @@ test('player experience includes start, open exercises, rest, undo and completio
   assert.match(playerPage, /gym:pending:/);
 });
 
-test('exercise technique opens the original video externally without an embedded auth gate', () => {
+test('exercise technique opens inline with an original-video fallback and scoped close', () => {
   assert.match(playerPage, /href=\{watchUrl\}[\s\S]*?target="_blank"/);
-  assert.doesNotMatch(playerPage, /PlayerVideoModal|youtube-nocookie\.com\/embed|<iframe/);
+  assert.match(playerPage, /PlayerVideoModal/);
+  assert.match(playerPage, /youtube-nocookie\.com\/embed/);
+  assert.match(playerPage, /Закрыть видео/);
   assert.doesNotMatch(styles, /\.player-video-modal-card|@keyframes player-modal-in/);
 });
 
