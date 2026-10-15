@@ -100,7 +100,7 @@ test('manual source fixes are workspace-scoped and require the current catalogue
 
 test('regional catalogues isolate edits, reject cross-course sources and keep the legacy back key', async () => {
   const knee = await call(catalogue, { workspace: 'nkperf', courseId: 'knee-resilience' }, { method: 'GET' });
-  assert.equal(knee.code, 200); assert.equal(knee.data.courses.length, 2); assert.equal(knee.data.course.revision, 0);
+  assert.equal(knee.code, 200); assert.equal(knee.data.courses.length, 4); assert.equal(knee.data.course.revision, 0);
   assert.equal((await call(catalogue, { workspace: 'nkperf', courseId: 'missing' }, { method: 'GET' })).code, 404);
   const id = knee.data.course.sessions[0].exercises[0].sourceId;
   assert.equal((await call(catalogue, { workspace: 'nkperf', expectedRevision: 1, sourceId: id, patch: { name: 'Wrong course' } })).code, 404);
@@ -122,4 +122,18 @@ test('knee assignments, refresh and replay remain scoped to the assigned program
   const key = `coach:prevention:player:123:assignment:${legacy.id}`, saved = JSON.parse(db.get(key));
   delete saved.region; delete saved.regionId; db.set(key, JSON.stringify(saved));
   assert.equal((await store.assignCourse(await store.preventionIdentity('zarechie', 'whoop_123'), { ...request(), requestId: legacy.id }, null)).id, legacy.id);
+});
+
+test('both shoulder programs have scoped edits, source-based doses, mandatory C/D and safe replay', async () => {
+  const body = { ...request(), courseId: 'shoulder-impingement-basic', mainSets: 3, preparationSets: 2, phase: 2 };
+  const a = await call(coach, body);assert.equal(a.code,200);assert.equal(a.data.assignment.sessions.length,14);assert.equal(a.data.assignment.region,'Плечо');
+  assert.deepEqual(a.data.assignment.sessions[0].exercises.map(e=>e.setCount),[2,2,3,3]);
+  assert.equal((await call(coach,body)).code,200);
+  assert.equal((await call(coach,{...body,courseId:'shoulder-impingement-comprehensive'})).code,409);
+  const id=a.data.assignment.sessions[0].exercises[0].sourceId;
+  const fixed=await call(catalogue,{workspace:'nkperf',courseId:body.courseId,expectedRevision:0,sourceId:id,patch:{name:'Coach shoulder fix'}});assert.equal(fixed.code,200);
+  const full=await call(catalogue,{workspace:'nkperf',courseId:'shoulder-impingement-comprehensive'},{method:'GET'});assert.equal(full.data.course.revision,0);assert.equal(full.data.course.sessions[12].exercises[0].name,'Quadruped Thoracic Rotation');
+  assert.ok(db.has('nkperf:prevention:catalogue:v1:shoulder-impingement-basic'));
+  const refreshed=await call(coach,{workspace:'nkperf',playerId:body.playerId,assignmentId:a.data.assignment.id,expectedRevision:a.data.assignment.revision,action:'refresh',courseId:'shoulder-impingement-comprehensive'});assert.equal(refreshed.code,200);assert.equal(refreshed.data.assignment.sessions[0].exercises[0].name,'Coach shoulder fix');
+  const comp=await call(coach,{...request(),courseId:'shoulder-impingement-comprehensive',mainSets:3,preparationSets:2,scope:'course'});assert.equal(comp.code,200);assert.equal(comp.data.assignment.sessions.length,48);assert.ok(comp.data.assignment.sessions[0].exercises.some(e=>e.code==='C1'));assert.ok(comp.data.assignment.sessions[0].exercises.some(e=>e.code==='D1'));
 });
