@@ -59,7 +59,8 @@
 
   /* 4. A consistent, restrained heading hierarchy in the existing locations. */
   .coach-premium :is(.coach-overview-header h2,.team-day-heading h1,
-    .coach-warmup-workspace h1,.premium-library-title,.coach-player-history>header h2) {
+    .coach-warmup-workspace h1,.premium-library-title,.coach-player-history>header h2,
+    .coach-week-overview>div:first-child h2) {
     font-family:var(--font-manrope),system-ui,sans-serif;
     font-size:clamp(26px,2.5vw,34px);font-weight:600;letter-spacing:-.035em;line-height:1.25;
     color:var(--coach-ink);
@@ -173,6 +174,11 @@
     .coach-fact-metric,.team-queue-progress,.coach-program-chart,.premium-date-picker,time) {font-variant-numeric:tabular-nums lining-nums;}
   .coach-premium :is(.coach-overview-table,.coach-week-overview) th {font-size:12px;font-weight:550;color:#c1c9c3;letter-spacing:.02em;}
   .coach-premium :is(.coach-overview-table,.coach-week-overview) :is(th,td) {border-color:var(--classic-inner-border);}
+  .coach-premium :is(.coach-overview-table,.coach-week-overview table) {background:var(--coach-panel);border-color:var(--coach-border);border-radius:14px;}
+  .coach-premium :is(.coach-overview-table thead th,.coach-overview-table tr>th:first-child,
+    .coach-week-overview th:first-child,.coach-week-overview td:first-child) {background:#202625;}
+  .coach-premium .coach-exercise-studio .coach-prescription>div {background:#202625;}
+  .coach-premium .coach-exercise-studio .coach-prescription dt {font-size:12px;color:var(--coach-muted);}
   .coach-premium .coach-load-day>strong {font-weight:600;color:var(--coach-ink);}
   .coach-premium .coach-fact-metric svg text {font-size:11px;fill:var(--coach-muted);}
 
@@ -200,7 +206,8 @@
     .coach-exercise-actions button,.coach-recheck,.coach-save-options>summary):hover:not(:disabled) {background:#ffffff08;border-color:#738378;}
   @media (max-width:760px) {
     .coach-premium :is(.coach-overview-header h2,.team-day-heading h1,
-      .coach-warmup-workspace h1,.premium-library-title,.coach-player-history>header h2) {font-size:26px;}
+      .coach-warmup-workspace h1,.premium-library-title,.coach-player-history>header h2,
+      .coach-week-overview>div:first-child h2) {font-size:26px;}
   }
   @media (prefers-reduced-motion:reduce) {
     .coach-premium :is(button,a,summary,input,select,textarea) {transition:none;}

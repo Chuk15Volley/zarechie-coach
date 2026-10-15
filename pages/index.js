@@ -6578,6 +6578,7 @@ export default function Home() {
                     key={t.id}
                     type="button"
                     onClick={() => setTonnageTab(t.id)}
+                    aria-pressed={tonnageTab === t.id}
                     className={`flex-1 rounded-[9px] py-2 text-[12px] font-semibold transition-all ${
                       tonnageTab === t.id ? 'bg-white/[0.09] text-white shadow-sm' : 'text-slate-600 hover:text-slate-400'
                     }`}

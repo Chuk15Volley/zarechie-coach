@@ -28,7 +28,7 @@ The 15 approved visual refinements:
 15. Quiet check/video links with visible hover/focus; video dimensions unchanged.
 
 Validation before publication: 1017 tests passed, one existing skipped; production
-build passed. PostCSS scope audit: 85 rules, every selector starts at coach root,
+build passed. PostCSS scope audit: coach-scoped rules, every selector starts at coach root,
 no display/position/order/grid/flex/width/height/visibility/media-size declarations.
 Local fictional browser checks and server/public checks recorded below after QA.
 
@@ -36,3 +36,8 @@ Local fictional QA: both spaces, editor name/code navigation and paired weights,
 original 260 px loaded video / 50 px missing-video controls, neutral warmup and
 390 px layout (document 380 px, dialog 390 px; no horizontal document overflow).
 No program, actual, video, review or LIVE command was submitted.
+
+First production check on 4ceb97e passed. Final visual pass adds selected-state
+ARIA to the existing tonnage/status toggle, aligns the Week title with page
+headings, and finishes neutral table/prescription surfaces and readable labels.
+No layout or handler changes.
