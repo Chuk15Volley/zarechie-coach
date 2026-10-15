@@ -58,3 +58,6 @@ Manual NK offset restores at 320 while Zarechie independently starts 400/400.
 Sidebar collapse follows right edge 400/400→176/176; sticky player header stays
 above scrolled dates. No browser console errors. All local servers use fictional
 fixtures (two saves, no actual/video/draft/LIVE writes).
+
+Hidden mobile panes do not overwrite the remembered table offset with a
+zero-width measurement; the original offset is restored when the pane returns.
