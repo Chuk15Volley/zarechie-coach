@@ -101,7 +101,7 @@ function PlayerAssignment({ token, id, onChange }) {
         {assignment.status !== 'active' && <p className={styles.success}>{assignment.status === 'completed' ? 'Курс полностью выполнен.' : 'Назначение закрыто тренером. История сохранена.'}</p>}
       </section>
       {session && <section className={styles.card}>
-        <div className={styles.row}><h3>Занятие {assignment.cursor + 1} из {assignment.sessions.length}</h3><span className={styles.badge}>{assignment.phaseTerm || 'Фаза'} {session.phaseLabel || session.phase} · {session.phaseSession}/{session.phaseTotal || 12}</span></div>
+        <div className={styles.row}><h3>Занятие {assignment.cursor + 1} из {assignment.sessions.length}</h3><span className={styles.badge}>{assignment.courseOnly ? 'Комплекс' : `${assignment.phaseTerm || 'Фаза'} ${session.phaseLabel || session.phase} ·`} {session.phaseSession}/{session.phaseTotal || 12}</span></div>
         {assignment.phaseReviewNote && session.phaseSession === 1 && <p className={styles.notice}>{assignment.phaseReviewNote}</p>}
         <p className={styles.muted}>{count.done} из {count.total} подходов · блоки по порядку, упражнения внутри блока — по кругу</p>
         {next && <p className={styles.notice}>Далее: {next.exercise.code} · {next.exercise.name} · подход {next.round + 1}</p>}
