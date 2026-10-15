@@ -28,3 +28,7 @@ test('coach progress summaries report partial sets and actual completion without
  a=applyAssignmentCommand(a,{requestId:'complete-progress-fixture',expectedRevision:a.revision,sessionIndex:0,action:'complete'}).assignment;
  summary=assignmentSummary(a);assert.equal(summary.cursor,1);assert.equal(summary.currentDone,0);assert.ok(summary.lastCompletedAt);assert.equal('scheduledDate' in summary,false);
 });
+test('course-only daily overview never invents a phase',()=>{
+ const c=registeredCourse('plantar-fasciitis-daily'),a=createAssignment(c,{scope:'course',mainSets:1,stretch:false,stretchSets:2,reviewed:true},{id:'daily-overview-fixture'}),s=assignmentSummary(a);
+ assert.equal(s.courseOnly,true);assert.equal(s.currentPhase,undefined);assert.equal(s.currentPhaseLabel,undefined);
+});
