@@ -16,4 +16,14 @@ User requested actual weight/repetition entry for every Prevention approach, wit
 
 CUA with fictional players checked both spaces, 320/390/430 mobile widths, mandatory kg and decimal input, no plan-to-fact prefill, unchanged Save, Cancel, draft reload, actual set save/reload, explicit full completion, coach current/history Plan/Fact, historical correction without advancing and explicit undo. A local HTTP proxy dropped exactly one successful result response: reload and retry recovered the same recorded fact without duplicate execution. Five 2-second hold cycles opened the confirmable actual-time/hold form. Final compiled app verified exact exercise-bound save/draft restore and coach Refresh results. Screenshots in `/private/tmp/prevention-results-review/`; no real athlete/program/roster/library results were changed by testing.
 
-Publication verification is appended after deployment.
+## Publication
+
+Application `1f1d7fb` published 16 October 2026 at 01:04:38 MSK (`2026-10-15T22:04:38.516540Z`), image `sha256:55b693ae8a2d9f87edf99a6cc5f2934678f3fe2c6b70175615ca78bc63e0a797`.
+
+Final local and server builds passed. Worker-disabled isolated candidate verified both authoritative rosters (15 + 3, zero load errors), all 15 course catalogues/eight regions, empty player/library access boundaries and six disposable API/Valkey cases. Each case saved every actual, replayed individual saves, archived exact facts on completion and corrected a historical fact without changing cursor/completion time. Legacy marks, incomplete rejection, completion replay and stale revision rejection also passed; all exact temporary keys were removed.
+
+Final compiled CUA checks additionally verified stale editor source refresh: old values stayed unsaved, the changed exercise could not receive them, and the course remained at 0 executed sets. The final lost-ack check recovered an exercise-bound result after reload with the localized pending message. Coach Refresh results successfully loaded current/history facts.
+
+Post-publication checks passed for exact revision, both overview/catalogue spaces, access boundaries, storage ping/read/write, fresh backup/recovery, public HTTPS 200 and a running container with zero restarts. Published mobile UI saved 9 reps/2.5kg and 10 reps/3.25kg on the respective fictional DB exercise in both spaces; reload restored the fact and paused rest. Production form screenshot `/private/tmp/prevention-results-review/production-result-form.jpg`. Only eight exact TTL-protected synthetic keys were created; they were removed and absence verified. No real athlete assignment/result/program/roster/library writes.
+
+Only Gym was recreated; Russian transport, runtime secrets, isolated Valkey, networks, background worker and 1GiB memory retained. Rollback compose `/srv/readysix-ru-production/apps.private.compose.yaml.before-prevention-1f1d7fb` preserves `ffc348b`. Owned candidate, local app/fixture/lost-ack proxy and temporary browser tabs cleaned; viewport reset.
