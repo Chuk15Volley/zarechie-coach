@@ -30,14 +30,15 @@ export default async function handler(req, res) {
 
   if (!await isValidToken(token)) return res.status(401).json({ error: 'Invalid token' });
 
+  try {
   const { normName, canonicalId } = normalize(name);
-  const card = await getCard(canonicalId);
+  const card = await getCard(canonicalId, { strict: true });
 
   // ── SERVE image ──────────────────────────────────────────────────────────
   if (serve === '1') {
     if (card?.image && streamImageDataUrl(res, card.image)) return;
     // fallback: legacy key
-    const legacy = await redis('get', `exercise:manual:${legacySlug(name)}`).catch(() => null);
+    const legacy = await redis('get', `exercise:manual:${legacySlug(name)}`);
     if (legacy && streamImageDataUrl(res, legacy)) return;
     return res.status(404).end();
   }
@@ -45,21 +46,22 @@ export default async function handler(req, res) {
   // ── META ─────────────────────────────────────────────────────────────────
   // Check for video: library card → legacy manual → bank lookup happens client-side
   let video = card?.video
-    || await redis('get', `exercise:yt-manual:${legacySlug(name)}`).catch(() => null)
+    || await redis('get', `exercise:yt-manual:${legacySlug(name)}`)
     || null;
 
   // Compatibility fallback for links saved before manual videos were pinned
   // to the exact derived exercise id.
   if (!video) {
-    const aliasId = await redis('hget', 'ex:alias', normName).catch(() => null);
+    const aliasId = await redis('hget', 'ex:alias', normName);
     if (aliasId && aliasId !== canonicalId) {
-      const aliasCard = await getCard(aliasId);
+      const aliasCard = await getCard(aliasId, { strict: true });
       video = aliasCard?.video || null;
     }
   }
 
   return res.status(200).json({
-    hasImage: !!(card?.image || await redis('get', `exercise:manual:${legacySlug(name)}`).catch(() => null)),
+    hasImage: !!(card?.image || await redis('get', `exercise:manual:${legacySlug(name)}`)),
     video,
   });
+  } catch (_) { return res.status(503).json({ error: 'media_unavailable' }); }
 }

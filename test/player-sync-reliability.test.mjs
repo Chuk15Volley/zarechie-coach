@@ -267,3 +267,27 @@ test('recording load failure falls back to Russian browser voice', async t => {
   h.render({ hold: null, active: true }); await env.flush(); h.render().prepare();
   assert.equal(env.nodes.length, 0); assert.equal(env.spoken[0].text, 'Подготовься к подходу');
 });
+
+test('completed read-only view never drains a cached pending result on mount, focus or reconnect', async t=>{
+ const env=environment(t);let sent=0;
+ const payload={requestId:'old-device',done:{'0-0-0':false}};
+ env.storage.set('gym:pending:fake:2026-09-17',JSON.stringify(payload));
+ t.mock.method(globalThis,'fetch',async()=>{sent++;return response;});
+ const h=harness('../lib/usePlayerProgressSync.js','usePlayerProgressSync');env.cleanups.push(()=>h.stop());
+ const args={token:'fake',sessionDate:'2026-09-17',ready:true,readOnly:true,restorePending:false,revision:0,snapshot:{done:{'0-0-0':true}},onSaved(){},onStatus(){}};
+ h.render(args);await env.tick();env.events.get('focus')?.();env.events.get('online')?.();await env.tick();
+ assert.equal(sent,0);assert.equal(JSON.parse(env.storage.get('gym:pending:fake:2026-09-17')).requestId,'old-device');
+ // Explicit save must send only the new correction, never the abandoned old payload.
+ h.render({...args,readOnly:false,revision:1,snapshot:{done:{'0-0-0':true},weights:{'0-0-0':'12'}}});
+ await env.tick();assert.equal(sent,1);
+});
+
+test('completed feedback view restores server facts and leaves cached drafts unsubmitted',async t=>{
+ const env=environment(t);let sent=0,restored;
+ env.storage.set('gym:feedback:fake:2026-09-17',JSON.stringify({draft:{rpe:9},pending:{rpe:9,done:{a:true}}}));
+ t.mock.method(globalThis,'fetch',async()=>{sent++;return response;});
+ const h=harness('../lib/usePlayerFeedback.js','usePlayerFeedback');env.cleanups.push(()=>h.stop());
+ const args={token:'fake',date:'2026-09-17',readOnly:true,initialFeedback:{rpe:3},draft:{},payload:{rpe:3,done:{a:true}},restore:value=>{restored=value;}};
+ let state=h.render(args);await env.tick();assert.equal(sent,0);assert.equal(restored.rpe,3);assert.equal(state.submitted,true);
+ state.edit();state=h.render();assert.equal(sent,0);state.submit();await env.tick();assert.equal(sent,1);
+});
