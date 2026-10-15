@@ -4,6 +4,8 @@
 - The gym application is https://gym.readysix.app; player state, readiness, complaints and permitted training load come from https://readysix.app. Preserve ReadySix as the authoritative source; gym workout logs and reaction reports do not replace that assessment.
 - Deploy the gym container on the existing Russian server; the former Vercel gym project is retired. Preserve the runtime secrets, isolated Valkey storage and provider gateway.
 
+- Separate PDF prevention courses requested 2026-10-15 and published as 6b33f8d in both spaces: coach assigns a full course or phase; athlete progress advances only after server-confirmed full session completion, without calendar scheduling. PDF week/day fields are provenance only. Keep its assignments, history and timers separate from gym programs. Coach-editable rest defaults and manual name/cue/video correction are supported; explicitly refreshing future sessions preserves completed and partially performed editions. ReadySix clinical source/physician holds and coach prohibitions remain binding; automatic red alone does not override the explicit reviewed course selection. See docs/prevention-courses-2026-10-15.md. No existing athlete assignments/results were migrated.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
