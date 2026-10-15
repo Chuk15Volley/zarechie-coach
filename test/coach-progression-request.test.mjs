@@ -16,7 +16,7 @@ test('failed and incompatible responses cannot return an applicable stale hint; 
 });
 test('request timeout ends loading and aborts the outstanding fetches',async()=>{
  const signals=[];const fetcher=(_path,{signal})=>{signals.push(signal);return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true}));};
- await assert.rejects(requestCoachProgression({input,fetcher,timeoutMs:10}),/Проверка заняла/);assert.equal(signals.length,2);assert.ok(signals.every(s=>s.aborted));
+ await assert.rejects(requestCoachProgression({input,fetcher,timeoutMs:10}),/Проверка заняла/);assert.equal(signals.length,1);assert.ok(signals.every(s=>s.aborted));
 });
 test('changing workspace/date aborts both old requests; optional history errors do not invent progression',async()=>{
  const controller=new AbortController();let ready;const started=new Promise(resolve=>ready=resolve);

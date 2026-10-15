@@ -1,0 +1,21 @@
+# Fifteen next coach workflow improvements — 2026-10-15
+
+Scope: both coach workspaces, existing theme and block order; athlete app deferred. No data API, generation/methodology/clinical/load-algorithm or original program/result changes. Runtime transport/key/secrets/Valkey/worker/backups retained.
+
+1. Read-only progression refresh retries one temporary network/502/503/504 failure inside its original 25-second total deadline. Optional history follows the critical calculation, reducing simultaneous source reads. Permanent/clinical/auth/rate-limit refusals do not retry. No fallback engine or load calculation added; stale scope/basis/freshness guards unchanged. One shared error/retry in the existing remarks row replaces per-exercise repeated errors. Original production historical NK request reproduced successfully on repeat; no permanent source outage claimed.
+2. Non-strength legacy weight proposals disclose stored-record date/source, exact dates of the latest three returned exposure records and their aggregate completion. Missing actual history never appears as confirmed zero completion. Strength evidence dates use Russian display labels. Numeric algorithm and source records unchanged.
+3. Failed Weight/RPE and Alternatives check labels link directly to the relevant existing field/picker. Opening a picker does not select or apply a replacement.
+4. Existing program overview gains name/code search with explicit jump/Enter; opens the existing block and focuses the exercise without editing it. Completed programs remain read-only.
+5. Exact generic copy boilerplate folds in its original assessment disclosure. Any additional clinical/individual text remains subject to the existing visible-warning rule. Failed-check summary shortened; original details remain available, clinical content outside retained.
+6. Today denominator explicitly names the full roster; queue save count explicitly names that queue. Original counts unchanged.
+7. Quick replacement adds optional single-leg/support/hold/no-hold discovery facets in the existing filter row. Every exact ID remains separate, all variants accessible/resettable; eligibility and ranking unchanged.
+8. Full library list/detail show the same exact variation metadata as quick replacement.
+9. Compact candidate verification status retains independent description/video checks in accessible title and expanded Compare view. No automatic verification writes.
+10. Existing video form explicitly says shared library/both spaces; save action named accordingly. Scope, exact name identity and explicit-save policy unchanged.
+11. Warmup missing-video forms fold; the existing empty-video frame is the keyboard-accessible Add Video control. No-video lookup errors retain retry; no inferred source URL or automatic save.
+12. Expanded Today source section omits only verbatim fragments already displayed above. Every additional qualifier and clinical restriction retained.
+13. Prior queue link shows Russian date and unsaved count, with current selected date explicit. No queue/job changes.
+14. Cycle review shows its effective date with a local On Today shortcut. Does not alter the program calendar, selected program or stored decisions.
+15. Performance variant selector gains scoped name/code search. No result does not change the active graph; exact variant/chain/implement observations remain separate.
+
+Validation: 1,013 tests, 1,012 pass and one existing skip; final local build passes. New tests cover one bounded temporary retry, refusal/no-fallback/cancellation, exact program navigation, no-mutation check targets, strict generic folding, discovery variants, clinical qualifier preservation, absent evidence semantics and distinct historical identities. Synthetic browser checks: both-space kg save-and-next (102.5/105 kg, two fictional saves), C1 exact focus, one-click Alternatives, single-leg facet, persistent progression failure displays one retry/no repeated exercise errors then successful explicit retry, independent cycle-review date, no-match history search retains graph, shared manual video explicit save reflected across spaces, collapsed warmup forms and accessible one-click open. Test-only video save count one, no LIVE commands. Final production verification/preservation results appended after deployment.

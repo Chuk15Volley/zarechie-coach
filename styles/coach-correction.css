@@ -288,3 +288,15 @@
 .coach-event-coverage{font-size:11px;color:#b9c9bf;line-height:1.5;margin:8px 0}.coach-system-details time{max-width:130px;flex-shrink:0;font-variant-numeric:tabular-nums}
 .coach-video-meta>span{min-width:0;overflow-wrap:anywhere}.coach-warmup-mobile-date{max-width:100%;min-width:0}
 @media(max-width:600px){.coach-actual-columns{gap:7px;grid-template-columns:66px repeat(2,minmax(0,1fr))}.coach-system-details time{max-width:86px}.coach-warmup-mobile-date .premium-date-picker{max-width:100%}}
+
+/* Existing coach control rows: retain theme, grid and original block order. */
+.coach-premium .coach-program-find { display:flex; align-items:center; gap:8px; font-size:11px; margin:0 0 8px; }
+.coach-premium .coach-program-find input, .coach-premium .coach-fact-controls input[type=search] { min-width:0; width:100%; border:1px solid var(--coach-border); border-radius:8px; background:var(--coach-bg); color:inherit; padding:8px 10px; font:inherit; }
+.coach-premium .coach-quick-replacement .coach-overview-filters label { display:flex; align-items:center; gap:6px; font-size:11px; }
+.coach-premium .coach-quick-replacement .coach-overview-filters select { max-width:180px; background:var(--coach-bg); color:inherit; border:1px solid var(--coach-border); border-radius:8px; padding:8px; }
+.coach-premium .coach-quick-replacement-results .coach-technique-status { margin:0; font-size:10px; }
+.coach-premium .coach-context-issues { display:flex; flex-wrap:wrap; gap:6px 14px; }
+.coach-premium .coach-video-quick-edit label > span:not(.sr-only) { display:block; font-size:10px; color:var(--coach-muted); margin-bottom:4px; }
+
+.coach-premium .coach-context-issues button { font:inherit; color:inherit; background:transparent; border:0; padding:2px 4px; text-align:left; text-decoration:underline; text-underline-offset:3px; }
+.coach-premium button.coach-video-empty { width:100%; border:0; color:inherit; background:transparent; font:inherit; cursor:pointer; }

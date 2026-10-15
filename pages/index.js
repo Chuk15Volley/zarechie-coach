@@ -35,6 +35,7 @@ import {TodayOverview,TeamLoadOverview,OverviewFreshness,OverviewSignals} from '
 import {draftForPlayer,readinessIssues,loadEvidenceLabel} from '../lib/coachOverview.mjs';
 import {overviewJson,requestDailyOverview} from '../lib/coachOverviewRequest.mjs';
 import ExercisePrescription from '../components/ExercisePrescription';
+import {isGenericCopyAssessment,correctionCheckTargets,progressionBasisLabel} from '../lib/coachNextWork.mjs';
 import StrengthProgressionHint from '../components/StrengthProgressionHint';
 import {requestCoachProgression} from '../lib/coachProgressionRequest.mjs';
 import CoachNavigation from '../components/CoachNavigation';
@@ -1094,7 +1095,7 @@ const PENCIL_ICON = (
   </svg>
 );
 
-function ExerciseVideoPanel({name,apiKey,editable=true,onAvailability,fallbackUrl=null,fallbackName='',fallbackLoading=false,fallbackError='',onRetryFallback,exactSource=false}) {
+function ExerciseVideoPanel({name,apiKey,editable=true,onAvailability,fallbackUrl=null,fallbackName='',fallbackLoading=false,fallbackError='',onRetryFallback,exactSource=false,compactMissingTools=false}) {
   const bankUrl=exactSource?null:findExerciseUrl(name),panelId=useId();
   const scope=JSON.stringify([name,apiKey]);
   const [pinned,setPinned]=useState(false),[checkedScope,setCheckedScope]=useState('');
@@ -1135,9 +1136,9 @@ function ExerciseVideoPanel({name,apiKey,editable=true,onAvailability,fallbackUr
   const panel=<div className={`coach-video-panel coach-video-compact print:hidden ${!videoId?'is-empty':''} ${expanded?'is-expanded':''} ${pinned?'is-pinned':''}`}>
     <div className="coach-video-frame">{videoId?playing?<iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`} title={`Видео техники · ${name}`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:<button type="button" className="coach-video-poster" aria-label={`Смотреть видео техники: ${name}`} onClick={()=>setPlaying(true)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt={`Техника ${name}`} loading="lazy"/><span className="coach-video-shade"/><span className="coach-video-play">▶</span><span className="coach-video-caption">Смотреть технику</span>
-    </button>:<div className="coach-video-empty"><strong role={pendingVideo?'status':undefined}>{pendingVideo?'Проверяю видео…':videoError || fallbackError?'Видео не проверено':editable?'Добавить видео':'Видео ещё не добавлено'}</strong>{!editable && !pendingVideo && <p>Техника выполнения описана ниже.</p>}</div>}</div>
+    </button>:compactMissingTools && editable && !pendingVideo && !videoError && !fallbackError?<button type="button" className="coach-video-empty" aria-expanded={videoTools || editingVideo} onClick={()=>setVideoTools(v=>!v)}><strong>{videoTools?'Свернуть добавление видео':'Добавить видео'}</strong></button>:<div className="coach-video-empty"><strong role={pendingVideo?'status':undefined}>{pendingVideo?'Проверяю видео…':videoError || fallbackError?'Видео не проверено':editable?'Добавить видео':'Видео ещё не добавлено'}</strong>{!editable && !pendingVideo && <p>Техника выполнения описана ниже.</p>}</div>}</div>
     <div className="coach-video-meta"><span title={videoId?`Источник видео: ${manualVideoUrl?name:bankUrl?'Банк видео; запрос: '+name:fallbackName || name}`:undefined}>{previewing?'Предпросмотр · ещё не сохранено':manualVideoUrl?'Видео тренера':videoId?fallbackName && !bankUrl?'Библиотека · '+fallbackName:'Библиотека техники':pendingVideo?'Поиск ссылки…':'Техника упражнения'}</span><div>{(videoId || videoUrl) && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке">YouTube ↗</a>}{videoId && <button type="button" aria-label={`${expanded?'Уменьшить':'Увеличить'} видео: ${name}`} onClick={()=>setExpanded(value=>!value)}>{expanded?'Уменьшить':'Увеличить'}</button>}{videoId && <button type="button" aria-label={`${pinned?'Открепить':'Закрепить'} видео: ${name}`} onClick={()=>{if(!pinned)window.dispatchEvent(new CustomEvent('gym-video-pin',{detail:panelId}));setPinned(v=>!v);}}>{pinned?'Открепить':'Закрепить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
-    {editable && (videoId || !pendingVideo) && <details className="coach-video-tools" open={!videoId || videoTools || editingVideo || undefined} ><summary onClick={e=>{e.preventDefault();if(videoId)setVideoTools(v=>!v);}}>{videoId?'Изменить видео':'Добавить видео'}</summary><form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span className="sr-only" title="Общая библиотека видео обоих пространств">Ссылка YouTube</span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo || !candidateId}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button>{editingVideo && <button type="button" onClick={()=>{setEditingVideo(false);setVideoInput(videoUrl || '');setVideoError('');}}>Отменить ссылку</button>}<div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form></details>}
+    {editable && (videoId || !pendingVideo) && <details className="coach-video-tools" open={!videoId && !compactMissingTools || videoTools || editingVideo || undefined} ><summary onClick={e=>{e.preventDefault();setVideoTools(v=>!v);}}>{videoId?'Изменить видео':'Добавить видео'}</summary><form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span title="Сохраняется для этого точного названия во всех программах обоих пространств">Общая библиотека · оба пространства</span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo || !candidateId}>{savingVideo?'Сохраняю…':'Сохранить в общую библиотеку'}</button>{editingVideo && <button type="button" onClick={()=>{setEditingVideo(false);setVideoInput(videoUrl || '');setVideoError('');}}>Отменить ссылку</button>}<div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form></details>}
     {fallbackError && <div className="coach-video-error" role="alert"><p>{fallbackError}</p><button type="button" onClick={onRetryFallback}>Повторить поиск видео</button></div>}
     {videoError && <div className="coach-video-error" role="alert"><p>{videoError}</p><button type="button" onClick={()=>editingVideo?handleSaveVideo():setReload(value=>value+1)}>{editingVideo?'Повторить сохранение видео':'Повторить загрузку видео'}</button></div>}
   </div>;
@@ -1218,6 +1219,7 @@ function ExerciseCard({
   prevPain,
   suggestedKg,
   progressionDecision,
+  progressionBasis,
   progressionConfidence,
   progressionTrend,
   strengthProposal,onApplyStrengthProgression,progressionError,progressionLoading,onRetryProgression,
@@ -1327,6 +1329,7 @@ function ExerciseCard({
           <WeightProvenance name={name} evidence={loadEvidence}/>
           {!preview && <div className="coach-exercise-progression">{focus==='inseason_strength'?<StrengthProgressionHint proposal={strengthProposal} error={progressionError} loading={progressionLoading} onRetry={onRetryProgression} onApply={onApplyStrengthProgression}/>:prevKg ? (
           <div className="mt-1 flex flex-wrap items-center gap-1.5 print:hidden">
+            <p className="coach-progression-history">{progressionBasisLabel(progressionBasis,coachDate)}{prevRpe==null?' · RPE не записан':''}</p>
             <span className="text-[11px] text-slate-600">
               ↑ {prevKg} кг{prevRpe ? ` · RPE ${prevRpe}` : ''}{prevPain ? ' · боль' : ''}
               {effectiveSuggestedKg && effectiveSuggestedKg !== prevKg && (
@@ -1633,6 +1636,7 @@ function StrengthCycleComparison({comparison}) {
 
 function StrengthCycleReviewPanel({workspace, playerId, apiKey, date,refreshToken=0,initialOpen=false,title='Обзор силового цикла'}) {
   const [open,setOpen]=useState(initialOpen);
+  const [asOfOverride,setAsOfOverride]=useState(null),asOfScope=JSON.stringify([workspace,playerId,date]),asOf=asOfOverride?.scope===asOfScope?asOfOverride.date:date;
   const [review,setReview]=useState(null);
   const [selected,setSelected]=useState('');
   const [loading,setLoading]=useState(false);
@@ -1641,13 +1645,13 @@ function StrengthCycleReviewPanel({workspace, playerId, apiKey, date,refreshToke
   useEffect(()=>{
     if(!open || !apiKey || !playerId)return;
     let cancelled=false;const controller=new AbortController();setLoading(true);setError('');setReview(null);
-    teamQueueCall(apiKey,`/api/players/strength-cycle-review?workspace=${encodeURIComponent(workspace)}&playerId=${encodeURIComponent(playerId)}&asOf=${encodeURIComponent(date || todayISO())}`,{signal:controller.signal,timeoutMs:25000})
+    teamQueueCall(apiKey,`/api/players/strength-cycle-review?workspace=${encodeURIComponent(workspace)}&playerId=${encodeURIComponent(playerId)}&asOf=${encodeURIComponent(asOf || todayISO())}`,{signal:controller.signal,timeoutMs:25000})
       .then(data=>{if(!Array.isArray(data.cycles))throw new Error('Обзор получен не полностью. Повторите обновление.');return data;})
       .then(data=>{if(!cancelled){setReview(data);setSelected(previous=>data.cycles.some(c=>c.id===previous)?previous:(data.cycles.find(c=>c.status==='completed') || data.cycles[0])?.id || '');}})
       .catch(error=>{if(!cancelled)setError(error.message);})
       .finally(()=>{if(!cancelled)setLoading(false);});
     return()=>{cancelled=true;controller.abort();};
-  },[open,workspace,playerId,apiKey,date,refresh,refreshToken]);
+  },[open,workspace,playerId,apiKey,asOf,refresh,refreshToken]);
   const cycle=review?.cycles.find(c=>c.id===selected);
   const chains={full_body:'Общая силовая',anterior_chain:'Передняя цепь',posterior_chain:'Задняя цепь'};
   const formatSet=set=>`${set.kg==null?'кг не записаны':set.kg+' кг'} × ${set.reps==null?'повторы не записаны':set.reps+(set.perSide?'/стор.':'')}`;
@@ -1658,7 +1662,7 @@ function StrengthCycleReviewPanel({workspace, playerId, apiKey, date,refreshToke
       {loading && <p role="status" className="text-xs text-slate-500">Проверяем выполнение…</p>}
       {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
       {review && <>
-        <p className="mb-2 text-xs text-slate-500">По состоянию на {coachDate(review.asOf)}. {review.legacySessions>0?'Занятия старой версии не включены в счётчик выполненных циклов.':''}</p>
+        <p className="mb-2 text-xs text-slate-500">Обзор на {coachDate(review.asOf)}{asOf!==todayISO() && <> · <button type="button" onClick={()=>setAsOfOverride({scope:asOfScope,date:todayISO()})}>На сегодня</button></>} · {review.legacySessions>0?'Занятия старой версии не включены в счётчик выполненных циклов.':''}</p>
         {!review.cycles.length && <p className="text-sm text-slate-400">Пока нет силового цикла новой версии. После сохранения и выполнения занятий здесь появится обзор.</p>}
         {!!review.cycles.length && <PremiumSelect value={selected} onChange={setSelected} options={review.cycles.map(c=>({value:c.id,label:`${c.startDate} · ${c.status==='completed'?'завершён':'идёт'} · ${c.completedCount}/4`}))} compact />}
         {cycle && <div className="mt-3 space-y-3">
@@ -3859,7 +3863,7 @@ export default function Home() {
 
   function focusPlannedIssue(issue){
     if(!issue)return;if(!executionConfirmed)setEditorPreview(false);setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(session.blocks[issue.bi].label);return next;});
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{const ex=session.blocks[issue.bi].exercises[issue.ei],article=Array.from(document.querySelectorAll('.coach-exercise-card')).find(el=>el.getAttribute('aria-label')===`${issue.code} ${ex.name}`),label=`${issue.code} · ${issue.field}`;const input=issue.field==='video'?article?.querySelector('.coach-video-tools input'):Array.from(document.querySelectorAll('[aria-label]')).find(el=>el.getAttribute('aria-label')===label);const target=input || article;target?.focus();target?.scrollIntoView({block:'center'});}));
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{const ex=session.blocks[issue.bi].exercises[issue.ei],article=Array.from(document.querySelectorAll('.coach-exercise-card')).find(el=>el.getAttribute('aria-label')===`${issue.code} ${ex.name}`),label=`${issue.code} · ${issue.field}`;if(issue.field==='замена'){article?.querySelector('.coach-exercise-actions button[title="Найти и заменить упражнение"]')?.click();return;}const input=issue.field==='video'?article?.querySelector('.coach-video-tools input'):Array.from(document.querySelectorAll('[aria-label]')).find(el=>el.getAttribute('aria-label')===label);const target=input || article;target?.focus();target?.scrollIntoView({block:'center'});}));
   }
   function validatePlannedEdit(){const first=plannedInputIssues(session)[0];if(!first)return true;setError(`${first.code}: ${first.message}`);focusPlannedIssue(first);return false;}
   async function handleSave(openNext=false) {
@@ -4452,13 +4456,13 @@ export default function Home() {
               </div>
 
               {executionConfirmed && <p className="coach-execution-confirmed" role="status">Тренировка выполнена · {playerExecution.totalSets} / {playerExecution.totalSets} подходов · {new Date(playerExecution.completedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Исходный план защищён: редактирование, сохранение и перенос отключены. Факты дополняются отдельно в истории.</p>}
-              <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={coachTrainingTitle(meta.focusLabel)==='Тренировка'?TRAINING_TYPE_LABELS[meta.trainingType] || getFocusLabel(period,focus):coachTrainingTitle(meta.focusLabel)} preview={editorPreview || !!executionConfirmed} onPreview={chooseEditorPreview} onNavigate={index=>{
+              <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={coachTrainingTitle(meta.focusLabel)==='Тренировка'?TRAINING_TYPE_LABELS[meta.trainingType] || getFocusLabel(period,focus):coachTrainingTitle(meta.focusLabel)} preview={editorPreview || !!executionConfirmed} onPreview={chooseEditorPreview} onExercise={row=>focusPlannedIssue({...row,field:'название упражнения'})} onNavigate={index=>{
                 const block=session.blocks[index];setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
                 requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
               }}/>
 
               {!editorPreview && !executionConfirmed && pendingSaved?.session && meta.date===date && <ProgramWorkCopy key={workCopyKey({workspace,playerId,date,queueId:meta.teamDraft?.queueId,batchId:activeTeamDraftRef.current?.batchId})} context={{workspace,playerId,date,queueId:meta.teamDraft?.queueId,batchId:activeTeamDraftRef.current?.batchId}} record={pendingSaved} session={session} onRestore={editSession}/>}
-              {(plannedIssues.length>0 || correctionRemarks.length>0) && <div className="coach-editor-validation" aria-label="Замечания к программе">{!executionConfirmed && plannedIssues.length>0 && <button type="button" className="coach-field-warning" onClick={()=>focusPlannedIssue(plannedIssues[0])}>Проверить поля · {plannedIssues.length}</button>}{correctionRemarks.map(issue=><button type="button" key={issue.code+issue.field} onClick={()=>focusPlannedIssue(issue)}>{issue.code} · {issue.label}</button>)}</div>}
+              {(plannedIssues.length>0 || correctionRemarks.length>0 || progressionError && (meta?.focus || focus)==='inseason_strength') && <div className="coach-editor-validation" aria-label="Замечания к программе">{progressionError && (meta?.focus || focus)==='inseason_strength' && <><span role="alert" title={progressionError}>Прогрессия не проверена. Предложения не применяются.</span><button type="button" disabled={progressionLoading} onClick={()=>{setProgressionError('');setProgressionRefresh(value=>value+1);}}>Повторить общую проверку</button><details><summary>Причина</summary><p>{progressionError}</p></details></>}{!executionConfirmed && plannedIssues.length>0 && <button type="button" className="coach-field-warning" onClick={()=>focusPlannedIssue(plannedIssues[0])}>Проверить поля · {plannedIssues.length}</button>}{correctionRemarks.map(issue=><button type="button" key={issue.code+issue.field} onClick={()=>focusPlannedIssue(issue)}>{issue.code} · {issue.label}</button>)}</div>}
               {rescheduleOpen && pendingSaved && (
                 <div className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 print:hidden">
                   <div className="flex items-start gap-2.5">
@@ -4504,7 +4508,7 @@ export default function Home() {
                 </div>
               )}
 
-              <CoachCorrectionContext key={workspace} workspace={workspace} checks={generationQuality}>
+              <CoachCorrectionContext key={workspace} workspace={workspace} checks={generationQuality} targets={Object.fromEntries(generationQuality.map(item=>[item.label,correctionCheckTargets(item.label,session.blocks)]))} onTarget={focusPlannedIssue}>
               {generationQuality.length > 0 && (
               <details className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 print:hidden">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
@@ -4591,7 +4595,7 @@ export default function Home() {
               </CoachCorrectionContext>
               {/* Explanations remain in place; source warnings are never abbreviated. */}
               {(session.assessment || session.periodization_note) && <div className="coach-session-context mb-4 grid gap-3 lg:grid-cols-2 print:hidden">
-                {session.assessment && <details className="coach-assessment" open={!!(session.warnings?.length || session.kind==='restricted_day_plan' || /боль|медицин|противопоказ|без отягощ|адаптац|сократ|без прибав|уточнит|недоступ|запрет|огранич|лихорад|травм/i.test(session.assessment)) || undefined}><summary>Состояние и ограничения</summary><p>{session.assessment}</p></details>}
+                {session.assessment && <details className="coach-assessment" open={!!(session.warnings?.length || session.kind==='restricted_day_plan' || !isGenericCopyAssessment(session.assessment) && /боль|медицин|противопоказ|без отягощ|адаптац|сократ|без прибав|уточнит|недоступ|запрет|огранич|лихорад|травм/i.test(session.assessment)) || undefined}><summary>Состояние и ограничения</summary><p>{session.assessment}</p></details>}
                 {session.periodization_note && <details className="coach-periodization"><summary>Логика тренировки</summary><p>{session.periodization_note}</p></details>}
               </div>}
 
@@ -4759,6 +4763,7 @@ export default function Home() {
                           prevPain={progression.pain || false}
                           suggestedKg={progression.suggestedKg || null}
                           progressionDecision={progression.decision || ''}
+                          progressionBasis={progression}
                           progressionConfidence={progression.confidence || ''}
                           progressionTrend={progression.trend || ''}
                           restrictions={restrictions}
