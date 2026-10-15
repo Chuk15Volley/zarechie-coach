@@ -100,7 +100,7 @@ test('manual source fixes are workspace-scoped and require the current catalogue
 
 test('regional catalogues isolate edits, reject cross-course sources and keep the legacy back key', async () => {
   const knee = await call(catalogue, { workspace: 'nkperf', courseId: 'knee-resilience' }, { method: 'GET' });
-  assert.equal(knee.code, 200); assert.equal(knee.data.courses.length, 4); assert.equal(knee.data.course.revision, 0);
+  assert.equal(knee.code, 200); assert.equal(knee.data.courses.length, 9); assert.equal(knee.data.course.revision, 0);
   assert.equal((await call(catalogue, { workspace: 'nkperf', courseId: 'missing' }, { method: 'GET' })).code, 404);
   const id = knee.data.course.sessions[0].exercises[0].sourceId;
   assert.equal((await call(catalogue, { workspace: 'nkperf', expectedRevision: 1, sourceId: id, patch: { name: 'Wrong course' } })).code, 404);
@@ -136,4 +136,27 @@ test('both shoulder programs have scoped edits, source-based doses, mandatory C/
   assert.ok(db.has('nkperf:prevention:catalogue:v1:shoulder-impingement-basic'));
   const refreshed=await call(coach,{workspace:'nkperf',playerId:body.playerId,assignmentId:a.data.assignment.id,expectedRevision:a.data.assignment.revision,action:'refresh',courseId:'shoulder-impingement-comprehensive'});assert.equal(refreshed.code,200);assert.equal(refreshed.data.assignment.sessions[0].exercises[0].name,'Coach shoulder fix');
   const comp=await call(coach,{...request(),courseId:'shoulder-impingement-comprehensive',mainSets:3,preparationSets:2,scope:'course'});assert.equal(comp.code,200);assert.equal(comp.data.assignment.sessions.length,48);assert.ok(comp.data.assignment.sessions[0].exercises.some(e=>e.code==='C1'));assert.ok(comp.data.assignment.sessions[0].exercises.some(e=>e.code==='D1'));
+});
+
+test('elbow variants, fixed Daily Routine and 1–2 warmup doses roundtrip without changing other catalogues', async () => {
+  const ids = ['basic-dumbbell','basic-band','comprehensive-dumbbell','comprehensive-band','daily'].map(s=>'tennis-elbow-'+s);
+  for (const workspace of ['zarechie','nkperf']) for (const courseId of ids) {
+    const r=await call(catalogue,{workspace,courseId},{method:'GET'});assert.equal(r.code,200);assert.equal(r.data.course.regionId,'elbow');assert.equal(r.data.course.revision,0);
+  }
+  const base={...request(),courseId:ids[2],mainSets:4,preparationSets:1};
+  assert.equal((await call(coach,{...base,preparationSets:3})).code,400);
+  const r=await call(coach,base);assert.equal(r.code,200);assert.deepEqual(r.data.assignment.sessions[0].exercises.map(e=>e.setCount),[1,1,4,4,4,4,4]);assert.equal(r.data.assignment.sessions.length,12);
+  assert.equal((await call(coach,base)).data.assignment.id,r.data.assignment.id);
+  assert.equal((await call(coach,{...base,courseId:ids[3]})).code,409);
+  let a=r.data.assignment;
+  assert.equal((await call(player,progress(a,'complete'))).code,409);
+  for(const e of a.sessions[0].exercises)for(let set=0;set<e.setCount;set++)a=(await call(player,progress(a,'mark',{key:`${e.code}:${set}`,done:true}))).data.assignment;
+  const body=progress(a,'complete'),done=await call(player,body);assert.equal(done.code,200);assert.equal(done.data.assignment.cursor,1);assert.equal((await call(player,body)).data.assignment.cursor,1);
+  const daily=await call(coach,{...request(),courseId:ids[4],mainSets:1,scope:'course'});assert.equal(daily.code,200);assert.equal(daily.data.assignment.sessions.length,336);assert.deepEqual(daily.data.assignment.sessions[0].exercises.map(e=>e.setCount),[1,1]);
+  const editId=r.data.assignment.sessions[0].exercises[0].sourceId;
+  assert.equal((await call(catalogue,{workspace:'nkperf',courseId:ids[2],expectedRevision:0,sourceId:editId,patch:{name:'Coach elbow warmup'}})).code,200);
+  assert.equal((await call(catalogue,{workspace:'zarechie',courseId:ids[2]},{method:'GET'})).data.course.revision,0);
+  assert.equal((await call(catalogue,{workspace:'nkperf',courseId:ids[3]},{method:'GET'})).data.course.sessions[0].exercises[0].name,'Open Book');
+  db.set('nkperf:restrictions:123',JSON.stringify(['SHOULDER']));assert.equal((await call(coach,{...request(),courseId:ids[3],mainSets:3,preparationSets:1})).code,409);db.delete('nkperf:restrictions:123');
+  db.set('nkperf:restrictions:123',JSON.stringify(['WRIST']));assert.equal((await call(coach,{...request(),courseId:ids[3],mainSets:3,preparationSets:1})).code,409);db.delete('nkperf:restrictions:123');
 });

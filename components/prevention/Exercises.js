@@ -1,5 +1,5 @@
 import styles from './Prevention.module.css';
-export const doseLabel = e => `${e.setCount || e.sets} × ${e.reps.replaceAll('sec', 'сек').replace(/each|ea/g, 'на сторону').replaceAll('-', '–')}${e.rir && e.rir !== '-' ? ` · RIR ${e.rir}` : ''}${e.rpe && e.rpe !== '-' ? ` · RPE ${e.rpe}` : ''}`;
+export const doseLabel = e => `${e.setCount || e.sets} × ${e.reps.replaceAll('sec lower', 'сек на опускание').replaceAll('sec', 'сек').replace(/each|ea/g, 'на сторону').replaceAll('-', '–')}${e.rir && e.rir !== '-' ? ` · RIR ${e.rir}` : ''}${e.rpe && e.rpe !== '-' ? ` · RPE ${e.rpe}` : ''}`;
 export { timedExercise } from '../../lib/prevention/timing.mjs';
 import { timedExercise } from '../../lib/prevention/timing.mjs';
 export default function Exercises({ session, progress = {}, onMark, onWorkTimer, busy = false, currentKey = '', onEdit }) {

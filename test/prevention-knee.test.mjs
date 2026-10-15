@@ -8,7 +8,7 @@ const options = { scope: 'phase', phase: 1, mainSets: 3, stretch: false, stretch
 const create = patch => createAssignment(course, { ...options, ...patch }, { id: 'knee-fixture-assignment' });
 const command = (a, action, patch = {}) => ({ requestId: crypto.randomUUID(), expectedRevision: a.revision, sessionIndex: a.cursor, action, ...patch });
 test('region registry preserves back defaults and imports all knee source rows and video links', () => {
-  assert.deepEqual(preventionCourses().filter(c => c.regionId !== 'shoulder').map(c => [c.regionId, c.sessions]), [['low-back', 48], ['knee', 48]]);
+  assert.deepEqual(preventionCourses().filter(c => ['low-back', 'knee'].includes(c.regionId)).map(c => [c.regionId, c.sessions]), [['low-back', 48], ['knee', 48]]);
   assert.equal(registeredCourse().rests.D, undefined);
   assert.throws(() => registeredCourse('unknown'), /не найдена/);
   assert.equal(course.sessions.length, 48);
