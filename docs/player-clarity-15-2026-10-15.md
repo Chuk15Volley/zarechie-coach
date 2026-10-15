@@ -51,3 +51,32 @@ warning passed. Final compiled UI and production checks follow before release.
 Production protection is narrowly scoped to eight program/journal/actual/feedback
 keys for the two reviewed players, with hashes only and no private export.
 Real browser verification will use read-only views and Cancel, never Save.
+
+## Published and verified
+
+Published application `53bebf0` at 20:32:43 MSK (17:32:43.915790Z), image
+`sha256:ce10ff9ec15433fc69d9646c228155f79ccaba3a5a15ee6434ba6f883c3f0983`.
+Only Gym was recreated, preserving runtime secrets, transport, mounts, Valkey,
+worker, backups and 1 GiB memory. Rollback compose:
+`/srv/readysix-ru-production/apps.private.compose.yaml.before-player-clarity-53bebf0`.
+
+Final 1069 tests passed, one existing skip; final local and Russian server builds
+passed. Candidate and production smoke passed health/auth/storage/backup/recovery,
+both player pages, exact stored trainer videos and unchanged Low Back/Knee courses.
+Real browser checks in both spaces used only read-only/open/Cancel actions: direct
+correction shows original 5 reps/50 kg and 8 reps/2.5 kg, unchanged Save is disabled,
+video context/fallback works, recorded feedback no longer asks to rate again,
+month headings and one-line tabs work. Original 22/22 and 12/12 completion remains.
+NK Pro public history restored the original July row and focus at 2826px before
+and after opening its read-only details. Both spaces at 390px have document width
+380px, no horizontal overflow. Open-today link is absent on today's program;
+offline not-prepared status and original instructions/warnings are explicit.
+
+The eight narrowly scoped protected keys have identical before/final hashes.
+No global protected-record export or global-hash claim. Real programs/results
+and methodology were not changed. A separate final regression check confirms a
+reps-only correction with equivalent decimal kg does not stamp an unchanged weight
+or toggle completion. Synthetic local servers were stopped; temporary browser tabs
+were closed and viewport reset, with the user's original Safari/coach tabs retained.
+Owned candidate container removed; production and rollback images retained.
+Screenshot: `/private/tmp/gym-player-clarity-production-2026-10-15.jpg`.
