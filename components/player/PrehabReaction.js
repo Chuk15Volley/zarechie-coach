@@ -1,3 +1,4 @@
+import PremiumSelect from '../PremiumSelect';
 import { useEffect, useState } from 'react';
 import { PREHAB_ZONES, nextPrehabDate } from '../../lib/prehabReaction.mjs';
 const stageLabels = { before:'До занятия', after:'После занятия', nextMorning:'Следующим утром' };
@@ -55,9 +56,9 @@ export default function PrehabReaction({ token, date, completed = false, morning
       {stage === 'before' && today() > date && <p className="text-xs text-amber-300">Исходная оценка пропущена. Внеси её только если помнишь ощущения до занятия; она будет отмечена как внесённая позже.</p>}
       {PREHAB_ZONES.map(zone => <label key={zone.key} className="flex items-center justify-between gap-3 text-sm">
         <span>{zone.label}</span>
-        <select aria-label={`Боль: ${zone.label}`} className="rounded-lg border border-white/20 bg-slate-900 p-2" value={pain[zone.key] ?? ''} onChange={event => setPain(values => ({...values,[zone.key]:event.target.value === '' ? '' : Number(event.target.value)}))}>
+        <PremiumSelect aria-label={`Боль: ${zone.label}`} className="rounded-lg border border-white/20 bg-slate-900 p-2" value={pain[zone.key] ?? ''} onChange={event => setPain(values => ({...values,[zone.key]:event.target.value === '' ? '' : Number(event.target.value)}))}>
           <option value="">Выбрать</option>{Array.from({length:11},(_,i) => <option key={i} value={i}>{i}</option>)}
-        </select>
+        </PremiumSelect>
       </label>)}
       <label className="block text-sm">Комментарий<textarea value={note} maxLength={300} onChange={event => setNote(event.target.value)} className="mt-1 w-full rounded-lg border border-white/20 bg-slate-900 p-2" placeholder="Что изменилось, где возник дискомфорт" /></label>
       <button type="button" disabled={busy || PREHAB_ZONES.some(zone => pain[zone.key] === undefined || pain[zone.key] === '')} onClick={save} className="rounded-xl bg-cyan-200 px-4 py-3 font-bold text-slate-950 disabled:opacity-40">{busy ? 'Сохранение…' : 'Сохранить оценку'}</button>

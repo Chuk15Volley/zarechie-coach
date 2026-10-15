@@ -1,3 +1,4 @@
+import PremiumSelect from '../components/PremiumSelect';
 // pages/library.js — exercise library with gym/warmup tabs, search, AI classify.
 
 import Head from 'next/head';
@@ -724,7 +725,7 @@ export default function LibraryPage() {
                 </div>
 
                 {/* Sort */}
-                <select
+                <PremiumSelect
                   value={sort}
                   onChange={e => setSort(e.target.value)}
                   className="rounded-xl border border-white/[0.08] bg-[#0d1520] px-3 py-1.5 text-[12px] text-slate-300 outline-none transition focus:border-accent/30"
@@ -732,7 +733,7 @@ export default function LibraryPage() {
                   <option value="updated">Новые первые</option>
                   <option value="alpha">А–Я</option>
                   <option value="nophoto">Без фото первые</option>
-                </select>
+                </PremiumSelect>
 
                 {/* View toggle */}
                 <div className="flex rounded-xl border border-white/[0.06] bg-white/[0.03] p-0.5">

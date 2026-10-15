@@ -1,3 +1,4 @@
+import PremiumSelect from '../../components/PremiumSelect';
 import { serverWorkoutComplete, playerSessionStatus, restorePlayerProgress, implementWeightLabel, actualLoadLabel, visibleLoadPrescription, resultInputsChanged, weightChangeLabels, historyMonthGroups, historySetRows, pairWeightLegend, compactActualLoadLabel, compactSetPrescription, compactPreviousSets } from '../../lib/playerPresentation.mjs';
 import PlayerPrevention from '../../components/prevention/PlayerPrevention';
 import {getPlayerTimeZone} from '../../lib/playerTimeZoneStore';
@@ -252,7 +253,7 @@ function SetResultEditor({ item, done, weight, repetitions, previousWeight, prev
     <button type="button" aria-label="Увеличить фактический вес" onClick={()=>adjust(step)}>+</button>
    </div></label>}
   </div>
-  {requiresWeight && <><label className="gym-weight-step">Шаг веса<select aria-label="Шаг веса" value={step} onChange={e=>setStep(Number(e.target.value))}>{[0.5,1,2.5,5].map(n=><option key={n} value={n}>{String(n).replace('.',',')} кг</option>)}</select></label>
+  {requiresWeight && <><label className="gym-weight-step">Шаг веса<PremiumSelect aria-label="Шаг веса" value={step} onChange={e=>setStep(Number(e.target.value))}>{[0.5,1,2.5,5].map(n=><option key={n} value={n}>{String(n).replace('.',',')} кг</option>)}</PremiumSelect></label>
    <div className="gym-quick-values">{plannedWeightValue(ex) && <button type="button" onClick={()=>setKg(plannedWeightValue(ex).replace('.',','))}>По плану: {plannedWeightValue(ex).replace('.',',')} кг</button>}{previousWeight != null && previousWeight !== '' && <button type="button" onClick={()=>{setKg(String(previousWeight).replace('.',','));if(info && previousReps!=null)setReps(String(previousReps));}}>Как в предыдущем подходе</button>}</div>
   </>}
   {!info && <p className="gym-result-plan">Задание: {targetLabel(target)}. Единицы сохранены как назначено.</p>}
@@ -456,7 +457,7 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
           {skipReason ? <><p className="text-amber-200">Оставшиеся подходы пропущены: {skipReason}</p><button type="button" onClick={() => onSkip(bi, ei, null)} className="mt-1 min-h-10 underline">Вернуть упражнение</button></> : <>
             <button type="button" onClick={() => setSkipOpen(open => !open)} className="min-h-10 underline">Есть проблема?</button>
             {skipOpen && <div className="space-y-2">
-              <p>Можно пропустить оставшиеся подходы и вернуться к упражнению позже. Замену согласуй с тренером.</p><label className="block">Причина пропуска<select aria-label="Причина пропуска" value={reason} onChange={event => setReason(event.target.value)} className="mt-1 w-full rounded-lg bg-slate-800 p-3"><option value="">Выбери причину</option>{SKIP_REASONS.map(value => <option key={value}>{value}</option>)}</select></label>
+              <p>Можно пропустить оставшиеся подходы и вернуться к упражнению позже. Замену согласуй с тренером.</p><label className="block">Причина пропуска<PremiumSelect aria-label="Причина пропуска" value={reason} onChange={event => setReason(event.target.value)} className="mt-1 w-full rounded-lg bg-slate-800 p-3"><option value="">Выбери причину</option>{SKIP_REASONS.map(value => <option key={value}>{value}</option>)}</PremiumSelect></label>
               {reason === 'Дискомфорт' && <p className="text-amber-200">Прекрати это упражнение и сообщи тренеру о дискомфорте.</p>}
               <button type="button" disabled={!reason} onClick={() => { onSkip(bi, ei, reason); setSkipOpen(false); }} className="rounded-lg border border-white/20 px-3 py-2 text-slate-200 disabled:opacity-40">Подтвердить пропуск</button>
             </div>}
@@ -566,7 +567,7 @@ function FeedbackForm({ token, sessionDate, session, done, weights, repetitions,
                 const key = `${bi}-${ei}`;
                 return <label key={key} className="flex items-center justify-between gap-3 text-[12px] text-slate-300">
                   <span>{ex.code} · {ex.name}</span>
-                  <select aria-label={`RPE ${ex.name}`} value={exerciseRpe[key]?.rpe || ''}
+                  <PremiumSelect aria-label={`RPE ${ex.name}`} value={exerciseRpe[key]?.rpe || ''}
                     onChange={event => setExerciseRpe(previous => {
                       const next = { ...previous };
                       if (event.target.value) next[key] = { name: ex.name, rpe: Number(event.target.value) };
@@ -576,7 +577,7 @@ function FeedbackForm({ token, sessionDate, session, done, weights, repetitions,
                     className="min-h-11 rounded-lg border border-white/10 bg-[#101a1d] px-3 text-white">
                     <option value="">—</option>
                     {[1,2,3,4,5,6,7,8,9,10].map(value => <option key={value} value={value}>{value}</option>)}
-                  </select>
+                  </PremiumSelect>
                 </label>;
               })}
           </div>
@@ -1570,7 +1571,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         {!notFound && activeTab === 'workout' && <details className="gym-settings">
           <summary>Дата и настройки {!completedAt && <span>{sessionDate ? formatDate(sessionDate) : 'Выбрать дату'}</span>}</summary>
           <div className="gym-settings-content">
-            <label>Дата программы<select aria-label="Дата программы" value={sessionDate || ''} onChange={event=>{if(event.target.value)window.location.assign(`/player/${encodeURIComponent(token)}?date=${event.target.value}`);}}><option value="">Выбери дату</option>{sessionDate && !sessionDates.includes(sessionDate) && <option value={sessionDate}>{sessionDate} · нет программы</option>}{sessionDates.map(date=><option key={date} value={date}>{formatDate(date)}</option>)}</select></label>
+            <label>Дата программы<PremiumSelect aria-label="Дата программы" value={sessionDate || ''} onChange={event=>{if(event.target.value)window.location.assign(`/player/${encodeURIComponent(token)}?date=${event.target.value}`);}}><option value="">Выбери дату</option>{sessionDate && !sessionDates.includes(sessionDate) && <option value={sessionDate}>{sessionDate} · нет программы</option>}{sessionDates.map(date=><option key={date} value={date}>{formatDate(date)}</option>)}</PremiumSelect></label>
             {sessionDate!==localToday && <a href={`/player/${encodeURIComponent(token)}?date=${localToday}`}>Открыть сегодня</a>}
             {session && (!workoutStarted || completedAt) && timerVoice.supported && <div className="player-voice-settings"><TimerVoiceControl voice={timerVoice} />{timerVoice.enabled && <button type="button" className="player-voice-test" onClick={timerVoice.test}>Проверить звук</button>}</div>}
             {session && workoutStarted && !completedAt && timerVoice.enabled && <button type="button" className="player-voice-test" onClick={timerVoice.test}>Проверить звук</button>}
@@ -1702,10 +1703,10 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                   <button type="button" onClick={() => setFinishOpen(open => !open)} className="text-sm text-slate-300">Завершить раньше</button>
                   {finishOpen && <div className="mt-3 space-y-3">
                     <label className="block text-sm text-slate-300">Причина завершения
-                      <select value={selectedFinishReason} onChange={event => setSelectedFinishReason(event.target.value)} className="mt-2 w-full rounded-xl bg-slate-800 p-3">
+                      <PremiumSelect value={selectedFinishReason} onChange={event => setSelectedFinishReason(event.target.value)} className="mt-2 w-full rounded-xl bg-slate-800 p-3">
                         <option value="">Выбери причину</option>
                         {FINISH_REASONS.map(reason => <option key={reason}>{reason}</option>)}
-                      </select>
+                      </PremiumSelect>
                     </label>
                     <p className="text-sm text-slate-400">Сохранятся только выполненные подходы. {selectedFinishReason === 'Дискомфорт' ? 'Сообщи тренеру, какое упражнение пришлось остановить.' : ''}</p>
                     <button type="button" disabled={!selectedFinishReason} onClick={finishEarly} className="rounded-xl bg-emerald-400 px-4 py-3 font-bold text-slate-950 disabled:opacity-40">Завершить и оценить нагрузку</button>

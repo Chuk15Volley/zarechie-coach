@@ -13,7 +13,7 @@ export default function Exercises({ session, progress = {}, onMark, onWorkTimer,
           {onMark && <><div className={styles.sets}>{Array.from({ length: ex.setCount }, (_, round) => { const key = `${ex.code}:${round}`; return <button type="button" key={key} className={`${styles.set} ${currentKey === key ? styles.setCurrent : ''}`} aria-label={`${ex.name} · подход ${round + 1}${timedExercise(ex)?.sides === 2 || /each|ea\b/.test(ex.reps) ? ' на обе стороны' : ''}`} aria-pressed={!!progress[key]} disabled={busy} onClick={() => onMark(key, !progress[key])}>{progress[key] ? '✓ ' : ''}{round + 1}</button>; })}</div>{/each|ea\b/.test(ex.reps) && <p className={styles.source}>Отмечайте подход после выполнения обеих сторон.</p>}</>}
           <details className={styles.details}><summary>Техника и видео</summary><p>{ex.note || 'Подсказку уточнит тренер.'}</p>{ex.video ? <a className={styles.video} href={ex.video} target="_blank" rel="noopener noreferrer">Демонстрация ↗</a> : <p>Видео пока не добавлено тренером.</p>}<p className={styles.source}>Источник: стр. {session.sourcePage}{ex.originalName && ex.originalName !== ex.name ? ` · в PDF: ${ex.originalName}` : ''}</p></details>
           {onWorkTimer && timedExercise(ex) && <button type="button" className={styles.button} disabled={busy} onClick={() => onWorkTimer(ex)}>Таймер выполнения</button>}
-          {onEdit && <button type="button" className={styles.libraryLink} onClick={() => onEdit(ex)}>Исправить название, подсказку или видео</button>}
+          {onEdit && <button type="button" className={styles.libraryLink} aria-label="Исправить название, подсказку или видео" onClick={() => onEdit(ex)}>Изменить упражнение</button>}
         </div></div>
       </article>)}
     </section>;

@@ -4,10 +4,12 @@ import test from 'node:test';
 
 const dashboard = readFileSync(new URL('../pages/index.js', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../styles/globals.css', import.meta.url), 'utf8');
+const select = readFileSync(new URL('../components/PremiumSelect.js', import.meta.url), 'utf8');
 
 test('dashboard uses branded popovers instead of native select menus', () => {
-  assert.match(dashboard, /function PremiumSelect\(/);
-  assert.match(dashboard, /createPortal\(/);
+  assert.match(dashboard, /import PremiumSelect from/);
+  assert.match(select, /function PremiumSelect\(/);
+  assert.match(select, /createPortal\(/);
   assert.doesNotMatch(dashboard, /<select\b/);
   assert.match(styles, /\.premium-select-popover/);
 });

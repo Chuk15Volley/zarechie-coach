@@ -9,6 +9,7 @@ import { readySixGymState } from '../lib/readySixGym.mjs';
 import { medicalHoldReason } from '../lib/medicalHold.mjs';
 
 const db = new Map(), indices = new Map(), medical = new Map();
+test.afterEach(() => medical.clear());
 const redis = async (method, ...args) => {
   const [key] = args;
   if (method.toLowerCase() === 'get') return db.get(key) ?? null;
@@ -35,7 +36,7 @@ globalThis.__preventionApiHarness = harness;
 async function loadStore() {
   let text = readFileSync(new URL('../lib/prevention/store.js', import.meta.url), 'utf8');
   text = text.replace(/import source from '[^']+';/, 'const {source}=globalThis.__preventionApiHarness;');
-  text = text.replace(/import \{([^}]+)\} from '([^']+)';/g, (line, names, path) => ['./model.mjs', './catalogue.mjs'].includes(path) ? `import {${names}} from '${new URL('../lib/prevention/' + path.slice(2), import.meta.url).href}';` : `const {${names}}=globalThis.__preventionApiHarness;`);
+  text = text.replace(/import \{([^}]+)\} from '([^']+)';/g, (line, names, path) => ['./model.mjs', './catalogue.mjs', './review.mjs'].includes(path) ? `import {${names}} from '${new URL('../lib/prevention/' + path.slice(2), import.meta.url).href}';` : `const {${names}}=globalThis.__preventionApiHarness;`);
   return import('data:text/javascript;base64,' + Buffer.from(text).toString('base64'));
 }
 const store = await loadStore(); Object.assign(harness, store);
@@ -185,4 +186,54 @@ test('foot variants assign with source ranges, explicit ban adaptation and one i
  const b=await call(coach,{...request(),courseId:'plantar-fasciitis-basic',mainSets:1,rangeChoice:'min',scope:'course'});assert.equal(b.code,200);assert.equal(b.data.assignment.sessions.length,42);
  const d={...request(),courseId:'plantar-fasciitis-daily',mainSets:1,scope:'course'};const daily=await call(coach,d);assert.equal(daily.code,200);assert.equal(daily.data.assignment.courseOnly,true);assert.equal(daily.data.assignment.sessions.length,252);assert.deepEqual(daily.data.assignment.sessions[0].exercises.map(e=>e.setCount),[10,1]);assert.equal((await call(coach,{...d,requestId:crypto.randomUUID(),scope:'phase'})).code,400);
  db.set('nkperf:restrictions:123',JSON.stringify(['WRIST']));assert.equal((await call(coach,{...base,requestId:crypto.randomUUID()})).code,409);db.delete('nkperf:restrictions:123');
+});
+
+test('team prevention overview is authenticated, workspace scoped and read-only', async () => {
+ const overview = await loadRoute('../pages/api/prevention/overview.js');
+ assert.equal((await call(overview,{workspace:'nkperf'},{method:'GET',authorized:false})).code,401);
+ assert.equal((await call(overview,{workspace:'foreign'},{method:'GET'})).code,400);
+ assert.equal((await call(overview,{workspace:'nkperf'})).code,405);
+ const before=[...db.entries()], result=await call(overview,{workspace:'nkperf'},{method:'GET'});
+ assert.equal(result.code,200);assert.equal(result.data.players.length,2);assert.equal(result.headers['Cache-Control'],'private, no-store');assert.deepEqual([...db.entries()],before);
+ assert.ok(result.data.players[0].assignments.length>0);assert.ok(result.data.players[0].assignments.every(a=>a.reviewState));
+ assert.ok(result.data.players[0].assignments.every(a=>!('actor' in a)&&!('receipts' in a)));
+});
+test('ReadySix clinical changes require review without changing doses, history or progress', async () => {
+ const body={...request(),courseId:'plantar-fasciitis-basic',mainSets:1,rangeChoice:'min'};
+ const first=(await call(coach,body)).data.assignment;assert.ok(first.reviewFingerprint);
+ medical.set('whoop_123',{injuryLog:[{id:'complaint',status:'active',note:'Дискомфорт стопы'}],readySixDecision:{recommendation:'full',restrictions:[],observations:[]}});
+ const safety=await store.preventionSafety({workspace:'nkperf',playerId:'123',originalId:'whoop_123'});
+ assert.notEqual(first.reviewFingerprint,safety.fingerprint);
+ const command={workspace:'nkperf',playerId:'123',assignmentId:first.id,action:'review',expectedRevision:first.revision,expectedSafetyFingerprint:safety.fingerprint,reviewed:true};
+ assert.equal((await call(coach,{...command,expectedSafetyFingerprint:first.reviewFingerprint})).code,409);
+ assert.equal((await call(coach,{...command,reviewed:false})).code,400);
+ const reviewed=await call(coach,command);assert.equal(reviewed.code,200);assert.equal(reviewed.data.assignment.reviewFingerprint,safety.fingerprint);
+ assert.deepEqual(reviewed.data.assignment.sessions,JSON.parse(JSON.stringify(first.sessions)));assert.deepEqual(reviewed.data.assignment.progress,first.progress);assert.deepEqual(reviewed.data.assignment.history,first.history);assert.deepEqual(reviewed.data.assignment.options,first.options);
+ const summary=(await store.listAssignments({workspace:'nkperf',playerId:'123'})).find(a=>a.id===first.id);assert.equal(summary.reviewFingerprint,safety.fingerprint);
+ medical.set('whoop_123',{injuryLog:[{status:'active',note:'запрет врача'}],readySixDecision:{recommendation:'full'}});
+ const held=await store.preventionSafety({workspace:'nkperf',playerId:'123',originalId:'whoop_123'});
+ assert.equal((await call(coach,{...command,expectedRevision:reviewed.data.assignment.revision,expectedSafetyFingerprint:held.fingerprint})).code,409);
+ medical.clear();
+});
+test('assignment detects clinical changes between review and save, retries preserve original assignment',async()=>{
+ const safety=await store.preventionSafety({workspace:'nkperf',playerId:'123',originalId:'whoop_123'});
+ const body={...request(),courseId:'plantar-fasciitis-basic',mainSets:1,rangeChoice:'min',expectedSafetyFingerprint:safety.fingerprint};
+ medical.set('whoop_123',{injuryLog:[{status:'active',note:'Новая жалоба'}],readySixDecision:{recommendation:'full'}});
+ assert.equal((await call(coach,body)).code,409);medical.clear();
+ const saved=await call(coach,body);assert.equal(saved.code,200);
+ medical.set('whoop_123',{injuryLog:[{status:'active',note:'Новая жалоба'}],readySixDecision:{recommendation:'full'}});
+ const replay=await call(coach,body);assert.equal(replay.code,200);assert.equal(replay.data.assignment.id,saved.data.assignment.id);medical.clear();
+});
+test('source outage stays explicit and does not turn a manual assignment into false clearance',async()=>{
+ medical.set('whoop_123',{injuryLog:[],readySixDecision:null});
+ const safety=await store.preventionSafety({workspace:'nkperf',playerId:'123',originalId:'whoop_123'});assert.equal(safety.available,false);assert.equal(safety.fingerprint,null);
+ const saved=await call(coach,{...request(),courseId:'plantar-fasciitis-basic',mainSets:1,rangeChoice:'min',expectedSafetyFingerprint:null});assert.equal(saved.code,200);assert.equal(saved.data.assignment.reviewFingerprint,null);
+});
+test('legacy summaries hydrate actual partial progress read-only for coach overview',async()=>{
+ const saved=await call(coach,{...request(),courseId:'plantar-fasciitis-basic',mainSets:1,rangeChoice:'min'});let a=saved.data.assignment;
+ a=(await call(player,progress(a,'mark',{key:'A1:0',done:true}),{authorized:false})).data.assignment;
+ const key='nkperf:prevention:player:123:assignment:'+a.id+':summary',legacy=JSON.parse(db.get(key));
+ for(const field of ['currentTotal','currentDone','currentPhase','lastCompletedAt','reviewedAt','reviewFingerprint'])delete legacy[field];db.set(key,JSON.stringify(legacy));
+ const before=[...db.entries()],rows=await store.listAssignments({workspace:'nkperf',playerId:'123'}),summary=rows.find(row=>row.id===a.id);
+ assert.equal(summary.currentDone,1);assert.equal(summary.currentPhase,1);assert.ok(summary.currentTotal>1);assert.equal(summary.reviewFingerprint,a.reviewFingerprint);assert.deepEqual([...db.entries()],before);
 });

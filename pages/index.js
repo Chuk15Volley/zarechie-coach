@@ -1,3 +1,4 @@
+import PremiumSelect from '../components/PremiumSelect';
 import CoachPrevention from '../components/prevention/CoachPrevention';
 import CoachCompletedNotice from '../components/CoachCompletedNotice';
 import {conciseFactText} from '../lib/coachClarity.mjs';
@@ -170,108 +171,6 @@ function Sparkline({ values, width = 48, height = 20 }) {
 // Custom calendar date-picker — auto-closes after selection, matches dark theme.
 function DatePicker(props) { return <CoachCalendar {...props} />; }
 
-function PremiumSelect({ value, onChange, options, className = '', title, disabled = false, compact = false }) {
-  const [open, setOpen] = useState(false);
-  const [menuStyle, setMenuStyle] = useState(null);
-  const triggerRef = useRef(null);
-  const menuRef = useRef(null);
-  const selected = options.find(option => String(option.value) === String(value)) || options[0];
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    function positionMenu() {
-      const trigger = triggerRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const desiredHeight = Math.min(340, options.length * (compact ? 38 : 46) + 16);
-      const dialogBounds=trigger.closest('dialog[open]')?.getBoundingClientRect();
-      const topBound=(dialogBounds?.top || 0)+8,bottomBound=(dialogBounds?.bottom || window.innerHeight)-8;
-      const leftBound=(dialogBounds?.left || 0)+8,rightBound=(dialogBounds?.right || window.innerWidth)-8;
-      const spaceBelow = Math.max(0,bottomBound-rect.bottom-8),spaceAbove=Math.max(0,rect.top-topBound-8);
-      const opensUp = spaceBelow < Math.min(desiredHeight, 260) && spaceAbove > spaceBelow;
-      const height=Math.min(desiredHeight,opensUp?spaceAbove:spaceBelow);
-      setMenuStyle({
-        left: Math.max(leftBound, Math.min(rect.left, rightBound-rect.width)),
-        top: opensUp ? Math.max(topBound, rect.top-height-8) : rect.bottom+8,
-        width: Math.min(rect.width,rightBound-leftBound),
-        maxHeight: height,
-      });
-    }
-
-    function handlePointer(event) {
-      if (!triggerRef.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setOpen(false);
-    }
-
-    function handleKey(event) {
-      if (event.key === 'Escape') {event.preventDefault();event.stopPropagation();setOpen(false);}
-    }
-
-    positionMenu();
-    document.addEventListener('mousedown', handlePointer);
-    document.addEventListener('keydown', handleKey);
-    window.addEventListener('resize', positionMenu);
-    window.addEventListener('scroll', positionMenu, true);
-    return () => {
-      document.removeEventListener('mousedown', handlePointer);
-      document.removeEventListener('keydown', handleKey);
-      window.removeEventListener('resize', positionMenu);
-      window.removeEventListener('scroll', positionMenu, true);
-    };
-  }, [compact, open, options.length]);
-
-  const menu = open && menuStyle && typeof document !== 'undefined' ? createPortal(
-    <div
-      ref={menuRef}
-      role="listbox"
-      aria-label={title}
-      className="premium-select-popover fixed z-[120] overflow-y-auto rounded-2xl border border-white/[0.14] p-1.5"
-      style={menuStyle}
-    >
-      {options.map(option => {
-        const active = String(option.value) === String(value);
-        return (
-          <button
-            key={String(option.value)}
-            type="button"
-            role="option"
-            aria-selected={active}
-            onClick={() => { onChange(option.value); setOpen(false); }}
-            className={`premium-select-option flex w-full items-center gap-3 rounded-xl text-left transition-all ${compact ? 'px-2.5 py-2 text-[11px]' : 'px-3 py-2.5 text-[12px]'} ${active ? 'is-selected' : ''}`}
-          >
-            <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border ${active ? 'border-emerald-300/30 bg-emerald-300/15 text-emerald-200' : 'border-white/[0.07] bg-white/[0.025] text-transparent'}`}>
-              <Check size={11} strokeWidth={2.8} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-semibold text-slate-200">{option.label}</span>
-              {option.sub && <span className="mt-0.5 block truncate text-[10px] text-slate-500">{option.sub}</span>}
-            </span>
-          </button>
-        );
-      })}
-    </div>,
-    triggerRef.current?.closest('dialog[open]') || document.querySelector('main') || document.body,
-  ) : null;
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        disabled={disabled}
-        title={title}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => !disabled && setOpen(current => !current)}
-        className={`premium-select-trigger flex items-center gap-2 text-left disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
-      >
-        <span className="min-w-0 flex-1 truncate">{selected?.label || 'Выберите'}</span>
-        <ChevronDown size={compact ? 12 : 14} className={`shrink-0 text-slate-500 transition-transform duration-200 ${open ? 'rotate-180 text-cyan-200' : ''}`} />
-      </button>
-      {menu}
-    </>
-  );
-}
 
 const ONE_RM_FIELDS = [
   { key: 'squat',    label: 'Присед (трэп/гоблет)', unit: 'кг' },
