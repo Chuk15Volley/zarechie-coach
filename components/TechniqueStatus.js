@@ -17,7 +17,7 @@ export function techniqueStatusText(state,card,compact=false){
  if(state.error)return 'Проверенность недоступна';
  if(state.loading || !state.data)return 'Проверенность: загружается…';
  const {checks={}}=state.data;
- if(compact)return checks.description?.verified && checks.video?.verified?'Описание и видео проверены':!checks.description?.verified && !checks.video?.verified?(card.video || card.autoVideo?'Не проверено':'Не проверено · без видео'):'Проверено частично';
+ if(compact)return `Описание ${checks.description?.verified?'✓':'—'} · Видео ${!(card.video || card.autoVideo)?'нет':checks.video?.verified?'✓':'—'}`;
  return `Описание: ${checks.description?.verified?'проверено':'не проверено'} · Видео: ${!(card.video || card.autoVideo)?'нет':checks.video?.verified?'проверено':'не проверено'}`;
 }
 export default function TechniqueStatus({card,apiKey,compact=false}){const state=useTechniqueReview(apiKey,card);return compact?<small className="coach-technique-status" title={techniqueStatusText(state,card)} aria-label={techniqueStatusText(state,card)} role="status">{techniqueStatusText(state,card,true)}</small>:<small className="coach-technique-status" role="status">{techniqueStatusText(state,card)}</small>;}

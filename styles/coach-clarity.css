@@ -1,0 +1,20 @@
+/* Coach-only finishing details. Existing grids, block order and media dimensions stay intact. */
+@media screen {
+ .coach-premium .coach-completed-notice {padding:0;}
+ .coach-premium .coach-completed-notice>summary {padding:10px 12px;cursor:pointer;font-size:12px;line-height:1.6;}
+ .coach-premium .coach-completed-notice>p {padding:0 12px 10px;margin:0;font-size:12px;line-height:1.65;}
+ .coach-premium .coach-check-explanation,.coach-premium .coach-week-selection-help {font-size:12px;line-height:1.65;color:var(--coach-muted);margin:8px 0 12px;}
+ .coach-premium .coach-check-explanation {padding:0 12px;}
+ .coach-premium .coach-session-workspace .coach-implement-choice {display:flex;flex-direction:column;gap:6px;}
+ .coach-premium .coach-session-workspace .coach-quick-load-row :is(label>span,.coach-implement-label) {display:flex;align-items:flex-end;height:18px;min-height:18px;margin:0;padding:0;font-size:12px;line-height:18px;white-space:normal;color:var(--coach-muted);}
+ .coach-premium .coach-session-workspace .coach-quick-load-row:has(.coach-implement-choice) :is(label>span,.coach-implement-label) {height:36px;min-height:36px;}
+ .coach-premium .coach-session-workspace .coach-implement-choice>div {margin-top:0;}
+ .coach-premium .coach-session-workspace .coach-implement-choice>small {margin-top:0;}
+ .coach-premium .coach-week-player-name,.coach-premium .coach-week-player-position,.coach-premium .coach-week-training-title {white-space:normal;overflow-wrap:anywhere;line-height:1.5;}
+ .coach-premium .coach-week-session-count {color:var(--coach-ink);}
+ .coach-premium .coach-mobile-space-mark {display:none;}
+ .coach-premium .library-studio-count strong {font-size:24px;font-weight:500;color:var(--coach-muted);}
+ .coach-premium .coach-video-reference {overflow-wrap:anywhere;}
+ .coach-premium .coach-technique-status {white-space:normal;line-height:1.6;}
+ @media(max-width:760px){.coach-premium .library-studio-count strong {font-size:21px;}}
+}

@@ -1,3 +1,5 @@
+import CoachCompletedNotice from '../components/CoachCompletedNotice';
+import {conciseFactText} from '../lib/coachClarity.mjs';
 import {MiniBars,CoachLoading} from '../components/CoachMiniChart';
 import {weekPlanChartRows} from '../lib/coachVisualCharts.mjs';
 import CoachCorrectionContext from '../components/CoachCorrectionContext';
@@ -1119,7 +1121,7 @@ function ExerciseVideoPanel({name,apiKey,editable=true,onAvailability,fallbackUr
       .catch(()=>{if(!controller.signal.aborted && version===epoch.current)setVideoError('Не удалось проверить видео тренера. Повторите загрузку.');});
     return()=>controller.abort();
   },[name,apiKey,reload]);
-  const videoUrl=manualVideoUrl || bankUrl || fallbackUrl,candidateId=editingVideo?youtubeVideoId(videoInput):null,previewing=!!candidateId && videoInput.trim()!==videoUrl,videoId=previewing?candidateId:youtubeVideoId(videoUrl),watchUrl=videoId?`https://www.youtube.com/watch?v=${videoId}`:videoUrl;
+  const videoUrl=manualVideoUrl || bankUrl || fallbackUrl,candidateId=editingVideo?youtubeVideoId(videoInput):null,previewing=!!candidateId && candidateId!==youtubeVideoId(videoUrl),videoId=previewing?candidateId:youtubeVideoId(videoUrl),watchUrl=videoId?`https://www.youtube.com/watch?v=${videoId}`:videoUrl;
   useEffect(()=>{if(youtubeVideoId(videoUrl) || !pendingVideo && !videoError && !fallbackError)availabilityRef.current?.(!!youtubeVideoId(videoUrl));},[pendingVideo,videoError,fallbackError,videoUrl]);
   useEffect(()=>setPlaying(false),[videoUrl,candidateId]);
   useEffect(()=>{if(!editingVideo)setVideoInput(videoUrl || '');},[videoUrl,editingVideo]);
@@ -1138,10 +1140,10 @@ function ExerciseVideoPanel({name,apiKey,editable=true,onAvailability,fallbackUr
   }
   const panel=<div className={`coach-video-panel coach-video-compact print:hidden ${!videoId?'is-empty':''} ${expanded?'is-expanded':''} ${pinned?'is-pinned':''}`}>
     <div className="coach-video-frame" data-video-state={videoId?playing?'playing':'poster':pendingVideo?'pending':'empty'}>{videoId?playing?<iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`} title={`Видео техники · ${name}`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:<button type="button" className="coach-video-poster" aria-label={`Смотреть видео техники: ${name}`} onClick={()=>setPlaying(true)}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt={`Техника ${name}`} loading="lazy" data-ready={posterReady===videoId} onLoad={()=>setPosterReady(videoId)} onError={()=>setPosterReady(videoId)}/><span className="coach-video-shade"/><span className="coach-video-play">▶</span><span className="coach-video-caption">Смотреть технику</span>
+      {/* eslint-disable-next-line @next/next/no-img-element */}<img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt={`Техника ${name}`} loading="lazy" data-ready={posterReady===videoId} onLoad={()=>setPosterReady(videoId)} onError={()=>setPosterReady(videoId)}/><span className="coach-video-shade"/><span className="coach-video-play">▶</span><span className="coach-video-caption">{previewing?'Проверить новое видео':'Смотреть технику'}</span>
     </button>:compactMissingTools && editable && !pendingVideo && !videoError && !fallbackError?<button type="button" className="coach-video-empty" aria-expanded={videoTools || editingVideo} onClick={()=>setVideoTools(v=>!v)}><strong>{videoTools?'Свернуть добавление видео':'Добавить видео'}</strong></button>:<div className="coach-video-empty"><strong role={pendingVideo?'status':undefined}>{pendingVideo?<CoachLoading label="Проверяю видео…"/>:videoError || fallbackError?'Видео не проверено':editable?'Добавить видео':'Видео ещё не добавлено'}</strong>{!editable && !pendingVideo && <p>Техника выполнения описана ниже.</p>}</div>}</div>
-    <div className="coach-video-meta"><span title={videoId?`Источник видео: ${manualVideoUrl?name:bankUrl?'Банк видео; запрос: '+name:fallbackName || name}`:undefined}>{previewing?'Предпросмотр · ещё не сохранено':manualVideoUrl?'Видео тренера':videoId?fallbackName && !bankUrl?'Библиотека · '+fallbackName:'Библиотека техники':pendingVideo?'Поиск ссылки…':'Техника упражнения'}</span><div>{(videoId || videoUrl) && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке">YouTube ↗</a>}{videoId && <button type="button" aria-label={`${expanded?'Уменьшить':'Увеличить'} видео: ${name}`} onClick={()=>setExpanded(value=>!value)}>{expanded?'Уменьшить':'Увеличить'}</button>}{videoId && <button type="button" aria-label={`${pinned?'Открепить':'Закрепить'} видео: ${name}`} onClick={()=>{if(!pinned)window.dispatchEvent(new CustomEvent('gym-video-pin',{detail:panelId}));setPinned(v=>!v);}}>{pinned?'Открепить':'Закрепить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
-    {editable && (videoId || !pendingVideo) && <details className="coach-video-tools" open={!videoId && !compactMissingTools || videoTools || editingVideo || undefined} ><summary onClick={e=>{e.preventDefault();setVideoTools(v=>!v);}}>{videoId?'Изменить видео':'Добавить видео'}</summary><form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span title="Сохраняется для этого точного названия во всех программах обоих пространств">Общая библиотека · оба пространства<small id={videoInputHintId} className="coach-video-reference">Ролик: {youtubeVideoId(videoInput || videoUrl) || 'ссылка не указана или не распознана'}</small></span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} aria-describedby={videoInputHintId} title={videoInput || 'Вставьте ссылку YouTube'} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo || !candidateId}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button>{editingVideo && <button type="button" onClick={()=>{setEditingVideo(false);setVideoInput(videoUrl || '');setVideoError('');}}>Отменить ссылку</button>}<div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form></details>}
+    <div className="coach-video-meta"><span title={videoId?`Источник видео: ${manualVideoUrl?name:bankUrl?'Банк видео; запрос: '+name:fallbackName || name}`:undefined}>{previewing?'Новое видео · не сохранено':manualVideoUrl?'Видео тренера':videoId?fallbackName && !bankUrl?'Библиотека · '+fallbackName:'Библиотека техники':pendingVideo?'Поиск ссылки…':'Техника упражнения'}</span><div>{(videoId || videoUrl) && <a href={watchUrl} target="_blank" rel="noopener noreferrer" title="Открыть YouTube в новой вкладке">YouTube ↗</a>}{videoId && <button type="button" aria-label={`${expanded?'Уменьшить':'Увеличить'} видео: ${name}`} onClick={()=>setExpanded(value=>!value)}>{expanded?'Уменьшить':'Увеличить'}</button>}{videoId && <button type="button" aria-label={`${pinned?'Открепить':'Закрепить'} видео: ${name}`} onClick={()=>{if(!pinned)window.dispatchEvent(new CustomEvent('gym-video-pin',{detail:panelId}));setPinned(v=>!v);}}>{pinned?'Открепить':'Закрепить'}</button>}{playing && <button type="button" onClick={()=>setPlaying(false)}>Закрыть видео</button>}</div></div>
+    {editable && (videoId || !pendingVideo) && <details className="coach-video-tools" open={!videoId && !compactMissingTools || videoTools || editingVideo || undefined} ><summary onClick={e=>{e.preventDefault();setVideoTools(v=>!v);}}>{videoId?'Изменить видео':'Добавить видео'}</summary><form className="coach-video-quick-edit" onSubmit={event=>{event.preventDefault();handleSaveVideo();}}><label><span title="Сохраняется для этого точного названия во всех программах обоих пространств">Общая библиотека · оба пространства<small id={videoInputHintId} className="coach-video-reference">{previewing?`Текущий: ${youtubeVideoId(videoUrl) || 'нет'} · Новый: ${candidateId} · не сохранено`:`Ролик: ${youtubeVideoId(videoInput || videoUrl) || 'ссылка не указана или не распознана'}`}</small></span><input type="text" inputMode="url" aria-label={`YouTube-видео для ${name}`} aria-describedby={videoInputHintId} title={videoInput || 'Вставьте ссылку YouTube'} value={videoInput} onFocus={event=>event.target.select()} onChange={event=>{setVideoInput(event.target.value);setEditingVideo(true);setVideoSaved(false);setVideoError('');}} placeholder="Вставьте ссылку YouTube" onKeyDown={event=>{if(event.key==='Escape' && editingVideo){event.preventDefault();event.stopPropagation();setEditingVideo(false);setVideoError('');}}}/></label><button type="submit" disabled={savingVideo || !videoInput.trim() || !editingVideo || !candidateId}>{savingVideo?'Сохраняю…':'Сохранить видео'}</button>{editingVideo && <button type="button" onClick={()=>{setEditingVideo(false);setVideoInput(videoUrl || '');setVideoError('');}}>Отменить ссылку</button>}<div className="coach-video-quick-links"><a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(name+' exercise technique')}`} target="_blank" rel="noopener noreferrer">Найти на YouTube ↗</a>{manualVideoUrl && <button type="button" onClick={handleDeleteVideo} disabled={savingVideo}>Сбросить своё видео</button>}{videoSaved && <span role="status">Видео сохранено ✓</span>}</div></form></details>}
     {fallbackError && <div className="coach-video-error" role="alert"><p>{fallbackError}</p><button type="button" onClick={onRetryFallback}>Повторить поиск видео</button></div>}
     {videoError && <div className="coach-video-error" role="alert"><p>{videoError}</p><button type="button" onClick={()=>editingVideo?handleSaveVideo():setReload(value=>value+1)}>{editingVideo?'Повторить сохранение видео':'Повторить загрузку видео'}</button></div>}
   </div>;
@@ -4458,7 +4460,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {executionConfirmed && <p className="coach-execution-confirmed" role="status">Тренировка выполнена · {playerExecution.totalSets} / {playerExecution.totalSets} подходов · {new Date(playerExecution.completedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК. Исходный план защищён: редактирование, сохранение и перенос отключены. Факты дополняются отдельно в истории.</p>}
+              {executionConfirmed && <CoachCompletedNotice execution={playerExecution}/>}
               <ProgramOverview readOnly={!!executionConfirmed} blocks={session.blocks || []} title={coachTrainingTitle(meta.focusLabel)==='Тренировка'?TRAINING_TYPE_LABELS[meta.trainingType] || getFocusLabel(period,focus):coachTrainingTitle(meta.focusLabel)} preview={editorPreview || !!executionConfirmed} onPreview={chooseEditorPreview} onExercise={row=>focusPlannedIssue({...row,field:'название упражнения'})} onNavigate={index=>{
                 const block=session.blocks[index];setCollapsedBlocks(previous=>{const next=new Set(previous);next.delete(block.label);return next;});
                 requestAnimationFrame(()=>document.getElementById('coach-program-block-'+index)?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
@@ -4530,7 +4532,7 @@ export default function Home() {
                         className={`rounded-lg border px-2 py-1 ${qualityTone(item.ok)}`}
                         title={item.detail}
                       >
-                        <span className="text-[10px] font-bold">{item.ok ? '✓' : '!' } {item.label}</span>
+                        <span className="text-[10px] font-bold">{item.ok ? '✓' : '!' } {item.label==='Проф. оценка'?'Оценка генерации':item.label}</span>
                         <span className="ml-1 text-[10px] opacity-70">{item.detail}</span>
                       </div>
                     ))}
@@ -5066,7 +5068,7 @@ export default function Home() {
                       workspace === w.id ? w.activeClass : 'border-transparent text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
                     }`}
                   >
-                    <span>{w.emoji}</span><span>{w.label}</span>
+                    <span aria-hidden="true">{w.emoji}</span><span>{w.label}</span>
                   </button>
                 ))}
               </div>
@@ -5208,7 +5210,7 @@ export default function Home() {
               {calData && !calLoading && (
                 <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-1.5">
                   <p className="text-[10px] font-black uppercase tracking-wider text-slate-700">Итог недели</p>
-                  <p className="text-[22px] font-black text-violet-400 leading-none">
+                  <p className="coach-week-session-count text-[22px] font-black leading-none">
                     {Object.values(calData.sessions || {}).reduce((s, arr) => s + arr.length, 0)}
                     <span className="ml-1 text-[11px] font-semibold text-slate-600">тр.</span>
                   </p>
@@ -5770,7 +5772,7 @@ export default function Home() {
                           : 'border-transparent text-slate-500'
                       }`}
                     >
-                      <span>{w.icon}</span>{w.label}
+                      <span className="coach-mobile-space-mark" aria-hidden="true">{w.icon}</span>{w.label}
                     </button>
                   ))}
                 </div>
@@ -6139,12 +6141,13 @@ export default function Home() {
                       <span className="inline-flex items-center gap-1.5"><RotateCcw size={12} /> Откатить последний пакет</span>
                     </button>
                   )}
-                  <button type="button" onClick={createWeekAdaptationBatch} disabled={!weekBatchSelected.size || weekBatchSaving || calLoading || !!calendarError || readinessData?.cache==='stale' || readinessData?.revalidating} className="min-h-9 rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 px-4 text-[11px] font-black text-[#071013] shadow-[0_10px_30px_rgba(94,234,212,0.12)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35">
+                  <button type="button" onClick={createWeekAdaptationBatch} aria-describedby="coach-week-selection-help" title="Отметьте квадрат у неначатой программы на сегодня. Выполненные и начатые программы защищены." disabled={!weekBatchSelected.size || weekBatchSaving || calLoading || !!calendarError || readinessData?.cache==='stale' || readinessData?.revalidating} className="min-h-9 rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 px-4 text-[11px] font-black text-[#071013] shadow-[0_10px_30px_rgba(94,234,212,0.12)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35">
                     {weekBatchSaving ? <Loader2 size={13} className="inline animate-spin" /> : <SlidersHorizontal size={13} className="inline" />} {weekBatchSelected.size ? `Адаптировать пакет · ${weekBatchSelected.size}` : 'Выберите программы сегодня'}
                   </button>
                 </div>
               </div>
 
+              <p id="coach-week-selection-help" className="coach-week-selection-help">{weekBatchSaving?'Готовлю выбранный пакет…':calLoading?'Выбор будет доступен после загрузки недели.':calendarError?'Обновите неделю перед выбором программ.':readinessData?.cache==='stale' || readinessData?.revalidating?'Ожидается актуальный снимок ReadySix.':weekBatchSelected.size?'Выбраны только неначатые программы на сегодня.':'Для пакета отметьте □ у неначатых программ на сегодня. Начатые и выполненные программы защищены.'}</p>
               <OverviewFreshness updatedAt={calendarUpdatedAt} error={calendarError} loading={calLoading} label="Неделя"/>
               <div className="coach-overview-shortcuts"><button type="button" onClick={()=>setMainSection('today')}>Сегодня →</button><button type="button" onClick={()=>setMainSection('tonnage')}>Нагрузка и факт →</button><button type="button" onClick={()=>openOverviewSection('drafts')}>Команда на день →</button></div>
               {calData?.summary && (
@@ -6200,8 +6203,8 @@ export default function Home() {
                             >
                               <CoachAvatar player={players.find(item=>String(item.id)===String(p.id)) || p}/>
                               <div className="min-w-0 flex-1">
-                                <div className="text-[12px] font-semibold text-slate-300 truncate">{p.name}</div>
-                                <div className="text-[9px] text-slate-700 truncate">{p.position || 'Игрок'}</div>
+                                <div className="coach-week-player-name text-[12px] font-semibold text-slate-300" title={p.name}>{p.name}</div>
+                                <div className="coach-week-player-position text-[9px] text-slate-700" title={p.position || 'Игрок'}>{p.position || 'Игрок'}</div>
                               </div>
                             </button>
                             <details className="coach-week-data"><summary>Данные ReadySix</summary><OverviewSignals issues={readinessIssues(readinessData?.players?.find(item=>String(item.id)===String(p.id)),readinessData,workspace)}/></details>
@@ -6227,13 +6230,13 @@ export default function Home() {
                                 {day.hasSession ? <div className={`min-h-[68px] rounded-xl border p-2.5 transition ${selected ? 'border-cyan-300/35 bg-cyan-300/[0.08]' : dayConflicts.length || generalConflict ? 'border-amber-300/15 bg-amber-300/[0.025]' : 'border-white/[0.055] bg-white/[0.018]'}`}>
                                   <div className="flex items-start justify-between gap-2">
                                     <button type="button" onClick={() => openOverviewPlayer(p,d)} className="min-w-0 flex-1 text-left">
-                                      <div className="truncate text-[10px] font-black text-slate-300">{trainingTitle(day.trainingDirection || day.label)}</div>
+                                      <div className="coach-week-training-title text-[10px] font-black text-slate-300" title={trainingTitle(day.trainingDirection || day.label)}>{trainingTitle(day.trainingDirection || day.label)}</div>
                                     </button>
                                     {selectable && <button type="button" onClick={() => toggleWeekBatch(String(p.id), d)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg border transition ${selected ? 'border-cyan-200/40 bg-cyan-200 text-[#071013]' : 'border-white/[0.09] text-slate-600 hover:text-cyan-200'}`} title="Добавить в пакет адаптации">{selected ? <Check size={12} strokeWidth={3} /> : <Square size={12} />}</button>}
                                   </div>
                                   <div className="mt-2 flex items-center gap-2 text-[9px] text-slate-600"><span>{day.plannedSets} подх.</span><span>·</span><span>План {compactLoad(day.plannedTonnage)}</span></div>
                                   {day.completed ? <div className="mt-2"><div className="flex items-center justify-between text-[8px]"><span className="font-bold text-emerald-200/60">Завершено</span><span className="text-slate-500">{day.completionPercent}%</span></div><div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-emerald-300" style={{ width: `${Math.min(100, day.completionPercent)}%` }} /></div></div> : <div className={`mt-2 text-[8px] font-semibold ${day.started ? 'text-cyan-200/60' : 'text-slate-700'}`}>{day.started ? 'Выполняется сейчас' : 'Запланировано'}</div>}
-                                  <p className="mt-1 text-xs text-slate-300">{weekFactText(day)?sessionFactAmount(day.actualTonnage,day.loadEvidence,{completed:day.completed,completedSets:day.completedSets}):null}</p><details className="coach-week-evidence"><summary>Полнота факта</summary><OverviewSignals onAction={day.completed?()=>openHistoryFacts(p,{date:d}):undefined} issues={day.date>todayISO() && day.loadEvidence?.source==='missing'?[]:loadEvidenceLabel(day.loadEvidence)?[loadEvidenceLabel(day.loadEvidence)]:[]}/></details>
+                                  <p className="mt-1 text-xs text-slate-300" title={sessionFactAmount(day.actualTonnage,day.loadEvidence,{completed:day.completed,completedSets:day.completedSets})}>{weekFactText(day)?conciseFactText(sessionFactAmount(day.actualTonnage,day.loadEvidence,{completed:day.completed,completedSets:day.completedSets})):null}</p><details className="coach-week-evidence"><summary>Полнота факта</summary><OverviewSignals onAction={day.completed?()=>openHistoryFacts(p,{date:d}):undefined} issues={day.date>todayISO() && day.loadEvidence?.source==='missing'?[]:loadEvidenceLabel(day.loadEvidence)?[loadEvidenceLabel(day.loadEvidence)]:[]}/></details>
                                   {(dayConflicts.length > 0 || generalConflict) && <div className="mt-2 flex items-center gap-1 text-[8px] font-bold text-amber-200/70"><AlertTriangle size={9} /> {dayConflicts[0]?.title || 'Проверьте бюджет недели'}</div>}
                                 </div> : (
                                 <button
