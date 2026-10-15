@@ -1,4 +1,4 @@
-import { serverWorkoutComplete, playerSessionStatus, restorePlayerProgress, implementWeightLabel, actualLoadLabel } from '../../lib/playerPresentation.mjs';
+import { serverWorkoutComplete, playerSessionStatus, restorePlayerProgress, implementWeightLabel, actualLoadLabel, visibleLoadPrescription, resultInputsChanged, weightChangeLabels, historyMonthGroups } from '../../lib/playerPresentation.mjs';
 import PlayerPrevention from '../../components/prevention/PlayerPrevention';
 import {getPlayerTimeZone} from '../../lib/playerTimeZoneStore';
 import {playerLocalDate,playerLocalClock,playerTimeZoneLabel} from '../../lib/playerTimeZone.mjs';
@@ -210,7 +210,7 @@ function parseKgFromNote(note) {
 
 function plannedWeightLabel(ex) {
   const kg = formatKgValue(ex?.weightKg) || formatKgValue(parseKgFromNote(ex?.weightNote));
-  if (kg) return loadUnitsForExercise(ex) === 2 ? `${/dumbbell|\bdb\b|гантел|^Chest-Supported Reverse Fly$/i.test(ex?.name || '') ? '2 гантели' : /kettlebell|\bkb\b|гир/i.test(ex?.name || '') ? '2 гири' : '2 снаряда'} по ${kg} кг` : `${kg} кг`;
+  if (kg) return actualLoadLabel(ex,kg);
   return playerLoadLabel(ex?.weightNote);
 }
 
@@ -231,13 +231,14 @@ function SetBtn({ total, label, value, done, weight, repetitions, ex, onOpen, ac
 
 function SetResultEditor({ item, done, weight, repetitions, previousWeight, previousReps, onSave, onCancel, onUnmark }) {
  const ex=item.ex, target=ex.targetSets[item.si], info=repetitionInput(target), requiresWeight=needsLoadEntry(ex);
- const [kg,setKg]=useState(weight ?? '');
+ const [kg,setKg]=useState(String(weight ?? '').replace('.',','));
  const [reps,setReps]=useState(repetitions ?? String(info?.planned ?? ''));
  const [step,setStep]=useState(0.5);
  const [issue,setIssue]=useState('');
- const adjust=delta=>setKg(String(Math.max(0,Math.round(((Number(String(kg).replace(',','.')) || 0)+delta)*100)/100)));
- return <form className="gym-set-editor" onSubmit={event=>{ event.preventDefault(); const error=setCompletionIssue(ex,target,kg,info ? reps : undefined); if(error){setIssue(error);return;} onSave({weight:kg,repetitions:info ? reps : undefined}); }}>
-  <p className="gym-result-plan">Назначено: {targetLabel(target)}{plannedWeightLabel(ex) ? ` · ${plannedWeightLabel(ex)}` : ''}</p>
+ const changed=resultInputsChanged({ex,target,weight,repetitions,kg,reps});
+ const adjust=delta=>setKg(String(Math.max(0,Math.round(((Number(String(kg).replace(',','.')) || 0)+delta)*100)/100)).replace('.',','));
+ return <form className="gym-set-editor" onSubmit={event=>{ event.preventDefault(); if(done && !changed)return; const error=setCompletionIssue(ex,target,kg,info ? reps : undefined); if(error){setIssue(error);return;} onSave({weight:kg,repetitions:info ? reps : undefined}); }}>
+  <p className="gym-result-plan">Назначено: {targetLabel(target)}{visibleLoadPrescription(ex,plannedWeightLabel(ex)) ? ` · ${visibleLoadPrescription(ex,plannedWeightLabel(ex))}` : ''}</p>
   <div className="gym-set-inputs">
    {info && <label>Фактические повторы{info.perSide ? ' / сторону' : ''}<div className="gym-stepper">
     <button type="button" aria-label="Уменьшить фактические повторы" onClick={()=>setReps(String(Math.max(0,Number(reps || 0)-1)))}>−</button>
@@ -250,12 +251,12 @@ function SetResultEditor({ item, done, weight, repetitions, previousWeight, prev
     <button type="button" aria-label="Увеличить фактический вес" onClick={()=>adjust(step)}>+</button>
    </div></label>}
   </div>
-  {requiresWeight && <><label className="gym-weight-step">Шаг веса<select aria-label="Шаг веса" value={step} onChange={e=>setStep(Number(e.target.value))}>{[0.5,1,2.5,5].map(n=><option key={n} value={n}>{n} кг</option>)}</select></label>
-   <div className="gym-quick-values">{plannedWeightValue(ex) && <button type="button" onClick={()=>setKg(plannedWeightValue(ex))}>По плану: {plannedWeightValue(ex)} кг</button>}{previousWeight != null && previousWeight !== '' && <button type="button" onClick={()=>{setKg(String(previousWeight));if(info && previousReps!=null)setReps(String(previousReps));}}>Как в предыдущем подходе</button>}</div>
+  {requiresWeight && <><label className="gym-weight-step">Шаг веса<select aria-label="Шаг веса" value={step} onChange={e=>setStep(Number(e.target.value))}>{[0.5,1,2.5,5].map(n=><option key={n} value={n}>{String(n).replace('.',',')} кг</option>)}</select></label>
+   <div className="gym-quick-values">{plannedWeightValue(ex) && <button type="button" onClick={()=>setKg(plannedWeightValue(ex).replace('.',','))}>По плану: {plannedWeightValue(ex).replace('.',',')} кг</button>}{previousWeight != null && previousWeight !== '' && <button type="button" onClick={()=>{setKg(String(previousWeight).replace('.',','));if(info && previousReps!=null)setReps(String(previousReps));}}>Как в предыдущем подходе</button>}</div>
   </>}
   {!info && <p className="gym-result-plan">Задание: {targetLabel(target)}. Единицы сохранены как назначено.</p>}
   {issue && <p role="alert" className="gym-actual-hint">{issue}</p>}
-  <button type="submit" className="gym-confirm-set">{done ? 'Сохранить изменения' : 'Сохранить подход'}</button>
+  <button type="submit" disabled={done && !changed} className="gym-confirm-set">{done ? 'Сохранить изменения' : 'Сохранить подход'}</button>
   <button type="button" className="gym-result-cancel" onClick={onCancel}>Отмена</button>
   {done && onUnmark && <button type="button" className="gym-result-unmark" onClick={onUnmark}>Снять отметку выполнения</button>}
  </form>;
@@ -289,7 +290,7 @@ function youtubeVideoId(url) {
   return null;
 }
 
-function PlayerVideoModal({ name, videoId, watchUrl, onClose }) {
+function PlayerVideoModal({ name, videoId, watchUrl, ex, onClose }) {
  const ref=useRef(null);
  useEffect(()=>{
   const focus=document.activeElement, previousOverflow=document.body.style.overflow;
@@ -302,12 +303,17 @@ function PlayerVideoModal({ name, videoId, watchUrl, onClose }) {
   <section ref={ref} className="player-video-modal" role="dialog" aria-modal="true" aria-label={`Техника: ${name}`} onClick={e=>e.stopPropagation()}>
    <div className="gym-result-heading"><h2>{name}</h2><button type="button" aria-label="Закрыть видео" onClick={onClose}>×</button></div>
    <iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&playsinline=1`} title={`Техника: ${name}`} referrerPolicy="origin" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen />
+   {ex && <div className="player-video-context">
+    <p><strong>Назначено: </strong>{(ex.targetSets || []).map(targetLabel).join(' · ')}{visibleLoadPrescription(ex,plannedWeightLabel(ex)) ? ` · ${visibleLoadPrescription(ex,plannedWeightLabel(ex))}` : ''}</p>
+    {shortCue(ex) && <p>{shortCue(ex)}</p>}
+    {ex.autoReg && <p className="player-video-warning">{ex.autoReg}</p>}
+   </div>}
    <p>Если плеер недоступен, <a href={watchUrl} target="_blank" rel="noopener noreferrer">открыть оригинал на YouTube</a>.</p>
   </section>
  </div>;
 }
 
-function ExerciseMedia({ name, token }) {
+function ExerciseMedia({ name, token, ex }) {
  const bankUrl=findExerciseUrl(name);
  const [media,setMedia]=useState(null),[status,setStatus]=useState('loading'),[attempt,setAttempt]=useState(0),[opened,setOpened]=useState(false);
  useEffect(()=>{
@@ -327,7 +333,7 @@ function ExerciseMedia({ name, token }) {
     <img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt="" loading="lazy" />
     <span className="player-video-button"><Play size={22} fill="currentColor" aria-hidden="true" /></span><span className="player-video-caption">Смотреть технику</span>
    </button> : videoUrl ? <a href={watchUrl} target="_blank" rel="noopener noreferrer" className="player-media-status">Видео упражнения ↗</a> : <div className="player-media-status">Видео не добавлено</div>}
-  {opened && videoId && <PlayerVideoModal name={name} videoId={videoId} watchUrl={watchUrl} onClose={()=>setOpened(false)} />}
+  {opened && videoId && <PlayerVideoModal name={name} videoId={videoId} watchUrl={watchUrl} ex={ex} onClose={()=>setOpened(false)} />}
  </>;
 }
 
@@ -335,12 +341,12 @@ function ExerciseMedia({ name, token }) {
 function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, repetitions = {}, onRepsChange, token, readOnly = false, skipReason, onSkip, onHold, previousResult, currentSetKey, completed = false, correctionMode = false, onOpenResult }) {
   const [skipOpen, setSkipOpen] = useState(false);
   const [reason, setReason] = useState('');
-  const plannedWeight = plannedWeightLabel(ex);
+  const plannedWeight = visibleLoadPrescription(ex,plannedWeightLabel(ex));
   const plannedSetWeight = plannedWeightValue(ex);
   const weightNote = String(ex.weightNote || '').trim();
   const showWeightNote = weightNote && !/^\d+(?:[.,]\d+)?\s*(?:кг|kg)\.?$/i.test(weightNote) && weightNote !== plannedWeight;
   const setCount = (ex.targetSets || []).length;
-  const setGrid = readOnly && setCount >= 4 ? 'grid-cols-2 sm:grid-cols-4' : readOnly && setCount === 3 ? 'grid-cols-3' : readOnly && setCount === 2 ? 'grid-cols-2' : 'grid-cols-1';
+  const setGrid = 'grid-cols-1';
   return (
     <article data-block-tone={bi % 6} className="player-exercise-card overflow-hidden rounded-[20px] border border-white/[0.1] bg-[#0d1921] shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
       {/* Header */}
@@ -351,28 +357,30 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
         <span className="player-exercise-name min-w-0 pt-0.5 text-[17px] font-bold leading-snug text-white">{playerExerciseName(ex)}</span>
       </div>
 
-      <div className="px-3.5 pt-3"><ExerciseMedia key={ex.name} name={ex.name} token={token} /></div>
+      <div className="px-3.5 pt-3"><ExerciseMedia key={ex.name} name={ex.name} token={token} ex={ex} /></div>
 
       {plannedWeight && (
         <div className={`player-weight-strip ${plannedSetWeight ? 'has-weight' : 'is-prescription'} flex items-baseline justify-between gap-3 border-b border-white/[0.06] bg-[#4ade80]/[0.065] px-3.5 py-2.5`}>
           <div className="text-[10px] font-black uppercase tracking-[0.15em] text-[#4ade80]/60">{plannedSetWeight ? 'Назначено' : 'Нагрузка'}</div>
-          <div className="text-right text-[18px] font-black leading-none text-[#4ade80]">{!plannedSetWeight && /^Вес назначить индивидуально по фактической истории/i.test(plannedWeight) ? 'Вес уточнить у тренера' : plannedWeight}</div>
+          <div className="text-right text-[18px] font-black leading-none text-[#4ade80]">{plannedWeight}</div>
         </div>
       )}
 
       {shortCue(ex) && <p className="gym-technique-cue">{shortCue(ex)}</p>}
       {/* Sets row */}
-      <div className={`grid ${setGrid} gap-2 px-3.5 pt-3`}>
+      <div className={`${readOnly ? 'gym-set-comparison' : `grid ${setGrid} gap-2`} px-3.5 pt-3`}>
+        {readOnly && <div className="gym-comparison-head" aria-hidden="true"><span>Подход</span><span>План</span><span>Факт</span></div>}
         {(ex.targetSets || []).map((s, si) => {
           const key = `${bi}-${ei}-${si}`;
           if (readOnly || (skipReason && !done?.[key])) return (
-            <div key={si} className="gym-prescribed-set rounded-xl border border-white/10 bg-white/[0.03] p-3 text-center">
-              <div className="text-[11px] text-slate-500">Подход {si + 1}</div>
-              <div className="gym-set-plan">Назначено: {targetLabel(s)}</div>
-              {done?.[key] && <div className="gym-set-fact">Выполнено: {targetLabel(actualTarget(s,repetitions[key]))}{actualLoadLabel(ex,weights?.[key]) ? ` · ${actualLoadLabel(ex,weights[key])}` : ''}</div>}
-              {completed && !done?.[key] && !skipReason && <div className="gym-set-plan">Не выполнен</div>}
-              {correctionMode && done?.[key] && <button type="button" className="gym-result-cancel" onClick={()=>onOpenResult({key,bi,ei,si,block,ex})}>Исправить результат</button>}
-              {skipReason && <div className="mt-1 text-xs text-amber-200">Пропущен</div>}
+            <div key={si} className={`gym-prescribed-set ${readOnly ? 'gym-comparison-row' : ''}`}>
+              <span className="gym-set-number" aria-label={`Подход ${si+1}`}>{si+1}</span>
+              <div className="gym-set-plan" aria-label={`Назначено: ${targetLabel(s)}`}>{targetLabel(s)}</div>
+              {done?.[key] ? (completed && (needsLoadEntry(ex) || repetitionInput(s)) ?
+                <button type="button" className="gym-set-fact gym-fact-edit" aria-label={`Исправить результат: ${playerExerciseName(ex)}, подход ${si+1}`} onClick={()=>onOpenResult({key,bi,ei,si,block,ex})}>
+                  <span>{targetLabel(actualTarget(s,repetitions[key]))}{actualLoadLabel(ex,weights?.[key]) ? ` · ${actualLoadLabel(ex,weights[key])}` : ''}</span><small>Изменить</small>
+                </button> : <div className="gym-set-fact" aria-label="Выполнено">{targetLabel(actualTarget(s,repetitions[key]))}{actualLoadLabel(ex,weights?.[key]) ? ` · ${actualLoadLabel(ex,weights[key])}` : ''}</div>) :
+                <div className="gym-set-plan">{skipReason ? 'Пропущен' : completed ? 'Не выполнен' : '—'}</div>}
             </div>
           );
           return (
@@ -836,18 +844,18 @@ function UndoSetToast({ undo, onUndo, onDismiss }) {
   );
 }
 
-function CompletionSummary({ weightChanges = [], totalSets, elapsedSeconds, tonnage, rpe, finishReason, skippedCount = 0 }) {
+function CompletionSummary({ session, weightChanges = [], feedbackReceived = false, totalSets, elapsedSeconds, tonnage, rpe, finishReason, skippedCount = 0 }) {
   return (
     <section className="player-completion-summary">
       <div className="player-completion-mark">✓</div>
       <div className="player-kicker">{finishReason ? 'Завершена раньше' : skippedCount ? 'Завершена с пропусками' : 'Тренировка завершена'}</div>
       <h2>Отличная работа</h2>
-      {weightChanges.length > 0 && <div className="gym-weight-changes"><h3>Изменения рабочего веса</h3>{weightChanges.map((item, index) => <p key={index}><strong>{item.code} · {item.name}</strong><span>План {item.planned} кг → факт {item.actual.join(' / ')} кг · {item.count} {russianCount(item.count, 'подход', 'подхода', 'подходов')}</span></p>)}</div>}
-      <p>{finishReason ? `Причина: ${finishReason}. Учтены только отмеченные подходы.` : skippedCount ? `Пропущено подходов: ${skippedCount}. Учтено только выполненное.` : 'Все запланированные подходы отмечены.'} Оцени нагрузку — тренер получит итог вместе с фактическими весами.</p>
+      {weightChanges.length > 0 && <div className="gym-weight-changes"><h3>Изменения рабочего веса</h3>{weightChanges.map((item, index) => {const labels=weightChangeLabels(session,item);return <p key={index}><strong>{item.code} · {item.name}</strong><span>План {labels.planned} → факт {labels.actual} · {item.count} {russianCount(item.count, 'подход', 'подхода', 'подходов')}</span></p>;})}</div>}
+      <p>{finishReason ? `Причина: ${finishReason}. Учтены только отмеченные подходы.` : skippedCount ? `Пропущено подходов: ${skippedCount}. Учтено только выполненное.` : 'Все запланированные подходы отмечены.'}{!feedbackReceived && ' Оцени нагрузку — тренер получит итог вместе с фактическими весами.'}</p>
       <div className="player-completion-metrics">
         <div><strong>{totalSets}</strong><span>{russianCount(totalSets, 'подход', 'подхода', 'подходов')}</span></div>
         <div><strong>{formatWorkoutDuration(elapsedSeconds)}</strong><span>время</span></div>
-        <div><strong>{tonnage > 0 ? `${(tonnage / 1000).toFixed(tonnage >= 10000 ? 1 : 2)} т` : '—'}</strong><span>тоннаж</span></div>
+        <div><strong>{tonnage > 0 ? `${(tonnage / 1000).toFixed(tonnage >= 10000 ? 1 : 2).replace('.',',')} т` : '—'}</strong><span>тоннаж</span></div>
         <div><strong>{rpe || '—'}</strong><span>оценка нагрузки</span></div>
       </div>
     </section>
@@ -860,7 +868,7 @@ function PlayerSplash({ visible }) {
     <div className="player-splash" aria-hidden="true">
       <img src="/nk-logo.jpg" alt="" />
       <div>NK Performance</div>
-      <span>Athlete application</span>
+      <span>Приложение игрока</span>
       <i />
     </div>
   );
@@ -1031,6 +1039,26 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   const historyRequest = useRef(0);
   const [histError, setHistError] = useState('');
   const [histLoading, setHistLoading] = useState(false);
+  const historyListPosition=useRef({top:0,date:null});
+  const restoreHistoryPosition=useRef(false);
+  const historyListRef=useRef(null);
+  const historyGroups=useMemo(()=>historyMonthGroups(sessionHistory),[sessionHistory]);
+  function returnToHistory() {
+    historyRequest.current++;
+    restoreHistoryPosition.current=true;
+    setSelectedHistDate(null);setHistSession(null);setHistMeta(null);setHistLoading(false);
+  }
+  useEffect(()=>{
+    if(activeTab!=='history' || selectedHistDate || !restoreHistoryPosition.current)return;
+    const frame=requestAnimationFrame(()=>{
+      const {top,date}=historyListPosition.current;
+      const row=[...(historyListRef.current?.querySelectorAll('[data-history-date]') || [])].find(el=>el.dataset.historyDate===date);
+      row?.focus({preventScroll:true});window.scrollTo({top,behavior:'instant'});
+      restoreHistoryPosition.current=false;
+    });
+    return()=>cancelAnimationFrame(frame);
+  },[activeTab,selectedHistDate]);
+  useEffect(()=>{if(activeTab==='history' && selectedHistDate)window.scrollTo({top:0,behavior:'instant'});},[activeTab,selectedHistDate]);
 
   const doneCount = completedSetCount(session, done);
   const pct = totalSets > 0 ? Math.round((doneCount / totalSets) * 100) : 0;
@@ -1100,9 +1128,9 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     return () => { document.removeEventListener('keydown', keydown); if (previousFocus?.isConnected) previousFocus.focus(); };
   }, [resultSet?.key]);
   function openSetResult(item) {
-    if (!item || (completedAt && (!editingResults || !done[item.key]))) return;
+    if (!item || (completedAt && !done[item.key])) return;
     setResultIssue('');
-    setResultSet({ key: item.key, bi: item.bi, ei: item.ei, si: item.si, block: item.block, ex: item.exercise || item.ex });
+    setResultSet({ key: item.key, bi: item.bi, ei: item.ei, si: item.si, block: item.block, ex: item.exercise || item.ex, direct:!!completedAt && !editingResults });
   }
   useEffect(() => {
     const item = holdTimer.hold;
@@ -1122,7 +1150,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
     const item=resultSet;if(!item)return;
     const issue=setCompletionIssue(item.ex,item.ex.targetSets[item.si],values.weight,values.repetitions);
     if(issue){setResultIssue(issue);return;}
-    const sameWeight=String(weights[item.key] ?? '')===String(values.weight ?? '');
+    const sameWeight=String(weights[item.key] ?? '')===String(values.weight ?? '') || (validActualWeight(weights[item.key])!=null && validActualWeight(weights[item.key])===validActualWeight(values.weight));
     const sameReps=values.repetitions==null || String(repetitions[item.key] ?? '')===String(values.repetitions);
     if(done[item.key]) {
       if(!sameWeight && needsLoadEntry(item.ex))changeWeight(item.key,values.weight);
@@ -1160,6 +1188,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   }, []);
 
   async function loadHistSession(date) {
+    if(!selectedHistDate)historyListPosition.current={top:window.scrollY,date};
     const request = ++historyRequest.current;
     setHistLoading(true); setHistSession(null); setHistMeta(null); setHistError('');
     setSelectedHistDate(date);
@@ -1489,14 +1518,17 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         {/* ── Tab bar ── */}
         {!notFound && (
           <nav className="player-tabs flex gap-1.5 border-b border-white/[0.05] px-4 py-2">
-            {[['workout', 'Тренировка'], ['prevention', 'Профилактика'], ['history', `История (${sessionDates.length})`]].map(([tab, label]) => (
+            {[['workout', 'Тренировка'], ['prevention', 'Профилактика'], ['history', 'История']].map(([tab, label]) => (
               <button
                 key={tab}
                 aria-pressed={activeTab === tab}
                 type="button"
+                aria-label={tab==='history' ? `История (${sessionDates.length})` : label}
                 onClick={() => {
+                  if(tab===activeTab && !(tab==='history' && selectedHistDate))return;
+                  if(activeTab==='history' && !selectedHistDate)historyListPosition.current={...historyListPosition.current,top:window.scrollY};
                   setActiveTab(tab);
-                  if (tab === 'history') { setSelectedHistDate(null); setHistSession(null); setHistMeta(null); }
+                  if (tab === 'history') returnToHistory();
                 }}
                 className={`rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all ${
                   activeTab === tab
@@ -1504,7 +1536,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                     : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
-                {label}
+                <span>{label}</span>{tab==='history' && <span className="player-tab-count" aria-hidden="true">{sessionDates.length}</span>}
               </button>
             ))}
           </nav>
@@ -1514,7 +1546,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
           <summary>Дата и настройки <span>{sessionDate ? formatDate(sessionDate) : 'Выбрать дату'}</span></summary>
           <div className="gym-settings-content">
             <label>Дата программы<select aria-label="Дата программы" value={sessionDate || ''} onChange={event=>{if(event.target.value)window.location.assign(`/player/${encodeURIComponent(token)}?date=${event.target.value}`);}}><option value="">Выбери дату</option>{sessionDate && !sessionDates.includes(sessionDate) && <option value={sessionDate}>{sessionDate} · нет программы</option>}{sessionDates.map(date=><option key={date} value={date}>{formatDate(date)}</option>)}</select></label>
-            <a href={`/player/${encodeURIComponent(token)}?date=${localToday}`}>Открыть сегодня</a>
+            {sessionDate!==localToday && <a href={`/player/${encodeURIComponent(token)}?date=${localToday}`}>Открыть сегодня</a>}
             {session && (!workoutStarted || completedAt) && timerVoice.supported && <div className="player-voice-settings"><TimerVoiceControl voice={timerVoice} />{timerVoice.enabled && <button type="button" className="player-voice-test" onClick={timerVoice.test}>Проверить звук</button>}</div>}
             {session && workoutStarted && !completedAt && timerVoice.enabled && <button type="button" className="player-voice-test" onClick={timerVoice.test}>Проверить звук</button>}
             {session && wakeLock.supported && <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={wakeLock.enabled} onChange={wakeLock.toggle} />Не гасить экран во время тренировки</label>}
@@ -1660,8 +1692,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                 {completedAt && (
                   <div className="space-y-4">
 
-                    <details className="gym-result-details"><summary>Фактические результаты</summary>{blocks.map((block, bi) => (block.exercises || []).map((ex, ei) => <div key={`${bi}-${ei}`}><strong>{playerExerciseName(ex)}</strong><p>{(ex.targetSets || []).map((target, si) => { const key = `${bi}-${ei}-${si}`; return done[key] ? `${targetLabel(actualTarget(target, repetitions[key]))}${weights[key] != null && weights[key] !== '' ? ` · ${weights[key]} кг` : ''}` : 'Не выполнен'; }).join(' · ')}</p></div>))}</details>
-                    <CompletionSummary weightChanges={weightChangeSummary(session, done, weights)} skippedCount={skippedCount} finishReason={finishReason} totalSets={doneCount} elapsedSeconds={elapsedSeconds} tonnage={tonnage} rpe={sessionRpe} />
+                    <details className="gym-result-details"><summary>Фактические результаты</summary>{blocks.map((block, bi) => (block.exercises || []).map((ex, ei) => <div key={`${bi}-${ei}`}><strong>{playerExerciseName(ex)}</strong><p>{(ex.targetSets || []).map((target, si) => { const key = `${bi}-${ei}-${si}`; return done[key] ? `${targetLabel(actualTarget(target, repetitions[key]))}${actualLoadLabel(ex,weights[key]) ? ` · ${actualLoadLabel(ex,weights[key])}` : ''}` : 'Не выполнен'; }).join(' · ')}</p></div>))}</details>
+                    <CompletionSummary session={session} feedbackReceived={!!((serverFeedback?.submittedAt && serverFeedback.submittedAt >= (lastActionAt || '')) || sessionRpe!=null)} weightChanges={weightChangeSummary(session, done, weights)} skippedCount={skippedCount} finishReason={finishReason} totalSets={doneCount} elapsedSeconds={elapsedSeconds} tonnage={tonnage} rpe={sessionRpe} />
                     <FeedbackForm
                       key={completedAt}
                       finishReason={finishReason}
@@ -1691,11 +1723,13 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         {!notFound && activeTab === 'history' && (
           <main className="player-history px-4 pb-24 pt-4">
             {!selectedHistDate ? (
-              <div className="space-y-2">
-                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Все тренировки</p>
-                {sessionHistory.map(item => (
+              <div ref={historyListRef} className="space-y-2">
+                {historyGroups.map(group=><section key={group.key} className="player-history-month" aria-label={group.label}>
+                <h2>{group.label}</h2>
+                {group.items.map(item => (
                   <button
                     key={item.date}
+                    data-history-date={item.date}
                     type="button"
                     onClick={() => loadHistSession(item.date)}
                     className="player-history-row w-full flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-left transition hover:bg-white/[0.05] active:scale-[0.98]"
@@ -1710,7 +1744,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                     </div>
                     <span className="text-slate-600 text-lg">›</span>
                   </button>
-                ))}
+                ))}</section>)}
+                {!historyGroups.length && <p className="player-history-status">История тренировок пока пуста.</p>}
               </div>
             ) : histLoading ? (
               <div className="flex items-center justify-center py-20">
@@ -1720,7 +1755,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
               <div>
                 <button
                   type="button"
-                  onClick={() => { setSelectedHistDate(null); setHistSession(null); setHistMeta(null); }}
+                  onClick={returnToHistory}
                   className="mb-4 flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-slate-300 transition"
                 >
                   ← Все тренировки
@@ -1764,10 +1799,10 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                               <span className="shrink-0 rounded-lg bg-[#4ade80]/20 px-2 py-1 text-[11px] font-black text-[#4ade80]">{ex.code}</span>
                               <span className="text-[15px] font-bold leading-snug text-white">{playerExerciseName(ex)}</span>
                             </div>
-                            {plannedWeightLabel(ex) && (
+                            {visibleLoadPrescription(ex,plannedWeightLabel(ex)) && (
                               <div className="border-b border-white/[0.05] bg-[#4ade80]/[0.06] px-4 py-2">
                                 <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#4ade80]/55">Рабочий вес</div>
-                                <div className="mt-0.5 text-[16px] font-black leading-none text-[#4ade80]">{plannedWeightLabel(ex)}</div>
+                                <div className="mt-0.5 text-[16px] font-black leading-none text-[#4ade80]">{visibleLoadPrescription(ex,plannedWeightLabel(ex))}</div>
                               </div>
                             )}
                             <div className="px-4 py-3 flex flex-wrap gap-2">
@@ -1793,12 +1828,12 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                 </div>
               </div>
             ) : (
-              <div className="py-20 text-center text-slate-400 text-sm"><p>{histError || 'Тренировка не найдена'}</p><button type="button" className="mt-3 p-3" onClick={() => loadHistSession(selectedHistDate)}>Повторить</button><button type="button" className="p-3" onClick={() => setSelectedHistDate(null)}>Все тренировки</button></div>
+              <div className="py-20 text-center text-slate-400 text-sm"><p>{histError || 'Тренировка не найдена'}</p><button type="button" className="mt-3 p-3" onClick={() => loadHistSession(selectedHistDate)}>Повторить</button><button type="button" className="p-3" onClick={returnToHistory}>Все тренировки</button></div>
             )}
           </main>
         )}
 
-        {resultSet && (!completedAt || editingResults) && <div className="gym-result-overlay" onClick={()=>setResultSet(null)}>
+        {resultSet && (!completedAt || editingResults || resultSet.direct) && <div className="gym-result-overlay" onClick={()=>setResultSet(null)}>
           <section className="gym-result-sheet" role="dialog" aria-modal="true" aria-labelledby="set-result-title" onClick={e=>e.stopPropagation()}>
             <div className="gym-result-heading"><h2 id="set-result-title">Фактический результат</h2><button type="button" autoFocus onClick={()=>setResultSet(null)} aria-label="Закрыть ввод результата">×</button></div>
             <p>{playerExerciseName(resultSet.ex)} · подход {resultSet.si+1}</p>
@@ -1842,13 +1877,9 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         </div>
 
         {/* ── Footer ── */}
-        <div className="player-footer fixed bottom-0 left-0 right-0 flex items-center justify-center border-t border-white/[0.05] bg-[#07101a]/95 py-2 backdrop-blur-xl">
-          <span className="flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.2em] text-white/[0.24]">
-            <span className="h-1 w-1 rounded-full bg-emerald-400/70" />
-            NK Performance
-          </span>
-          {activeTab === 'workout' && session && <SyncBadge status={serverCompleted && !progressRevision ? 'viewing' : syncStatus} savedAt={serverSavedAt} timeZone={timeZone} />}
-        </div>
+        {activeTab==='workout' && session && !(serverCompleted && !progressRevision) && ['syncing','pending','offline','error','storage-error'].includes(syncStatus) && <div className="player-footer fixed bottom-0 left-0 right-0 flex items-center justify-center border-t border-white/[0.05] bg-[#07101a]/95 py-2 backdrop-blur-xl">
+          <SyncBadge status={syncStatus} savedAt={serverSavedAt} timeZone={timeZone} />
+        </div>}
       </div>
 
       <CompletionConfetti celebration={celebration} />
