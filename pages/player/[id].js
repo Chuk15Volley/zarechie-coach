@@ -1807,7 +1807,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             onUndo={undoLastSet}
           />
         )}
-        <UndoSetToast undo={restTimer && !finishOpen ? null : undoSet} onUndo={undoLastSet} onDismiss={() => setUndoSet(null)} />
+        {activeTab === 'workout' && <UndoSetToast undo={restTimer && !finishOpen ? null : undoSet} onUndo={undoLastSet} onDismiss={() => setUndoSet(null)} />}
 
         </div>
 
@@ -1817,7 +1817,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             <span className="h-1 w-1 rounded-full bg-emerald-400/70" />
             NK Performance
           </span>
-          {session && <SyncBadge status={syncStatus} savedAt={serverSavedAt} />}
+          {activeTab === 'workout' && session && <SyncBadge status={syncStatus} savedAt={serverSavedAt} />}
         </div>
       </div>
 
