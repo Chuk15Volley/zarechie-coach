@@ -33,3 +33,6 @@ test('facts search keeps variant/implement/chain identity separate and never cha
 test('proposal evidence never calls absent history zero completion or planned kg performed',async()=>{
  const {progressionBasisLabel}=await import('../lib/coachNextWork.mjs');const label=progressionBasisLabel({date:'2026-10-15',source:'planned',completionPercent:0,recentExposures:[]},d=>d);assert.match(label,/плановый вес/);assert.match(label,/процент выполнения не подтверждён/);assert.ok(!label.includes('0%'));
 });
+test('restored previous-queue metadata retains its actual remaining count; absent count is unknown',()=>{
+ assert.equal(remainingQueueCount({id:'prior',date:'2026-10-13',remaining:3}),3);assert.equal(remainingQueueCount({id:'prior',date:'2026-10-13'}),null);assert.equal(remainingQueueCount({remaining:0}),0);
+});

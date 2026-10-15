@@ -21,7 +21,7 @@ export default function useTeamGenerationQueue({workspace,date,apiKey}) {
       try{
         let hint;
         if(!restored.current.has(workspace) && !new URLSearchParams(window.location.search).has('assignedDate')){restored.current.add(workspace);try{hint=JSON.parse(localStorage.getItem(hintKey(workspace)));}catch{}}
-        if(hint?.id && hint.date!==date){let previous;try{previous=await read(hint.id);}catch(failure){if(failure.status!==404)throw failure;}if(previous && gate.accept(token))setPreviousQueue({id:previous.id,date:previous.date,workspace});}
+        if(hint?.id && hint.date!==date){let previous;try{previous=await read(hint.id);}catch(failure){if(failure.status!==404)throw failure;}if(previous && gate.accept(token))setPreviousQueue({id:previous.id,date:previous.date,workspace,remaining:(previous.rows || []).filter(row=>!row.saved).length});}
         const next=await read(); // Always follow the latest queue for this date, including another tab's creation.
         if(gate.accept(token)){apply(next);setError('');}
       }catch(failure){if(gate.accept(token))setError(failure.message);}
