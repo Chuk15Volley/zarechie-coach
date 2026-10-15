@@ -1,0 +1,49 @@
+# Fifteen coach chart and motion refinements — 2026-10-15
+
+Both coach workspaces only; existing main blocks/columns/order and video sizes
+retained. No new API request, readiness assessment, generation/load algorithm,
+methodology, actual/result/program write or athlete frontend change. New helper
+`coachVisualCharts.mjs` derives read-only display rows from already-loaded data.
+
+1. Chart date ticks retain endpoints with at least 56 SVG px between labels;
+   edge labels align inward. All original observation dates remain in the table.
+2. Single observation is a dated point with no invented trend; empty metric has
+   an honest in-place placeholder. Missing/unperformed/adapted breaks preserved.
+3. Seven-day actual and plan mini-bars in the original load metric cards.
+4. Daily planned-tonnage mini-bars inside the original weekly-volume card.
+5. Two proportional plan/fact strokes inside the original history dose row.
+6. Original A–F set bars become compact vertical strokes inside existing dialog
+   navigation buttons; no added rows. Zero sets have zero bar height.
+7. Original Today planned/roster count gains a thin ratio in the same metric card.
+8. Shared quiet grid/line/dot styles; existing golden adaptation meaning retained.
+9. Pointer/touch guide and exact readout; arrows/Home/End/Escape on a keyboard-
+   focusable chart. Exact chain/slot/name/implement/rep-unit identity unchanged.
+10. 160 ms opacity-only dialog and loaded correction content appearance.
+11. 140 ms background/border selected-state transitions in existing controls.
+12. Short refreshed-status/data appearance; no counting up from zero or fake data.
+13. Existing progress line 240 ms and row/check feedback only on confirmed saved
+   false→true in the same queue. Initial restore, review or other scope never
+   produces a save confirmation; original actions/guarded saving flow retained.
+14. Poster opacity after image load; short iframe appearance. Playback, URL
+   identity, availability/save and pinned/expanded dimensions unchanged.
+15. Static waiting contours inside existing loading areas, no sweeping shimmer.
+
+Motion is one-shot (140–240 ms), not blocking; coach-scoped reduced-motion rules
+remove all animation/transitions/smooth scrolling. Miniature overlays do not
+increase card height and are hidden in print. Original numbers and text retained.
+Mini-bars label missing/no-program/partial observations; only known recorded zero
+is drawn as zero. Partial actual sums are explicitly marked, never a full dose.
+
+Validation before server candidate: 1023 tests passed, one existing skip; build
+passed. Six new semantic tests cover collision-free ticks, keyboard/pointer
+bounds, recorded zero vs missing/unperformed, partial sums, exact-date weekly
+plans, plan/fact separation, immutable source inputs and confirmed queue changes.
+Existing strength identity/geometry/adaptation tests retained.
+
+Local fictional browser checks: both spaces save-and-next (two fake programs,
+zero actual/video/LIVE writes), confirmed counter/check/next-player; dense graphs
+with Home/End/arrow readout, single-point/no-line and empty-RPE/no-point states,
+missing-point readout, exact sparse date labels without overlaps; daily load/week
+mini-bars and original block navigation. 390 px document 380 px/no horizontal
+page overflow; video 260 px desktop/220 px phone. No browser console errors.
+Production publication and protected-data results will be appended after release.

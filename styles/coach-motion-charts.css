@@ -1,0 +1,69 @@
+/* Coach-only, screen-only overlays inside the existing cards. No new columns,
+   block order, media dimensions or prescription/status meanings. */
+@keyframes coach-quiet-in {from{opacity:0}to{opacity:1}}
+@keyframes coach-confirm {from{border-color:#a7c4b6}to{border-color:var(--coach-border)}}
+@media screen {
+ .coach-premium .coach-stat-chart,.coach-premium .coach-week-stat,.coach-premium .coach-history-dose {position:relative;}
+ .coach-premium .coach-mini-bars {position:absolute;bottom:7px;left:18px;width:calc(100% - 36px);height:16px;overflow:visible;}
+ .coach-premium .coach-mini-bars rect {fill:var(--coach-jade);opacity:.8;}
+ .coach-premium .coach-mini-bars.is-plan rect {fill:#cbd1ca;opacity:.6;}
+ .coach-premium .coach-mini-bars rect.is-partial {opacity:.38;stroke:var(--coach-jade);stroke-dasharray:2 1;stroke-width:1;}
+ .coach-premium .coach-mini-gap {stroke:#8f9993;stroke-width:1;fill:none;}
+ .coach-premium .coach-mini-zero {stroke:var(--coach-jade);stroke-width:1;fill:none;}
+ .coach-premium .coach-program-ratio {position:absolute;bottom:12px;left:18px;width:calc(100% - 36px);height:4px;}
+ .coach-premium .coach-ratio-base {stroke:#ffffff12;stroke-width:3;}
+ .coach-premium .coach-ratio-value {stroke:var(--coach-jade);stroke-width:3;}
+ .coach-premium .coach-history-load-bars {position:absolute;bottom:0;left:0;width:100%;height:9px;}
+ .coach-premium .coach-history-bar-actual {stroke:var(--coach-jade);stroke-width:2;fill:none;}
+ .coach-premium .coach-history-bar-plan {stroke:#bac4bc;stroke-width:1.5;stroke-dasharray:5 2;fill:none;}
+ .coach-premium .coach-history-bar-actual.is-partial {stroke-dasharray:2 2;opacity:.65;}
+ .coach-premium .coach-week-stat .coach-mini-bars {bottom:4px;height:12px;}
+ .coach-premium .team-program-dialog .coach-program-chart button {position:relative;}
+ .coach-premium .team-program-dialog .coach-program-overview .coach-program-chart-track {
+  display:flex!important;position:absolute;left:5px;top:6px;bottom:6px;height:auto;width:3px;border:0;background:#ffffff0a;
+ }
+ .coach-premium .team-program-dialog .coach-program-chart-track i {width:3px;max-width:none;margin:0;border:0;border-radius:1px;background:var(--coach-jade);box-shadow:none;}
+
+ /* Existing fact graphs: sparse dates, unchanged geometry and factual gaps. */
+ .coach-premium .coach-chart-canvas {position:relative;}
+ .coach-premium .coach-fact-metric {--fact-color:var(--coach-jade);}
+ .coach-premium .coach-fact-metric-reps {--fact-color:#c9c9b8;}
+ .coach-premium .coach-fact-metric-rpe {--fact-color:#b1bec1;}
+ .coach-premium .coach-fact-grid {stroke:#ffffff0b;stroke-width:1;}
+ .coach-premium .coach-fact-line {stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round;}
+ .coach-premium .coach-fact-dot {stroke:var(--coach-panel);stroke-width:1.5;}
+ .coach-premium .coach-fact-dot.is-adapted {fill:#d8bd89;}
+ .coach-premium .coach-fact-plot:focus-visible {outline:2px solid var(--coach-jade);outline-offset:-2px;border-radius:6px;}
+ .coach-premium .coach-chart-guide line {stroke:#bac4bc;stroke-width:1;stroke-dasharray:3 4;pointer-events:none;}
+ .coach-premium .coach-chart-guide circle {fill:none;stroke:#e8ede6;stroke-width:1.5;pointer-events:none;}
+ .coach-premium .coach-chart-readout {position:absolute;top:8px;left:14px;right:14px;z-index:2;padding:5px 7px;border:1px solid #ffffff1a;border-radius:5px;background:#171c1bf5;color:#e0e7df;font-size:11px;line-height:1.5;pointer-events:none;}
+ .coach-premium .coach-chart-readout.is-idle {opacity:0;}
+ .coach-premium .coach-chart-single {position:absolute;top:8px;left:14px;color:var(--coach-muted);font-size:11px;pointer-events:none;}
+ .coach-premium .coach-chart-empty {min-height:150px;padding:30px 16px;display:flex;flex-direction:column;justify-content:center;gap:6px;color:var(--coach-muted);font-size:12px;line-height:1.5;}
+ .coach-premium .coach-chart-empty small {font-size:11px;color:#8e9a93;}
+
+ /* Short feedback, no movement of blocks and no interpolated metric values. */
+ .coach-premium .team-program-dialog[open] {animation:coach-quiet-in 160ms ease-out both;}
+ .coach-premium .team-program-dialog-body[data-opening=false]>.premium-session-card {animation:coach-quiet-in 160ms ease-out both;}
+ .coach-premium :is(.coach-history-list,.coach-overview-stats,.coach-mini-bars,.coach-fact-plot svg) {animation:coach-quiet-in 180ms ease-out both;}
+ .coach-premium .coach-overview-freshness[data-loading=false]>span {animation:coach-quiet-in 140ms ease-out both;}
+ .coach-premium :is(.coach-program-modes,.team-queue-filters,.sidebar-workspace-switcher,.premium-workspace-tabs,.coach-overview-filters) button {transition:background-color 140ms,border-color 140ms,color 140ms;}
+ .coach-premium .team-queue-progress-track i {transition:width 240ms ease-out;}
+ .coach-premium .team-queue-player.is-confirmed {animation:coach-confirm 240ms ease-out;}
+ .coach-premium .team-queue-progress.has-confirmation>div:first-child {animation:coach-quiet-in 180ms ease-out;}
+ .coach-premium .coach-queue-check {color:var(--coach-jade);}
+ .coach-premium .team-queue-player.is-confirmed .coach-queue-check {animation:coach-quiet-in 180ms ease-out;}
+ .coach-premium .coach-video-poster img[data-ready] {transition:opacity 160ms ease-out;}
+ .coach-premium .coach-video-poster img[data-ready=false] {opacity:0;}
+ .coach-premium .coach-video-poster img[data-ready=true] {opacity:1;}
+ .coach-premium .coach-video-frame[data-video-state=playing] iframe {animation:coach-quiet-in 160ms ease-out;}
+ .coach-premium .coach-loading-state {position:relative;display:block;isolation:isolate;}
+ .coach-premium .coach-loading-state>svg {position:absolute;left:0;top:-16px;width:100%;height:calc(100% + 32px);z-index:-1;stroke:#ffffff0a;stroke-width:2;fill:none;pointer-events:none;}
+ .coach-premium .coach-loading-state>span {background:var(--coach-panel);padding:2px 6px;line-height:inherit;}
+ @media (prefers-reduced-motion:reduce) {
+  .coach-premium *,.coach-premium *::before,.coach-premium *::after {animation:none!important;transition:none!important;scroll-behavior:auto!important;}
+ }
+}
+@media print {
+ .coach-premium :is(.coach-mini-bars,.coach-program-ratio,.coach-history-load-bars,.coach-chart-readout,.coach-chart-single,.coach-loading-state>svg) {display:none;}
+}

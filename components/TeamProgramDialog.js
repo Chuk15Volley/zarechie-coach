@@ -1,3 +1,4 @@
+import {CoachLoading} from './CoachMiniChart';
 import {coachDate} from '../lib/coachPresentation.mjs';
 import {correctionStatus} from '../lib/correctionInteraction.mjs';
 import CoachAvatar from './CoachAvatar';
@@ -14,6 +15,6 @@ export default function TeamProgramDialog({open,name,player,date,opening,saving,
   <button type="button" className="team-primary-action" disabled={disabled} onClick={advance?onSaveNext:onSave} title={advance?'⌘⇧S / Ctrl+Shift+S':'⌘S / Ctrl+S'}>{saving?'Сохраняю…':saved?dirty?'Сохранить изменения':'Сохранено':advance?'Сохранить и следующий →':'Сохранить и закрыть'}</button>
   <details className="coach-save-options" onKeyDown={e=>{if(e.key==='Escape' && e.currentTarget.open){e.preventDefault();e.stopPropagation();e.currentTarget.open=false;e.currentTarget.querySelector('summary')?.focus();}}}><summary aria-label="Варианты сохранения">Ещё</summary><div>{advance && <button type="button" disabled={disabled} onClick={secondary(onSave)}>Сохранить и закрыть</button>}{onSaveDraft && <button type="button" disabled={saving || opening || saveBlocked || validationBlocked} onClick={secondary(onSaveDraft)}>Сохранить черновик на сервере</button>}<p>Черновик игроку не выдаётся.</p></div></details>
   <button type="button" className="team-dialog-close" disabled={saving} onClick={onClose} aria-label="Закрыть карточку программы">✕</button></div></header>
-  <div className="team-program-dialog-body">{error && <p role="alert" className="coach-data-warning">{error}</p>}{opening?<p role="status" className="team-draft-opening">Открываю программу…</p>:children}</div>
+  <div className="team-program-dialog-body" data-opening={!!opening} aria-busy={!!opening}>{error && <p role="alert" className="coach-data-warning">{error}</p>}{opening?<p role="status" className="team-draft-opening"><CoachLoading label="Открываю программу…"/></p>:children}</div>
  </dialog>;
 }
