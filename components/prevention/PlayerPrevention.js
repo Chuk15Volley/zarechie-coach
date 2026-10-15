@@ -3,10 +3,15 @@ import { useEffect, useRef, useState } from 'react';
 import { currentSession, orderedSets, progressCounts, nextRest } from '../../lib/prevention/model.mjs';
 import Exercises, { timedExercise } from './Exercises';
 import CourseGuidance from './CourseGuidance';
+import PlayerExercises from './PlayerExercises';
+import CoachOverlay from '../CoachOverlay';
+import { ArrowDown, ArrowRight, Check, CheckCircle2, ChevronDown, History, Layers3, Pause, Play, Plus, RefreshCw, Shield, Timer, WifiOff, X } from 'lucide-react';
+import { durationText, prescriptionText, exerciseElementId, blockElementId } from '../../lib/prevention/player-view.mjs';
 import { preventionCall, newRequestId } from './api';
 import styles from './Prevention.module.css';
 
 export default function PlayerPrevention({ token }) {
+  const [executionBusy, setExecutionBusy] = useState(false);
   const [assignments, setAssignments] = useState(null), [selectedId, setSelectedId] = useState(''), [error, setError] = useState(''), [reload, setReload] = useState(0);
   const selectionKey = `gym:prevention:selected:v1:${token}`;
   function chooseAssignment(id) { setSelectedId(id); try { localStorage.setItem(selectionKey, id); } catch {} }
@@ -15,23 +20,24 @@ export default function PlayerPrevention({ token }) {
     preventionCall(`/api/player/prevention?token=${encodeURIComponent(token)}`, { signal: controller.signal }).then(data => {
       if (controller.signal.aborted) return;
       let remembered = ''; try { remembered = localStorage.getItem(selectionKey) || ''; } catch {}
-      setAssignments(data.assignments); setSelectedId(previous => [previous, remembered].find(id => data.assignments.some(a => a.id === id)) || data.assignments.find(a => a.status === 'active')?.id || data.assignments[0]?.id || '');
+      setAssignments(data.assignments); setSelectedId(previous => [previous, remembered].find(id => data.assignments.some(a => a.id === id)) || (data.assignments.find(a => a.status === 'active' && !a.courseId?.includes('daily')) || data.assignments.find(a => a.status === 'active'))?.id || data.assignments[0]?.id || '');
     }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, [token, reload]);
-  return <main className={`${styles.section} ${styles.player}`} aria-label="Профилактика игрока">
-    <header className={styles.heading}><div><p className={styles.eyebrow}>Твои курсы</p><h2>Профилактика</h2>{assignments?.length > 0 && <p>Выполняй по порядку, в согласованное с тренером время.</p>}</div></header>
-    {error && <div role="alert" className={styles.error}>{error}<button type="button" className={styles.button} onClick={() => setReload(n => n + 1)}>Повторить загрузку</button></div>}
-    {!assignments && !error && <p className={styles.loading}>Загрузка назначений…</p>}
-    {assignments?.length === 0 && <section className={styles.card}><h3>Пока нет назначений</h3><p className={styles.muted}>Когда тренер назначит курс профилактики, он появится здесь отдельно от тренировок зала.</p><button type="button" className={styles.button} onClick={() => setReload(n => n + 1)}>Проверить назначения</button></section>}
-    {assignments?.filter(a => a.status === 'active').length > 1 && assignments.filter(a => a.status === 'active').length <= 3 && <div className={styles.playerCourses} aria-label="Активные курсы">{assignments.filter(a => a.status === 'active').map(a => <button type="button" key={a.id} className={styles.playerCourse} aria-pressed={a.id === selectedId} onClick={() => chooseAssignment(a.id)}><span className={styles.source}>{a.region} · {a.courseId?.includes('daily') ? 'Дополнительный комплекс' : 'Основной курс'}</span><strong>{a.title}</strong><span className={styles.muted}>Выполнено {a.cursor} из {a.total}</span><span className={styles.progress}><span style={{ display: 'block', background: '#96cbb6', height: '100%', width: `${100 * a.cursor / a.total}%` }} /></span></button>)}</div>}
-    {assignments?.length > 1 && (assignments.length > 3 || assignments.some(a => a.status !== 'active')) && <label className={`${styles.field} mb-4`}>Курс<PremiumSelect className={styles.select} value={selectedId} onChange={e => chooseAssignment(e.target.value)}>{assignments.map(a => <option key={a.id} value={a.id}>{a.region || 'Поясница'} · {a.title} · {a.options.scope === 'phase' ? `${(a.phaseTerm || 'Фаза').toLowerCase()} ${a.options.phaseLabel || a.options.phase}` : 'весь курс'} · {a.cursor}/{a.total}{a.status === 'completed' ? ' · завершён' : a.status === 'archived' ? ' · закрыт' : ''}</option>)}</PremiumSelect></label>}
-    {selectedId && <PlayerAssignment key={`${token}:${selectedId}`} token={token} id={selectedId} onChange={a => setAssignments(previous => previous?.map(old => old.id === a.id ? { ...old, cursor: a.cursor, status: a.status, revision: a.revision } : old))} />}
-  </main>;
+  return <section className={`${styles.section} ${styles.player}`} aria-label="Профилактика игрока">
+    <header className={styles.playerHeading}><div><p className={styles.eyebrow}>Назначено тренером</p><h2>Профилактика</h2></div><button type="button" className={styles.refreshButton} aria-label="Обновить назначения" disabled={executionBusy || !assignments && !error} onClick={() => setReload(n => n + 1)}><RefreshCw size={17} aria-hidden="true" /></button></header>
+    {error && <div role="alert" className={styles.playerError}>{error}<button type="button" className={styles.button} onClick={() => setReload(n => n + 1)}>Повторить загрузку</button></div>}
+    {!assignments && !error && <div className={styles.playerLoading} role="status"><span /><span /><p>Загрузка назначений…</p></div>}
+    {assignments?.length === 0 && <section className={styles.playerEmpty}><span className={styles.emptyIcon}><Shield size={27} aria-hidden="true" /></span><h3>Твой курс появится здесь</h3><p>Тренер назначит профилактику отдельно от зала. Каждое занятие откроется после выполнения предыдущего.</p><button type="button" className={`${styles.button} ${styles.primary}`} onClick={() => setReload(n => n + 1)}>Проверить назначения <RefreshCw size={15} aria-hidden="true" /></button></section>}
+    {assignments?.length > 1 && <label className={styles.coursePicker}><span>Назначенные курсы</span><PremiumSelect title="Курс" value={selectedId} disabled={executionBusy} options={assignments.map(a => ({ value: a.id, label: a.title, sub: `${a.region || 'Поясница'} · ${a.options.scope === 'phase' ? `${a.phaseTerm || 'Фаза'} ${a.options.phaseLabel || a.options.phase}` : 'Весь курс'} · ${a.cursor}/${a.total}${a.status === 'completed' ? ' · завершён' : a.status === 'archived' ? ' · закрыт' : a.courseId?.includes('daily') ? ' · дополнительный комплекс' : ''}` }))} onChange={chooseAssignment} /></label>}
+    {selectedId && <PlayerAssignment key={`${token}:${selectedId}`} token={token} id={selectedId} onBusyChange={setExecutionBusy} onChange={a => setAssignments(previous => previous?.map(old => old.id === a.id ? { ...old, cursor: a.cursor, status: a.status, revision: a.revision } : old))} />}
+  </section>;
 }
-function PlayerAssignment({ token, id, onChange }) {
+
+function PlayerAssignment({ token, id, onChange, onBusyChange }) {
   const [assignment, setAssignment] = useState(null), [safety, setSafety] = useState(null), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [pending, setPending] = useState(null);
   const [timer, setTimer] = useState(null), [timerReady, setTimerReady] = useState(''), [clock, setClock] = useState(Date.now()), [workSetup, setWorkSetup] = useState(null);
+  const dock = useRef(null), lessonHeading = useRef(null), [dockHeight, setDockHeight] = useState(0);
   const alive = useRef(true), controller = useRef(null), mutationLock = useRef(false);
   const pendingKey = `gym:prevention:pending:v1:${token}:${id}`, timerKey = assignment ? `gym:prevention:timer:v1:${token}:${id}:${assignment.cursor}` : '';
   useEffect(() => { alive.current = true; return () => { alive.current = false; controller.current?.abort(); }; }, []);
@@ -66,7 +72,7 @@ function PlayerAssignment({ token, id, onChange }) {
     try {
       const data = await preventionCall('/api/player/prevention', { body }); if (!alive.current) return;
       setAssignment(data.assignment); onChange(data.assignment); setPending(null); try { localStorage.removeItem(pendingKey); } catch {}
-      if (body.action === 'complete') { setTimer(null); setWorkSetup(null); setNotice(data.assignment.status === 'completed' ? 'Курс завершён. Все занятия сохранены.' : 'Занятие завершено. Следующее готово к выполнению.'); }
+      if (body.action === 'complete') { setTimeout(() => { if (alive.current) lessonHeading.current?.scrollIntoView({ block: 'start', behavior: 'auto' }); }, 0); setTimer(null); setWorkSetup(null); setNotice(data.assignment.status === 'completed' ? 'Курс завершён. Все занятия сохранены.' : 'Занятие завершено. Следующее готово к выполнению.'); }
       else if (body.done && previous && previous.cursor === data.assignment.cursor && data.assignment.status === 'active' && progressCounts(data.assignment).done < progressCounts(data.assignment).total) {
         const rest = nextRest(previous, body.key); setClock(Date.now()); setTimer(rest?.seconds > 0 ? { type: 'rest', ...rest, deadline: Date.now() + rest.seconds * 1000 } : null);
       } else setTimer(null);
@@ -79,7 +85,23 @@ function PlayerAssignment({ token, id, onChange }) {
   const mark = (key, done) => mutate(command('mark', { key, done }));
   const session = currentSession(assignment), count = assignment ? progressCounts(assignment) : { total: 0, done: 0 }, next = session && orderedSets(session).find(s => !assignment.progress[s.key]);
   const locked = busy || !!pending || !!safety?.hold;
+  const domPrefix = `prevention-${id}-${assignment?.cursor || 0}`;
+  useEffect(() => { onBusyChange(busy); return () => onBusyChange(false); }, [busy, onBusyChange]);
+  useEffect(() => {
+    const element = dock.current; if (!element) { setDockHeight(0); return; }
+    const measure = () => setDockHeight(Math.ceil(element.getBoundingClientRect().height));
+    measure(); const observer = new ResizeObserver(measure); observer.observe(element); return () => observer.disconnect();
+  }, [!!session]);
+  useEffect(() => {
+    if (!workSetup) return; const previous = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = previous; };
+  }, [!!workSetup]);
+  const scrollTo = elementId => {
+    const element = document.getElementById(elementId); if (!element) return;
+    element.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); element.focus({ preventScroll: true });
+  };
+
   function startWorkSetup(ex) {
+    if (timer) { setNotice('Сначала закройте текущий таймер или завершите отдых.'); return; }
     const row = orderedSets(session).find(s => s.exercise.code === ex.code && !assignment.progress[s.key]);
     if (!row) { setNotice('Все подходы этого упражнения уже отмечены.'); return; }
     setWorkSetup({ ...timedExercise(ex), name: ex.name, key: row.key, seconds: timedExercise(ex).min });
@@ -89,38 +111,51 @@ function PlayerAssignment({ token, id, onChange }) {
     setClock(Date.now()); setTimer({ type: 'work', seconds: workSetup.seconds, name: workSetup.name, key: workSetup.key, side: 1, sides: workSetup.sides, repeat: 1, repeats: workSetup.repeats,  deadline: Date.now() + workSetup.seconds * 1000 }); setWorkSetup(null);
   }
   const pauseTimer = () => { setClock(Date.now()); setTimer(t => t.deadline ? { ...t, deadline: null, remaining } : { ...t, deadline: Date.now() + t.remaining * 1000 }); };
-  return <>
-    {error && <div className={styles.error} role="alert">{error}</div>}{notice && <div className={styles.success} role="status">{notice}</div>}
-    {pending && <div className={styles.actions}><button type="button" className={`${styles.button} ${styles.primary}`} disabled={busy} onClick={() => mutate(pending)}>{busy ? 'Сохранение…' : 'Повторить сохранение'}</button></div>}
-    {!assignment ? <div className={styles.loading}>Загрузка курса…{error && <button type="button" className={styles.button} onClick={() => load().catch(e => setError(e.message))}>Повторить загрузку</button>}</div> : <>
-      <section className={styles.card}>
-        <div className={styles.row}><span className={styles.badge}>{assignment.region || 'Поясница'}</span><span className={styles.source}>{assignment.options.scope === 'phase' ? `${assignment.phaseTerm || 'Фаза'} ${assignment.options.phaseLabel || assignment.options.phase}` : 'Весь курс'}</span></div>
-        <h3 className="mt-3">{assignment.title}</h3><p className={styles.muted}>Завершено {assignment.cursor} из {assignment.sessions.length} занятий</p>
+  const canComplete = !!session && count.total > 0 && count.done === count.total;
+  return <div className={styles.playerAssignment} style={{ paddingBottom: session ? dockHeight + 24 : 0 }}>
+    {!session && pending && <button type="button" className={`${styles.button} ${styles.primary} ${styles.full}`} disabled={busy} onClick={() => mutate(pending)}>{busy ? 'Сохранение…' : 'Повторить сохранение'}</button>}
+    {!session && error && <div className={styles.playerError} role="alert">{error}</div>}
+    {notice && <div className={styles.playerNotice} role="status"><CheckCircle2 size={16} aria-hidden="true" /><span>{notice}</span></div>}
+    {!assignment ? <div className={styles.playerLoading} role="status">Загрузка курса…{error && <button type="button" className={styles.button} onClick={() => load().catch(e => setError(e.message))}>Повторить загрузку</button>}</div> : <>
+      <section className={styles.courseHero} aria-label="Текущий курс">
+        <div className={styles.courseMeta}><span><Shield size={13} aria-hidden="true" />{assignment.region || 'Поясница'}</span><span>{assignment.courseId?.includes('daily') ? 'Дополнительный комплекс' : assignment.options.scope === 'phase' ? `${assignment.phaseTerm || 'Фаза'} ${assignment.options.phaseLabel || assignment.options.phase}` : 'Весь курс'}</span></div>
+        <h3>{assignment.title}</h3>
+        <div className={styles.courseProgressLabel}><span>Прогресс курса</span><strong>{assignment.cursor}<small> / {assignment.sessions.length}</small></strong></div>
         <div className={styles.progress} role="progressbar" aria-label="Прогресс курса" aria-valuemin="0" aria-valuemax={assignment.sessions.length} aria-valuenow={assignment.cursor}><div style={{ width: `${assignment.cursor / assignment.sessions.length * 100}%` }} /></div>
-        {assignment.options.note && <p className={styles.notice}>Тренер: {assignment.options.note}</p>}
-        <details className={styles.details} open={!!safety?.hold}><summary>Ограничения и указания</summary><p>{assignment.warning}</p><p>{safety?.hold || safety?.detail}</p></details>
-        <CourseGuidance guidance={assignment.guidance} />
-        {assignment.status !== 'active' && <p className={styles.success}>{assignment.status === 'completed' ? 'Курс полностью выполнен.' : 'Назначение закрыто тренером. История сохранена.'}</p>}
+        <div className={styles.courseFootnote}><span><Layers3 size={12} aria-hidden="true" />По факту выполнения</span><span>Без расписания</span></div>
+        {assignment.options.note && <div className={styles.coachNote}><span>От тренера</span><p>{assignment.options.note}</p></div>}
+        <details className={styles.playerGuidance} open={!!safety?.hold}><summary><Shield size={14} aria-hidden="true" />Ограничения и указания<ChevronDown size={14} aria-hidden="true" /></summary><p>{assignment.warning}</p><p>{safety?.hold || safety?.detail}</p><CourseGuidance guidance={assignment.guidance} /></details>
+        {safety?.hold && <p className={styles.playerHold} role="alert">{safety.hold}</p>}
+        {!safety?.available && !safety?.hold && <p className={styles.sourceUnavailable}><WifiOff size={14} aria-hidden="true" /><span>Данные ReadySix недоступны. Уточни ограничения у тренера.</span></p>}
+        {assignment.status !== 'active' && <div className={styles.courseFinished}><CheckCircle2 size={22} aria-hidden="true" /><div><strong>{assignment.status === 'completed' ? 'Курс завершён' : 'Назначение закрыто'}</strong><p>{assignment.status === 'completed' ? 'Все занятия выполнены и сохранены.' : 'Тренер закрыл курс. История выполнения сохранена.'}</p></div></div>}
       </section>
-      {session && <section className={styles.card}>
-        <div className={styles.row}><h3>Занятие {assignment.cursor + 1} из {assignment.sessions.length}</h3><span className={styles.badge}>{assignment.courseOnly ? 'Комплекс' : `${assignment.phaseTerm || 'Фаза'} ${session.phaseLabel || session.phase} ·`} {session.phaseSession}/{session.phaseTotal || 12}</span></div>
-        {assignment.phaseReviewNote && session.phaseSession === 1 && <p className={styles.notice}>{assignment.phaseReviewNote}</p>}
-        <p className={styles.muted}>{count.done} из {count.total} подходов · блоки по порядку, упражнения внутри блока — по кругу</p>
-        {next && <p className={styles.notice}>Далее: {next.exercise.code} · {next.exercise.name} · подход {next.round + 1}</p>}
-        {timer && <section className={styles.timer} aria-label={timer.type === 'rest' ? 'Отдых' : 'Таймер выполнения'}><div className={styles.row}><strong role="timer" aria-live="off">{Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}</strong><span className={styles.timerCount}>{timer.type === 'rest' ? timer.kind : timer.type === 'side' ? 'Смена стороны' : `Выполнение${timer.repeats > 1 ? ` · удержание ${timer.repeat}/${timer.repeats}` : ''}${timer.sides === 2 ? ` · сторона ${timer.side}/2` : ''}`}{!timer.deadline && ' · пауза'}</span></div><p>{timer.type === 'rest' ? `Далее: ${timer.next}` : timer.name}</p>
-          <div className={styles.actions}>{remaining > 0 && <button className={styles.button} type="button" onClick={pauseTimer}>{timer.deadline ? 'Пауза' : 'Продолжить'}</button>}{timer.type === 'rest' && <button className={styles.button} type="button" onClick={() => { setClock(Date.now()); setTimer(t => t.deadline ? { ...t, deadline: t.deadline + 15000 } : { ...t, remaining: t.remaining + 15 }); }}>+15 сек</button>}
+      {session && <section className={styles.playerSession} aria-label="Текущее занятие">
+        <header className={styles.lessonHeading} ref={lessonHeading}><p className={styles.eyebrow}>{assignment.courseOnly ? `Комплекс ${session.phaseSession}/${session.phaseTotal}` : `${assignment.phaseTerm || 'Фаза'} ${session.phaseLabel || session.phase} · ${session.phaseSession}/${session.phaseTotal || 12}`}</p><h3>Занятие {assignment.cursor + 1} из {assignment.sessions.length}</h3><div className={styles.sessionFacts}><span>{session.exercises.length} упражнений</span><span>Подходы {count.done}/{count.total}</span></div></header>
+        {assignment.phaseReviewNote && session.phaseSession === 1 && <details className={styles.phaseReminder}><summary>Перед первым занятием {assignment.courseOnly ? 'комплекса' : 'фазы'}<ChevronDown size={14} aria-hidden="true" /></summary><p>{assignment.phaseReviewNote}</p></details>}
+        <nav className={styles.blockNavigation} aria-label="Блоки профилактики">{[...new Set(session.exercises.map(e => e.code[0]))].map(block => {
+          const rows = orderedSets(session).filter(row => row.block === block), done = rows.filter(row => assignment.progress[row.key]).length;
+          return <button type="button" key={block} aria-label={`Перейти к блоку ${block}: ${done} из ${rows.length} подходов`} aria-current={next?.block === block ? 'step' : undefined} data-complete={done === rows.length || undefined} onClick={() => scrollTo(blockElementId(domPrefix, block))}><span>{done === rows.length ? <Check size={14} aria-hidden="true" /> : block}</span><small>{done}/{rows.length}</small></button>;
+        })}</nav>
+        <PlayerExercises session={session} progress={assignment.progress} currentKey={next?.key || ''} busy={locked} timerActive={!!timer} onMark={mark} onWorkTimer={startWorkSetup} idPrefix={domPrefix} />
+      </section>}
+      <details className={styles.playerHistory}><summary><History size={16} aria-hidden="true" /><span>История профилактики</span><small>{assignment.history.length}</small><ChevronDown size={15} aria-hidden="true" /></summary>{!assignment.history.length && <p className={styles.muted}>Здесь появятся выполненные занятия.</p>}{assignment.history.slice().reverse().map(h => <details key={h.index} className={styles.history}><summary>Занятие {h.index + 1} · {new Date(h.completedAt).toLocaleDateString('ru-RU')}</summary><Exercises session={assignment.sessions[h.index]} /><p className={styles.source}>Завершено: {new Date(h.completedAt).toLocaleString('ru-RU')}</p></details>)}</details>
+      {session && <aside ref={dock} className={styles.executionDock} aria-label="Управление профилактикой">
+        {error && <div className={styles.dockError} role="alert">{error}</div>}
+        {timer && <section className={styles.playerTimer} aria-label={timer.type === 'rest' ? 'Отдых' : 'Таймер выполнения'}>
+          <div className={styles.timerHeading}><div><span className={styles.eyebrow}>{timer.type === 'rest' ? 'Отдых' : timer.type === 'side' ? 'Смена стороны' : 'Выполнение'}{!timer.deadline && ' · пауза'}</span><strong role="timer" aria-live="off">{durationText(remaining)}</strong></div><button type="button" className={styles.timerClose} aria-label={timer.type === 'rest' ? 'Закончить отдых' : 'Закрыть таймер'} onClick={() => setTimer(null)}><X size={18} aria-hidden="true" /></button></div>
+          <p className={styles.timerContext}>{timer.type === 'rest' ? `Далее: ${timer.next}` : `${timer.name}${timer.repeats > 1 ? ` · удержание ${timer.repeat}/${timer.repeats}` : ''}${timer.sides === 2 ? ` · сторона ${timer.side}/2` : ''}`}</p>
+          <div className={styles.timerActions}>{remaining > 0 && <button className={styles.button} type="button" onClick={pauseTimer}>{timer.deadline ? <Pause size={15} aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}{timer.deadline ? 'Пауза' : 'Продолжить'}</button>}{timer.type === 'rest' && <button className={styles.button} type="button" onClick={() => { setClock(Date.now()); setTimer(t => t.deadline ? { ...t, deadline: t.deadline + 15000 } : { ...t, remaining: t.remaining + 15 }); }}><Plus size={14} aria-hidden="true" />15 сек</button>}
             {timer.type === 'work' && remaining === 0 && (timer.repeat || 1) < (timer.repeats || 1) && <button className={`${styles.button} ${styles.primary}`} type="button" disabled={locked} onClick={() => { setClock(Date.now()); setTimer(t => ({ ...t, repeat: (t.repeat || 1) + 1, deadline: Date.now() + t.seconds * 1000 })); }}>Следующее удержание ({(timer.repeat || 1) + 1}/{timer.repeats})</button>}
-            {timer.type === 'work' && remaining === 0 && (timer.repeat || 1) === (timer.repeats || 1) && timer.side < timer.sides && <button className={`${styles.button} ${styles.primary}`} type="button" onClick={() => { const nextWork = { ...timer, side: timer.side + 1, repeat: 1, deadline: null }; const seconds = assignment.options.rests.side; setClock(Date.now()); setTimer(seconds > 0 ? { type: 'side', seconds, name: timer.name, deadline: Date.now() + seconds * 1000, nextWork } : { ...nextWork, deadline: Date.now() + nextWork.seconds * 1000 }); }}>Другая сторона</button>}
-            {timer.type === 'work' && remaining === 0 && (timer.repeat || 1) === (timer.repeats || 1) && timer.side === timer.sides && <button className={`${styles.button} ${styles.primary}`} type="button" disabled={locked || !!assignment.progress[timer.key]} onClick={() => mark(timer.key, true)}>Подход выполнен</button>}
-            <button className={styles.button} type="button" onClick={() => setTimer(null)}>{timer.type === 'rest' ? 'Закончить отдых' : 'Закрыть таймер'}</button>
+            {timer.type === 'work' && remaining === 0 && (timer.repeat || 1) === (timer.repeats || 1) && timer.side < timer.sides && <button className={`${styles.button} ${styles.primary}`} type="button" disabled={locked} onClick={() => { const nextWork = { ...timer, side: timer.side + 1, repeat: 1, deadline: null }; const seconds = assignment.options.rests.side; setClock(Date.now()); setTimer(seconds > 0 ? { type: 'side', seconds, name: timer.name, deadline: Date.now() + seconds * 1000, nextWork } : { ...nextWork, deadline: Date.now() + nextWork.seconds * 1000 }); }}>Другая сторона <ArrowRight size={14} aria-hidden="true" /></button>}
+            {timer.type === 'work' && remaining === 0 && (timer.repeat || 1) === (timer.repeats || 1) && timer.side === timer.sides && <button className={`${styles.button} ${styles.primary}`} type="button" disabled={locked || !!assignment.progress[timer.key]} onClick={() => mark(timer.key, true)}><Check size={16} aria-hidden="true" />Подход выполнен</button>}
           </div>
         </section>}
-        {workSetup && <section className={styles.timer} aria-label="Настройка таймера"><label className={styles.field}>{workSetup.name} · {workSetup.min === workSetup.max ? `${workSetup.min} сек` : `${workSetup.min}–${workSetup.max} сек по PDF`}{workSetup.repeats > 1 ? ` · ${workSetup.repeats} отдельных удержаний` : ''}<input type="number" className={styles.input} min={workSetup.min} max={workSetup.max} value={workSetup.seconds} onChange={e => setWorkSetup({ ...workSetup, seconds: e.target.value === '' ? '' : Number(e.target.value) })} /></label><div className={styles.actions}><button type="button" className={`${styles.button} ${styles.primary}`} disabled={locked || !Number.isInteger(workSetup.seconds) || workSetup.seconds < workSetup.min || workSetup.seconds > workSetup.max} onClick={beginWork}>Начать таймер</button><button type="button" className={styles.button} onClick={() => setWorkSetup(null)}>Отмена</button></div></section>}
-        <Exercises session={session} progress={assignment.progress} currentKey={next?.key} busy={locked} onMark={mark} onWorkTimer={startWorkSetup} />
-        <div className={styles.actions}><button type="button" className={`${styles.button} ${styles.primary} ${styles.full}`} disabled={locked || count.done !== count.total || !count.total} onClick={() => mutate(command('complete'))}>Завершить занятие{assignment.cursor + 1 < assignment.sessions.length ? ' и открыть следующее' : ''}</button></div>
-        <p className={styles.notice}>Отметки сохраняются на сервере. Частичное выполнение остаётся в текущем занятии; переход требует подтверждения завершения.</p>
-      </section>}
-      <section className={styles.card}><h3>История профилактики</h3>{!assignment.history.length && <p className={styles.muted}>Здесь появятся выполненные занятия.</p>}{assignment.history.slice().reverse().map(h => <details key={h.index} className={styles.history}><summary>Занятие {h.index + 1} · {new Date(h.completedAt).toLocaleDateString('ru-RU')}</summary><Exercises session={assignment.sessions[h.index]} /><p className={styles.source}>Завершено: {new Date(h.completedAt).toLocaleString('ru-RU')}</p></details>)}</section>
+        <div className={styles.dockProgress}><span>{busy ? 'Сохраняем…' : pending ? 'Ожидает подтверждения' : canComplete ? 'Все подходы отмечены' : 'Подходы'}<strong>{count.done}<small>/{count.total}</small></strong></span><div className={styles.progress}><div style={{ width: `${count.total ? 100 * count.done / count.total : 0}%` }} /></div></div>
+        {pending ? <button type="button" className={`${styles.button} ${styles.primary} ${styles.full}`} disabled={busy} onClick={() => mutate(pending)}>{busy ? 'Сохранение…' : 'Повторить сохранение'}</button> : safety?.hold ? <p className={styles.playerHold}>{safety.hold}</p> : canComplete ? <button type="button" className={`${styles.button} ${styles.primary} ${styles.full}`} disabled={locked} aria-label={`Завершить занятие${assignment.cursor + 1 < assignment.sessions.length ? ' и открыть следующее' : ''}`} onClick={() => mutate(command('complete'))}>Завершить занятие <CheckCircle2 size={18} aria-hidden="true" /></button> : !timer && next && <div className={styles.currentApproach}><p>{next.exercise.code} · {next.exercise.name}</p><strong>Подход {next.round + 1} из {next.exercise.setCount} · {prescriptionText(next.exercise.reps)}</strong><div className={styles.currentApproachActions}><button type="button" className={`${styles.button} ${styles.primary}`} disabled={locked} onClick={() => mark(next.key, true)}><Check size={16} aria-hidden="true" />Подход выполнен</button>{timedExercise(next.exercise) && <button type="button" className={styles.timerClose} disabled={locked} aria-label={`Таймер: ${next.exercise.name}`} onClick={() => startWorkSetup(next.exercise)}><Timer size={18} aria-hidden="true" /></button>}<button type="button" className={styles.timerClose} aria-label="К текущему упражнению" onClick={() => scrollTo(exerciseElementId(domPrefix, next.exercise.code))}><ArrowDown size={18} aria-hidden="true" /></button></div></div>}
+
+        {canComplete && !pending && <p className={styles.dockFootnote}>Следующее занятие откроется после подтверждения.</p>}
+      </aside>}
+      {workSetup && <CoachOverlay onClose={() => setWorkSetup(null)} locked={busy} aria-label="Настройка таймера" className={styles.playerSheetBackdrop}><section className={styles.playerSheet}><header><span className={styles.emptyIcon}><Timer size={22} aria-hidden="true" /></span><button type="button" className={styles.timerClose} aria-label="Закрыть настройку таймера" onClick={() => setWorkSetup(null)}><X size={18} aria-hidden="true" /></button></header><p className={styles.eyebrow}>Таймер выполнения</p><h3>{workSetup.name}</h3><p className={styles.muted}>{workSetup.min === workSetup.max ? `${workSetup.min} сек` : `${workSetup.min}–${workSetup.max} сек по PDF`}{workSetup.repeats > 1 ? ` · ${workSetup.repeats} отдельных удержаний` : ''}{workSetup.sides === 2 ? ' · на каждую сторону' : ''}</p><label className={styles.field}>Длительность · секунды<input type="number" inputMode="numeric" className={styles.input} min={workSetup.min} max={workSetup.max} value={workSetup.seconds} onChange={e => setWorkSetup({ ...workSetup, seconds: e.target.value === '' ? '' : Number(e.target.value) })} /></label><div className={styles.actions}><button type="button" className={`${styles.button} ${styles.primary} ${styles.full}`} disabled={locked || !Number.isInteger(workSetup.seconds) || workSetup.seconds < workSetup.min || workSetup.seconds > workSetup.max} onClick={beginWork}><Play size={16} aria-hidden="true" />Начать таймер</button><button type="button" className={`${styles.button} ${styles.full}`} onClick={() => setWorkSetup(null)}>Отмена</button></div></section></CoachOverlay>}
     </>}
-  </>;
+  </div>;
 }

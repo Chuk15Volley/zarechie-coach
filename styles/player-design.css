@@ -381,3 +381,12 @@
 .gym-premium .player-history-summary > p { margin:10px 0 0; font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
 .gym-premium .player-video-overlay { padding-top:max(12px,env(safe-area-inset-top)); }
 .gym-premium .player-video-modal { max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overscroll-behavior:contain; }
+/* Prevention keeps the same athlete shell, with a shorter identity header. */
+.gym-premium[data-player-section=prevention] .player-hero {padding:14px 18px 12px;}
+.gym-premium[data-player-section=prevention] .player-brand-row {margin-bottom:10px;}
+.gym-premium[data-player-section=prevention] .player-session-state,.gym-premium[data-player-section=prevention] .player-brand-product {display:none;}
+.gym-premium[data-player-section=prevention] .player-identity {gap:10px;}
+.gym-premium[data-player-section=prevention] .player-avatar {width:34px;height:38px;border-radius:10px;font-size:11px;}
+.gym-premium[data-player-section=prevention] .player-page-title {font-size:20px;}
+.gym-premium[data-player-section=prevention] .player-position {font-size:11px;margin-top:2px;}
+.gym-premium[data-player-section=prevention] .player-tabs {margin-top:10px;}

@@ -46,7 +46,7 @@ export default function PremiumSelect({ value, defaultValue, onChange, options, 
       const bounds = trigger.current.closest('dialog[open]')?.getBoundingClientRect();
       const leftBound = Math.max(8, bounds?.left || 0), rightBound = Math.min(vw - 8, bounds?.right || vw), topBound = Math.max(offset + 8, bounds?.top || 0), bottomBound = Math.min(vh + offset - 8, bounds?.bottom || vh + offset);
       if (rect.bottom < topBound || rect.top > bottomBound) { close(); return; }
-      const height = Math.min(390, rows.length * 48 + (searchable ? 72 : 36)), below = bottomBound - rect.bottom - 8, above = rect.top - topBound - 8, up = below < Math.min(height, 220) && above > below;
+      const height = Math.min(390, rows.reduce((total, row) => total + (row.sub ? 80 : 56), searchable ? 72 : 36)), below = bottomBound - rect.bottom - 8, above = rect.top - topBound - 8, up = below < Math.min(height, 220) && above > below;
       const maxHeight = Math.max(96, Math.min(height, up ? above : below)), width = Math.min(Math.max(rect.width, Math.min(320, vw - 16)), rightBound - leftBound);
       setPosition({ left: Math.max(leftBound, Math.min(rect.left, rightBound - width)), top: up ? Math.max(topBound, rect.top - maxHeight - 8) : Math.min(rect.bottom + 8, bottomBound - maxHeight), width, maxHeight });
     };

@@ -66,6 +66,15 @@ test('assignment replay is idempotent and numeric/WHOOP identities share progres
   const listed = await call(player, { token: 'synthetic-nk-token' }, { method: 'GET', authorized: false }); assert.equal(listed.data.assignments.length, 1);
   assert.equal((await call(coach, { ...body, phase: 2 })).code, 409);
 });
+test('a player without assignments sees no library and cannot assign a course with a share token', async () => {
+  const before = [...db.entries()];
+  const listed = await call(player, { token: 'synthetic-other-token', workspace: 'nkperf', playerId: '123', courseId: 'knee-resilience' }, { method: 'GET', authorized: false });
+  assert.equal(listed.code, 200); assert.deepEqual(listed.data, { assignments: [] });
+  assert.equal((await call(catalogue, { workspace: 'nkperf', token: 'synthetic-other-token' }, { method: 'GET', authorized: false })).code, 401);
+  assert.equal((await call(coach, { ...request(), token: 'synthetic-other-token' }, { authorized: false })).code, 401);
+  assert.equal((await call(player, { ...request(), token: 'synthetic-other-token' }, { authorized: false })).code, 400);
+  assert.deepEqual([...db.entries()], before);
+});
 test('share token scopes every read/write even when client spoofs space and player', async () => {
   const created = (await call(coach, request())).data.assignment;
   for (const token of ['synthetic-other-token', 'synthetic-z-token', 'revoked-token']) {

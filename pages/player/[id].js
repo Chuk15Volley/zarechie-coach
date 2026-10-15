@@ -12,7 +12,8 @@ import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetiti
 
 import { useState, useEffect, useRef, useMemo, Component } from 'react';
 import Head from 'next/head';
-import { createPortal } from 'react-dom';
+import PlayerVideoModal from '../../components/player/PlayerVideoModal';
+import PlayerVideoPreview from '../../components/player/PlayerVideoPreview';
 import { Dumbbell, Layers3, Timer, LayoutGrid, Play, Volume2, VolumeX } from 'lucide-react';
 import OfflineProgram from '../../components/player/OfflineProgram';
 import { useHoldTimer } from '../../lib/useHoldTimer';
@@ -294,31 +295,6 @@ function youtubeVideoId(url) {
   return null;
 }
 
-function PlayerVideoModal({ name, videoId, watchUrl, ex, onClose }) {
- const ref=useRef(null);
- const [host,setHost]=useState(null);
- useEffect(()=>{setHost(document.querySelector('.player-page-shell') || document.body);},[]);
- useEffect(()=>{
-  if(!host)return;
-  const focus=document.activeElement, previousOverflow=document.body.style.overflow;
-  document.body.style.overflow='hidden'; ref.current?.querySelector('button')?.focus();
-  const keydown=event=>{if(event.key==='Escape'){event.preventDefault();onClose();} if(event.key==='Tab'){const items=[...ref.current.querySelectorAll('button,a,iframe')];const first=items[0],last=items.at(-1);if(event.shiftKey && document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first?.focus();}}};
-  document.addEventListener('keydown',keydown);
-  return ()=>{document.body.style.overflow=previousOverflow;document.removeEventListener('keydown',keydown);if(focus?.isConnected)focus.focus();};
- },[host]);
- return host ? createPortal(<div className="gym-result-overlay player-video-overlay" onClick={onClose}>
-  <section ref={ref} className="player-video-modal" role="dialog" aria-modal="true" aria-label={`Техника: ${name}`} onClick={e=>e.stopPropagation()}>
-   <div className="gym-result-heading"><h2>{name}</h2><button type="button" aria-label="Закрыть видео" onClick={onClose}>×</button></div>
-   <iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&playsinline=1`} title={`Техника: ${name}`} referrerPolicy="origin" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen />
-   {ex && <div className="player-video-context">
-    <p><strong>Назначено: </strong>{compactSetPrescription(ex.targetSets)}{visibleLoadPrescription(ex,plannedWeightLabel(ex)) ? ` · ${visibleLoadPrescription(ex,plannedWeightLabel(ex))}` : ''}</p>
-    {shortCue(ex) && <p>{shortCue(ex)}</p>}
-    {ex.autoReg && <p className="player-video-warning">{ex.autoReg}</p>}
-   </div>}
-   <p>Если плеер недоступен, <a href={watchUrl} target="_blank" rel="noopener noreferrer">открыть оригинал на YouTube</a>.</p>
-  </section>
- </div>,host) : null;
-}
 
 function ExerciseMedia({ name, token, ex }) {
  const bankUrl=findExerciseUrl(name);
@@ -337,12 +313,15 @@ function ExerciseMedia({ name, token, ex }) {
  return <>
   <div className="player-media-slot">
   {status==='loading' ? <div className="player-media-status" role="status">Загрузка видео…</div> : status==='error' ? <div className="player-media-status is-error" role="status"><span>Не удалось загрузить видео</span><button type="button" onClick={()=>setAttempt(n=>n+1)}>Повторить</button></div> : videoId ?
-   <button type="button" className="player-exercise-media player-video-preview" onClick={()=>setOpened(true)} aria-label={`Смотреть технику: ${name}`}>
-    <img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt="" loading="lazy" />
-    <span className="player-video-button"><Play size={22} fill="currentColor" aria-hidden="true" /></span><span className="player-video-caption">Смотреть технику</span>
-   </button> : videoUrl ? <a href={watchUrl} target="_blank" rel="noopener noreferrer" className="player-media-status">Видео упражнения ↗</a> : <div className="player-media-status">Видео не добавлено</div>}
+   <PlayerVideoPreview name={name} videoId={videoId} onOpen={()=>setOpened(true)} /> : videoUrl ? <a href={watchUrl} target="_blank" rel="noopener noreferrer" className="player-media-status">Видео упражнения ↗</a> : <div className="player-media-status">Видео не добавлено</div>}
   </div>
-  {opened && videoId && <PlayerVideoModal name={name} videoId={videoId} watchUrl={watchUrl} ex={ex} onClose={()=>setOpened(false)} />}
+  {opened && videoId && <PlayerVideoModal name={name} videoId={videoId} watchUrl={watchUrl} onClose={()=>setOpened(false)}>
+   {ex && <div className="player-video-context">
+    <p><strong>Назначено: </strong>{compactSetPrescription(ex.targetSets)}{visibleLoadPrescription(ex,plannedWeightLabel(ex)) ? ` · ${visibleLoadPrescription(ex,plannedWeightLabel(ex))}` : ''}</p>
+    {shortCue(ex) && <p>{shortCue(ex)}</p>}
+    {ex.autoReg && <p className="player-video-warning">{ex.autoReg}</p>}
+   </div>}
+  </PlayerVideoModal>}
  </>;
 }
 
@@ -1418,7 +1397,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         <div className="player-ambient-cyan absolute bottom-0 right-0 h-[300px] w-[300px] rounded-full bg-blue-600/[0.07] blur-[100px]" />
       </div>
 
-      <div className={`app-shell player-page-shell gym-premium ${workoutStarted && !completedAt && !finishOpen && activeTab === 'workout' ? 'gym-active' : ''} min-h-screen bg-[#07101a] text-slate-100`}>
+      <div data-player-section={activeTab} className={`app-shell player-page-shell gym-premium ${workoutStarted && !completedAt && !finishOpen && activeTab === 'workout' ? 'gym-active' : ''} min-h-screen bg-[#07101a] text-slate-100`}>
         {/* ── Athlete identity hero ── */}
         <header className="player-hero px-4 pb-4 pt-4">
           <div className="player-brand-row mb-5 flex items-center justify-between gap-3">

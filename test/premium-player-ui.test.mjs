@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const playerPage = readFileSync(new URL('../pages/player/[id].js', import.meta.url), 'utf8');
+const videoModal = readFileSync(new URL('../components/player/PlayerVideoModal.js', import.meta.url), 'utf8');
+const videoPreview = readFileSync(new URL('../components/player/PlayerVideoPreview.js', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../styles/globals.css', import.meta.url), 'utf8');
 
 test('player app uses a full identity hero and compact sticky workout controls', () => {
@@ -14,7 +16,7 @@ test('player app uses a full identity hero and compact sticky workout controls',
 
 test('player exercise surfaces use premium branded glass components', () => {
   assert.match(playerPage, /player-exercise-card/);
-  assert.match(playerPage, /player-exercise-media/);
+  assert.match(videoPreview, /player-exercise-media/);
   assert.match(playerPage, /gym-confirm-set/);
   assert.match(styles, /\.player-exercise-card[\s\S]*backdrop-filter: blur\(24px\)/);
   assert.match(styles, /\.player-page-shell::before[\s\S]*url\('\/nk-logo\.jpg'\)/);
@@ -36,8 +38,8 @@ test('player experience includes start, open exercises, rest, undo and completio
 test('exercise technique opens inline with an original-video fallback and scoped close', () => {
   assert.match(playerPage, /href=\{watchUrl\}[\s\S]*?target="_blank"/);
   assert.match(playerPage, /PlayerVideoModal/);
-  assert.match(playerPage, /youtube-nocookie\.com\/embed/);
-  assert.match(playerPage, /Закрыть видео/);
+  assert.match(videoModal, /youtube-nocookie\.com\/embed/);
+  assert.match(videoModal, /Закрыть видео/);
   assert.doesNotMatch(styles, /\.player-video-modal-card|@keyframes player-modal-in/);
 });
 
