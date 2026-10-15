@@ -351,3 +351,21 @@
 .gym-premium .gym-result-plan { color:#bdcbc2; }
 .gym-premium .gym-weight-changes span { overflow-wrap:break-word; font-variant-numeric:tabular-nums; }
 @media(max-width:359px) { .gym-premium .player-tabs > button { font-size:11px; padding-inline:4px; gap:3px; } .gym-premium .gym-comparison-head,.gym-premium .gym-comparison-row { grid-template-columns:42px minmax(0,1fr) minmax(0,1.4fr); gap:7px; } }
+
+/* Athlete history finish: shared facts, stable media and one completion surface. */
+.gym-premium .gym-pair-legend { margin:0 0 8px; font-size:11px; line-height:1.5; color:#bacdc0; }
+.gym-premium .gym-set-fact .gym-fact-edit { display:block; width:100%; color:inherit; font:inherit; }
+.gym-premium .gym-set-skip { display:block; color:#d9c8a7; font-size:11px; margin-top:4px; }
+.gym-premium .player-media-slot { width:100%; aspect-ratio:16/9; max-height:220px; border-radius:12px; overflow:hidden; background:#10191b; }
+.gym-premium .player-media-slot .player-video-preview { height:100%; max-height:none; aspect-ratio:auto; }
+.gym-premium .player-media-slot .player-media-status { width:100%; height:100%; padding:12px; margin:0; flex-direction:column; justify-content:center; text-align:center; border:1px solid #ffffff12; border-radius:12px; box-sizing:border-box; }
+.gym-premium .gym-result-actions { display:grid; grid-template-columns:minmax(80px,.4fr) minmax(0,1fr); gap:10px; margin-top:16px; align-items:stretch; }
+.gym-premium .gym-result-actions .gym-result-cancel,.gym-premium .gym-result-actions .gym-confirm-set { width:100%; margin:0; min-height:48px; font-size:13px; }
+.gym-premium .player-workout-summary { border:1px solid #adcbbb30; border-radius:18px; background:#152022; padding:16px; }
+.gym-premium .player-workout-summary .player-completion-summary { padding:0; margin:0; border:0; border-radius:0; background:none; box-shadow:none; }
+.gym-premium .player-workout-summary .player-feedback-success { margin-top:12px; padding:12px 0 0; border:0; border-top:1px solid #adcbbb25; border-radius:0; background:none; text-align:left; }
+.gym-premium .player-workout-summary .player-feedback-success > div:first-child { display:block; margin:0; font-size:13px; color:#c3d7c9; }
+.gym-premium .player-history-exercise { overflow:hidden; }
+.gym-premium .player-history-exercise .player-autoreg { color:#ddcfac; font-size:13px; line-height:1.55; }
+.gym-premium .player-history-exercise .player-exercise-code { padding:4px 8px; border-radius:8px; font-size:11px; font-weight:650; }
+.gym-premium .player-history-exercise .player-exercise-name { min-width:0; }

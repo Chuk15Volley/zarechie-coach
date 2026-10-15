@@ -1,4 +1,4 @@
-import { serverWorkoutComplete, playerSessionStatus, restorePlayerProgress, implementWeightLabel, actualLoadLabel, visibleLoadPrescription, resultInputsChanged, weightChangeLabels, historyMonthGroups } from '../../lib/playerPresentation.mjs';
+import { serverWorkoutComplete, playerSessionStatus, restorePlayerProgress, implementWeightLabel, actualLoadLabel, visibleLoadPrescription, resultInputsChanged, weightChangeLabels, historyMonthGroups, historySetRows, pairWeightLegend, compactActualLoadLabel, compactSetPrescription } from '../../lib/playerPresentation.mjs';
 import PlayerPrevention from '../../components/prevention/PlayerPrevention';
 import {getPlayerTimeZone} from '../../lib/playerTimeZoneStore';
 import {playerLocalDate,playerLocalClock,playerTimeZoneLabel} from '../../lib/playerTimeZone.mjs';
@@ -223,7 +223,7 @@ function SetBtn({ total, label, value, done, weight, repetitions, ex, onOpen, ac
  return <div className={`gym-set ${done ? 'is-done' : ''} ${active ? 'is-current' : ''}`}>
   <button type="button" className="gym-set-heading" onClick={onOpen}>
    <span className="gym-set-caption">{done && <span aria-hidden="true">✓ </span>}Подход {label}{total ? ` из ${total}` : ''}</span>
-   <strong>{done ? 'Факт: ' : 'План: '}{targetLabel(actualTarget(value,done ? repetitions : undefined))}{done && actualLoadLabel(ex,weight) ? ` · ${actualLoadLabel(ex,weight)}` : ''}</strong>
+   <strong>{done ? 'Факт: ' : 'План: '}{targetLabel(actualTarget(value,done ? repetitions : undefined))}{done && compactActualLoadLabel(ex,weight) ? ` · ${compactActualLoadLabel(ex,weight)}` : ''}</strong>
    <span className="text-xs">{done ? 'Изменить результат' : 'Записать результат'}</span>
   </button>
  </div>;
@@ -256,8 +256,10 @@ function SetResultEditor({ item, done, weight, repetitions, previousWeight, prev
   </>}
   {!info && <p className="gym-result-plan">Задание: {targetLabel(target)}. Единицы сохранены как назначено.</p>}
   {issue && <p role="alert" className="gym-actual-hint">{issue}</p>}
-  <button type="submit" disabled={done && !changed} className="gym-confirm-set">{done ? 'Сохранить изменения' : 'Сохранить подход'}</button>
-  <button type="button" className="gym-result-cancel" onClick={onCancel}>Отмена</button>
+  <div className="gym-result-actions">
+   <button type="button" className="gym-result-cancel" onClick={onCancel}>Отмена</button>
+   <button type="submit" disabled={done && !changed} className="gym-confirm-set">{done ? 'Сохранить изменения' : 'Сохранить подход'}</button>
+  </div>
   {done && onUnmark && <button type="button" className="gym-result-unmark" onClick={onUnmark}>Снять отметку выполнения</button>}
  </form>;
 }
@@ -304,7 +306,7 @@ function PlayerVideoModal({ name, videoId, watchUrl, ex, onClose }) {
    <div className="gym-result-heading"><h2>{name}</h2><button type="button" aria-label="Закрыть видео" onClick={onClose}>×</button></div>
    <iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&playsinline=1`} title={`Техника: ${name}`} referrerPolicy="origin" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen />
    {ex && <div className="player-video-context">
-    <p><strong>Назначено: </strong>{(ex.targetSets || []).map(targetLabel).join(' · ')}{visibleLoadPrescription(ex,plannedWeightLabel(ex)) ? ` · ${visibleLoadPrescription(ex,plannedWeightLabel(ex))}` : ''}</p>
+    <p><strong>Назначено: </strong>{compactSetPrescription(ex.targetSets)}{visibleLoadPrescription(ex,plannedWeightLabel(ex)) ? ` · ${visibleLoadPrescription(ex,plannedWeightLabel(ex))}` : ''}</p>
     {shortCue(ex) && <p>{shortCue(ex)}</p>}
     {ex.autoReg && <p className="player-video-warning">{ex.autoReg}</p>}
    </div>}
@@ -328,17 +330,54 @@ function ExerciseMedia({ name, token, ex }) {
  },[name,token,attempt]);
  const videoUrl=media?.video || (status==='ready' ? bankUrl : null),videoId=youtubeVideoId(videoUrl),watchUrl=videoId ? `https://www.youtube.com/watch?v=${videoId}` : videoUrl;
  return <>
+  <div className="player-media-slot">
   {status==='loading' ? <div className="player-media-status" role="status">Загрузка видео…</div> : status==='error' ? <div className="player-media-status is-error" role="status"><span>Не удалось загрузить видео</span><button type="button" onClick={()=>setAttempt(n=>n+1)}>Повторить</button></div> : videoId ?
    <button type="button" className="player-exercise-media player-video-preview" onClick={()=>setOpened(true)} aria-label={`Смотреть технику: ${name}`}>
     <img src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt="" loading="lazy" />
     <span className="player-video-button"><Play size={22} fill="currentColor" aria-hidden="true" /></span><span className="player-video-caption">Смотреть технику</span>
    </button> : videoUrl ? <a href={watchUrl} target="_blank" rel="noopener noreferrer" className="player-media-status">Видео упражнения ↗</a> : <div className="player-media-status">Видео не добавлено</div>}
+  </div>
   {opened && videoId && <PlayerVideoModal name={name} videoId={videoId} watchUrl={watchUrl} ex={ex} onClose={()=>setOpened(false)} />}
  </>;
 }
 
+function SetComparison({ ex, rows, onEdit, strict = false }) {
+ return <div className="gym-set-comparison px-3.5 pt-3">
+  {pairWeightLegend(ex) && <p className="gym-pair-legend">{pairWeightLegend(ex)}</p>}
+  <div className="gym-comparison-head" aria-hidden="true"><span>Подход</span><span>План</span><span>Факт</span></div>
+  {rows.map(row=>{
+   const target=row.done ? strict && repetitionInput(row.target) && row.reps==null ? 'Повторы не записаны' : targetLabel(actualTarget(row.target,row.reps)) : '';
+   const kg=row.done ? compactActualLoadLabel(ex,row.weight) : '';
+   const label=row.done ? `${target}${kg?` · ${kg}`:''}` : row.skipReason ? 'Пропущен' : 'Не отмечен';
+   const editable=onEdit && row.done && (needsLoadEntry(ex) || repetitionInput(row.target));
+   return <div key={row.key} className="gym-prescribed-set gym-comparison-row">
+    <span className="gym-set-number" aria-label={`Подход ${row.si+1}`}>{row.si+1}</span>
+    <div className="gym-set-plan" aria-label={`Назначено: ${targetLabel(row.target)}`}>{targetLabel(row.target)}</div>
+    <div className="gym-set-fact">
+     {editable ? <button type="button" className="gym-fact-edit" aria-label={`Исправить результат: ${playerExerciseName(ex)}, подход ${row.si+1}`} onClick={()=>onEdit(row)}><span>{label}</span><small>Изменить</small></button> : <span aria-label={row.done?'Выполнено':'Статус подхода'}>{label}</span>}
+     {!row.done && row.skipReason && <small className="gym-set-skip">{row.skipReason}</small>}
+    </div>
+   </div>;
+  })}
+ </div>;
+}
+
+function HistoryExCard({ ex, bi, ei, block, meta }) {
+ const weight=visibleLoadPrescription(ex,plannedWeightLabel(ex));
+ const rows=historySetRows(ex,bi,ei,block,meta);
+ return <article className="player-exercise-card player-history-exercise" data-block-tone={bi%6}>
+  <div className="player-exercise-heading flex items-start gap-2.5 px-3.5 py-3"><span className="player-exercise-code shrink-0">{ex.code}</span><span className="player-exercise-name">{playerExerciseName(ex)}</span></div>
+  {weight && <div className={`player-weight-strip ${plannedWeightValue(ex)?'has-weight':'is-prescription'} flex items-center justify-between px-3.5 py-2.5`}><div>Назначено</div><div>{weight}</div></div>}
+  <SetComparison ex={ex} rows={rows} strict />
+  <div className="px-3.5 pb-3.5 pt-3 space-y-2.5">
+   {exerciseDescription(ex) && <details className="gym-technique-details"><summary className="cursor-pointer py-2 text-sm font-semibold text-slate-300">Техника выполнения</summary><p className="mt-2 text-sm leading-relaxed text-slate-300">{exerciseDescription(ex)}</p></details>}
+   {ex.autoReg && <div className="player-autoreg flex items-start gap-2 rounded-xl px-3 py-2.5"><span className="player-warning-label">Важно</span><span>{ex.autoReg}</span></div>}
+  </div>
+ </article>;
+}
+
 // ── Single exercise card ──────────────────────────────────────────────────────
-function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, repetitions = {}, onRepsChange, token, readOnly = false, skipReason, onSkip, onHold, previousResult, currentSetKey, completed = false, correctionMode = false, onOpenResult }) {
+function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, repetitions = {}, onRepsChange, token, readOnly = false, skipReason, onSkip, onHold, previousResult, currentSetKey, completed = false, onOpenResult }) {
   const [skipOpen, setSkipOpen] = useState(false);
   const [reason, setReason] = useState('');
   const plannedWeight = visibleLoadPrescription(ex,plannedWeightLabel(ex));
@@ -368,21 +407,12 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
 
       {shortCue(ex) && <p className="gym-technique-cue">{shortCue(ex)}</p>}
       {/* Sets row */}
-      <div className={`${readOnly ? 'gym-set-comparison' : `grid ${setGrid} gap-2`} px-3.5 pt-3`}>
-        {readOnly && <div className="gym-comparison-head" aria-hidden="true"><span>Подход</span><span>План</span><span>Факт</span></div>}
+      {readOnly ? <SetComparison ex={ex} rows={(ex.targetSets || []).map((target,si)=>{const key=`${bi}-${ei}-${si}`;return {key,si,target,done:!!done?.[key],weight:weights?.[key],reps:repetitions[key],skipReason};})} onEdit={completed ? row=>onOpenResult({key:row.key,bi,ei,si:row.si,block,ex}) : null} /> :
+      <div className={`grid ${setGrid} gap-2 px-3.5 pt-3`}>
+        {pairWeightLegend(ex) && <p className="gym-pair-legend">{pairWeightLegend(ex)}</p>}
         {(ex.targetSets || []).map((s, si) => {
           const key = `${bi}-${ei}-${si}`;
-          if (readOnly || (skipReason && !done?.[key])) return (
-            <div key={si} className={`gym-prescribed-set ${readOnly ? 'gym-comparison-row' : ''}`}>
-              <span className="gym-set-number" aria-label={`Подход ${si+1}`}>{si+1}</span>
-              <div className="gym-set-plan" aria-label={`Назначено: ${targetLabel(s)}`}>{targetLabel(s)}</div>
-              {done?.[key] ? (completed && (needsLoadEntry(ex) || repetitionInput(s)) ?
-                <button type="button" className="gym-set-fact gym-fact-edit" aria-label={`Исправить результат: ${playerExerciseName(ex)}, подход ${si+1}`} onClick={()=>onOpenResult({key,bi,ei,si,block,ex})}>
-                  <span>{targetLabel(actualTarget(s,repetitions[key]))}{actualLoadLabel(ex,weights?.[key]) ? ` · ${actualLoadLabel(ex,weights[key])}` : ''}</span><small>Изменить</small>
-                </button> : <div className="gym-set-fact" aria-label="Выполнено">{targetLabel(actualTarget(s,repetitions[key]))}{actualLoadLabel(ex,weights?.[key]) ? ` · ${actualLoadLabel(ex,weights[key])}` : ''}</div>) :
-                <div className="gym-set-plan">{skipReason ? 'Пропущен' : completed ? 'Не выполнен' : '—'}</div>}
-            </div>
-          );
+          if(skipReason && !done?.[key])return <div key={si} className="gym-prescribed-set"><span>Подход {si+1}</span><p>Пропущен · {skipReason}</p></div>;
           return (
             <div key={si}>
             <SetBtn
@@ -409,7 +439,7 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
             </div>
           );
         })}
-      </div>
+      </div>}
 
       {/* Details */}
       <div className="space-y-2.5 px-3.5 pb-3.5 pt-3">
@@ -490,8 +520,6 @@ function FeedbackForm({ token, sessionDate, session, done, weights, repetitions,
   if (submitted) {
     return (
       <div className="player-feedback-success rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.09] px-4 py-8 text-center">
-        <div className="mb-2 text-3xl">💪</div>
-        <div className="text-base font-black text-emerald-300">{finishReason ? 'Тренировка завершена раньше' : Object.values(skipped || {}).some(Boolean) ? 'Тренировка завершена с пропусками' : 'Тренировка завершена!'}</div>
         <div className="mt-2 text-sm text-emerald-300">Оценка получена сервером и доступна тренеру</div>
         <button type="button" onClick={edit} className="mt-3 rounded-xl border border-white/15 p-3 text-sm text-slate-300">Изменить оценку</button>
       </div>
@@ -500,12 +528,6 @@ function FeedbackForm({ token, sessionDate, session, done, weights, repetitions,
 
   return (
     <div className="player-feedback space-y-4">
-      <div className="player-feedback-success rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.09] px-4 py-5 text-center">
-        <div className="mb-1 text-3xl">💪</div>
-        <div className="text-base font-black text-emerald-300">{finishReason ? 'Тренировка завершена раньше' : Object.values(skipped || {}).some(Boolean) ? 'Тренировка завершена с пропусками' : 'Тренировка завершена!'}</div>
-        <div className="mt-0.5 text-xs text-emerald-600">Оцени нагрузку для тренера</div>
-      </div>
-
       <fieldset disabled={!ready || sending || queued} className="player-feedback-card rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 space-y-4">
         {/* RPE */}
         <div>
@@ -911,7 +933,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   const [finishReason, setFinishReason] = useState(serverLog?.finishReason || null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [resultSet, setResultSet] = useState(null);
-  const [editingResults,setEditingResults]=useState(false);
   const [pendingCorrection,setPendingCorrection]=useState(null);
   const serverCompleted=serverWorkoutComplete(session,serverLog);
   const [resultIssue, setResultIssue] = useState('');
@@ -1130,7 +1151,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
   function openSetResult(item) {
     if (!item || (completedAt && !done[item.key])) return;
     setResultIssue('');
-    setResultSet({ key: item.key, bi: item.bi, ei: item.ei, si: item.si, block: item.block, ex: item.exercise || item.ex, direct:!!completedAt && !editingResults });
+    setResultSet({ key: item.key, bi: item.bi, ei: item.ei, si: item.si, block: item.block, ex: item.exercise || item.ex });
   }
   useEffect(() => {
     const item = holdTimer.hold;
@@ -1609,9 +1630,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
 
                 {completedAt && <section className="player-completed-overview">
                   <div><span className="player-kicker">{finishReason ? 'Завершена раньше' : skippedCount ? 'Завершена с пропусками' : 'Тренировка выполнена'}</span><h2>{compactWorkoutTitle(sessionLabel)}</h2><p>{formatDate(sessionDate)} · {doneCount} из {totalSets} подходов · {formatWorkoutDuration(elapsedSeconds)}</p></div>
-                  <button type="button" className="gym-result-cancel" onClick={()=>{setEditingResults(value=>!value);setResultSet(null);}}>{editingResults ? 'Закончить коррекцию' : 'Исправить результат'}</button>
                   {pendingCorrection && <details className="player-pending-correction"><summary>Есть неотправленное сохранение на этом устройстве</summary><p>Проверь значения перед отправкой. Более новые записи сервера защищены.</p>{blocks.flatMap((block,bi)=>(block.exercises || []).flatMap((ex,ei)=>(ex.targetSets || []).flatMap((target,si)=>{const key=`${bi}-${ei}-${si}`;return pendingCorrection.weights?.[key] !== weights[key] || pendingCorrection.repetitions?.[key] !== repetitions[key] ? <p key={key}>{ex.code} · подход {si+1}: {targetLabel(actualTarget(target,pendingCorrection.repetitions?.[key]))}{actualLoadLabel(ex,pendingCorrection.weights?.[key]) ? ` · ${actualLoadLabel(ex,pendingCorrection.weights[key])}` : ''}</p> : [];})))}<button type="button" className="gym-result-cancel" onClick={recoverSavedCorrection}>Отправить сохранённые изменения</button></details>}
-                  {editingResults && <p role="status">Выбери выполненный подход. Изменения сохраняются только по кнопке «Сохранить изменения».</p>}
                 </section>}
                 {dayGoal && (
                   <div className="player-goal-card rounded-xl border border-[#4ade80]/20 bg-[#4ade80]/[0.05] px-4 py-4">
@@ -1656,7 +1675,6 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                             currentSetKey={currentSet?.key}
                             readOnly={!!completedAt}
                             completed={!!completedAt}
-                            correctionMode={editingResults}
                             onOpenResult={openSetResult}
                             done={done}
                             skipReason={skipped[`${bi}-${ei}`]}
@@ -1690,7 +1708,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                   </div>}
                 </div>}
                 {completedAt && (
-                  <div className="space-y-4">
+                  <div className="player-workout-summary space-y-4">
 
                     <details className="gym-result-details"><summary>Фактические результаты</summary>{blocks.map((block, bi) => (block.exercises || []).map((ex, ei) => <div key={`${bi}-${ei}`}><strong>{playerExerciseName(ex)}</strong><p>{(ex.targetSets || []).map((target, si) => { const key = `${bi}-${ei}-${si}`; return done[key] ? `${targetLabel(actualTarget(target, repetitions[key]))}${actualLoadLabel(ex,weights[key]) ? ` · ${actualLoadLabel(ex,weights[key])}` : ''}` : 'Не выполнен'; }).join(' · ')}</p></div>))}</details>
                     <CompletionSummary session={session} feedbackReceived={!!((serverFeedback?.submittedAt && serverFeedback.submittedAt >= (lastActionAt || '')) || sessionRpe!=null)} weightChanges={weightChangeSummary(session, done, weights)} skippedCount={skippedCount} finishReason={finishReason} totalSets={doneCount} elapsedSeconds={elapsedSeconds} tonnage={tonnage} rpe={sessionRpe} />
@@ -1784,44 +1802,16 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                   {(histSession.blocks || []).map((block, bi) => (
                     <div key={bi}>
                       <div className="mb-3 flex items-center gap-3">
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e]">
+                        <span className="player-block-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4ade80] text-sm font-black text-[#060a0e]">
                           {block.label}
                         </span>
                         <div>
                           <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Блок {block.label}</div>
-                          {block.rest_note && <div className="text-[11px] text-slate-600">⏱ {block.rest_note}</div>}
+                          {block.rest_note && <div className="gym-rest-note">Отдых: {block.rest_note}</div>}
                         </div>
                       </div>
                       <div className="space-y-3">
-                        {(block.exercises || []).map((ex, ei) => (
-                          <div key={ei} className="player-history-exercise overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03]">
-                            <div className="flex items-center gap-2.5 bg-gradient-to-r from-[#4ade80]/[0.10] to-transparent px-4 py-3">
-                              <span className="shrink-0 rounded-lg bg-[#4ade80]/20 px-2 py-1 text-[11px] font-black text-[#4ade80]">{ex.code}</span>
-                              <span className="text-[15px] font-bold leading-snug text-white">{playerExerciseName(ex)}</span>
-                            </div>
-                            {visibleLoadPrescription(ex,plannedWeightLabel(ex)) && (
-                              <div className="border-b border-white/[0.05] bg-[#4ade80]/[0.06] px-4 py-2">
-                                <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#4ade80]/55">Рабочий вес</div>
-                                <div className="mt-0.5 text-[16px] font-black leading-none text-[#4ade80]">{visibleLoadPrescription(ex,plannedWeightLabel(ex))}</div>
-                              </div>
-                            )}
-                            <div className="px-4 py-3 flex flex-wrap gap-2">
-                              {(ex.targetSets || []).map((s, si) => (
-                                <div key={si} className="flex min-w-[58px] flex-col items-center rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
-                                  <span className="text-[10px] font-bold mb-0.5 text-slate-600">{si + 1}</span>
-                                  <span className="text-sm font-black leading-none text-slate-400">Назначено: {targetLabel(s)}</span>
-                                  {histMeta?.log?.repetitions?.[`${bi}-${ei}-${si}`] != null && <span className="mt-1 text-xs text-slate-200">Факт: {targetLabel(actualTarget(s, histMeta.log.repetitions[`${bi}-${ei}-${si}`]))}</span>}
-                                  <span className="mt-2 text-[11px] text-emerald-300">{histMeta?.log?.done?.[`${bi}-${ei}-${si}`] || histMeta?.actual?.exercises?.find(item => item.name === ex.name && item.block === (block.label || ''))?.setActuals?.[si]?.completed ? '✓ Выполнен' : (histMeta?.log?.skipped?.[`${bi}-${ei}`] || histMeta?.feedback?.skipped?.[`${bi}-${ei}`] || histMeta?.actual?.skipped?.[`${bi}-${ei}`]) ? `Пропущен: ${histMeta?.log?.skipped?.[`${bi}-${ei}`] || histMeta?.feedback?.skipped?.[`${bi}-${ei}`] || histMeta?.actual?.skipped?.[`${bi}-${ei}`]}` : 'Не отмечен'}</span>
-                                  {validActualWeight(histMeta?.log?.weights?.[`${bi}-${ei}-${si}`] ?? histMeta?.actual?.exercises?.find(item => item.name === ex.name && item.block === (block.label || ''))?.setActuals?.[si]?.kg) != null && <span className="mt-1 text-[11px] text-slate-200">Выполнено: {actualLoadLabel(ex,histMeta?.log?.weights?.[`${bi}-${ei}-${si}`] ?? histMeta?.actual?.exercises?.find(item => item.name === ex.name && item.block === (block.label || ''))?.setActuals?.[si]?.kg)}</span>}
-                                  {/^\d/.test(plannedWeightLabel(ex)) && <span className="mt-1 text-[9px] font-semibold leading-none text-slate-600">план {plannedWeightLabel(ex)}</span>}
-                                </div>
-                              ))}
-                            </div>
-                            {(typeof ex.descriptionOverride === 'string' || ex.cue || ex.coaching_note || ex.tempo) && (
-                              <div className="px-4 pb-3 text-[12px] leading-relaxed text-slate-500">{exerciseDescription(ex)}</div>
-                            )}
-                          </div>
-                        ))}
+                        {(block.exercises || []).map((ex, ei) => <HistoryExCard key={ei} ex={ex} bi={bi} ei={ei} block={block} meta={histMeta} />) }
                       </div>
                     </div>
                   ))}
@@ -1833,7 +1823,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
           </main>
         )}
 
-        {resultSet && (!completedAt || editingResults || resultSet.direct) && <div className="gym-result-overlay" onClick={()=>setResultSet(null)}>
+        {resultSet && (!completedAt || done[resultSet.key]) && <div className="gym-result-overlay" onClick={()=>setResultSet(null)}>
           <section className="gym-result-sheet" role="dialog" aria-modal="true" aria-labelledby="set-result-title" onClick={e=>e.stopPropagation()}>
             <div className="gym-result-heading"><h2 id="set-result-title">Фактический результат</h2><button type="button" autoFocus onClick={()=>setResultSet(null)} aria-label="Закрыть ввод результата">×</button></div>
             <p>{playerExerciseName(resultSet.ex)} · подход {resultSet.si+1}</p>

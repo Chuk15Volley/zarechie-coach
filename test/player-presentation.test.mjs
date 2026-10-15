@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {serverWorkoutComplete,playerSessionStatus,restorePlayerProgress,implementWeightLabel,actualLoadLabel,visibleLoadPrescription,resultInputsChanged,weightChangeLabels,historyMonthGroups} from '../lib/playerPresentation.mjs';
+import {serverWorkoutComplete,playerSessionStatus,restorePlayerProgress,implementWeightLabel,actualLoadLabel,visibleLoadPrescription,resultInputsChanged,weightChangeLabels,historyMonthGroups,historySetRows,pairWeightLegend,compactActualLoadLabel,compactSetPrescription} from '../lib/playerPresentation.mjs';
 import {compactWorkoutTitle,shortCue} from '../lib/playerGym.mjs';
 const session={blocks:[{exercises:[{name:'DB Bench Press',loadUnits:2,targetSets:['5']}]}]};
 test('completed server facts take precedence over stale device edits without changing source objects',()=>{
@@ -60,4 +60,49 @@ test('month groups include the year, preserve record identity/order and tolerate
  assert.deepEqual(result.map(g=>g.key),['2026-10','2026-09','2025-10','other']);
  assert.match(result[0].label,/октябрь 2026/);assert.equal(result[0].items[0],items[0]);
  assert.deepEqual(result.flatMap(g=>g.items),items);
+});
+
+test('history distinguishes absent kg, legacy zero and explicitly recorded zero without mutating records',()=>{
+ const ex={name:'DB Bench Press',loadUnits:2,targetSets:['5']},block={label:'A'};
+ const actual={exercises:[{...ex,block:'A',setActuals:[{target:'5',completed:true,kg:0,reps:5,repsRecorded:false}]}]};
+ const before=JSON.stringify(actual);
+ assert.equal(historySetRows(ex,0,0,block,{actual})[0].weight,null);
+ assert.equal(historySetRows(ex,0,0,block,{actual,log:{done:{'0-0-0':true},weights:{'0-0-0':'0'}}})[0].weight,0);
+ const recorded=structuredClone(actual);recorded.exercises[0].setActuals[0].kgRecorded=true;
+ assert.equal(historySetRows(ex,0,0,block,{actual:recorded})[0].weight,0);
+ assert.equal(historySetRows(ex,0,0,block,{actual})[0].reps,null);
+ assert.equal(JSON.stringify(actual),before);
+});
+test('history authoritative undone/skipped log does not resurrect a cached completed actual',()=>{
+ const ex={name:'Row',targetSets:['5']},block={label:'A'};
+ const actual={exercises:[{...ex,block:'A',setActuals:[{target:'5',completed:true,kg:12}]}]};
+ const row=historySetRows(ex,0,0,block,{actual,log:{done:{'0-0-0':false},skipped:{'0-0':'Решение тренера'}}})[0];
+ assert.equal(row.done,false);assert.equal(row.weight,null);assert.equal(row.skipReason,'Решение тренера');
+});
+test('history facts require exact variant, block, implement count and set targets',()=>{
+ const ex={name:'DB Bench Press',loadUnits:2,targetSets:['5']},block={label:'A'};
+ const fact={...ex,block:'A',setActuals:[{target:'5',completed:true,kg:10}]};
+ for(const wrong of [{...fact,name:'DB Floor Press'},{...fact,block:'B'},{...fact,loadUnits:1},{...fact,setActuals:[{target:'6',completed:true,kg:10}]}]){
+  const row=historySetRows(ex,0,0,block,{actual:{exercises:[wrong]}})[0];assert.equal(row.done,false);assert.equal(row.weight,null);
+ }
+ assert.equal(historySetRows(ex,0,0,block,{actual:{exercises:[fact]}})[0].weight,10);
+});
+test('history uses explicitly recorded reps per side, retaining custom assignments',()=>{
+ const ex={name:'Row',targetSets:['8/side','3 м/6']},block={label:'A'};
+ const actual={exercises:[{...ex,block:'A',setActuals:[{target:'8/side',completed:true,reps:14,repsRecorded:true,kg:0},{target:'3 м/6',completed:true,reps:999,repsRecorded:true,kg:0}]}]};
+ const rows=historySetRows(ex,0,0,block,{actual});assert.equal(rows[0].reps,7);assert.equal(rows[1].reps,null);assert.equal(rows[1].target,'3 м/6');
+});
+test('compact pair kg are accompanied by one unambiguous per-implement legend',()=>{
+ const ex={name:'DB Bench Press',loadUnits:2};assert.equal(pairWeightLegend(ex),'2 гантели · вес одной гантели');assert.equal(compactActualLoadLabel(ex,'2.5'),'2,5 кг');assert.equal(compactActualLoadLabel(ex,0),'0 кг');assert.equal(pairWeightLegend({name:'Barbell RDL'}),'');
+});
+test('compact video prescription groups only identical sets, preserving custom targets and order',()=>{
+ assert.equal(compactSetPrescription(['8','8']),'2 подхода по 8 повторений');
+ assert.equal(compactSetPrescription(['1/side']),'1 подход по 1 повторению на сторону');
+ assert.equal(compactSetPrescription(['3 м/6','3 м/6']),'2 подхода по 3 м/6');
+ assert.equal(compactSetPrescription(['8','6','20 сек']),'1: 8 повт. · 2: 6 повт. · 3: 20 сек');
+ assert.equal(compactSetPrescription([]),'');
+});
+test('empty legacy history targets remain an empty read-only display',()=>{
+ assert.deepEqual(historySetRows({name:'Legacy'},0,0,{label:'A'},null),[]);
+ assert.deepEqual(historySetRows({name:'Legacy',targetSets:[]},0,0,{label:'A'},{actual:{exercises:[{name:'Legacy',block:'A'}]}}),[]);
 });
