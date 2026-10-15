@@ -1,0 +1,119 @@
+/* Final presentation inside existing coach blocks. No athlete selectors,
+   main grids, block order, media sizes or prescription rules change. */
+@media screen {
+ /* 1. Keep each short prescribed set intact; long custom instructions can wrap. */
+ .coach-premium .coach-prescription-sets {letter-spacing:normal!important;line-height:1.65!important;}
+ .coach-premium .coach-exercise-studio .coach-prescription dd.coach-prescription-sets {font-size:18px;}
+ .coach-premium .coach-prescription-part {display:inline;}
+ .coach-premium .coach-prescription-set {display:inline-block;white-space:nowrap;max-width:100%;vertical-align:baseline;}
+ .coach-premium .coach-prescription-set[data-long=true] {white-space:normal;overflow-wrap:anywhere;}
+ .coach-premium .coach-prescription-separator {font-size:.8em;color:var(--coach-muted);}
+
+ /* 2. Dates occupy equal columns, regardless of the day's text. */
+ .coach-premium .coach-overview-table table {table-layout:fixed;min-width:1276px;}
+ .coach-premium .coach-load-player-col {width:200px;}
+ .coach-premium .coach-load-date-col {width:132px;}
+ .coach-premium .coach-load-total-col {width:152px;}
+ .coach-premium .coach-overview-table :is(th,td) {overflow-wrap:anywhere;}
+ .coach-premium .coach-overview-table tr>th:first-child {max-width:none;min-width:0;}
+ .coach-premium .coach-load-day {width:100%;min-width:0;max-width:100%;}
+ .coach-premium .coach-overview-table {scrollbar-color:#66746c #ffffff04;}
+ .coach-premium .coach-overview-table::-webkit-scrollbar {height:8px;width:8px;}
+ .coach-premium .coach-overview-table::-webkit-scrollbar-thumb {background:#66746c;border:2px solid var(--coach-panel);border-radius:6px;}
+
+ /* 3. Readable supporting text, without promoting it above the main values. */
+ .coach-premium :is(.coach-overview-freshness,.coach-program-block-order,
+   .coach-preview-tempo,.coach-video-meta,.coach-video-quick-links,
+   .library-studio-note,.library-studio-count>span,.coach-fact-metric>p,
+   .coach-chart-single,.coach-chart-empty small) {font-size:12px;line-height:1.6;color:#b6c0b9;}
+ .coach-premium .coach-load-day>span {font-size:12px;line-height:1.5;}
+ .coach-premium .coach-load-day .coach-load-evidence {color:#dfcba5;}
+ .coach-premium .coach-load-day .coach-load-evidence[data-kind=verified] {color:var(--coach-jade);}
+ .coach-premium :is(.coach-quick-plan,.coach-video-quick-edit) small {font-size:12px;line-height:1.5;}
+
+ /* 4–5. Stable label baselines and a clearly editable count, original columns. */
+ .coach-premium .coach-session-workspace .coach-quick-load-row {align-items:start;}
+ .coach-premium .coach-session-workspace .coach-quick-load-row>label {display:flex;flex-direction:column;gap:6px;}
+ .coach-premium .coach-session-workspace .coach-quick-load-row :is(label>span,.coach-implement-choice legend) {
+  display:flex;align-items:flex-end;min-height:18px;height:18px;font-size:12px;line-height:18px;white-space:normal;margin:0;padding:0;
+ }
+ .coach-premium .coach-session-workspace .coach-quick-load-row:has(.coach-implement-choice) :is(label>span,.coach-implement-choice legend) {min-height:36px;height:36px;}
+ .coach-premium .coach-session-workspace .coach-implement-choice {margin:0;padding:0;border:0;min-width:0;}
+ .coach-premium .coach-session-workspace .coach-implement-choice>div {margin-top:6px;}
+ .coach-premium .coach-session-workspace .coach-quick-load-row small {margin-top:0;}
+ .coach-premium .coach-session-workspace .coach-quick-sets-heading>span {font-size:12px;line-height:1.6;}
+ .coach-premium .coach-session-workspace .coach-quick-sets-heading .coach-set-count {
+  width:38px;height:32px;min-height:32px!important;margin-left:4px;padding:3px;border:1px solid #64736a;
+  border-radius:6px;background:var(--classic-field);font-size:16px!important;color:var(--coach-ink);
+ }
+ .coach-premium .coach-session-workspace .coach-set-count:focus-visible {outline:2px solid var(--coach-jade);outline-offset:2px;}
+
+ /* 6–7. Full variant names and separate, wrapping metadata after favorite. */
+ .coach-premium :is(.coach-exercise-title,.coach-quick-result-select,.library-studio-result,.library-studio-detail header) {min-width:0;}
+ .coach-premium .coach-exercise-title :is(h3,textarea) {line-height:1.45;overflow-wrap:anywhere;word-break:normal;}
+ .coach-premium .coach-exercise-name {white-space:pre-wrap;}
+ .coach-premium :is(.coach-quick-result-select strong,.library-studio-result strong,.library-studio-detail h3) {white-space:normal;overflow-wrap:anywhere;line-height:1.45;}
+ .coach-premium .library-studio-detail>header>.library-favorite {display:inline-flex;align-items:center;min-height:40px;max-width:100%;margin:2px 0 10px;line-height:1.5;}
+ .coach-premium .library-studio-detail>header>.library-detail-meta {display:block;font-size:12px;line-height:1.65;margin:0 0 8px;overflow-wrap:anywhere;}
+
+ /* 8. Search/control rows retain their fields and order. */
+ .coach-premium :is(.library-studio-filters,.coach-quick-replacement-search,.team-queue-filters) {align-items:end;gap:8px;}
+ .coach-premium :is(.library-studio-filters,.coach-quick-replacement-search,.team-queue-filters) label {min-width:0;font-size:12px;line-height:1.5;}
+ .coach-premium :is(.library-studio-filters,.coach-quick-replacement-search,.team-queue-filters) :is(input,select,button,summary) {box-sizing:border-box;min-height:42px;line-height:1.5;}
+ .coach-premium .coach-overview-filters {align-items:center;gap:8px;}
+ .coach-premium .coach-overview-filters>label {display:inline-flex;align-items:center;gap:8px;line-height:1.5;}
+ .coach-premium .coach-overview-filters>label>select {min-height:40px;max-width:100%;}
+
+ /* 9. Quiet secondary contours, retain every container and clinical frame. */
+ .coach-premium :is(.coach-fact-studio,.coach-history-charts,.coach-program-structure) {border-color:#ffffff14;box-shadow:none;}
+ .coach-premium :is(.coach-quick-plan,.coach-fact-metric,.coach-session-context details:not([open]),.coach-program-dose-summary) {border-color:#ffffff12;box-shadow:none;}
+
+ /* 10. Destructive controls stay available but do not compete with save. */
+ .coach-premium .coach-destructive {background:transparent!important;border-color:#ffffff20!important;color:#aeb8b1!important;font-weight:500;}
+ .coach-premium .coach-destructive:hover:not(:disabled),.coach-premium .coach-destructive:focus-visible {background:#5f29292e!important;border-color:#b77d77!important;color:#edc3bb!important;}
+
+ /* 11. Match native check controls without replacing their behavior. */
+ .coach-premium :is(.coach-exact-choice,.team-day-member,.team-queue-row-actions) input[type=checkbox] {
+  width:18px;height:18px;min-width:18px;min-height:18px;margin:0;vertical-align:middle;accent-color:var(--coach-jade);cursor:pointer;
+ }
+ .coach-premium .coach-exact-choice {font-size:12px;min-height:40px;cursor:pointer;}
+ .coach-premium input[type=checkbox]:focus-visible {outline:2px solid var(--coach-jade);outline-offset:3px;}
+
+ /* 12. Protected program is an explicit existing status, never an enabled save. */
+ .coach-premium .team-primary-action[data-protected=true] {background:#27312c!important;color:#b9c7bd!important;border-color:#5e7065!important;opacity:1;}
+ .coach-premium .coach-execution-confirmed {font-size:12px;line-height:1.65;padding:10px 12px;overflow-wrap:anywhere;}
+
+ /* 13. Exact mini-bar readout overlays its original card; no card height change. */
+ .coach-premium .coach-mini-chart {position:absolute;bottom:5px;left:18px;width:calc(100% - 36px);height:20px;z-index:3;}
+ .coach-premium .coach-mini-chart .coach-mini-bars {position:static;display:block;width:100%;height:20px;cursor:crosshair;animation:none;}
+ .coach-premium .coach-week-stat .coach-mini-chart {bottom:3px;height:16px;}
+ .coach-premium .coach-week-stat .coach-mini-chart .coach-mini-bars {height:16px;}
+ .coach-premium .coach-mini-bars .coach-mini-hit {fill:transparent!important;stroke:none;opacity:1;pointer-events:all;}
+ .coach-premium .coach-mini-bars [data-active=true] :is(path,rect:not(.coach-mini-hit)) {stroke:#e0e9e2;stroke-width:1;opacity:1;}
+ .coach-premium .coach-mini-chart:focus-visible {outline:2px solid var(--coach-jade);outline-offset:2px;border-radius:3px;}
+ .coach-premium .coach-mini-readout {position:absolute;bottom:calc(100% + 5px);left:-8px;right:-8px;padding:7px 8px;border:1px solid #66766c;border-radius:6px;background:#151b18fa;color:#e1e9e3;font-size:12px;line-height:1.5;pointer-events:none;box-shadow:0 4px 12px #0003;}
+
+ /* 14. Selection is visible without brighter decoration; zero stays clickable. */
+ .coach-premium :is(.coach-overview-filters,.team-queue-filters,.coach-program-modes) button[aria-pressed=true] {border-color:#91b19e;box-shadow:inset 0 -2px 0 #91b19e;font-weight:600;}
+ .coach-premium .team-queue-filters button[data-empty=true]:not([aria-pressed=true]) {color:#9aa69e;border-color:#ffffff18;background:transparent;}
+
+ /* 15. Consistent disclosure rows and legible, complete warning text. */
+ .coach-premium :is(.team-queue-player,.coach-session-context,.coach-plan-extras,.coach-exercise-regulation,.coach-history-charts,.coach-load-field-gaps,.coach-system-details) summary {
+  font-size:12px;line-height:1.6;min-height:36px;padding-block:8px;cursor:pointer;overflow-wrap:anywhere;
+ }
+ .coach-premium summary::marker {color:#a8bdb0;font-size:.85em;}
+ .coach-premium :is(.coach-data-warning,.coach-technique-quality,.coach-exercise-notice,.coach-common-rule,.coach-context-issues) {
+  font-size:12px;line-height:1.65;overflow-wrap:anywhere;
+ }
+ @media(max-width:640px){
+  .coach-premium .coach-load-player-col {width:150px;}
+  .coach-premium .coach-overview-table table {min-width:1226px;}
+  .coach-premium .coach-exercise-studio .coach-prescription dd.coach-prescription-sets {font-size:15px;}
+  .coach-premium .coach-prescription-set {white-space:normal;overflow-wrap:normal;}
+  .coach-premium .coach-prescription-set[data-long=true] {overflow-wrap:anywhere;}
+  .coach-premium .coach-mini-chart {left:12px;width:calc(100% - 24px);}
+ }
+}
+@media print {
+ .coach-premium .coach-mini-chart {display:none;}
+}

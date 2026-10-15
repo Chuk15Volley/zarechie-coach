@@ -4710,7 +4710,7 @@ export default function Home() {
                         <button type="button" onClick={() => removeBlock(bi)} disabled={saving}
                           aria-label={`Удалить блок ${block.label || bi + 1}`}
                           title="Удалить блок вместе со всеми упражнениями"
-                          className={`coach-edit-only flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-rose-400/20 px-3 text-xs font-semibold text-rose-300 transition hover:bg-rose-400/10 disabled:opacity-40 ${focusRing}`}>
+                          className={`coach-destructive coach-edit-only flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-rose-400/20 px-3 text-xs font-semibold text-rose-300 transition hover:bg-rose-400/10 disabled:opacity-40 ${focusRing}`}>
                           <X size={14} /><span className="hidden sm:inline">Удалить блок</span>
                         </button>
                         </div>

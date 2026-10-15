@@ -1,10 +1,16 @@
-import {chartNumber,historyLoadChart} from '../lib/coachVisualCharts.mjs';
+import {useEffect,useId,useState} from 'react';
+import {miniRowDescription,miniPointerIndex} from '../lib/coachMiniReadout.mjs';
+import {chartNumber,chartKeyIndex,historyLoadChart} from '../lib/coachVisualCharts.mjs';
 const format=v=>v==null?'нет записи':Number(v).toLocaleString('ru-RU',{maximumFractionDigits:1})+' кг';
-const date=d=>/^\d{4}-\d{2}-\d{2}$/.test(d)?d.slice(8)+'.'+d.slice(5,7):d;
 export function MiniBars({rows=[],label,planned=false}){
- const max=Math.max(1,...rows.map(r=>chartNumber(r.value)??0)),step=200/Math.max(1,rows.length);
- const describe=row=>`${date(row.date)}: ${row.value==null?row.gap || 'нет записи':format(row.value)}${row.partial?' · неполные данные':''}`;
- return <svg className={'coach-mini-bars'+(planned?' is-plan':'')} viewBox="0 0 200 18" preserveAspectRatio="none" role="img" aria-label={label+': '+rows.map(describe).join('; ')}><title>{label} · {rows.map(describe).join('; ')}</title>{rows.map((row,index)=>{const value=chartNumber(row.value),h=value==null?0:value/max*14;return <g key={row.date}><title>{describe(row)}</title>{value==null?<path d={`M ${index*step+step/2-2} 14 h 4`} className="coach-mini-gap"/>:value===0?<path d={`M ${index*step+2} 16 h ${Math.max(1,step-4)}`} className="coach-mini-zero"/>:<rect className={row.partial?'is-partial':''} x={index*step+2} y={16-h} width={Math.max(1,step-4)} height={h} rx="1"/>}</g>;})}</svg>;
+ const [active,setActive]=useState(null),readoutId=useId(),signature=rows.map(r=>r.date).join('|');
+ useEffect(()=>setActive(null),[label,signature]);
+ const max=Math.max(1,...rows.map(r=>chartNumber(r.value)??0)),step=200/Math.max(1,rows.length),selected=rows[active];
+ const point=event=>{const box=event.currentTarget.getBoundingClientRect();setActive(miniPointerIndex(event.clientX-box.left,box.width,rows.length));};
+ return <div className="coach-mini-chart" role="group" tabIndex={rows.length?0:undefined} aria-label={label+' · стрелки выбирают день, Home и End — начало и конец'} aria-describedby={selected?readoutId:undefined} onFocus={()=>setActive(i=>i??(rows.length?rows.length-1:null))} onBlur={()=>setActive(null)} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();setActive(null);}else if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();setActive(i=>chartKeyIndex(event.key,i,rows.length));}}}>
+ <svg className={'coach-mini-bars'+(planned?' is-plan':'')} viewBox="0 0 200 18" preserveAspectRatio="none" role="img" aria-label={label+': '+rows.map(miniRowDescription).join('; ')} onPointerMove={point} onPointerDown={point} onPointerLeave={()=>setActive(null)}><title>{label} · {rows.map(miniRowDescription).join('; ')}</title>{rows.map((row,index)=>{const value=chartNumber(row.value),h=value==null?0:value/max*14;return <g key={row.date} data-active={active===index}><title>{miniRowDescription(row)}</title>{value==null?<path d={`M ${index*step+step/2-2} 14 h 4`} className="coach-mini-gap"/>:value===0?<path d={`M ${index*step+2} 16 h ${Math.max(1,step-4)}`} className="coach-mini-zero"/>:<rect className={row.partial?'is-partial':''} x={index*step+2} y={16-h} width={Math.max(1,step-4)} height={h} rx="1"/>}<rect className="coach-mini-hit" x={index*step} y="0" width={step} height="18"/></g>;})}</svg>
+ {selected && <span className="coach-mini-readout" id={readoutId} role="status">{miniRowDescription(selected)}</span>}
+ </div>;
 }
 export function ProgramRatio({value,total}){
  if(!Number.isFinite(value) || !Number.isFinite(total) || total<=0)return null;
