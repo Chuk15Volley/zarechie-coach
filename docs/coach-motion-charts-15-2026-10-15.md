@@ -46,7 +46,7 @@ with Home/End/arrow readout, single-point/no-line and empty-RPE/no-point states,
 missing-point readout, exact sparse date labels without overlaps; daily load/week
 mini-bars and original block navigation. 390 px document 380 px/no horizontal
 page overflow; video 260 px desktop/220 px phone. No browser console errors.
-Production publication and protected-data results will be appended after release.
+Production publication and protected-data results are recorded below.
 
 Final display-count check: recorded exercise RPE stays known even when the
 selected set was absent on that date. Known/missing/unperformed counters are
@@ -55,3 +55,40 @@ disjoint and never negative; original RPE points/geometry/results unchanged.
 Public finishing check: the active-value readout moves to the opposite half of
 its chart so it does not cover the selected upper line/point. Scrollbars use a
 quiet narrow graphite/jade thumb. Source values and chart geometry unchanged.
+
+## Published release and final checks
+
+Final application `fd28cdd` (includes `2a67e87` and `0be69ee`) published on
+2026-10-15 at 14:00:09 MSK to the existing Russian Gym container. Image:
+`sha256:f0f893f0f963d9b7a215f1d89c6cb619af534526d35656057f37ef23b409fd4a`.
+Only Gym was recreated; runtime secrets/access key, server transport, Valkey,
+team worker, backups and 1 GB memory limit retained. Production running with
+zero restarts. Rollback compose retained at
+`/srv/readysix-ru-production/apps.private.compose.yaml.before-coach-motion15-readout-fd28cdd`.
+The preceding `0be69ee` release and original `3f9f960` image remain available.
+
+Final local/server builds and candidate/production smoke passed: authentication,
+health, 15 Zarechie/3 NK players, original 14 saved Zarechie programs and 3
+unsaved/unreviewed NK drafts, 2124-card catalogue/prohibition, original week
+directions and exact weekly mini-bar source parity. 1024 tests passed, one
+existing skip. Athlete sources and methodology/data API source diff empty.
+
+Production browser checks covered both spaces: Today ratio, Load daily bars,
+Week daily plan, original completed Perova program protected (22/22, C1 50 kg
+2×5), original 260 px video, history plan/fact strokes, sparse Perova graph,
+NK Darya exact 17.5 kg observation, missing RPE and keyboard readout. Final
+readout stays clear of the selected line. At 390 px no horizontal page overflow;
+original 220 px mobile video retained. No browser console errors. Reduced-motion
+CSS verified; OS media preference was not emulated. Desktop viewport restored.
+Proof: `/private/tmp/gym-motion15-production-2026-10-15.jpg`.
+
+Read-only protected snapshots before work, before each publication and after
+final public UI checks are identical: all 2540 protected keys (1929 non-live,
+611 player journal keys), 1155 original catalogue/photo assets and 2124-card
+fingerprint. No live journal changes during this release. No real program,
+result, readiness, video or LIVE writes were used for validation; fake saves
+ran only on the local fictional fixture. No athlete-facing code was changed.
+
+Owned QA tabs/local fixture servers and both worker-disabled candidate
+containers cleaned up; the production review tab retained. User Safari tabs
+were left untouched. Active checkout: `/private/tmp/gym-premium-shell-release`.
