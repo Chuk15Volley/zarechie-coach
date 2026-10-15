@@ -2356,6 +2356,7 @@ export default function Home() {
   }, [apiKey, workspace]);
 
   function switchWorkspace(ws) {
+    if(ws===workspace)return;
     rememberTeamDraft();setTeamModalOpen(false);activeTeamDraftRef.current=null;draftOpenController.current?.abort();draftOpenRequest.current++;setTeamDraftOpening(false);
     setHistoryFactTarget(null);setSelectedPlayer(null);setDate(calendarToday());
     setWorkspaceTab('program');
