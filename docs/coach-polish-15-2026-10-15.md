@@ -61,3 +61,42 @@ fixtures (two saves, no actual/video/draft/LIVE writes).
 
 Hidden mobile panes do not overwrite the remembered table offset with a
 zero-width measurement; the original offset is restored when the pane returns.
+
+## Published release and final checks
+
+Final application `05a28b2` (includes `a475bef`) published on 2026-10-15 at
+15:32:09 MSK, existing Russian Gym container. Image:
+`sha256:2c2352c2425e44cfde6a3ae1726f0b7c6d49e5de51852691652f7c2741fead70`.
+Only Gym recreated; existing runtime secrets/access key, transport, Valkey,
+worker, backups and 1 GB memory retained. Running, restart count zero. Rollback:
+`/srv/readysix-ru-production/apps.private.compose.yaml.before-coach-polish15-final-05a28b2`.
+Previous published 860b2e1 image retained; unused unpublished a475bef image removed.
+
+Final local/server builds and worker-disabled candidate/public smoke passed:
+auth/health, 15 Zarechie/3 NK players, original 14 saved Zarechie programs and
+3 unsaved/unreviewed NK drafts, 2124 catalogue cards/prohibitions, original week
+directions and exact planned-tonnage source parity, compiled coach UI/styles.
+1029 tests passed, one existing skip. Player/API/methodology source diff empty.
+
+Production browser checks passed both spaces. Zarechie Load initially 400/400,
+54.9 t actual/78.5 t planned retained, exact 15 October partial 16519 kg readout;
+tooltip bottom 223.7 vs card top 231.7, unchanged 109 px card height. Real warmup
+names/English variants/doses preserved, closed conduct 66 px. LIVE active zero
+uses neutral rgb(203,213,225); actual filter predicate and count unchanged.
+NK mobile 390 px/380 px document, no horizontal page overflow; table 880/880,
+plan readout explicitly No programs for 15 October. Tooltip stays above cards.
+Original Darya 13 October draft inspected without saving: real clip 4-Gq43Y0OK4,
+full original URL, concise submit/preserve-units/progression labels. History
+shows Russian 18 July–15 October scope, exact 17.5 kg/5 reps, metric-specific
+missing 1/6/9 and original empty RPE. System zero error/warning counters neutral,
+Recovery label present. Browser console error list empty, viewport restored.
+Local hidden mobile pane verified: manual offset 800, hidden width 0, restored
+800 after returning via menu. No view reset from zero-width measurement.
+Proof: `/private/tmp/gym-polish15-production-2026-10-15.jpg`.
+
+Before, pre-switch and final-after-public-UI snapshots identical: all 2540
+protected keys including 611 player journals, 1155 original source assets and
+2124-card catalogue fingerprint. No real program/result/video/generation/review/
+LIVE writes used in verification. UI-only session preferences are separate.
+Owned local servers/QA tabs/candidate and unused image cleaned up. Final public
+review tab retained, original Safari and other pre-existing tabs untouched.
