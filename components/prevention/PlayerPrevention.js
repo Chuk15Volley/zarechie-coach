@@ -7,10 +7,14 @@ import styles from './Prevention.module.css';
 
 export default function PlayerPrevention({ token }) {
   const [assignments, setAssignments] = useState(null), [selectedId, setSelectedId] = useState(''), [error, setError] = useState(''), [reload, setReload] = useState(0);
+  const selectionKey = `gym:prevention:selected:v1:${token}`;
+  function chooseAssignment(id) { setSelectedId(id); try { localStorage.setItem(selectionKey, id); } catch {} }
   useEffect(() => {
-    const controller = new AbortController(); setError('');
+    const controller = new AbortController(); setError(''); setAssignments(null); setSelectedId('');
     preventionCall(`/api/player/prevention?token=${encodeURIComponent(token)}`, { signal: controller.signal }).then(data => {
-      if (controller.signal.aborted) return; setAssignments(data.assignments); setSelectedId(previous => data.assignments.some(a => a.id === previous) ? previous : data.assignments.find(a => a.status === 'active')?.id || data.assignments[0]?.id || '');
+      if (controller.signal.aborted) return;
+      let remembered = ''; try { remembered = localStorage.getItem(selectionKey) || ''; } catch {}
+      setAssignments(data.assignments); setSelectedId(previous => [previous, remembered].find(id => data.assignments.some(a => a.id === id)) || data.assignments.find(a => a.status === 'active')?.id || data.assignments[0]?.id || '');
     }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, [token, reload]);
@@ -19,7 +23,7 @@ export default function PlayerPrevention({ token }) {
     {error && <div role="alert" className={styles.error}>{error}<button type="button" className={styles.button} onClick={() => setReload(n => n + 1)}>Повторить загрузку</button></div>}
     {!assignments && !error && <p className={styles.loading}>Загрузка назначений…</p>}
     {assignments?.length === 0 && <section className={styles.card}><h3>Пока нет назначений</h3><p className={styles.muted}>Когда тренер назначит курс профилактики, он появится здесь отдельно от тренировок зала.</p><button type="button" className={styles.button} onClick={() => setReload(n => n + 1)}>Проверить назначения</button></section>}
-    {assignments?.length > 1 && <label className={`${styles.field} mb-4`}>Курс<select className={styles.select} value={selectedId} onChange={e => setSelectedId(e.target.value)}>{assignments.map(a => <option key={a.id} value={a.id}>{a.region || 'Поясница'} · {a.title} · {a.options.scope === 'phase' ? `фаза ${a.options.phaseLabel || a.options.phase}` : 'весь курс'} · {a.cursor}/{a.total}{a.status === 'completed' ? ' · завершён' : a.status === 'archived' ? ' · закрыт' : ''}</option>)}</select></label>}
+    {assignments?.length > 1 && <label className={`${styles.field} mb-4`}>Курс<select className={styles.select} value={selectedId} onChange={e => chooseAssignment(e.target.value)}>{assignments.map(a => <option key={a.id} value={a.id}>{a.region || 'Поясница'} · {a.title} · {a.options.scope === 'phase' ? `фаза ${a.options.phaseLabel || a.options.phase}` : 'весь курс'} · {a.cursor}/{a.total}{a.status === 'completed' ? ' · завершён' : a.status === 'archived' ? ' · закрыт' : ''}</option>)}</select></label>}
     {selectedId && <PlayerAssignment key={`${token}:${selectedId}`} token={token} id={selectedId} onChange={a => setAssignments(previous => previous?.map(old => old.id === a.id ? { ...old, cursor: a.cursor, status: a.status, revision: a.revision } : old))} />}
   </main>;
 }
