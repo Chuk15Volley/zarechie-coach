@@ -24,7 +24,7 @@ export default function CoachMetricChart({points,metric,title,unit}){
      {active!=null && <g aria-hidden="true" className="coach-chart-guide"><line x1={x} x2={x} y1="12" y2={height-22}/>{point && <circle cx={point.x} cy={point.y} r="6"/>}</g>}
     </svg>
    </div>:<div className="coach-chart-empty"><span>Нет записанных значений</span><small>Пропуски сохранены</small></div>}
-   <span className={'coach-chart-readout'+(active==null?' is-idle':'')} id={id+'-readout'} role="status">{description}</span>
+   <span className={'coach-chart-readout'+(active==null?' is-idle':'')} data-readout-position={point && point.y<height/2?'bottom':'top'} id={id+'-readout'} role="status">{description}</span>
    {known.length===1 && active==null && <span className="coach-chart-single">Одна запись · {date(points[latest.index].date)}</span>}
   </div>
   {overflow && <p className="coach-fact-scroll-hint">Последние даты справа · прокрутка ↔</p>}

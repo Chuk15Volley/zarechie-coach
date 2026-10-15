@@ -34,10 +34,14 @@
  .coach-premium .coach-fact-dot {stroke:var(--coach-panel);stroke-width:1.5;}
  .coach-premium .coach-fact-dot.is-adapted {fill:#d8bd89;}
  .coach-premium .coach-fact-plot:focus-visible {outline:2px solid var(--coach-jade);outline-offset:-2px;border-radius:6px;}
+ .coach-premium .coach-fact-plot {scrollbar-color:#58665d transparent;}
+ .coach-premium .coach-fact-plot::-webkit-scrollbar {height:4px;}
+ .coach-premium .coach-fact-plot::-webkit-scrollbar-thumb {background:#58665d;border-radius:4px;}
  .coach-premium .coach-chart-guide line {stroke:#bac4bc;stroke-width:1;stroke-dasharray:3 4;pointer-events:none;}
  .coach-premium .coach-chart-guide circle {fill:none;stroke:#e8ede6;stroke-width:1.5;pointer-events:none;}
  .coach-premium .coach-chart-readout {position:absolute;top:8px;left:14px;right:14px;z-index:2;padding:5px 7px;border:1px solid #ffffff1a;border-radius:5px;background:#171c1bf5;color:#e0e7df;font-size:11px;line-height:1.5;pointer-events:none;}
  .coach-premium .coach-chart-readout.is-idle {opacity:0;}
+ .coach-premium .coach-chart-readout[data-readout-position=bottom] {top:auto;bottom:24px;}
  .coach-premium .coach-chart-single {position:absolute;top:8px;left:14px;color:var(--coach-muted);font-size:11px;pointer-events:none;}
  .coach-premium .coach-chart-empty {min-height:150px;padding:30px 16px;display:flex;flex-direction:column;justify-content:center;gap:6px;color:var(--coach-muted);font-size:12px;line-height:1.5;}
  .coach-premium .coach-chart-empty small {font-size:11px;color:#8e9a93;}

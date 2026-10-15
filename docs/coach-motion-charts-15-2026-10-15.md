@@ -51,3 +51,7 @@ Production publication and protected-data results will be appended after release
 Final display-count check: recorded exercise RPE stays known even when the
 selected set was absent on that date. Known/missing/unperformed counters are
 disjoint and never negative; original RPE points/geometry/results unchanged.
+
+Public finishing check: the active-value readout moves to the opposite half of
+its chart so it does not cover the selected upper line/point. Scrollbars use a
+quiet narrow graphite/jade thumb. Source values and chart geometry unchanged.
