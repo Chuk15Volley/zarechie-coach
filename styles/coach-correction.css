@@ -250,3 +250,8 @@
 .coach-premium .coach-technique-status,.library-premium .coach-technique-status{display:block;font-size:11px;line-height:1.5;color:var(--atlas-muted,#bcd0c1);font-weight:400;white-space:normal}
 .coach-premium .coach-block-facts>summary{cursor:pointer}
 @media(max-width:760px){.coach-premium .coach-quick-replacement-search{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.coach-premium .coach-quick-replacement-search>label:first-child{grid-column:1/-1}}
+.coach-premium .coach-quick-replacement-results>div>button:first-child{display:block;flex:1 1 calc(100% - 40px);min-width:calc(100% - 40px)}
+.coach-premium .coach-quick-replacement-results>div>button:first-child>strong{display:block;line-height:1.5}
+.coach-premium .coach-quick-replacement-results small{white-space:normal;overflow-wrap:break-word}
+.coach-premium .coach-quick-replacement-results>div>button:nth-child(2){flex:0 0 36px;align-self:stretch}
+.coach-premium .coach-quick-replacement-results>div>button:nth-child(3){margin-left:auto}
