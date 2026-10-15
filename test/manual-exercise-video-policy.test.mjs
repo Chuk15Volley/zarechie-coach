@@ -24,6 +24,9 @@ test('manual YouTube saving remains available to the coach', async () => {
 test('warmup exercises use the same YouTube video panel as gym exercises', async () => {
   const source = await readFile(new URL('pages/index.js', ROOT), 'utf8');
 
-  assert.match(source, /<ExerciseVideoPanel name=\{ex\.name\} apiKey=\{apiKey\} \/>/);
+  assert.match(source, /<WarmupVideoPanel exercise=\{ex\} apiKey=\{apiKey\} Panel=\{ExerciseVideoPanel\} \/>/);
+  const adapter=await readFile(new URL('components/WarmupVideoPanel.js', ROOT),'utf8');
+  assert.match(adapter, /name=\{exercise.name\}/);
+  assert.match(adapter, /exactSource/);
   assert.doesNotMatch(source, /<ExerciseVideoLink/);
 });

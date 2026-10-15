@@ -255,3 +255,25 @@
 .coach-premium .coach-quick-replacement-results small{white-space:normal;overflow-wrap:break-word}
 .coach-premium .coach-quick-replacement-results>div>button:nth-child(2){flex:0 0 36px;align-self:stretch}
 .coach-premium .coach-quick-replacement-results>div>button:nth-child(3){margin-left:auto}
+
+/* Dense coach details within the established blocks and palette. */
+.coach-premium .coach-quick-replacement-results>div>button:first-child{flex:1 1 55%;min-width:0}
+.coach-premium .coach-quick-replacement-results>div>button:nth-child(3){flex:0 0 auto;margin-left:0;font-size:11px}
+.coach-premium .coach-quick-replacement-results>div>button:first-child>small{line-height:1.4}
+.coach-actual-groups{display:grid;gap:12px;margin-top:12px}
+.coach-actual-exercise{min-width:0;padding:10px 12px;border:1px solid #ffffff18;border-radius:10px;background:#ffffff03}
+.coach-actual-exercise h4{font-size:13px;line-height:1.45;font-weight:650;margin:0 0 7px;overflow-wrap:anywhere}
+.coach-actual-set{display:grid;grid-template-columns:minmax(70px,1fr) repeat(2,minmax(0,1fr));align-items:center;gap:10px;padding:5px 0;border-top:1px solid #ffffff0a;font-variant-numeric:tabular-nums}
+.coach-actual-set>span{font-size:12px;color:#b9c9bf}
+.coach-actual-set label,.coach-actual-rpe,.coach-actual-known{display:grid;gap:4px;min-width:0;font-size:11px;line-height:1.4;color:#b9c9bf}
+.coach-actual-input{width:100%;min-width:0;height:40px;padding:8px;border:1px solid #ffffff20;border-radius:8px;background:#101b17;color:#edf5ef;font-size:14px;font-variant-numeric:tabular-nums}
+.coach-actual-rpe{grid-template-columns:minmax(110px,1fr) minmax(70px,1fr);align-items:center;max-width:320px;margin-top:8px}
+.coach-actual-known b{min-height:40px;display:flex;align-items:center;font-size:14px;font-weight:500}
+.coach-fact-gap-link{text-align:left;min-height:36px;line-height:1.5;text-decoration:underline;text-underline-offset:3px}
+.coach-workflow-overlay>div{max-height:calc(100dvh - 48px);overflow-y:auto;overscroll-behavior:contain}
+.coach-workflow-overlay :is(input,textarea,select){font-variant-numeric:tabular-nums}
+.coach-workflow-overlay :is(p,label){line-height:1.5}
+.coach-warmup-prepare-link,.coach-warmup-preparation button{min-height:42px;padding:8px 12px;border:1px solid #ffffff24;border-radius:9px;color:#bce9d2;background:#ffffff06;font-size:12px}
+.coach-warmup-preparation{padding:14px;border:1px solid #ffffff18;border-radius:12px;margin-bottom:12px}
+.coach-warmup-preparation p{font-size:12px;margin:10px 0;line-height:1.5;color:#b9c9bf}
+@media(max-width:600px){.coach-premium .coach-quick-replacement-results>div>button:first-child{flex-basis:calc(100% - 40px);min-width:calc(100% - 40px)}.coach-premium .coach-quick-replacement-results>div>button:nth-child(3){margin-left:auto}.coach-actual-exercise{padding:9px}.coach-actual-set{gap:7px;grid-template-columns:66px repeat(2,minmax(0,1fr))}}
