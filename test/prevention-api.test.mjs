@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import source from '../lib/prevention/low-back-resilience.json' with { type: 'json' };
+import { preventionCourses } from '../lib/prevention/catalogue.mjs';
 import { DEFAULT_RESTS } from '../lib/prevention/model.mjs';
 import { hasRestriction, isCoachBannedExercise } from '../lib/exerciseRestrictions.js';
 import { readySixGymState } from '../lib/readySixGym.mjs';
@@ -22,7 +23,7 @@ const redis = async (method, ...args) => {
   throw new Error('Unexpected Redis command ' + method);
 };
 const harness = {
-  source, redis, redisPipeline: commands => Promise.all(commands.map(([method, ...args]) => redis(method, ...args))), pfx: w => w === 'nkperf' ? 'nkperf' : 'coach',
+  source, preventionCourses, redis, redisPipeline: commands => Promise.all(commands.map(([method, ...args]) => redis(method, ...args))), pfx: w => w === 'nkperf' ? 'nkperf' : 'coach',
   workspaceRoster: async () => ({ players: [{ id: 'whoop_123', name: 'Synthetic A' }, { id: '456', name: 'Synthetic B' }] }),
   gymIdentityAliases: id => [...new Set([id, id.replace(/^whoop_/, ''), 'whoop_' + id.replace(/^whoop_/, '')])],
   getPlayerSnapshot: async id => medical.get(id) || { injuryLog: [], readySixDecision: { recommendation: 'full', restrictions: [], reasons: [] } },
@@ -34,7 +35,7 @@ globalThis.__preventionApiHarness = harness;
 async function loadStore() {
   let text = readFileSync(new URL('../lib/prevention/store.js', import.meta.url), 'utf8');
   text = text.replace(/import source from '[^']+';/, 'const {source}=globalThis.__preventionApiHarness;');
-  text = text.replace(/import \{([^}]+)\} from '([^']+)';/g, (line, names, path) => path === './model.mjs' ? `import {${names}} from '${new URL('../lib/prevention/model.mjs', import.meta.url).href}';` : `const {${names}}=globalThis.__preventionApiHarness;`);
+  text = text.replace(/import \{([^}]+)\} from '([^']+)';/g, (line, names, path) => ['./model.mjs', './catalogue.mjs'].includes(path) ? `import {${names}} from '${new URL('../lib/prevention/' + path.slice(2), import.meta.url).href}';` : `const {${names}}=globalThis.__preventionApiHarness;`);
   return import('data:text/javascript;base64,' + Buffer.from(text).toString('base64'));
 }
 const store = await loadStore(); Object.assign(harness, store);
@@ -95,4 +96,30 @@ test('manual source fixes are workspace-scoped and require the current catalogue
   assert.equal(fixed.data.course.sessions[47].exercises[2].name, '90/90 Hip Rotation No Hands');
   assert.equal((await call(catalogue, { workspace: 'nkperf', expectedRevision: 0, sourceId: id, patch: { name: 'Stale edit' } })).code, 409);
   assert.equal((await call(catalogue, { workspace: 'nkperf', expectedRevision: 1, sourceId: id, patch: { video: 'javascript:alert(1)' } })).code, 400);
+});
+
+test('regional catalogues isolate edits, reject cross-course sources and keep the legacy back key', async () => {
+  const knee = await call(catalogue, { workspace: 'nkperf', courseId: 'knee-resilience' }, { method: 'GET' });
+  assert.equal(knee.code, 200); assert.equal(knee.data.courses.length, 2); assert.equal(knee.data.course.revision, 0);
+  assert.equal((await call(catalogue, { workspace: 'nkperf', courseId: 'missing' }, { method: 'GET' })).code, 404);
+  const id = knee.data.course.sessions[0].exercises[0].sourceId;
+  assert.equal((await call(catalogue, { workspace: 'nkperf', expectedRevision: 1, sourceId: id, patch: { name: 'Wrong course' } })).code, 404);
+  const fixed = await call(catalogue, { workspace: 'nkperf', courseId: 'knee-resilience', expectedRevision: 0, sourceId: id, patch: { name: 'Corrected Downdog' } });
+  assert.equal(fixed.code, 200);
+  assert.ok(db.has('nkperf:prevention:catalogue:v1')); assert.ok(db.has('nkperf:prevention:catalogue:v1:knee-resilience'));
+  assert.equal((await call(catalogue, { workspace: 'zarechie', courseId: 'knee-resilience' }, { method: 'GET' })).data.course.revision, 0);
+  assert.equal((await call(catalogue, { workspace: 'nkperf' }, { method: 'GET' })).data.course.revision, 1);
+});
+test('knee assignments, refresh and replay remain scoped to the assigned program', async () => {
+  const body = { ...request(), courseId: 'knee-resilience', mainSets: 3, mobility: true, mobilitySets: 3, expectedCatalogueRevision: 1 };
+  const result = await call(coach, body); assert.equal(result.code, 200);
+  const a = result.data.assignment; assert.equal(a.region, 'Колено'); assert.equal(a.sessions[0].exercises.length, 8);
+  assert.equal((await call(coach, body)).code, 200);
+  assert.equal((await call(coach, { ...body, courseId: 'low-back-resilience' })).code, 409);
+  const refreshed = await call(coach, { workspace: body.workspace, playerId: body.playerId, assignmentId: a.id, action: 'refresh', expectedRevision: a.revision, courseId: 'low-back-resilience' });
+  assert.equal(refreshed.code, 200); assert.equal(refreshed.data.assignment.courseId, 'knee-resilience');
+  const legacy = await store.assignCourse(await store.preventionIdentity('zarechie', 'whoop_123'), { ...request(), expectedCatalogueRevision: 0 }, null);
+  const key = `coach:prevention:player:123:assignment:${legacy.id}`, saved = JSON.parse(db.get(key));
+  delete saved.region; delete saved.regionId; db.set(key, JSON.stringify(saved));
+  assert.equal((await store.assignCourse(await store.preventionIdentity('zarechie', 'whoop_123'), { ...request(), requestId: legacy.id }, null)).id, legacy.id);
 });
