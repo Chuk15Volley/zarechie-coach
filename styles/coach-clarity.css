@@ -18,3 +18,12 @@
  .coach-premium .coach-technique-status {white-space:normal;line-height:1.6;}
  @media(max-width:760px){.coach-premium .library-studio-count strong {font-size:21px;}}
 }
+
+/* Final five display refinements; no changes to grids, prescriptions or media sizes. */
+@media screen {
+ .coach-premium .coach-quick-result-select>strong {font-size:14px;line-height:1.5;}
+ .coach-premium .coach-quick-replacement-results .coach-quick-result-select>small {font-size:12px;line-height:1.5;}
+ .coach-premium .coach-technique-legend {display:inline-block;max-width:calc(100% - 10px);margin-left:10px;font-size:12px;line-height:1.6;color:var(--coach-muted);white-space:normal;}
+ .coach-premium .coach-block-volume-history .coach-block-volume-fill {background:var(--coach-jade)!important;}
+ .coach-premium .coach-dialog-scope {white-space:normal;overflow-wrap:anywhere;}
+}
