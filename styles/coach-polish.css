@@ -1,0 +1,34 @@
+/* Coach presentation only. Main grids, sections, media dimensions and all
+   readiness/clinical/dose meanings remain in their original locations. */
+@media screen {
+ .coach-premium .coach-overview-table thead tr>th:first-child {z-index:3;}
+ /* Tooltip stays outside the entire statistic card, including in a scroll pane. */
+ .coach-premium.coach-mini-popup {
+  position:fixed;z-index:1000;display:block;box-sizing:border-box;width:280px;max-width:calc(100vw - 16px);
+  margin:0;padding:8px 10px;border:1px solid #66766c;border-radius:7px;background:#151b18fa;color:#e1e9e3;
+  font-size:12px;font-weight:500;line-height:1.5;letter-spacing:normal;pointer-events:none;box-shadow:0 4px 16px #0004;
+ }
+ /* Shared video scope stays explicit above the existing URL field. */
+ .coach-premium .coach-video-reference {display:block;font-size:12px;line-height:1.5;color:#c6d1c9;margin-top:3px;overflow-wrap:anywhere;}
+ /* Closed administrative panels keep all their contents and minimum touch area. */
+ .coach-premium .coach-aux-panels:not([open]) {padding:4px 16px;}
+ .coach-premium .coach-aux-panels:not([open])>summary {min-height:44px;font-size:13px;line-height:1.5;}
+ .coach-premium :is(.coach-cycle-review,.coach-team-facts):not([open])>summary {padding:12px 18px;min-height:44px;font-size:13px;line-height:1.5;}
+ /* Original bilingual exercise header: clear name, exact variation, intact dose. */
+ .coach-premium .coach-warmup-exercise-heading {align-items:flex-start;gap:6px 12px;}
+ .coach-premium .coach-warmup-exercise-name {flex:1 1 180px;min-width:0;line-height:1.5;}
+ .coach-premium .coach-warmup-name-en {display:block;margin:2px 0 0;font-size:12px;color:#aebbb3;line-height:1.45;overflow-wrap:anywhere;}
+ .coach-premium .coach-warmup-dose {flex:0 1 auto;max-width:100%;line-height:1.5;white-space:normal;}
+ /* Decorative phases are separate from medical/status colours. */
+ .coach-premium .coach-warmup-section>div:first-child>span:first-child {background:#759688;}
+ .coach-premium .coach-warmup-section>div:first-child>span:nth-child(2) {color:#9fb5a8;}
+ .coach-premium .coach-warmup-section>div:first-child>h3 {color:#d9e2dc;}
+ .coach-premium .coach-warmup-conduct[data-open=false] {padding:10px 16px;}
+ .coach-premium .coach-warmup-conduct[data-open=false]>button {margin:0;min-height:44px;font-size:13px;}
+ /* Native details remains a single row with a visible disclosure affordance. */
+ .coach-premium .coach-period-comparison>summary {gap:12px;font-size:13px;font-weight:600;line-height:1.6;list-style:none;}
+ .coach-premium .coach-period-comparison>summary::-webkit-details-marker {display:none;}
+ .coach-premium .coach-period-comparison>summary::after {content:'›';font-size:22px;line-height:1;margin-left:auto;flex-shrink:0;color:#a7c4b6;}
+ .coach-premium .coach-period-comparison[open]>summary::after {transform:rotate(90deg);}
+}
+@media print {.coach-premium.coach-mini-popup {display:none;}}

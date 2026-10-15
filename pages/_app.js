@@ -7,6 +7,7 @@ import '../styles/coach-correction.css';
 import '../styles/coach-classic.css';
 import '../styles/coach-motion-charts.css';
 import '../styles/coach-refinement.css';
+import '../styles/coach-polish.css';
 
 const manrope = Manrope({
   subsets: ['latin', 'cyrillic'],

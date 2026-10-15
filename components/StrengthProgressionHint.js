@@ -3,7 +3,7 @@ import {progressionSummary} from '../lib/coachQuickWork.mjs';
 export default function StrengthProgressionHint({proposal,error,loading,onRetry,onApply}) {
  if(error)return null;
  return <section className="coach-progression print:hidden" aria-label="Проверка силовой прогрессии" aria-busy={loading}>
-  <div className="coach-progression-heading"><strong>Прогрессия</strong><button type="button" onClick={onRetry} disabled={loading} className="coach-recheck">{loading?'Проверяю…':error?'Повторить проверку прогрессии':'Проверить прогрессию заново'}</button></div>
+  <div className="coach-progression-heading"><strong>Прогрессия</strong><button type="button" onClick={onRetry} disabled={loading} className="coach-recheck" title="Повторить проверку прогрессии">{loading?'Проверяю…':error?'Повторить проверку':'Перепроверить'}</button></div>
   <div role={error?'alert':'status'} aria-live="polite">
    {error?<p className="coach-progression-error">{error} Подсказка не применяется; вес подбирает тренер по RPE.</p>:loading?<p>Проверяю ReadySix и фактическое выполнение…</p>:proposal?<>
     {proposal.kg!=null && <p className="coach-progression-history">Выполнено: <strong>{proposal.kg} кг на снаряд</strong>{proposal.sourceDate?' · '+coachDate(proposal.sourceDate):''}{proposal.rpe!=null?' · RPE упражнения '+proposal.rpe:' · RPE упражнения не записан'}</p>}
