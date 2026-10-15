@@ -6,7 +6,7 @@ import {previousCycleId} from '../../../lib/strengthCycleDecisions.mjs';
 import {getPlayerTimeZone} from '../../../lib/playerTimeZoneStore';
 import { coachBannedSessionExercises } from '../../../lib/exerciseRestrictions';
 import { MANUAL_METHOD_POLICY, manualMethodRecommendation } from '../../../lib/manualMethod.mjs';
-import { buildStrengthDevelopmentDraft } from '../../../lib/strengthDevelopmentDraft.mjs';
+import { buildStrengthDevelopmentDraft, reviewStrengthDevelopmentLoads } from '../../../lib/strengthDevelopmentDraft.mjs';
 import { buildCoachAdaptation } from '../../../lib/coachAdaptation.mjs';
 import { gymProviderFetch } from '../../../lib/gymProviderFetch.mjs';
 import { getPrehabReactions } from '../../../lib/prehabReactionStore';
@@ -1553,7 +1553,7 @@ export function systemPromptForGeneration(focus = '', workspace = 'zarechie') {
 // Shared by the synchronous generator (this file) and the async Batch-API generator
 // (generate-async.js) so both produce byte-identical prompts. Returns either
 // { error, status } on failure or { snapshot, userPrompt, dataSummary, targetDate, dayGoal }.
-export async function buildGenerationInputs(body) {
+export async function buildGenerationInputs(body, {strengthReviewExercises=null}={}) {
   const { playerId, date, dayGoal = '', days = 7, focus = 'inseason', trainingType = '', powerMode = 'auto', strengthMode = 'maintenance', notes = '', warmupSummary = '', teamUsedExercises = [], coachRecovery = 'green', workspace = 'zarechie', planningMode = '', microcycleSlot = null, manualMethodSelection = null } = body || {};
   if (!playerId) return { error: 'playerId required', status: 400 };
   // Cached coach clients already send an explicit focus, before the policy flag existed.
@@ -1627,7 +1627,7 @@ export async function buildGenerationInputs(body) {
       const sourceCycleId=previousCycleId(recentSessionRecords,decisionCycle.id);
       const rawDecision=sourceCycleId?await redis('get',`${wpfx}:strength:cycle-decision:${String(playerId)}:${sourceCycleId}`):null;
       const rawEquipment = await redis('get', `${wpfx}:strength:equipment`);
-      const readyResult = buildStrengthDevelopmentDraft({ cycleDecision:parseJSONSafe(rawDecision,null), equipment: parseJSONSafe(rawEquipment, {}), snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, developmentPlan: parseJSONSafe(rawDevelopmentPlan, null), recentSessions: recentSessionRecords, actualHistory: strengthActualHistory(recentSessionRecords,targetDate), playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
+      const readyResult = (strengthReviewExercises ? reviewStrengthDevelopmentLoads : buildStrengthDevelopmentDraft)({ ...(strengthReviewExercises?{exercises:strengthReviewExercises}:{}), cycleDecision:parseJSONSafe(rawDecision,null), equipment: parseJSONSafe(rawEquipment, {}), snapshot, recommendation: methodRecommendation, manualMethodSelection: manualMethod, sourceState: gymRecommendation.state, date: targetDate, dayGoal, trainingType: trainingType || 'full_body', strengthMode, developmentPlan: parseJSONSafe(rawDevelopmentPlan, null), recentSessions: recentSessionRecords, actualHistory: strengthActualHistory(recentSessionRecords,targetDate), playerRestrictions: parseJSONSafe(rawRestrictions, []), coachRecovery });
       readyResult.timeZone = timeZone;
       return { targetDate, dayGoal, readySixCheck,readySixState,sourceState, readyResult };
     } catch (error) {
