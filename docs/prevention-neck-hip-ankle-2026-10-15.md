@@ -1,0 +1,27 @@
+# Neck, Hip and Ankle prevention courses
+
+User requested the same independent prevention workflow for the three supplied PDFs: body-region library, assignment of whole course or an individual phase, progression on actual completion, no calendar. Only those three files are imported. Existing nine programs and the live athlete/coach UI from6c709eb/4147466 retained. No new readiness/pain form, diagnostic mapping, automatic pain permission, kg/1RM prescription or automatic athlete assignment.
+
+## Source integrity
+
+- Neck Resilience: E3 Rehab,34 pages, SHA256 a33d965828066a4220ec5fda46fe32d6df141d60b27c57b2f95fe563e5c1d62f. All36 actual sessions from pages16–18/20–22/24–26/28–30,288 exercise rows. Four phases of nine completions, preserving the source's three weeks × three sessions. Page14 layout example not duplicated. A has four fixed two-set exercises; B1 neck isometrics2–3 sets; B2 shoulder/trunk2–4; optional C stretch2–3.
+- Hip Resilience: E3 Rehab,39 pages, SHA256 587b8e0ef836c63994c75d4e28cfd7da2075e142936e18f7e435c87aeb812d3b. All48 sessions from pages17–20/22–25/27–30/32–35,528 rows. Four phases of12 completions. Page15 layout example not duplicated. A is fixed2; B and C mandatory3–4; only D stretch is optional2–3. C must never be removed by the older LowBack/Knee optional-C convention.
+- Ankle Sprain Prehab: supplied Russian adaptation of The Prehab Guys by Roman Lavrov,34 pages, SHA256 612fdf38485361cadef9f87beeebc4e0c53ec88e71328e6ed85dc51511637751. All32 sessions/pages2–33,288 rows. Source has eight weeks, not four phases; each source-week group is exposed explicitly as an uncalendared «Этап» of four completions. Whole course or any stage1–8 can be assigned. Fixed per-row set counts retain within-stage dose changes, including week4's one-set B pair. Source R preparation, warmup A1/A2 and main A1/A2/B1/B2/C1/C2 retain order; executable keysR1/W1/W2/A1/A2/B1/B2/C1/C2 are unique, with original codes/section stored. 30/30 or60/60 is represented as per-side time, retaining the exact original dose string and both-side confirmation. No detailed technique cues are invented where this adaptation omits them; names/typos/video/note can be corrected by the coach.
+
+All1104 source rows retain exact name, source parameters/RIR/tempo, page/week/day and video link. E3 English cues retained with additive Russian translation. E3 links are selected by exercise-name table cell and require exactly one unique URL; Ankle links are matched to the exact hyperlink-name text and source row, including wrapped lines. Full raw-to-import audit passed. Rendered source pages Neck16/20, Hip17/35, Ankle2/14 visually inspected. Referenced supplementary documents for Neck/Hip versions were not supplied and are not silently substituted with other-course supplements.
+
+## Prescription, clinical context and persistence
+
+New source-doses mode classifies exercises by source dose group instead of block letter; extra neck dose is separately reviewed and validated. Fixed Ankle counts have no misleading uniform set selector. Actual course phase IDs validate against course data, allowing Ankle8 but rejecting phase8 for other programs. Saved legacy options/signatures remain unchanged. Stage terminology is preserved in assignments/summaries/player/coach preview; original calendar labels are provenance only. Course completion remains explicit and requires every selected mandatory/optional set; dates never advance it.
+
+Repeated-hold parser supports5×5–10sec, retaining min/max per hold, repeat count and source side marker. Timer asks for a value within range and confirms each separate hold; no continuous25–50sec substitution. Existing Knee10×5sec and elbow eccentric-repetition timing are retained.
+
+PDFs specify no pauses. Editable application defaults: Neck A20s/B60s/C15s, rounds30/90/30s; Hip A20s/B&C60s/D15s, rounds30/90/90/30s; Ankle R15s/W20s/mainA&B&C45s, warmup rounds30s/main rounds60s. Between blocks60s, sides15s. No final trailing rest. Source attribution distinguishes original parameters from application defaults. Ankle author attribution overrides the E3 default and has an application clinical warning without inventing an author medical-clearance statement.
+
+ReadySix complaints/medical holds and existing coach prohibitions remain binding. The first-session phase/stage suitability note, guidance and separate reassignable phase allow human choice/repeat/easier work; a completion count is not medical clearance. Walking guidance is explanatory with no new step goal/assessment. No new source or health data sent to an external model. No real athlete programs/results/assignments/roster migrated, regenerated or written.
+
+Existing share-token identity scope, numeric aliases, revision/CAS, idempotent receipts, partial/history edition preservation, future refresh and workspace/course-specific manual edits retained. All changes are confined to prevention model/catalogue/components/data/tests/docs.
+
+## Verification
+
+1100 tests passed, one existing optional local-Valkey test skipped. Source counts/links, all source-dose boundaries, independent neck B1/B2, repeated range timing, mandatory Hip C/optional D, eight Ankle stages and fixed changing doses, original/unique codes, separate progress, full-course/phase completion, stale/replay behavior, partial/future editions, workspace isolation and physician/coach guards covered. Local production build passed. Final UI and server publication evidence follows after validation.

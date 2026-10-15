@@ -100,7 +100,7 @@ test('manual source fixes are workspace-scoped and require the current catalogue
 
 test('regional catalogues isolate edits, reject cross-course sources and keep the legacy back key', async () => {
   const knee = await call(catalogue, { workspace: 'nkperf', courseId: 'knee-resilience' }, { method: 'GET' });
-  assert.equal(knee.code, 200); assert.equal(knee.data.courses.length, 9); assert.equal(knee.data.course.revision, 0);
+  assert.equal(knee.code, 200); assert.equal(knee.data.courses.length, 12); assert.equal(knee.data.course.revision, 0);
   assert.equal((await call(catalogue, { workspace: 'nkperf', courseId: 'missing' }, { method: 'GET' })).code, 404);
   const id = knee.data.course.sessions[0].exercises[0].sourceId;
   assert.equal((await call(catalogue, { workspace: 'nkperf', expectedRevision: 1, sourceId: id, patch: { name: 'Wrong course' } })).code, 404);
@@ -159,4 +159,21 @@ test('elbow variants, fixed Daily Routine and 1–2 warmup doses roundtrip witho
   assert.equal((await call(catalogue,{workspace:'nkperf',courseId:ids[3]},{method:'GET'})).data.course.sessions[0].exercises[0].name,'Open Book');
   db.set('nkperf:restrictions:123',JSON.stringify(['SHOULDER']));assert.equal((await call(coach,{...request(),courseId:ids[3],mainSets:3,preparationSets:1})).code,409);db.delete('nkperf:restrictions:123');
   db.set('nkperf:restrictions:123',JSON.stringify(['WRIST']));assert.equal((await call(coach,{...request(),courseId:ids[3],mainSets:3,preparationSets:1})).code,409);db.delete('nkperf:restrictions:123');
+});
+
+test('new regional assignments keep mixed doses, eight stages, optional Hip D and scoped medical guards', async()=>{
+ for(const workspace of ['zarechie','nkperf'])for(const courseId of ['neck-resilience','hip-resilience','ankle-sprain-prehab']){const r=await call(catalogue,{workspace,courseId},{method:'GET'});assert.equal(r.code,200);assert.equal(r.data.courses.length,12);}
+ const neckBody={...request(),courseId:'neck-resilience',mainSets:4,extraSets:{neck:3}};
+ assert.equal((await call(coach,{...neckBody,extraSets:{neck:4}})).code,400);
+ const neckResult=await call(coach,neckBody);assert.equal(neckResult.code,200);assert.equal(neckResult.data.assignment.sessions.length,9);assert.deepEqual(neckResult.data.assignment.sessions[0].exercises.map(e=>e.setCount),[2,2,2,2,3,4]);assert.equal((await call(coach,neckBody)).data.assignment.id,neckResult.data.assignment.id);
+ const h=await call(coach,{...request(),courseId:'hip-resilience',mainSets:3,stretch:false});assert.equal(h.code,200);assert.equal(h.data.assignment.sessions[0].exercises.length,8);assert.ok(h.data.assignment.sessions[0].exercises.some(e=>e.code==='C1'));assert.ok(!h.data.assignment.sessions[0].exercises.some(e=>e.code==='D1'));
+ const body={...request(),courseId:'ankle-sprain-prehab',mainSets:1,phase:8},a=await call(coach,body);assert.equal(a.code,200);assert.equal(a.data.assignment.sessions.length,4);assert.equal(a.data.assignment.phaseTerm,'Этап');assert.equal((await call(coach,body)).data.assignment.id,a.data.assignment.id);
+ assert.equal((await call(coach,{...body,phase:7})).code,409);assert.equal((await call(coach,{...body,requestId:crypto.randomUUID(),phase:9})).code,400);assert.equal((await call(coach,{...request(),courseId:'hip-resilience',mainSets:3,phase:8})).code,400);
+ let current=a.data.assignment;current=(await call(player,progress(current,'mark',{key:'W1:0',done:true}))).data.assignment;assert.equal(current.progress['A1:0'],undefined);assert.equal((await call(player,progress(current,'complete'))).code,409);
+ const sourceId=current.sessions[0].exercises[0].sourceId;assert.equal((await call(catalogue,{workspace:'nkperf',courseId:body.courseId,expectedRevision:0,sourceId,patch:{name:'Coach ankle source edit'}})).code,200);
+ assert.equal((await call(catalogue,{workspace:'zarechie',courseId:body.courseId},{method:'GET'})).data.course.revision,0);
+ assert.equal((await call(catalogue,{workspace:'nkperf',courseId:'neck-resilience',expectedRevision:0,sourceId,patch:{name:'Foreign source'}})).code,404);
+ const refresh=await call(coach,{workspace:'nkperf',playerId:body.playerId,assignmentId:current.id,action:'refresh',expectedRevision:current.revision});assert.equal(refresh.code,200);assert.equal(refresh.data.assignment.sessions[0].exercises[0].name,current.sessions[0].exercises[0].name);assert.equal(refresh.data.assignment.sessions[1].exercises[0].name,'Coach ankle source edit');
+ medical.set('whoop_123',{injuryLog:[{status:'active',date:'2026-01-01',note:'запрет врача'}],readySixDecision:{recommendation:'full'}});assert.equal((await call(coach,{...neckBody,requestId:crypto.randomUUID()})).code,409);medical.clear();
+ db.set('nkperf:restrictions:123',JSON.stringify(['WRIST']));assert.equal((await call(coach,{...request(),courseId:'hip-resilience',mainSets:3})).code,409);assert.equal((await call(coach,{...request(),courseId:body.courseId,mainSets:1,phase:1,expectedCatalogueRevision:1})).code,409);db.delete('nkperf:restrictions:123');
 });

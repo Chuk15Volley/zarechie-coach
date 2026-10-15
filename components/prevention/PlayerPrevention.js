@@ -23,7 +23,7 @@ export default function PlayerPrevention({ token }) {
     {error && <div role="alert" className={styles.error}>{error}<button type="button" className={styles.button} onClick={() => setReload(n => n + 1)}>Повторить загрузку</button></div>}
     {!assignments && !error && <p className={styles.loading}>Загрузка назначений…</p>}
     {assignments?.length === 0 && <section className={styles.card}><h3>Пока нет назначений</h3><p className={styles.muted}>Когда тренер назначит курс профилактики, он появится здесь отдельно от тренировок зала.</p><button type="button" className={styles.button} onClick={() => setReload(n => n + 1)}>Проверить назначения</button></section>}
-    {assignments?.length > 1 && <label className={`${styles.field} mb-4`}>Курс<select className={styles.select} value={selectedId} onChange={e => chooseAssignment(e.target.value)}>{assignments.map(a => <option key={a.id} value={a.id}>{a.region || 'Поясница'} · {a.title} · {a.options.scope === 'phase' ? `фаза ${a.options.phaseLabel || a.options.phase}` : 'весь курс'} · {a.cursor}/{a.total}{a.status === 'completed' ? ' · завершён' : a.status === 'archived' ? ' · закрыт' : ''}</option>)}</select></label>}
+    {assignments?.length > 1 && <label className={`${styles.field} mb-4`}>Курс<select className={styles.select} value={selectedId} onChange={e => chooseAssignment(e.target.value)}>{assignments.map(a => <option key={a.id} value={a.id}>{a.region || 'Поясница'} · {a.title} · {a.options.scope === 'phase' ? `${(a.phaseTerm || 'Фаза').toLowerCase()} ${a.options.phaseLabel || a.options.phase}` : 'весь курс'} · {a.cursor}/{a.total}{a.status === 'completed' ? ' · завершён' : a.status === 'archived' ? ' · закрыт' : ''}</option>)}</select></label>}
     {selectedId && <PlayerAssignment key={`${token}:${selectedId}`} token={token} id={selectedId} onChange={a => setAssignments(previous => previous?.map(old => old.id === a.id ? { ...old, cursor: a.cursor, status: a.status, revision: a.revision } : old))} />}
   </main>;
 }
@@ -92,7 +92,7 @@ function PlayerAssignment({ token, id, onChange }) {
     {pending && <div className={styles.actions}><button type="button" className={`${styles.button} ${styles.primary}`} disabled={busy} onClick={() => mutate(pending)}>{busy ? 'Сохранение…' : 'Повторить сохранение'}</button></div>}
     {!assignment ? <div className={styles.loading}>Загрузка курса…{error && <button type="button" className={styles.button} onClick={() => load().catch(e => setError(e.message))}>Повторить загрузку</button>}</div> : <>
       <section className={styles.card}>
-        <div className={styles.row}><span className={styles.badge}>{assignment.region || 'Поясница'}</span><span className={styles.source}>{assignment.options.scope === 'phase' ? `Фаза ${assignment.options.phaseLabel || assignment.options.phase}` : 'Весь курс'}</span></div>
+        <div className={styles.row}><span className={styles.badge}>{assignment.region || 'Поясница'}</span><span className={styles.source}>{assignment.options.scope === 'phase' ? `${assignment.phaseTerm || 'Фаза'} ${assignment.options.phaseLabel || assignment.options.phase}` : 'Весь курс'}</span></div>
         <h3 className="mt-3">{assignment.title}</h3><p className={styles.muted}>Завершено {assignment.cursor} из {assignment.sessions.length} занятий</p>
         <div className={styles.progress} role="progressbar" aria-label="Прогресс курса" aria-valuemin="0" aria-valuemax={assignment.sessions.length} aria-valuenow={assignment.cursor}><div style={{ width: `${assignment.cursor / assignment.sessions.length * 100}%` }} /></div>
         {assignment.options.note && <p className={styles.notice}>Тренер: {assignment.options.note}</p>}
@@ -101,7 +101,7 @@ function PlayerAssignment({ token, id, onChange }) {
         {assignment.status !== 'active' && <p className={styles.success}>{assignment.status === 'completed' ? 'Курс полностью выполнен.' : 'Назначение закрыто тренером. История сохранена.'}</p>}
       </section>
       {session && <section className={styles.card}>
-        <div className={styles.row}><h3>Занятие {assignment.cursor + 1} из {assignment.sessions.length}</h3><span className={styles.badge}>Фаза {session.phaseLabel || session.phase} · {session.phaseSession}/{session.phaseTotal || 12}</span></div>
+        <div className={styles.row}><h3>Занятие {assignment.cursor + 1} из {assignment.sessions.length}</h3><span className={styles.badge}>{assignment.phaseTerm || 'Фаза'} {session.phaseLabel || session.phase} · {session.phaseSession}/{session.phaseTotal || 12}</span></div>
         {assignment.phaseReviewNote && session.phaseSession === 1 && <p className={styles.notice}>{assignment.phaseReviewNote}</p>}
         <p className={styles.muted}>{count.done} из {count.total} подходов · блоки по порядку, упражнения внутри блока — по кругу</p>
         {next && <p className={styles.notice}>Далее: {next.exercise.code} · {next.exercise.name} · подход {next.round + 1}</p>}
