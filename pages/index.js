@@ -1611,8 +1611,8 @@ function StrengthCycleComparison({comparison}) {
   const chains={full_body:'Общая силовая',anterior_chain:'Передняя цепь',posterior_chain:'Задняя цепь'};
   const statuses={comparable:'Сопоставимая силовая доза',new_variant:'Новый вариант: кг с другим упражнением не сравниваются',previous_variant:'Вариант остался в предыдущем цикле',adapted:'Локальная адаптация: прямое сравнение ограничено',missing_or_mixed_sets:'Нет полных кг/повторов или подходы различаются',units_changed:'Изменился способ подсчёта повторов',context_unknown:'Не сохранены условия нагрузки',dose_changed:'Изменилась доза или силовой режим'};
   const delta=value=>value==null?'—':`${value>0?'+':''}${value}`;
-  const point=value=>!value?'—':`${value.date} · ${value.sets.map(set=>`${set.kg ?? '—'} кг × ${set.reps ?? '—'}${set.perSide?'/стор.':''}`).join('; ')} · RPE упражнения ${value.exerciseRpe ?? '—'}`;
-  const contexts=({exposures,adaptedSessions})=>`Занятий с адаптацией: ${adaptedSessions}. `+exposures.map(item=>`${item.date}: партии ${item.playedSets ?? '—'}, площадка ${item.courtLoad ?? '—'}, поездки ${item.travelDates.join(', ') || 'не отмечены'}${item.missing.length?' · данные неполные':''}${item.reasons.length?' · '+item.reasons.map(reason=>reason.text).join(' '):''}`).join('; ');
+  const point=value=>!value?'—':`${coachDate(value.date)} · ${value.sets.map(set=>`${set.kg ?? '—'} кг × ${set.reps ?? '—'}${set.perSide?'/стор.':''}`).join('; ')} · RPE упражнения ${value.exerciseRpe ?? '—'}`;
+  const contexts=({exposures,adaptedSessions})=>`Занятий с адаптацией: ${adaptedSessions}. `+exposures.map(item=>`${coachDate(item.date)}: партии ${item.playedSets ?? '—'}, площадка ${item.courtLoad ?? '—'}, поездки ${item.travelDates.map(date=>coachDate(date)).join(', ') || 'не отмечены'}${item.missing.length?' · данные неполные':''}${item.reasons.length?' · '+item.reasons.map(reason=>reason.text).join(' '):''}`).join('; ');
   return <section className="coach-cycle-comparison rounded-xl border border-cyan-300/20 p-3">
     <h3 className="text-sm font-bold text-cyan-100">Сравнение соседних циклов</h3>
     <p className="mt-1 text-xs text-slate-400">{comparison.previousId} → {comparison.currentId}. Сопоставимых вариантов: {comparison.summary.comparable}; новых: {comparison.summary.newVariants}; с ограничениями данных: {comparison.summary.limited}.</p>
@@ -1658,7 +1658,7 @@ function StrengthCycleReviewPanel({workspace, playerId, apiKey, date,refreshToke
       {loading && <p role="status" className="text-xs text-slate-500">Проверяем выполнение…</p>}
       {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
       {review && <>
-        <p className="mb-2 text-xs text-slate-500">По состоянию на {review.asOf}. {review.legacySessions>0?'Занятия старой версии не включены в счётчик выполненных циклов.':''}</p>
+        <p className="mb-2 text-xs text-slate-500">По состоянию на {coachDate(review.asOf)}. {review.legacySessions>0?'Занятия старой версии не включены в счётчик выполненных циклов.':''}</p>
         {!review.cycles.length && <p className="text-sm text-slate-400">Пока нет силового цикла новой версии. После сохранения и выполнения занятий здесь появится обзор.</p>}
         {!!review.cycles.length && <PremiumSelect value={selected} onChange={setSelected} options={review.cycles.map(c=>({value:c.id,label:`${c.startDate} · ${c.status==='completed'?'завершён':'идёт'} · ${c.completedCount}/4`}))} compact />}
         {cycle && <div className="mt-3 space-y-3">
@@ -1673,7 +1673,7 @@ function StrengthCycleReviewPanel({workspace, playerId, apiKey, date,refreshToke
             <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-500"><tr><th className="p-2">Дата</th><th className="p-2">Выполненные подходы</th><th className="p-2">RPE упражнения</th><th className="p-2">RPE занятия</th></tr></thead><tbody>{row.observations.map(point=><tr key={point.date} className="border-t border-white/5 text-slate-300"><td className="whitespace-nowrap p-2">{point.date}{point.adapted?' · адаптация':''}</td><td className="min-w-[180px] p-2">{point.sets.filter(set=>set.completed).map(formatSet).join('; ') || 'Нет записанных подходов'}</td><td className="p-2">{point.exerciseRpe ?? '—'}</td><td className="p-2">{point.sessionRpe ?? '—'}</td></tr>)}</tbody></table></div>
           </div>)}</details>
           {!!cycle.replacements.length && <div className="rounded-xl border border-white/10 p-3"><p className="mb-2 text-xs font-bold text-slate-300">Замены тренера и причины</p>{cycle.replacements.map((event,i)=><p key={i} className="mt-1 text-xs text-slate-400">{event.date} · {event.code}: {event.from} → {event.to}. {REPLACEMENT_REASONS[event.reason] || 'Причина не задана'}{event.note?' · '+event.note:''}</p>)}</div>}
-          <details className="rounded-xl border border-white/10 p-3"><summary className="cursor-pointer text-xs text-slate-300">Контекст ReadySix на момент планов</summary>{cycle.context.map(item=><p key={item.date} className="mt-2 text-xs text-slate-500">{item.date} · {item.source==='ReadySix' && <>Партии: {item.playedSets ?? '—'}; площадка: {item.courtLoad ?? '—'} sRPE×мин; поездки: {item.travelDates.join(', ') || 'не отмечены'}. </>}{item.source==='ReadySix'?(item.reasons.map(reason=>reason.text).join(' ') || 'Ограничивающие факторы не отмечены.'):'Контекст не сохранён.'}{item.missing.length?' Часть данных отсутствовала; прибавка нагрузки не подтверждалась.':''}</p>)}</details>
+          <details className="rounded-xl border border-white/10 p-3"><summary className="cursor-pointer text-xs text-slate-300">Контекст ReadySix на момент планов</summary>{cycle.context.map(item=><p key={item.date} className="mt-2 text-xs text-slate-500">{item.date} · {item.source==='ReadySix' && <>Партии: {item.playedSets ?? '—'}; площадка: {item.courtLoad ?? '—'} sRPE×мин; поездки: {item.travelDates.map(date=>coachDate(date)).join(', ') || 'не отмечены'}. </>}{item.source==='ReadySix'?(item.reasons.map(reason=>reason.text).join(' ') || 'Ограничивающие факторы не отмечены.'):'Контекст не сохранён.'}{item.missing.length?' Часть данных отсутствовала; прибавка нагрузки не подтверждалась.':''}</p>)}</details>
           {!!cycle.otherPlans.length && <details className="rounded-xl border border-white/10 p-3"><summary className="cursor-pointer text-xs text-slate-400">Остальные сохранённые планы · {cycle.otherPlans.length}</summary>{cycle.otherPlans.map(plan=><p key={plan.date} className="mt-1 text-xs text-slate-500">{plan.date}{plan.finishReason?' · завершена раньше: '+plan.finishReason:' · не входит в четыре полных выполнения'}</p>)}</details>}
         </div>}
       </>}
@@ -4367,7 +4367,7 @@ export default function Home() {
                     {meta.player?.name}
                   </span>
                   <span className="rounded-full border border-white/[0.07] bg-white/[0.04] px-3 py-1 text-xs font-medium text-slate-500">
-                    {meta.date}
+                    {coachDate(meta.date)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -4879,7 +4879,7 @@ export default function Home() {
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontSize: '9pt', fontWeight: '800', color: '#0f172a', lineHeight: 1 }}>{meta.player?.name}</div>
-                    <div style={{ fontSize: '6.5pt', color: '#64748b', marginTop: '1px' }}>{meta.player?.position} · {meta.date}</div>
+                    <div style={{ fontSize: '6.5pt', color: '#64748b', marginTop: '1px' }}>{meta.player?.position} · {coachDate(meta.date)}</div>
                   </div>
                 </div>
 
@@ -7563,7 +7563,7 @@ export default function Home() {
                     </span>
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-slate-100">{item.label}</span>
-                      <span className="text-[10px] text-slate-500">{item.date} · {item.player?.name}</span>
+                      <span className="text-[10px] text-slate-500">{coachDate(item.date)} · {item.player?.name}</span>
                     </div>
                     <div className="ml-auto flex items-center gap-2">
                       {item.saved ? (

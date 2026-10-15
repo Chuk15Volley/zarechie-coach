@@ -2,7 +2,7 @@ import {firstMissingFact} from '../lib/coachOrderPresentation.mjs';
 import {missingFactText} from '../lib/coachFastWork.mjs';
 import CoachAvatar from './CoachAvatar';
 import useViewPreference from '../hooks/useViewPreference';
-import {sessionFactAmount,factAmount,trainingTitle} from '../lib/coachPresentation.mjs';
+import {coachDate,sessionFactAmount,factAmount,trainingTitle} from '../lib/coachPresentation.mjs';
 import FactPeriod from './FactPeriod';
 import {factPeriod,validFactPeriod} from '../lib/factPeriod.mjs';
 import {useEffect,useRef,useState} from 'react';
@@ -48,7 +48,7 @@ export default function PlayerHistory({workspace,player,apiKey,factsRefresh,cycl
  <div className="coach-overview-filters" aria-label="Разделы истории">{[['sessions','Тренировки и факт'],['decisions','Результаты моих решений']].map(([id,label])=><button key={id} type="button" aria-pressed={section===id} onClick={()=>setSection(id)}>{label}</button>)}</div>
  {section==='decisions'?cycleReview:<>
  <FactPeriod value={period} onChange={setPeriod}/>
- {fillTarget && <section className="coach-focused-facts" ref={focusPanel} aria-label="Заполнение выбранного пропуска"><header><h3>{fillTarget.date} · заполнить факты</h3><button type="button" onClick={()=>{setFillTarget(null);onClearTarget?.();}}>Закрыть заполнение</button></header><StrengthMissingActuals key={`${workspace}:${player.id}:${fillTarget.date}`} workspace={workspace} player={player} date={fillTarget.date} apiKey={apiKey} initialOpen focusField={fillTarget} onSaved={()=>setReload(value=>value+1)}/></section>}
+ {fillTarget && <section className="coach-focused-facts" ref={focusPanel} aria-label="Заполнение выбранного пропуска"><header><h3>{coachDate(fillTarget.date)} · заполнить факты</h3><button type="button" onClick={()=>{setFillTarget(null);onClearTarget?.();}}>Закрыть заполнение</button></header><StrengthMissingActuals key={`${workspace}:${player.id}:${fillTarget.date}`} workspace={workspace} player={player} date={fillTarget.date} apiKey={apiKey} initialOpen focusField={fillTarget} onSaved={()=>setReload(value=>value+1)}/></section>}
 
  {data && <OverviewStats items={[["Загружено занятий",`${sessions.length}/${data.total ?? sessions.length}`,"Весь выбранный период"],["Заполнить факты",gaps.length,"Все силовые упражнения",()=>setFilter('gaps'),filter==='gaps'],["Полных силовых",sessions.filter(row=>row.factReview?.completed).length,"По подтверждённому выполнению"],["Устаревшие дополнения",sessions.filter(row=>row.factReview?.status==='stale').length,"Нужно повторное подтверждение"]]}/>}
  {data && <details className="coach-history-charts"><summary>Графики · кг, повторы и RPE</summary><StrengthPerformance contextKey={contextKey} series={historyPerformanceSeries(sessions)} onOpenDate={date=>rememberOpen(player,date)} onFill={target=>setFillTarget({...target,token:Date.now()})} scope={`${period.from} → ${period.to} · загружено ${sessions.length} из ${data.total ?? sessions.length} занятий`} stale={!!error || loading}/></details>}
