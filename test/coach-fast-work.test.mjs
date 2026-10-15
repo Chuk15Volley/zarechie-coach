@@ -8,6 +8,10 @@ test('coach discovery separates locomotion and ranks the actual task and impleme
  const before=JSON.stringify(cards);assert.equal(rankReplacementCards(cards,'Lateral Shuffle')[0].title,'Lateral Shuffle to Stick');
  assert.ok(rankReplacementCards(cards,'DB Romanian Deadlift').findIndex(c=>c.title==='DB Romanian Deadlift (Two-Hand)')<rankReplacementCards(cards,'DB Romanian Deadlift').findIndex(c=>c.title==='Barbell RDL'));
  assert.equal(JSON.stringify(cards),before);
+ const variants=['DB Deadlift','Barbell RDL','Dumbbell Romanian Deadlift','Single-Leg DB Romanian Deadlift'].map(title=>({title}));
+ const ranked=rankReplacementCards(variants,'DB Romanian Deadlift');
+ assert.equal(ranked[0].title,'Dumbbell Romanian Deadlift');
+ assert.ok(ranked.findIndex(c=>c.title==='Barbell RDL')<ranked.findIndex(c=>c.title==='DB Deadlift'));
 });
 test('saved navigation never crosses saved state, workspace or day',()=>{
  const rows=[{playerId:'a',workspace:'zarechie',date:'2026-10-15',saved:true,status:'done'},{playerId:'b',workspace:'zarechie',date:'2026-10-15',saved:true,status:'done'},{playerId:'c',workspace:'zarechie',date:'2026-10-15',saved:false,status:'done'},{playerId:'d',workspace:'nkperf',date:'2026-10-15',saved:true,status:'done'}];
