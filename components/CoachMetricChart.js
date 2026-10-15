@@ -1,12 +1,12 @@
 import {useEffect,useId,useRef,useState} from 'react';
 import {performanceChartGeometry} from '../lib/strengthPerformance.mjs';
-import {chartDateIndices,chartKeyIndex,nearestChartIndex} from '../lib/coachVisualCharts.mjs';
+import {chartDateIndices,chartKeyIndex,nearestChartIndex,chartObservationCounts} from '../lib/coachVisualCharts.mjs';
 const format=v=>v==null?'—':Number(v).toLocaleString('ru-RU',{maximumFractionDigits:2});
 const date=d=>d.slice(8,10)+'.'+d.slice(5,7);
 export default function CoachMetricChart({points,metric,title,unit}){
  const id=useId(),plot=useRef(null),[overflow,setOverflow]=useState(false),[active,setActive]=useState(null);
  const width=Math.max(260,points.length*27+50),height=150,{min,max,coordinates,segments}=performanceChartGeometry(points,metric,width,height);
- const signature=JSON.stringify(points.map(p=>[p.date,p[metric],p.adapted,p.gap])),known=coordinates.filter(Boolean),latest=known.at(-1),notPerformed=points.filter(p=>p.gap==='Этот вариант не выполнялся' || p.gap==='Такого подхода нет').length,missing=points.length-known.length-notPerformed;
+ const signature=JSON.stringify(points.map(p=>[p.date,p[metric],p.adapted,p.gap])),known=coordinates.filter(Boolean),latest=known.at(-1),{notPerformed,missing}=chartObservationCounts(points,metric);
  useEffect(()=>{setActive(null);const el=plot.current;if(!el)return;const resize=()=>{const clipped=el.scrollWidth>el.clientWidth+1;setOverflow(clipped);if(clipped)el.scrollLeft=el.scrollWidth;};resize();const observer=typeof ResizeObserver==='function'?new ResizeObserver(resize):null;observer?.observe(el);return()=>observer?.disconnect();},[width,signature]);
  const current=active==null?null:points[active],point=active==null?null:coordinates[active],x=active==null?null:38+active*(width-60)/Math.max(1,points.length-1);
  const description=current?`${date(current.date)} · ${point?format(point.value)+' '+unit:current.gap || 'Значение не записано'}${current.adapted?' · локальная адаптация':''}`:'';

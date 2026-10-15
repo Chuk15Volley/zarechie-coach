@@ -34,8 +34,8 @@ increase card height and are hidden in print. Original numbers and text retained
 Mini-bars label missing/no-program/partial observations; only known recorded zero
 is drawn as zero. Partial actual sums are explicitly marked, never a full dose.
 
-Validation before server candidate: 1023 tests passed, one existing skip; build
-passed. Six new semantic tests cover collision-free ticks, keyboard/pointer
+Validation before server candidate: 1024 tests passed, one existing skip; build
+passed. Seven new semantic tests cover collision-free ticks, keyboard/pointer
 bounds, recorded zero vs missing/unperformed, partial sums, exact-date weekly
 plans, plan/fact separation, immutable source inputs and confirmed queue changes.
 Existing strength identity/geometry/adaptation tests retained.
@@ -47,3 +47,7 @@ missing-point readout, exact sparse date labels without overlaps; daily load/wee
 mini-bars and original block navigation. 390 px document 380 px/no horizontal
 page overflow; video 260 px desktop/220 px phone. No browser console errors.
 Production publication and protected-data results will be appended after release.
+
+Final display-count check: recorded exercise RPE stays known even when the
+selected set was absent on that date. Known/missing/unperformed counters are
+disjoint and never negative; original RPE points/geometry/results unchanged.

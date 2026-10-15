@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chartDateIndices,chartKeyIndex,nearestChartIndex,teamLoadChartRows,weekPlanChartRows,historyLoadChart,confirmedQueueSaves} from '../lib/coachVisualCharts.mjs';
+import {chartDateIndices,chartKeyIndex,nearestChartIndex,chartObservationCounts,teamLoadChartRows,weekPlanChartRows,historyLoadChart,confirmedQueueSaves} from '../lib/coachVisualCharts.mjs';
 const freeze=v=>{if(v && typeof v==='object'){Object.values(v).forEach(freeze);Object.freeze(v);}return v;};
 test('axis ticks keep endpoints without label collisions in dense and sparse histories',()=>{
  for(const count of [0,1,2,9,11,61]){const width=Math.max(260,count*27+50),ticks=chartDateIndices(count,width);assert.equal(ticks.length>0,count>0);if(!count)continue;assert.equal(ticks[0],0);assert.equal(ticks.at(-1),count-1);for(let i=1;i<ticks.length;i++)assert.ok((ticks[i]-ticks[i-1])*(width-60)/Math.max(1,count-1)>=56);}
@@ -8,6 +8,11 @@ test('axis ticks keep endpoints without label collisions in dense and sparse his
 test('pointer and keyboard can inspect exact first, last and missing observations',()=>{
  assert.equal(nearestChartIndex(-10,9,293),0);assert.equal(nearestChartIndex(500,9,293),8);assert.equal(nearestChartIndex(38+4*(293-60)/8,9,293),4);
  assert.equal(chartKeyIndex('ArrowLeft',0,9),0);assert.equal(chartKeyIndex('ArrowRight',8,9),8);assert.equal(chartKeyIndex('Home',8,9),0);assert.equal(chartKeyIndex('End',1,9),8);assert.equal(chartKeyIndex('ArrowRight',null,0),null);
+});
+test('exercise RPE stays known when a selected set did not exist; counts never overlap',()=>{
+ const points=freeze([{kg:null,rpe:7,gap:'Такого подхода нет'},{kg:0,rpe:null},{kg:null,rpe:null,gap:'Этот вариант не выполнялся'}]);
+ assert.deepEqual(chartObservationCounts(points,'rpe'),{known:1,missing:1,notPerformed:1});
+ assert.deepEqual(chartObservationCounts(points,'kg'),{known:1,missing:0,notPerformed:2});
 });
 test('daily bars retain genuine zero, distinguish missing from no program and label partial sums',()=>{
  const data=freeze({dates:['a','b','c','d'],players:[{byDay:{a:0,b:80,c:0},plannedByDay:{a:0,b:100,c:200},evidenceByDay:{a:{source:'recorded'},b:{source:'player_log',partial:true},c:{source:'missing'},d:{source:'no_session'}},executionByDay:{a:{completed:true},b:{completedSets:1},c:{completed:false}}},{byDay:{b:0},plannedByDay:{b:120},evidenceByDay:{b:{source:'missing'}}}]});
