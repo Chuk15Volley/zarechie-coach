@@ -1,3 +1,4 @@
+import PlayerPrevention from '../../components/prevention/PlayerPrevention';
 import {getPlayerTimeZone} from '../../lib/playerTimeZoneStore';
 import {playerLocalDate,playerLocalClock,playerTimeZoneLabel} from '../../lib/playerTimeZone.mjs';
 import CompletionConfetti from '../../components/player/CompletionConfetti';
@@ -1138,6 +1139,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
 
   useEffect(() => {
     if (window.location.hash === '#history') setActiveTab('history');
+    if (window.location.hash === '#prevention') setActiveTab('prevention');
   }, []);
 
   async function loadHistSession(date) {
@@ -1362,6 +1364,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                 </>
               ) : activeTab === 'workout' ? (
                 <div className="player-status-pill is-latest"><span />Ожидает программу</div>
+              ) : activeTab === 'prevention' ? (
+                <div className="player-status-pill is-muted"><span />Профилактика</div>
               ) : selectedHistDate ? (
                 <div className="player-session-date">{selectedHistDate}</div>
               ) : (
@@ -1459,9 +1463,9 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         )}
 
         {/* ── Tab bar ── */}
-        {!notFound && sessionDates.length > 0 && (
+        {!notFound && (
           <nav className="player-tabs flex gap-1.5 border-b border-white/[0.05] px-4 py-2">
-            {[['workout', 'Тренировка'], ['history', `История (${sessionDates.length})`]].map(([tab, label]) => (
+            {[['workout', 'Тренировка'], ['prevention', 'Профилактика'], ['history', `История (${sessionDates.length})`]].map(([tab, label]) => (
               <button
                 key={tab}
                 aria-pressed={activeTab === tab}
@@ -1482,7 +1486,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
           </nav>
         )}
 
-        {!notFound && (!workoutStarted || completedAt || finishOpen) && <details className="gym-settings">
+        {!notFound && activeTab === 'workout' && (!workoutStarted || completedAt || finishOpen) && <details className="gym-settings">
           <summary>Дата и настройки <span>{sessionDate ? formatDate(sessionDate) : 'Выбрать дату'}</span></summary>
           <div className="gym-settings-content">
             <label>Дата программы<select aria-label="Дата программы" value={sessionDate || ''} onChange={event => { if (event.target.value) window.location.assign(`/player/${encodeURIComponent(token)}?date=${event.target.value}`); }}><option value="">Выбери дату</option>{sessionDate && !sessionDates.includes(sessionDate) && <option value={sessionDate}>{sessionDate} · нет программы</option>}{sessionDates.map(date => <option key={date} value={date}>{formatDate(date)}</option>)}</select></label>
@@ -1492,12 +1496,12 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             <p className="text-xs text-slate-400">Голосовые подсказки озвучены с помощью ИИ.</p>
           </div>
         </details>}
-        {!notFound && session && (!workoutStarted || completedAt || finishOpen) && timerVoice.supported && <div className="player-voice-settings">
+        {!notFound && activeTab === 'workout' && session && (!workoutStarted || completedAt || finishOpen) && timerVoice.supported && <div className="player-voice-settings">
           <TimerVoiceControl voice={timerVoice} />
           {timerVoice.enabled && <button type="button" className="player-voice-test" onClick={timerVoice.test}>Проверить звук</button>}
         </div>}
-        {timerVoice.message && <div className="player-voice-message" role="status">{timerVoice.message}<button type="button" onClick={timerVoice.test}>Проверить звук</button></div>}
-        {!notFound && session && (!workoutStarted || completedAt || finishOpen) && <OfflineProgram token={token} date={sessionDate} session={session} lastContact={lastContact} />}
+        {activeTab === 'workout' && timerVoice.message && <div className="player-voice-message" role="status">{timerVoice.message}<button type="button" onClick={timerVoice.test}>Проверить звук</button></div>}
+        {!notFound && activeTab === 'workout' && session && (!workoutStarted || completedAt || finishOpen) && <OfflineProgram token={token} date={sessionDate} session={session} lastContact={lastContact} />}
         {/* ── Invalid token ── */}
         {notFound && (
           <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
@@ -1647,6 +1651,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
             )}
           </main>
         )}
+
+        {!notFound && activeTab === 'prevention' && <PlayerPrevention token={token} />}
 
         {/* ── History tab ── */}
         {!notFound && activeTab === 'history' && (
