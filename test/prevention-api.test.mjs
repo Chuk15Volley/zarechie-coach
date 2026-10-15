@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import source from '../lib/prevention/low-back-resilience.json' with { type: 'json' };
 import { preventionCourses } from '../lib/prevention/catalogue.mjs';
+import { resultExerciseIdentity } from '../lib/prevention/results.mjs';
 import { DEFAULT_RESTS } from '../lib/prevention/model.mjs';
 import { hasRestriction, isCoachBannedExercise } from '../lib/exerciseRestrictions.js';
 import { readySixGymState } from '../lib/readySixGym.mjs';
@@ -51,7 +52,7 @@ async function call(route, body, { method = 'POST', authorized = true } = {}) {
   return response;
 }
 const request = () => ({ workspace: 'nkperf', playerId: 'whoop_123', requestId: 'assign-' + crypto.randomUUID(), action: 'assign', expectedCatalogueRevision: 0, scope: 'phase', phase: 1, mainSets: 2, stretchSets: 2, stretch: false, rests: DEFAULT_RESTS, reviewed: true, note: '' });
-const progress = (a, action, extra = {}) => ({ token: 'synthetic-nk-token', assignmentId: a.id, requestId: 'action-' + crypto.randomUUID(), expectedRevision: a.revision, sessionIndex: a.cursor, action, ...extra });
+const progress = (a, action, extra = {}) => ({ token: 'synthetic-nk-token', assignmentId: a.id, requestId: 'action-' + crypto.randomUUID(), expectedRevision: a.revision, sessionIndex: a.cursor, action, ...(action === 'result' ? { expectedExercise: resultExerciseIdentity(a.sessions[extra.sessionIndex ?? a.cursor].exercises.find(ex => extra.key?.startsWith(ex.code + ':'))) } : {}), ...extra });
 
 test('prevention coach endpoints require authentication and valid workspace membership', async () => {
   assert.equal((await call(coach, request(), { authorized: false })).code, 401);
@@ -245,4 +246,20 @@ test('legacy summaries hydrate actual partial progress read-only for coach overv
  for(const field of ['currentTotal','currentDone','currentPhase','lastCompletedAt','reviewedAt','reviewFingerprint'])delete legacy[field];db.set(key,JSON.stringify(legacy));
  const before=[...db.entries()],rows=await store.listAssignments({workspace:'nkperf',playerId:'123'}),summary=rows.find(row=>row.id===a.id);
  assert.equal(summary.currentDone,1);assert.equal(summary.currentPhase,1);assert.ok(summary.currentTotal>1);assert.equal(summary.reviewFingerprint,a.reviewFingerprint);assert.deepEqual([...db.entries()],before);
+});
+
+test('actual results are private to the assignment owner and visible in the authenticated coach detail', async () => {
+ const a=(await call(coach,{...request(),expectedCatalogueRevision:1})).data.assignment;
+ const body=progress(a,'result',{key:'A2:0',result:{reps:9,weightKg:0}});
+ assert.equal((await call(player,{...body,token:'synthetic-other-token'},{authorized:false})).code,404);
+ const saved=await call(player,body,{authorized:false});assert.equal(saved.code,200);assert.equal(saved.data.assignment.results['A2:0'].reps,9);
+ const detail=await call(coach,{workspace:'nkperf',playerId:'123',assignmentId:a.id},{method:'GET'});assert.equal(detail.code,200);assert.deepEqual(detail.data.assignment.results,saved.data.assignment.results);
+ assert.equal((await call(player,body,{authorized:false})).data.assignment.revision,saved.data.assignment.revision);
+});
+test('medical holds reject a new factual execution but preserve correction of an already recorded execution', async () => {
+ let a=(await call(coach,{...request(),expectedCatalogueRevision:1})).data.assignment;
+ a=(await call(player,progress(a,'result',{key:'A2:0',result:{reps:8}}))).data.assignment;
+ medical.set('123',{injuryLog:[{status:'active',note:'запрет врача'}],readySixDecision:{recommendation:'full'}});
+ assert.equal((await call(player,progress(a,'result',{key:'A4:0',result:{reps:10}}))).code,409);
+ const edit=await call(player,progress(a,'result',{key:'A2:0',result:{reps:7}}));assert.equal(edit.code,200);assert.equal(edit.data.assignment.results['A2:0'].reps,7);
 });

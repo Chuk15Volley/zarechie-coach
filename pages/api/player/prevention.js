@@ -18,7 +18,7 @@ export default async function handler(req, res) {
       }
       return res.status(200).json({ assignments: await listAssignments(identity) });
     }
-    if (!['mark', 'complete'].includes(input.action)) return res.status(400).json({ error: 'Недопустимая операция.' });
+    if (!['mark', 'complete', 'result'].includes(input.action)) return res.status(400).json({ error: 'Недопустимая операция.' });
     const assignment = await updateAssignment(identity, input);
     return res.status(200).json({ assignment: publicAssignment(assignment) });
   } catch (error) { return res.status(error.status || 503).json({ error: error.status ? error.message : 'Прогресс не сохранён. Проверьте соединение и повторите попытку.' }); }

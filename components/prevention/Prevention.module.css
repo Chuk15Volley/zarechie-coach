@@ -167,3 +167,18 @@
 .currentApproachActions{display:flex;gap:8px}
 .currentApproachActions>.button{flex:1;min-width:0}
 .currentApproachActions>.timerClose{width:46px;height:46px}
+/* Actual approach results share the gym plan/fact and transaction surfaces. */
+.resultInputs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0 8px}
+.resultInputs .field{margin:0;min-width:0;line-height:1.5;align-content:start}
+.resultInputs .input{font-size:22px;min-height:54px;margin-top:auto}
+.resultActions{display:grid;grid-template-columns:minmax(80px,.4fr) minmax(0,1fr);gap:10px;margin-top:16px}
+.resultSheet header{align-items:flex-start;margin-bottom:10px}
+.resultSheet h3{font-size:18px;margin-bottom:0}
+.resultSheet .textButton{font-size:12px;min-height:44px;line-height:1.5}
+.resultComparison{margin:14px 0;color:#c1d0c6}
+.resultColumns{display:grid;grid-template-columns:44px minmax(0,.85fr) minmax(0,1.4fr);gap:10px;font-size:12px;line-height:1.6;padding:10px 0;border-bottom:1px solid #ffffff13;align-items:start}
+.resultColumns:first-child{color:#9eb5a6;font-size:10px;padding-top:0}
+.resultColumns>*{min-width:0;overflow-wrap:anywhere}
+.resultColumns strong{font-weight:550;color:#d8e5dc}
+.resultColumns .textButton{display:block;min-height:44px}
+@media(max-width:359px){.resultInputs{grid-template-columns:1fr}.resultColumns{grid-template-columns:34px minmax(0,.8fr) minmax(0,1.4fr);gap:7px}}

@@ -1,10 +1,11 @@
 import { Check, Timer, ChevronDown } from 'lucide-react';
 import { timedExercise } from '../../lib/prevention/timing.mjs';
 import { prescriptionText, exerciseView, exerciseElementId, blockElementId } from '../../lib/prevention/player-view.mjs';
+import { resultLabel } from '../../lib/prevention/results.mjs';
 import PlayerExerciseMedia from './PlayerExerciseMedia';
 import styles from './Prevention.module.css';
 
-export default function PlayerExercises({ session, progress, currentKey, busy, timerActive, onMark, onWorkTimer, idPrefix }) {
+export default function PlayerExercises({ session, progress, results = {}, currentKey, busy, hold, timerActive, onOpenResult, onWorkTimer, idPrefix }) {
   const blocks = [...new Set(session.exercises.map(e => e.code[0]))];
   return <div className={styles.playerExerciseList}>{blocks.map(block => {
     const exercises = session.exercises.filter(e => e.code[0] === block);
@@ -22,10 +23,10 @@ export default function PlayerExercises({ session, progress, currentKey, busy, t
           <div className={styles.setLabel}><span>Отметь выполненные подходы</span><span>{view.done}/{view.total}</span></div>
           <div className={styles.playerSets}>{Array.from({ length: ex.setCount }, (_, round) => {
             const key = `${ex.code}:${round}`, done = !!progress[key];
-            return <div key={key} className={`gym-set ${done ? 'is-done' : ''} ${currentKey === key ? 'is-current' : ''}`}><button type="button" className={`gym-set-heading ${styles.playerSet}`} aria-label={`${ex.name} · подход ${round + 1}${view.bilateral ? ' на обе стороны' : ''}`} aria-pressed={done} title={done ? 'Нажмите, чтобы убрать отметку' : 'Отметить выполненный подход'} disabled={busy} onClick={() => onMark(key, !done)}><span className="gym-set-caption">{done && <Check size={13} aria-hidden="true" />}Подход {round + 1} из {ex.setCount}</span><strong>Назначено: {prescriptionText(ex.reps)}</strong><span>{done ? 'Выполнено · снять отметку' : 'Отметить выполнение'}</span></button></div>;
+            return <div key={key} className={`gym-set ${done ? 'is-done' : ''} ${currentKey === key ? 'is-current' : ''}`}><button type="button" className={`gym-set-heading ${styles.playerSet}`} aria-label={`${ex.name} · подход ${round + 1}${view.bilateral ? ' на обе стороны' : ''}`} aria-pressed={done} title={done ? 'Изменить фактический результат' : 'Записать фактический результат'} disabled={busy || hold && !done} onClick={() => onOpenResult(key)}><span className="gym-set-caption">{done && <Check size={13} aria-hidden="true" />}Подход {round + 1} из {ex.setCount}</span><strong>{done ? `Факт: ${resultLabel(ex, results[key])}` : `Назначено: ${prescriptionText(ex.reps)}`}</strong><span>{done ? 'Изменить результат' : 'Записать результат'}</span></button></div>;
           })}</div>
           {view.bilateral && <p className={styles.sideHint}>Одна отметка — после обеих сторон.</p>}
-          {timed && <div className={styles.exerciseTools}><button type="button" className={styles.exerciseTool} disabled={busy || timerActive || view.complete} onClick={() => onWorkTimer(ex)}><Timer size={16} aria-hidden="true" />Таймер выполнения</button></div>}
+          {timed && <div className={styles.exerciseTools}><button type="button" className={styles.exerciseTool} disabled={busy || hold || timerActive || view.complete} onClick={() => onWorkTimer(ex)}><Timer size={16} aria-hidden="true" />Таймер выполнения</button></div>}
           <details className={styles.playerTechnique}><summary>Как выполнять<ChevronDown size={15} aria-hidden="true" /></summary><p>{ex.note || 'Подсказку уточнит тренер.'}</p>{ex.originalDose && <p className={styles.playerSource}>Дозировка PDF: {ex.originalDose}</p>}{session.restMode === 'source' && <p className={styles.playerSource}>{ex.restSeconds != null ? `Исходная пауза: ${ex.rest}` : 'Пауза не задана в PDF · настройка тренера'}</p>}<p className={styles.playerSource}>Источник: стр. {session.sourcePage}{ex.originalName && ex.originalName !== ex.name ? ` · в PDF: ${ex.originalName}` : ''}</p></details>
         </article>;
       })}
