@@ -369,3 +369,15 @@
 .gym-premium .player-history-exercise .player-autoreg { color:#ddcfac; font-size:13px; line-height:1.55; }
 .gym-premium .player-history-exercise .player-exercise-code { padding:4px 8px; border-radius:8px; font-size:11px; font-weight:650; }
 .gym-premium .player-history-exercise .player-exercise-name { min-width:0; }
+
+/* Completed view keeps navigation and sync protection without a duplicate progress panel. */
+.gym-premium .player-completed-dock .player-workout-tools { margin-top:0; }
+.gym-premium .player-completed-overview h2:first-child { margin-top:0; }
+.gym-premium .player-history-summary { padding:14px; border:1px solid #ffffff18; border-radius:14px; background:#152022; color:#bdccc3; }
+.gym-premium .player-history-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(80px,1fr)); gap:8px; margin:0; }
+.gym-premium .player-history-metrics > div { min-width:0; padding:10px 8px; border:1px solid #ffffff10; border-radius:10px; background:#ffffff03; }
+.gym-premium .player-history-metrics dt { min-height:36px; font-size:12px; line-height:1.5; color:#b7c7bd; }
+.gym-premium .player-history-metrics dd { margin:4px 0 0; font-size:18px; line-height:1.4; font-weight:650; color:#dce9df; overflow-wrap:anywhere; }
+.gym-premium .player-history-summary > p { margin:10px 0 0; font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
+.gym-premium .player-video-overlay { padding-top:max(12px,env(safe-area-inset-top)); }
+.gym-premium .player-video-modal { max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overscroll-behavior:contain; }

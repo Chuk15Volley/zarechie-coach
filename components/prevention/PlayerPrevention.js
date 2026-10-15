@@ -19,7 +19,7 @@ export default function PlayerPrevention({ token }) {
     return () => controller.abort();
   }, [token, reload]);
   return <main className={`${styles.section} ${styles.player}`} aria-label="Профилактика игрока">
-    <header className={styles.heading}><div><p className={styles.eyebrow}>Твои курсы</p><h2>Профилактика</h2><p>Выполняй по порядку, в согласованное с тренером время.</p></div></header>
+    <header className={styles.heading}><div><p className={styles.eyebrow}>Твои курсы</p><h2>Профилактика</h2>{assignments?.length > 0 && <p>Выполняй по порядку, в согласованное с тренером время.</p>}</div></header>
     {error && <div role="alert" className={styles.error}>{error}<button type="button" className={styles.button} onClick={() => setReload(n => n + 1)}>Повторить загрузку</button></div>}
     {!assignments && !error && <p className={styles.loading}>Загрузка назначений…</p>}
     {assignments?.length === 0 && <section className={styles.card}><h3>Пока нет назначений</h3><p className={styles.muted}>Когда тренер назначит курс профилактики, он появится здесь отдельно от тренировок зала.</p><button type="button" className={styles.button} onClick={() => setReload(n => n + 1)}>Проверить назначения</button></section>}

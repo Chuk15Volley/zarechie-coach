@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {serverWorkoutComplete,playerSessionStatus,restorePlayerProgress,implementWeightLabel,actualLoadLabel,visibleLoadPrescription,resultInputsChanged,weightChangeLabels,historyMonthGroups,historySetRows,pairWeightLegend,compactActualLoadLabel,compactSetPrescription} from '../lib/playerPresentation.mjs';
+import {serverWorkoutComplete,playerSessionStatus,restorePlayerProgress,implementWeightLabel,actualLoadLabel,visibleLoadPrescription,resultInputsChanged,weightChangeLabels,historyMonthGroups,historySetRows,pairWeightLegend,compactActualLoadLabel,compactSetPrescription,compactPreviousSets} from '../lib/playerPresentation.mjs';
 import {compactWorkoutTitle,shortCue} from '../lib/playerGym.mjs';
 const session={blocks:[{exercises:[{name:'DB Bench Press',loadUnits:2,targetSets:['5']}]}]};
 test('completed server facts take precedence over stale device edits without changing source objects',()=>{
@@ -105,4 +105,15 @@ test('compact video prescription groups only identical sets, preserving custom t
 test('empty legacy history targets remain an empty read-only display',()=>{
  assert.deepEqual(historySetRows({name:'Legacy'},0,0,{label:'A'},null),[]);
  assert.deepEqual(historySetRows({name:'Legacy',targetSets:[]},0,0,{label:'A'},{actual:{exercises:[{name:'Legacy',block:'A'}]}}),[]);
+});
+
+test('previous result summary groups only identical facts without losing weight, sides or order',()=>{
+ const ex={name:'DB Bench Press',loadUnits:2};
+ const sets=[{target:'5',kg:16},{target:'5',kg:16}];const before=JSON.stringify(sets);
+ assert.equal(compactPreviousSets(ex,sets),'2 подхода по 5 повторений · 2 гантели по 16 кг');
+ assert.equal(compactPreviousSets(ex,[{target:'3/side',kg:null},{target:'3/side',kg:null}]),'2 подхода по 3 повторения на сторону');
+ assert.equal(compactPreviousSets(ex,[{target:'3 м/6',kg:null},{target:'3 м/6',kg:null}]),'2 подхода по 3 м/6');
+ assert.equal(compactPreviousSets(ex,[{target:'5',kg:16},{target:'4',kg:12.5}]),'5 повт. · 2 гантели по 16 кг / 4 повт. · 2 гантели по 12,5 кг');
+ assert.equal(compactPreviousSets(ex,[{target:'5',kg:0},{target:'5',kg:null}]),'5 повт. · 2 гантели по 0 кг / 5 повт.');
+ assert.equal(compactPreviousSets(ex,[]),'');assert.equal(JSON.stringify(sets),before);
 });

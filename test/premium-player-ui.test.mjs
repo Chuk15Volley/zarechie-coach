@@ -7,7 +7,7 @@ const styles = readFileSync(new URL('../styles/globals.css', import.meta.url), '
 
 test('player app uses a full identity hero and compact sticky workout controls', () => {
   assert.match(playerPage, /className="player-hero/);
-  assert.match(playerPage, /className="player-progress-dock sticky top-0/);
+  assert.match(playerPage, /player-progress-dock[^\n]{0,100}sticky top-0/);
   assert.match(playerPage, /<h1 className="player-page-title text-white">/);
   assert.doesNotMatch(playerPage, /player-page-title truncate/);
 });

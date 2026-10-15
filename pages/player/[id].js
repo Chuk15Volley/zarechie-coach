@@ -1,4 +1,4 @@
-import { serverWorkoutComplete, playerSessionStatus, restorePlayerProgress, implementWeightLabel, actualLoadLabel, visibleLoadPrescription, resultInputsChanged, weightChangeLabels, historyMonthGroups, historySetRows, pairWeightLegend, compactActualLoadLabel, compactSetPrescription } from '../../lib/playerPresentation.mjs';
+import { serverWorkoutComplete, playerSessionStatus, restorePlayerProgress, implementWeightLabel, actualLoadLabel, visibleLoadPrescription, resultInputsChanged, weightChangeLabels, historyMonthGroups, historySetRows, pairWeightLegend, compactActualLoadLabel, compactSetPrescription, compactPreviousSets } from '../../lib/playerPresentation.mjs';
 import PlayerPrevention from '../../components/prevention/PlayerPrevention';
 import {getPlayerTimeZone} from '../../lib/playerTimeZoneStore';
 import {playerLocalDate,playerLocalClock,playerTimeZoneLabel} from '../../lib/playerTimeZone.mjs';
@@ -11,6 +11,7 @@ import { playerExerciseName, compactWorkoutTitle, repetitionInput, validRepetiti
 
 import { useState, useEffect, useRef, useMemo, Component } from 'react';
 import Head from 'next/head';
+import { createPortal } from 'react-dom';
 import { Dumbbell, Layers3, Timer, LayoutGrid, Play, Volume2, VolumeX } from 'lucide-react';
 import OfflineProgram from '../../components/player/OfflineProgram';
 import { useHoldTimer } from '../../lib/useHoldTimer';
@@ -294,14 +295,17 @@ function youtubeVideoId(url) {
 
 function PlayerVideoModal({ name, videoId, watchUrl, ex, onClose }) {
  const ref=useRef(null);
+ const [host,setHost]=useState(null);
+ useEffect(()=>{setHost(document.querySelector('.player-page-shell') || document.body);},[]);
  useEffect(()=>{
+  if(!host)return;
   const focus=document.activeElement, previousOverflow=document.body.style.overflow;
   document.body.style.overflow='hidden'; ref.current?.querySelector('button')?.focus();
   const keydown=event=>{if(event.key==='Escape'){event.preventDefault();onClose();} if(event.key==='Tab'){const items=[...ref.current.querySelectorAll('button,a,iframe')];const first=items[0],last=items.at(-1);if(event.shiftKey && document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first?.focus();}}};
   document.addEventListener('keydown',keydown);
   return ()=>{document.body.style.overflow=previousOverflow;document.removeEventListener('keydown',keydown);if(focus?.isConnected)focus.focus();};
- },[]);
- return <div className="gym-result-overlay player-video-overlay" onClick={onClose}>
+ },[host]);
+ return host ? createPortal(<div className="gym-result-overlay player-video-overlay" onClick={onClose}>
   <section ref={ref} className="player-video-modal" role="dialog" aria-modal="true" aria-label={`Техника: ${name}`} onClick={e=>e.stopPropagation()}>
    <div className="gym-result-heading"><h2>{name}</h2><button type="button" aria-label="Закрыть видео" onClick={onClose}>×</button></div>
    <iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&playsinline=1`} title={`Техника: ${name}`} referrerPolicy="origin" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen />
@@ -312,7 +316,7 @@ function PlayerVideoModal({ name, videoId, watchUrl, ex, onClose }) {
    </div>}
    <p>Если плеер недоступен, <a href={watchUrl} target="_blank" rel="noopener noreferrer">открыть оригинал на YouTube</a>.</p>
   </section>
- </div>;
+ </div>,host) : null;
 }
 
 function ExerciseMedia({ name, token, ex }) {
@@ -445,7 +449,7 @@ function ExCard({ bi, ei, ex, block, done, onToggle, weights, onWeightChange, re
       <div className="space-y-2.5 px-3.5 pb-3.5 pt-3">
         {previousResult && <div className="gym-previous-result rounded-xl bg-white/[0.035] p-3 text-xs text-slate-300">
           <p>В прошлый раз · {formatDate(previousResult.date)}</p>
-          <p className="mt-1">{previousResult.sets.map((set, index) => `${set.kg ? `${set.kg} кг × ` : ''}${targetLabel(set.target)}`).join(' · ')}</p>
+          <p className="mt-1">{compactPreviousSets(ex,previousResult.sets)}</p>
           {previousResult.rpe && <p>Оценка нагрузки: {previousResult.rpe} / 10</p>}
         </div>}
         {!readOnly && (skipReason || (ex.targetSets || []).some((_, si) => !done[`${bi}-${ei}-${si}`])) && <div className="text-xs text-slate-400">
@@ -1481,8 +1485,8 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
 
         {/* ── Compact sticky workout control ── */}
         {activeTab === 'workout' && session && workoutStarted && (
-          <div className="player-progress-dock sticky top-0 z-30 border-y border-white/[0.07] bg-[#07101a]/95 px-4 pb-3 pt-3 backdrop-blur-xl">
-            {totalSets > 0 && (
+          <div className={`player-progress-dock ${completedAt ? 'player-completed-dock' : ''} sticky top-0 z-30 border-y border-white/[0.07] bg-[#07101a]/95 px-4 pb-3 pt-3 backdrop-blur-xl`}>
+            {totalSets > 0 && !completedAt && (
               <div className="player-progress-panel">
                 <div className="mb-2 flex items-end justify-between">
                   <div>
@@ -1564,7 +1568,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
         )}
 
         {!notFound && activeTab === 'workout' && <details className="gym-settings">
-          <summary>Дата и настройки <span>{sessionDate ? formatDate(sessionDate) : 'Выбрать дату'}</span></summary>
+          <summary>Дата и настройки {!completedAt && <span>{sessionDate ? formatDate(sessionDate) : 'Выбрать дату'}</span>}</summary>
           <div className="gym-settings-content">
             <label>Дата программы<select aria-label="Дата программы" value={sessionDate || ''} onChange={event=>{if(event.target.value)window.location.assign(`/player/${encodeURIComponent(token)}?date=${event.target.value}`);}}><option value="">Выбери дату</option>{sessionDate && !sessionDates.includes(sessionDate) && <option value={sessionDate}>{sessionDate} · нет программы</option>}{sessionDates.map(date=><option key={date} value={date}>{formatDate(date)}</option>)}</select></label>
             {sessionDate!==localToday && <a href={`/player/${encodeURIComponent(token)}?date=${localToday}`}>Открыть сегодня</a>}
@@ -1629,7 +1633,7 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                 )}
 
                 {completedAt && <section className="player-completed-overview">
-                  <div><span className="player-kicker">{finishReason ? 'Завершена раньше' : skippedCount ? 'Завершена с пропусками' : 'Тренировка выполнена'}</span><h2>{compactWorkoutTitle(sessionLabel)}</h2><p>{formatDate(sessionDate)} · {doneCount} из {totalSets} подходов · {formatWorkoutDuration(elapsedSeconds)}</p></div>
+                  <div><h2>{compactWorkoutTitle(sessionLabel)}</h2><p>{doneCount} из {totalSets} подходов · {formatWorkoutDuration(elapsedSeconds)}</p></div>
                   {pendingCorrection && <details className="player-pending-correction"><summary>Есть неотправленное сохранение на этом устройстве</summary><p>Проверь значения перед отправкой. Более новые записи сервера защищены.</p>{blocks.flatMap((block,bi)=>(block.exercises || []).flatMap((ex,ei)=>(ex.targetSets || []).flatMap((target,si)=>{const key=`${bi}-${ei}-${si}`;return pendingCorrection.weights?.[key] !== weights[key] || pendingCorrection.repetitions?.[key] !== repetitions[key] ? <p key={key}>{ex.code} · подход {si+1}: {targetLabel(actualTarget(target,pendingCorrection.repetitions?.[key]))}{actualLoadLabel(ex,pendingCorrection.weights?.[key]) ? ` · ${actualLoadLabel(ex,pendingCorrection.weights[key])}` : ''}</p> : [];})))}<button type="button" className="gym-result-cancel" onClick={recoverSavedCorrection}>Отправить сохранённые изменения</button></details>}
                 </section>}
                 {dayGoal && (
@@ -1790,15 +1794,17 @@ function PlayerPage({ token, session, sessionLabel, player, sessionDate, dayGoal
                       <div className="text-[14px] font-semibold text-slate-200">{histMeta?.dayGoal || histSession.blocks?.[0]?.goal || histSession.goal || histSession.day_goal}</div>
                     </div>
                   )}
-                  <div className="mb-4 rounded-xl border border-white/10 p-4 text-sm text-slate-300">
+                  <section className="player-history-summary" aria-label="Результаты тренировки">
                     {histMeta?.log || histMeta?.actual ? <>
-                      <p>Выполнено подходов: {histMeta?.log ? Object.values(histMeta.log.done || {}).filter(Boolean).length : (histMeta.actual.exercises || []).reduce((sum, ex) => sum + (ex.completedSets || 0), 0)}</p>
-                      {histMeta?.log?.elapsedSeconds > 0 && <p>Время: {formatWorkoutDuration(histMeta.log.elapsedSeconds)}</p>}
+                      <dl className="player-history-metrics">
+                        <div><dt>Подходы</dt><dd>{histMeta?.log ? Object.values(histMeta.log.done || {}).filter(Boolean).length : (histMeta.actual.exercises || []).reduce((sum, ex) => sum + (ex.completedSets || 0), 0)}</dd></div>
+                        {histMeta?.log?.elapsedSeconds > 0 && <div><dt>Время</dt><dd>{formatWorkoutDuration(histMeta.log.elapsedSeconds)}</dd></div>}
+                        <div><dt>Оценка нагрузки</dt><dd>{histMeta?.feedback?.rpe != null ? `${histMeta.feedback.rpe}/10` : 'Не отправлена'}</dd></div>
+                      </dl>
                       {(histMeta?.log?.finishReason || histMeta?.feedback?.finishReason) && <p>Завершена раньше: {histMeta.log?.finishReason || histMeta.feedback?.finishReason}</p>}
-                      <p>RPE: {histMeta?.feedback?.rpe || 'Оценка не отправлена'}</p>
                       {histMeta?.feedback?.note && <p>Комментарий: {histMeta.feedback.note}</p>}
-                    </> : 'Фактическое выполнение ещё не записано.'}
-                  </div>
+                    </> : <p>Фактическое выполнение ещё не записано.</p>}
+                  </section>
                   {(histSession.blocks || []).map((block, bi) => (
                     <div key={bi}>
                       <div className="mb-3 flex items-center gap-3">
